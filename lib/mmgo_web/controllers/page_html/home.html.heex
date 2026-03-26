@@ -1,0 +1,76 @@
+<Layouts.app flash={@flash}>
+  <section class="grid gap-8 lg:grid-cols-[minmax(0,2fr)_minmax(20rem,1fr)] lg:items-start">
+    <div class="space-y-6">
+      <div class="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-semibold uppercase tracking-[0.22em] text-amber-900">
+        MMGO Core Bootstrap
+      </div>
+
+      <div class="space-y-4">
+        <h1 class="max-w-3xl text-4xl font-semibold tracking-tight text-stone-950 sm:text-5xl">
+          Ministry of MaGic Online starts here.
+        </h1>
+        <p class="max-w-2xl text-base leading-7 text-stone-700 sm:text-lg">
+          This Phoenix app is the first MMGO foundation: PostgreSQL, Oban, Telegram webhook wiring,
+          starter account provisioning, and a structure ready for deterministic game systems.
+        </p>
+      </div>
+
+      <div class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+        <div class="rounded-3xl border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5">
+          <p class="text-sm font-semibold text-stone-900">Backend</p>
+          <p class="mt-2 text-sm leading-6 text-stone-600">
+            Elixir, Phoenix, LiveView, PostgreSQL, and Oban as the base runtime.
+          </p>
+        </div>
+
+        <div class="rounded-3xl border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5">
+          <p class="text-sm font-semibold text-stone-900">Telegram</p>
+          <p class="mt-2 text-sm leading-6 text-stone-600">
+            Webhook endpoint, API client, and first-pass account provisioning from updates.
+          </p>
+        </div>
+
+        <div class="rounded-3xl border border-stone-200 bg-white/90 p-5 shadow-sm shadow-stone-950/5">
+          <p class="text-sm font-semibold text-stone-900">Data</p>
+          <p class="mt-2 text-sm leading-6 text-stone-600">
+            Foundational realms, accounts, Telegram identities, and character records.
+          </p>
+        </div>
+      </div>
+    </div>
+
+    <aside class="rounded-[2rem] border border-stone-200 bg-stone-950 px-6 py-6 text-stone-100 shadow-xl shadow-stone-950/15">
+      <p class="text-sm font-semibold uppercase tracking-[0.18em] text-amber-300">
+        Ready Endpoints
+      </p>
+      <div class="mt-5 space-y-4 text-sm leading-6">
+        <div>
+          <p class="font-medium text-white">Health</p>
+          <code
+            phx-no-curly-interpolation
+            class="mt-1 block rounded-2xl bg-white/8 px-3 py-2 text-xs text-stone-200"
+          >
+            GET /healthz
+          </code>
+        </div>
+
+        <div>
+          <p class="font-medium text-white">Telegram webhook</p>
+          <code
+            phx-no-curly-interpolation
+            class="mt-1 block rounded-2xl bg-white/8 px-3 py-2 text-xs text-stone-200"
+          >
+            POST /api/telegram/webhook
+          </code>
+        </div>
+
+        <div>
+          <p class="font-medium text-white">Default stack</p>
+          <p class="mt-1 text-stone-300">
+            Phoenix {Application.spec(:phoenix, :vsn)} with deterministic game services layered on top.
+          </p>
+        </div>
+      </div>
+    </aside>
+  </section>
+</Layouts.app>

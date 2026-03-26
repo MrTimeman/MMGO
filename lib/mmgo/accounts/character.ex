@@ -1,0 +1,35 @@
+defmodule MMGO.Accounts.Character do
+  use Ecto.Schema
+
+  import Ecto.Changeset
+
+  alias MMGO.Accounts.Account
+  alias MMGO.Worlds.Realm
+
+  @primary_key {:id, :binary_id, autogenerate: true}
+  @foreign_key_type :binary_id
+
+  schema "characters" do
+    field :name, :string
+    field :status, Ecto.Enum, values: [:new, :active, :retired], default: :new
+    field :level, :integer, default: 1
+    field :xp, :integer, default: 0
+    field :metadata, :map, default: %{}
+
+    belongs_to :account, Account
+    belongs_to :realm, Realm
+
+    timestamps(type: :utc_datetime_usec)
+  end
+
+  def changeset(character, attrs) do
+    character
+    |> cast(attrs, [:name, :status, :level, :xp, :metadata])
+    |> validate_required([:name])
+    |> validate_length(:name, min: 3, max: 40)
+    |> validate_number(:level, greater_than_or_equal_to: 1)
+    |> validate_number(:xp, greater_than_or_equal_to: 0)
+    |> unique_constraint(:name, name: :characters_realm_name_index)
+    |> unique_constraint(:account_id, name: :characters_account_realm_index)
+  end
+end
