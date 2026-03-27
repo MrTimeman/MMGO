@@ -1,3 +1,4 @@
+alias MMGO.Dungeons
 alias MMGO.Economy
 alias MMGO.Repo
 alias MMGO.Worlds
@@ -75,5 +76,84 @@ case Worlds.list_routes_for_location(capital_city.id)
       })
 
   _route ->
+    :ok
+end
+
+canonical_dungeon =
+  case Dungeons.get_dungeon_by_slug(canonical_realm.id, "tower-dungeon") do
+    nil ->
+      {:ok, dungeon} =
+        Dungeons.create_dungeon(canonical_realm, %{
+          slug: "tower-dungeon",
+          name: "Tower Dungeon",
+          status: :active,
+          entrance_location_id: tower.id
+        })
+
+      dungeon
+
+    dungeon ->
+      dungeon
+  end
+
+upper_halls =
+  case Repo.get_by(Dungeons.Floor, dungeon_id: canonical_dungeon.id, number: 1) do
+    nil ->
+      {:ok, floor} = Dungeons.create_floor(canonical_dungeon, %{number: 1, name: "Upper Halls"})
+      floor
+
+    floor ->
+      floor
+  end
+
+entrance_node =
+  case Repo.get_by(Dungeons.Node, floor_id: upper_halls.id, slug: "entrance") do
+    nil ->
+      {:ok, node} =
+        Dungeons.create_node(upper_halls, %{
+          slug: "entrance",
+          name: "Entrance Hall",
+          kind: :entrance,
+          x: 0,
+          y: 0,
+          threat_level: 5
+        })
+
+      node
+
+    node ->
+      node
+  end
+
+rest_node =
+  case Repo.get_by(Dungeons.Node, floor_id: upper_halls.id, slug: "rest-chamber") do
+    nil ->
+      {:ok, node} =
+        Dungeons.create_node(upper_halls, %{
+          slug: "rest-chamber",
+          name: "Rest Chamber",
+          kind: :rest,
+          x: 1,
+          y: 0,
+          threat_level: 0
+        })
+
+      node
+
+    node ->
+      node
+  end
+
+case Repo.get_by(Dungeons.Link, from_node_id: entrance_node.id, to_node_id: rest_node.id) do
+  nil ->
+    {:ok, _link} =
+      Dungeons.create_link(canonical_dungeon, %{
+        from_node_id: entrance_node.id,
+        to_node_id: rest_node.id,
+        travel_cost: 1,
+        bidirectional: true
+      })
+
+  _link ->
     :ok
 end

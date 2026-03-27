@@ -16,6 +16,7 @@ This repository currently includes:
 - append-only economy accounts, treasury, and ledger transfers
 - world locations, routes, and scheduled journey completion
 - parties, memberships, and expedition state snapshots
+- dungeon graphs, run progression, and expedition node state
 - AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
@@ -82,6 +83,7 @@ iex -S mix phx.server
 - `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
 - `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
 - `lib/mmgo/parties` - party formation, active memberships, and expeditions
+- `lib/mmgo/dungeons` - dungeon graphs, runs, links, and per-node expedition state
 - `lib/mmgo/travel` - compressed-time helpers, journeys, and completion workers
 - `lib/mmgo/spells` - compiled spells and runtime rules
 - `lib/mmgo/combat` - deterministic combat engine and persistence
