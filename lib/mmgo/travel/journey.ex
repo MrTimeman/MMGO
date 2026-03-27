@@ -14,6 +14,10 @@ defmodule MMGO.Travel.Journey do
   schema "journeys" do
     field :status, Ecto.Enum, values: @statuses, default: :active
     field :travel_days, :integer
+    field :food_units_consumed, :integer, default: 0
+    field :encumbrance_penalty_days, :integer, default: 0
+    field :carried_weight, :integer, default: 0
+    field :carry_capacity, :integer, default: 0
     field :started_at, :utc_datetime_usec
     field :arrival_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
@@ -33,6 +37,10 @@ defmodule MMGO.Travel.Journey do
     |> cast(attrs, [
       :status,
       :travel_days,
+      :food_units_consumed,
+      :encumbrance_penalty_days,
+      :carried_weight,
+      :carry_capacity,
       :started_at,
       :arrival_at,
       :completed_at,
@@ -46,6 +54,10 @@ defmodule MMGO.Travel.Journey do
     |> validate_required([
       :status,
       :travel_days,
+      :food_units_consumed,
+      :encumbrance_penalty_days,
+      :carried_weight,
+      :carry_capacity,
       :started_at,
       :arrival_at,
       :character_id,
@@ -55,6 +67,10 @@ defmodule MMGO.Travel.Journey do
       :to_location_id
     ])
     |> validate_number(:travel_days, greater_than: 0)
+    |> validate_number(:food_units_consumed, greater_than_or_equal_to: 0)
+    |> validate_number(:encumbrance_penalty_days, greater_than_or_equal_to: 0)
+    |> validate_number(:carried_weight, greater_than_or_equal_to: 0)
+    |> validate_number(:carry_capacity, greater_than_or_equal_to: 0)
     |> validate_distinct_locations()
     |> unique_constraint(:character_id, name: :journeys_single_active_character_index)
   end

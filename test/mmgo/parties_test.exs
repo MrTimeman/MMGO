@@ -2,6 +2,7 @@ defmodule MMGO.PartiesTest do
   use MMGO.DataCase, async: true
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Inventory
   alias MMGO.Parties
   alias MMGO.Parties.{ExpeditionMember, Membership}
   alias MMGO.Repo
@@ -113,6 +114,20 @@ defmodule MMGO.PartiesTest do
     member: member,
     route: route
   } do
+    {:ok, ration_template} =
+      Inventory.create_item_template(%{
+        code: "party_travel_ration",
+        name: "Party Travel Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
+
+    {:ok, _rations} = Inventory.grant_item(member, ration_template, %{quantity: 20})
+
     {:ok, %{party: party}} = Parties.create_party(leader)
     {:ok, %{membership: _membership}} = Parties.add_member(party, member)
     assert {:ok, _journey_result} = Travel.start_journey(member, route)

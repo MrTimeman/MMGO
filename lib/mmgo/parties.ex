@@ -5,6 +5,7 @@ defmodule MMGO.Parties do
   alias MMGO.Accounts.Character
   alias MMGO.Parties.{Expedition, ExpeditionMember, Membership, Party, Reward}
   alias MMGO.Repo
+  alias MMGO.Survival
   alias MMGO.Travel.Journey
 
   def list_parties_for_realm(realm_id) when is_binary(realm_id) do
@@ -286,6 +287,8 @@ defmodule MMGO.Parties do
         |> Enum.uniq()
         |> List.first()
 
+      supply_summary = Survival.expedition_supply_summary(members)
+
       expedition =
         %Expedition{}
         |> Expedition.changeset(%{
@@ -294,6 +297,10 @@ defmodule MMGO.Parties do
           location_id: location_id,
           expedition_type: expedition_type,
           status: :active,
+          food_units_snapshot: supply_summary.total_food_units,
+          daily_food_demand: supply_summary.daily_food_demand,
+          carried_weight: supply_summary.total_carried_weight,
+          carry_capacity: supply_summary.total_carry_capacity,
           started_at: started_at
         })
         |> Repo.insert!()

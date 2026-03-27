@@ -4,6 +4,7 @@ defmodule MMGO.NotificationWorkerHooksTest do
   alias MMGO.Accounts.{Account, Character, TelegramIdentity}
   alias MMGO.Academy
   alias MMGO.Academy.CompleteEnrollmentWorker
+  alias MMGO.Inventory
   alias MMGO.Notifications.Notification
   alias MMGO.Repo
   alias MMGO.Scavenging
@@ -46,7 +47,20 @@ defmodule MMGO.NotificationWorkerHooksTest do
         bidirectional: true
       })
 
+    {:ok, ration_template} =
+      Inventory.create_item_template(%{
+        code: "notify_ration",
+        name: "Notify Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
+
     character = character_fixture(realm, city, "worker", "Worker Mage", 999_001)
+    {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 5})
 
     %{realm: realm, city: city, tower: tower, route: route, character: character}
   end

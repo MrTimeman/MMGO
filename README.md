@@ -23,6 +23,7 @@ This repository currently includes:
 - academy enrollments, completion scheduling, and specialization state
 - overworld scavenging, resource caches, and scheduled harvest completion
 - notification outbox and Telegram delivery hooks for timed system completions
+- food consumption, carry capacity, and encumbrance-aware travel planning
 - AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
@@ -89,6 +90,7 @@ iex -S mix phx.server
 - `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
 - `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
 - `lib/mmgo/academy` - education progression, timed enrollments, and specialization state
+- `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
 - `lib/mmgo/notifications` - notification queueing, formatting, and Telegram delivery
 - `lib/mmgo/scavenging` - location resource caches and timed scavenging attempts
 - `lib/mmgo/parties` - party formation, active memberships, and expeditions

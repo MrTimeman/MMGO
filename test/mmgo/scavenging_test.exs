@@ -71,8 +71,21 @@ defmodule MMGO.ScavengingTest do
         ]
       })
 
+    {:ok, ration_template} =
+      Inventory.create_item_template(%{
+        code: "forager_ration",
+        name: "Forager Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
+
     character = character_fixture(realm, wilderness, "forager", "Forager")
     outsider = character_fixture(realm, city, "outsider", "Outsider")
+    {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 10})
 
     {:ok, resource_cache} =
       Scavenging.ensure_resource_cache(wilderness, %{

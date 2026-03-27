@@ -2,6 +2,7 @@ defmodule MMGO.TravelTest do
   use MMGO.DataCase, async: true
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Inventory
   alias MMGO.Repo
   alias MMGO.Travel
   alias MMGO.Travel.{Clock, CompleteJourneyWorker, Journey}
@@ -41,16 +42,37 @@ defmodule MMGO.TravelTest do
         bidirectional: true
       })
 
-    character = character_fixture(realm, city, "traveler", "Traveler")
+    {:ok, ration_template} =
+      Inventory.create_item_template(%{
+        code: "travel_ration",
+        name: "Travel Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
 
-    %{realm: realm, city: city, tower: tower, route: route, character: character}
+    character = character_fixture(realm, city, "traveler", "Traveler")
+    {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 20})
+
+    %{
+      realm: realm,
+      city: city,
+      tower: tower,
+      route: route,
+      character: character,
+      ration_template: ration_template
+    }
   end
 
   test "start_journey/3 creates an active journey and enqueues completion", %{
     route: route,
     character: character,
     city: city,
-    tower: tower
+    tower: tower,
+    ration_template: ration_template
   } do
     started_at = ~U[2026-03-27 12:00:00Z]
 
@@ -60,6 +82,7 @@ defmodule MMGO.TravelTest do
     assert journey.status == :active
     assert journey.from_location_id == city.id
     assert journey.to_location_id == tower.id
+    assert journey.food_units_consumed == 10
 
     assert DateTime.compare(journey.arrival_at, Clock.arrival_at(started_at, route.travel_days)) ==
              :eq
@@ -69,6 +92,14 @@ defmodule MMGO.TravelTest do
     oban_job = Repo.get!(Oban.Job, job.id)
     assert oban_job.worker == "MMGO.Travel.CompleteJourneyWorker"
     assert Travel.active_journey(character.id).id == journey.id
+
+    ration_stack =
+      Repo.get_by!(Inventory.InventoryItem,
+        character_id: character.id,
+        item_template_id: ration_template.id
+      )
+
+    assert ration_stack.quantity == 10
   end
 
   test "start_journey/3 rejects characters with an existing active journey", %{
@@ -88,6 +119,7 @@ defmodule MMGO.TravelTest do
     city: city
   } do
     character = character_fixture(realm, tower, "returner", "Returner")
+    {:ok, _rations} = Inventory.grant_item(character, ration_template_fixture(), %{quantity: 20})
 
     assert {:ok, %{journey: journey}} = Travel.start_journey(character, route)
     assert journey.from_location_id == tower.id
@@ -149,5 +181,9 @@ defmodule MMGO.TravelTest do
     |> Repo.insert!()
     |> Character.travel_changeset(%{current_location_id: location.id})
     |> Repo.update!()
+  end
+
+  defp ration_template_fixture do
+    Repo.get_by!(Inventory.ItemTemplate, code: "travel_ration")
   end
 end
