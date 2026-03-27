@@ -4,6 +4,7 @@ defmodule MMGO.Combat do
   alias Ecto.Multi
   alias MMGO.Combat.{Action, Combat, Engine, Event, Participant, Turn}
   alias MMGO.Grimoires
+  alias MMGO.Inventory.InventoryItem
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
 
@@ -90,11 +91,24 @@ defmodule MMGO.Combat do
         Action
         |> where([action], action.combat_turn_id == ^turn.id)
         |> Repo.all()
-        |> Repo.preload([:spell, :participant, :target_participant])
+        |> Repo.preload([
+          :spell,
+          :participant,
+          :target_participant,
+          inventory_item: :item_template
+        ])
 
       resolution = Engine.resolve_turn(runtime_combat, turn, runtime_combat.participants, actions)
 
       Repo.transaction(fn ->
+        Enum.each(resolution.inventory_updates, fn {inventory_item_id, attrs} ->
+          inventory_item = Repo.get!(InventoryItem, inventory_item_id)
+
+          inventory_item
+          |> InventoryItem.changeset(attrs)
+          |> Repo.update!()
+        end)
+
         Enum.each(runtime_combat.participants, fn participant ->
           attrs = Map.fetch!(resolution.participant_updates, participant.id)
 

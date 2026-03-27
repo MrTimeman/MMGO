@@ -1,5 +1,6 @@
 defmodule MMGO.Combat.Engine do
   alias MMGO.Combat.{Action, Combat, Participant, RNG, Turn}
+  alias MMGO.Inventory.{InventoryItem, ItemAction}
   alias MMGO.Spells.{Runtime, Spell, SpellEffect}
 
   def resolve_turn(%Combat{} = combat, %Turn{} = turn, participants, actions) do
@@ -13,25 +14,26 @@ defmodule MMGO.Combat.Engine do
 
     actions = fill_missing_actions(actions, active_participants)
 
-    {participants_by_id, sides, environment_tags, _final_seq, events} =
+    {participants_by_id, sides, environment_tags, inventory_updates, _final_seq, events} =
       actions
       |> Enum.sort_by(&RNG.order_key(combat.seed, [combat.turn_number, &1.participant_id]), :asc)
       |> Enum.reduce(
-        {participants_by_id, sides, environment_tags, starting_seq, events},
-        fn action, {participants_acc, sides_acc, tags_acc, seq_acc, events_acc} ->
+        {participants_by_id, sides, environment_tags, %{}, starting_seq, events},
+        fn action, {participants_acc, sides_acc, tags_acc, inventory_acc, seq_acc, events_acc} ->
           resolve_action(
             combat,
             action,
             participants_acc,
             sides_acc,
             tags_acc,
+            inventory_acc,
             seq_acc,
             events_acc
           )
         end
       )
 
-    participants_by_id = expire_non_periodic_states(participants_by_id)
+    participants_by_id = expire_non_periodic_states(participants_by_id, combat.turn_number)
 
     winner_side = determine_winner(sides)
     participants_by_id = finalize_participants(participants_by_id, sides, winner_side)
@@ -66,6 +68,7 @@ defmodule MMGO.Combat.Engine do
           "event_count" => length(events)
         }
       },
+      inventory_updates: inventory_updates,
       create_next_turn?: is_nil(winner_side),
       events: Enum.reverse(events)
     }
@@ -188,10 +191,11 @@ defmodule MMGO.Combat.Engine do
          participants,
          sides,
          tags,
+         inventory_updates,
          seq,
          events
        ) do
-    {participants, sides, tags, seq + 1,
+    {participants, sides, tags, inventory_updates, seq + 1,
      [
        event(seq, combat.turn_number, "wait", %{"participant_id" => action.participant_id})
        | events
@@ -204,6 +208,7 @@ defmodule MMGO.Combat.Engine do
          participants,
          sides,
          tags,
+         inventory_updates,
          seq,
          events
        ) do
@@ -211,17 +216,17 @@ defmodule MMGO.Combat.Engine do
 
     cond do
       participant.status != :ready ->
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "skipped", %{"participant_id" => participant.id})
            | events
          ]}
 
-      blocked = blocked_spell_cast(participant) ->
+      blocked = blocked_action(participant, :cast_spell) ->
         {updated_participant, blocked_state, consumed?} = blocked
         participants = Map.put(participants, participant.id, updated_participant)
 
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "action_blocked", %{
              "participant_id" => participant.id,
@@ -232,14 +237,14 @@ defmodule MMGO.Combat.Engine do
          ]}
 
       is_nil(action.spell) ->
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "invalid_action", %{"participant_id" => participant.id})
            | events
          ]}
 
       action.spell.creator_character_id != participant.character_id ->
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "unauthorized_spell", %{
              "participant_id" => participant.id,
@@ -249,7 +254,7 @@ defmodule MMGO.Combat.Engine do
          ]}
 
       not spell_available?(participant, action.spell.id) ->
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "spell_not_prepared", %{
              "participant_id" => participant.id,
@@ -260,7 +265,7 @@ defmodule MMGO.Combat.Engine do
          ]}
 
       Map.get(participant.cooldowns || %{}, action.spell.id, 0) > 0 ->
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "spell_on_cooldown", %{
              "participant_id" => participant.id,
@@ -270,11 +275,97 @@ defmodule MMGO.Combat.Engine do
          ]}
 
       true ->
-        resolve_spell_cast(combat, action, participant, participants, sides, tags, seq, events)
+        resolve_spell_cast(
+          combat,
+          action,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
     end
   end
 
-  defp resolve_spell_cast(combat, action, participant, participants, sides, tags, seq, events) do
+  defp resolve_action(
+         combat,
+         %Action{action_type: :use_item} = action,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    participant = Map.fetch!(participants, action.participant_id)
+
+    cond do
+      participant.status != :ready ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "skipped", %{"participant_id" => participant.id})
+           | events
+         ]}
+
+      blocked = blocked_action(participant, :use_item) ->
+        {updated_participant, blocked_state, consumed?} = blocked
+        participants = Map.put(participants, participant.id, updated_participant)
+
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "action_blocked", %{
+             "participant_id" => participant.id,
+             "state" => blocked_state,
+             "consumed" => consumed?
+           })
+           | events
+         ]}
+
+      is_nil(action.inventory_item) ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "invalid_action", %{"participant_id" => participant.id})
+           | events
+         ]}
+
+      action.inventory_item.character_id != participant.character_id ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "unauthorized_item", %{
+             "participant_id" => participant.id,
+             "inventory_item_id" => action.inventory_item_id
+           })
+           | events
+         ]}
+
+      true ->
+        resolve_item_use(
+          combat,
+          action,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
+    end
+  end
+
+  defp resolve_spell_cast(
+         combat,
+         action,
+         participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
     spell = action.spell
     environment_outcome = Runtime.environment_outcome(spell, tags)
 
@@ -293,7 +384,7 @@ defmodule MMGO.Combat.Engine do
 
     cond do
       environment_outcome.negated? ->
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "spell_negated", %{
              "participant_id" => participant.id,
@@ -313,6 +404,7 @@ defmodule MMGO.Combat.Engine do
           sides,
           tags,
           environment_outcome,
+          inventory_updates,
           seq,
           events,
           1.0,
@@ -329,6 +421,7 @@ defmodule MMGO.Combat.Engine do
           sides,
           tags,
           environment_outcome,
+          inventory_updates,
           seq,
           events,
           0.5,
@@ -339,7 +432,7 @@ defmodule MMGO.Combat.Engine do
         backlash_damage = spell.failure_profile.backlash_damage
         sides = apply_side_delta(sides, participant.side, -backlash_damage)
 
-        {participants, sides, tags, seq + 1,
+        {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "spell_failed", %{
              "participant_id" => participant.id,
@@ -348,6 +441,80 @@ defmodule MMGO.Combat.Engine do
            })
            | events
          ]}
+    end
+  end
+
+  defp resolve_item_use(
+         combat,
+         %Action{} = action,
+         %Participant{} = participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    inventory_item = action.inventory_item
+    item_template = inventory_item.item_template
+
+    action_key =
+      get_in(action.payload || %{}, ["tool_action"]) ||
+        get_in(action.payload || %{}, [:tool_action])
+
+    item_action = action_key && action_definition(item_template, action_key)
+
+    cond do
+      is_nil(item_action) ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "invalid_item_action", %{
+             "participant_id" => participant.id,
+             "inventory_item_id" => inventory_item.id,
+             "action_key" => action_key
+           })
+           | events
+         ]}
+
+      not usable_inventory_item?(inventory_item, item_action) ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "item_unavailable", %{
+             "participant_id" => participant.id,
+             "inventory_item_id" => inventory_item.id,
+             "action_key" => action_key
+           })
+           | events
+         ]}
+
+      true ->
+        {participants, sides, tags, payload} =
+          apply_item_effects(
+            combat,
+            action,
+            participant,
+            inventory_item,
+            item_action,
+            participants,
+            sides,
+            tags
+          )
+
+        inventory_updates =
+          Map.put(inventory_updates, inventory_item.id, %{
+            quantity: max(inventory_item.quantity - item_action.quantity_cost, 0),
+            durability: max(inventory_item.durability - item_action.durability_cost, 0)
+          })
+
+        payload =
+          payload
+          |> Map.put("participant_id", participant.id)
+          |> Map.put("inventory_item_id", inventory_item.id)
+          |> Map.put("action_key", item_action.key)
+          |> Map.put("item_code", item_template.code)
+
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [event(seq, combat.turn_number, "tool_action", payload) | events]}
     end
   end
 
@@ -360,6 +527,7 @@ defmodule MMGO.Combat.Engine do
          sides,
          tags,
          environment_outcome,
+         inventory_updates,
          seq,
          events,
          multiplier,
@@ -409,8 +577,55 @@ defmodule MMGO.Combat.Engine do
       |> Map.put("target_participant_id", target_participant_id)
       |> Map.update!("effects", &Enum.reverse(&1))
 
-    {participants, sides, tags, seq + 1,
+    {participants, sides, tags, inventory_updates, seq + 1,
      [event(seq, combat.turn_number, event_type, payload) | events]}
+  end
+
+  defp apply_item_effects(
+         combat,
+         action,
+         participant,
+         inventory_item,
+         item_action,
+         participants,
+         sides,
+         tags
+       ) do
+    target_side = resolve_target_side(action, participant, item_action, sides)
+    target_participant_id = resolve_target_participant_id(action, participants, target_side)
+
+    {participants, sides, tags, payload} =
+      Enum.reduce(item_action.effects, {participants, sides, tags, %{"effects" => []}}, fn effect,
+                                                                                           {participants_acc,
+                                                                                            sides_acc,
+                                                                                            tags_acc,
+                                                                                            payload_acc} ->
+        {participants_acc, sides_acc, tags_acc, effect_payload} =
+          apply_effect(
+            combat,
+            participant,
+            target_side,
+            target_participant_id,
+            inventory_item,
+            effect,
+            participants_acc,
+            sides_acc,
+            tags_acc,
+            0,
+            1.0
+          )
+
+        {participants_acc, sides_acc, tags_acc,
+         Map.update!(payload_acc, "effects", &[effect_payload | &1])}
+      end)
+
+    payload =
+      payload
+      |> Map.put("target_side", target_side)
+      |> Map.put("target_participant_id", target_participant_id)
+      |> Map.update!("effects", &Enum.reverse(&1))
+
+    {participants, sides, tags, payload}
   end
 
   defp apply_effect(
@@ -418,7 +633,7 @@ defmodule MMGO.Combat.Engine do
          participant,
          target_side,
          target_participant_id,
-         spell,
+         source,
          %SpellEffect{} = effect,
          participants,
          sides,
@@ -428,7 +643,11 @@ defmodule MMGO.Combat.Engine do
        ) do
     intensity =
       (effect.intensity + intensity_bonus +
-         RNG.bounded_noise(combat.seed, [spell.id, participant.id, effect.state], effect.variance))
+         RNG.bounded_noise(
+           combat.seed,
+           [source_id(source), participant.id, effect.state],
+           effect.variance
+         ))
       |> Kernel.*(multiplier)
       |> floor()
       |> max(0)
@@ -440,7 +659,8 @@ defmodule MMGO.Combat.Engine do
           target_participant_id,
           effect,
           intensity,
-          spell,
+          source,
+          combat.turn_number,
           participants,
           sides,
           tags
@@ -452,7 +672,8 @@ defmodule MMGO.Combat.Engine do
           participant.id,
           effect,
           intensity,
-          spell,
+          source,
+          combat.turn_number,
           participants,
           sides,
           tags
@@ -474,7 +695,8 @@ defmodule MMGO.Combat.Engine do
          participant_id,
          effect,
          intensity,
-         spell,
+         source,
+         turn_number,
          participants,
          sides,
          tags
@@ -496,7 +718,8 @@ defmodule MMGO.Combat.Engine do
             "state" => effect.state,
             "intensity" => intensity,
             "remaining_turns" => max(effect.duration, 1),
-            "source_spell_id" => spell.id
+            "applied_on_turn" => turn_number,
+            "source_id" => source_id(source)
           })
 
         {participants, sides, tags,
@@ -602,7 +825,7 @@ defmodule MMGO.Combat.Engine do
     end)
   end
 
-  defp expire_non_periodic_states(participants) do
+  defp expire_non_periodic_states(participants, turn_number) do
     Map.new(participants, fn {participant_id, participant} ->
       active_states =
         participant.active_states
@@ -610,12 +833,16 @@ defmodule MMGO.Combat.Engine do
           if periodic_state?(Map.get(state, "state")) do
             [state | acc]
           else
-            remaining_turns = max(Map.get(state, "remaining_turns", 0) - 1, 0)
-
-            if remaining_turns > 0 do
-              [Map.put(state, "remaining_turns", remaining_turns) | acc]
+            if Map.get(state, "applied_on_turn") == turn_number do
+              [state | acc]
             else
-              acc
+              remaining_turns = max(Map.get(state, "remaining_turns", 0) - 1, 0)
+
+              if remaining_turns > 0 do
+                [Map.put(state, "remaining_turns", remaining_turns) | acc]
+              else
+                acc
+              end
             end
           end
         end)
@@ -625,14 +852,14 @@ defmodule MMGO.Combat.Engine do
     end)
   end
 
-  defp blocked_spell_cast(%Participant{} = participant) do
+  defp blocked_action(%Participant{} = participant, action_type) do
     active_states = participant.active_states || []
 
     cond do
       has_state?(active_states, "trapped") ->
         {participant, "trapped", false}
 
-      has_state?(active_states, "silenced") ->
+      action_type == :cast_spell and has_state?(active_states, "silenced") ->
         {participant, "silenced", false}
 
       has_state?(active_states, "channeling") ->
@@ -660,6 +887,18 @@ defmodule MMGO.Combat.Engine do
 
   defp periodic_state?(state), do: state in ["burning", "regenerating"]
 
+  defp usable_inventory_item?(%InventoryItem{} = inventory_item, %ItemAction{} = item_action) do
+    inventory_item.quantity > 0 and inventory_item.quantity >= item_action.quantity_cost and
+      inventory_item.durability >= item_action.durability_cost
+  end
+
+  defp action_definition(item_template, action_key) do
+    Enum.find(item_template.actions || [], &(&1.key == action_key))
+  end
+
+  defp source_id(%Spell{id: id}), do: id
+  defp source_id(%InventoryItem{id: id}), do: id
+
   defp resolve_target_side(
          %Action{target_side: target_side},
          participant,
@@ -673,6 +912,20 @@ defmodule MMGO.Combat.Engine do
     end
   end
 
+  defp resolve_target_side(
+         %Action{target_side: target_side},
+         participant,
+         %ItemAction{targeting: targeting},
+         _sides
+       )
+       when is_binary(target_side) and target_side != "" do
+    case targeting do
+      :self -> participant.side
+      :ally -> participant.side
+      _other -> target_side
+    end
+  end
+
   defp resolve_target_side(_action, participant, %Spell{targeting: :self}, _sides),
     do: participant.side
 
@@ -680,6 +933,18 @@ defmodule MMGO.Combat.Engine do
     do: participant.side
 
   defp resolve_target_side(_action, participant, %Spell{targeting: _targeting}, sides) do
+    sides
+    |> Map.keys()
+    |> Enum.find(fn side -> side != participant.side end)
+  end
+
+  defp resolve_target_side(_action, participant, %ItemAction{targeting: :self}, _sides),
+    do: participant.side
+
+  defp resolve_target_side(_action, participant, %ItemAction{targeting: :ally}, _sides),
+    do: participant.side
+
+  defp resolve_target_side(_action, participant, %ItemAction{targeting: _targeting}, sides) do
     sides
     |> Map.keys()
     |> Enum.find(fn side -> side != participant.side end)
