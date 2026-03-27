@@ -32,6 +32,27 @@ config :mmgo, MMGO.Telegram,
   webhook_secret: System.get_env("TELEGRAM_WEBHOOK_SECRET") || telegram_config[:webhook_secret],
   webhook_path: telegram_config[:webhook_path] || "/api/telegram/webhook"
 
+ai_config = Application.get_env(:mmgo, MMGO.AI, [])
+gemini_config = Application.get_env(:mmgo, MMGO.AI.Providers.Gemini, [])
+gemini_api_key = System.get_env("GEMINI_API_KEY") || gemini_config[:api_key]
+gemini_env_api_key = System.get_env("GEMINI_API_KEY")
+
+config :mmgo, MMGO.AI,
+  default_provider:
+    if(gemini_env_api_key, do: MMGO.AI.Providers.Gemini, else: ai_config[:default_provider]),
+  models: %{
+    spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
+    turn_narration:
+      System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration]
+  },
+  prompt_versions: ai_config[:prompt_versions]
+
+config :mmgo, MMGO.AI.Providers.Gemini,
+  api_base_url:
+    System.get_env("GEMINI_API_BASE_URL") || gemini_config[:api_base_url] ||
+      "https://generativelanguage.googleapis.com/v1beta",
+  api_key: gemini_api_key
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

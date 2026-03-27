@@ -26,6 +26,21 @@ config :mmgo, MMGO.Telegram,
   bot_token: "test-bot-token",
   webhook_secret: "test-webhook-secret"
 
+config :mmgo, MMGO.AI,
+  default_provider: MMGO.AI.Providers.Mock,
+  models: %{
+    spell_compile: "gemini-3-flash-test",
+    turn_narration: "g3f-lite-test"
+  },
+  prompt_versions: %{
+    spell_compile: "test.spell-compile.v1",
+    turn_narration: "test.turn-narration.v1"
+  }
+
+config :mmgo, MMGO.AI.Providers.Gemini,
+  api_base_url: "http://localhost:8082",
+  api_key: "test-gemini-key"
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :mmgo, MMGOWeb.Endpoint,

@@ -11,6 +11,7 @@ This repository currently includes:
 - foundational game data models for realms, accounts, Telegram identities, and characters
 - compiled spell schemas and runtime validation
 - deterministic combat state, turn, action, and event foundations
+- AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
 ## Requirements
@@ -60,11 +61,21 @@ iex -S mix phx.server
 - `GET /healthz`
 - `POST /api/telegram/webhook`
 
+## AI configuration
+
+- default local development uses the mock AI provider
+- set `GEMINI_API_KEY` to switch the runtime to the Gemini provider automatically
+- optional overrides:
+  - `GEMINI_API_BASE_URL`
+  - `GEMINI_SPELL_MODEL`
+  - `GEMINI_NARRATION_MODEL`
+
 ## Project structure
 
 - `lib/mmgo/accounts` - account, identity, and character domain logic
 - `lib/mmgo/spells` - compiled spells and runtime rules
 - `lib/mmgo/combat` - deterministic combat engine and persistence
+- `lib/mmgo/ai` - provider abstraction, prompts, Gemini client, and audit logs
 - `lib/mmgo/worlds` - realm setup and world bootstrap
 - `lib/mmgo/telegram` - Telegram client and webhook update handling
 - `lib/mmgo_web` - web controllers, router, layouts, and HTTP entrypoints

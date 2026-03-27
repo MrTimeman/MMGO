@@ -1,0 +1,82 @@
+defmodule MMGO.Combat.NarratorTest do
+  use MMGO.DataCase, async: true
+
+  alias MMGO.AI.Request
+  alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Combat
+  alias MMGO.Combat.Narrator
+  alias MMGO.Repo
+  alias MMGO.Spells
+  alias MMGO.Worlds
+
+  setup do
+    {:ok, realm} =
+      Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
+
+    attacker = character_fixture(realm, "narrator-attacker", "Narrator Attacker")
+    defender = character_fixture(realm, "narrator-defender", "Narrator Defender")
+
+    spell =
+      spell_fixture(attacker, %{
+        name: "Ignis Sphaera",
+        formula: "Ignis Sphaera Magnus",
+        school: :fire,
+        targeting: :enemy,
+        delivery_form: :sphere,
+        tags: ["fire"],
+        effects: [
+          %{applies_to: :target, state: "impact", intensity: 14, variance: 1, duration: 0}
+        ],
+        failure_profile: %{difficulty: 6, base_success_rate: 95, partial_success_rate: 3}
+      })
+
+    {:ok, %{combat: combat}} =
+      Combat.create_duel(realm, %{
+        participants: [
+          %{character_id: attacker.id, side: "attackers", position: 0},
+          %{character_id: defender.id, side: "defenders", position: 0}
+        ]
+      })
+
+    combat = Repo.preload(combat, participants: [:character])
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    {:ok, _action} =
+      Combat.submit_action(combat, attacker_participant.id, %{
+        action_type: :cast_spell,
+        spell_id: spell.id,
+        target_side: "defenders"
+      })
+
+    {:ok, _resolved_combat} = Combat.resolve_turn(combat)
+
+    %{combat: combat}
+  end
+
+  test "narrate_turn/3 stores AI narration on the turn", %{combat: combat} do
+    assert {:ok, turn} = Narrator.narrate_turn(combat.id, 1)
+
+    assert turn.narration =~ "mock storyteller"
+    assert Repo.aggregate(Request, :count, :id) == 1
+
+    ai_request = Repo.one!(Request)
+    assert ai_request.kind == :turn_narration
+    assert ai_request.combat_id == combat.id
+  end
+
+  defp character_fixture(realm, handle, name) do
+    account =
+      %Account{}
+      |> Account.registration_changeset(%{display_name: name, handle: handle})
+      |> Repo.insert!()
+
+    %Character{account_id: account.id, realm_id: realm.id}
+    |> Character.changeset(%{name: name, status: :active, level: 16})
+    |> Repo.insert!()
+  end
+
+  defp spell_fixture(character, attrs) do
+    {:ok, spell} = Spells.create_spell(character, attrs)
+    spell
+  end
+end

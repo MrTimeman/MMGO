@@ -25,6 +25,21 @@ config :mmgo, MMGO.Telegram,
   webhook_path: "/api/telegram/webhook",
   webhook_secret: nil
 
+config :mmgo, MMGO.AI,
+  default_provider: MMGO.AI.Providers.Mock,
+  models: %{
+    spell_compile: "gemini-3-flash",
+    turn_narration: "g3f-lite"
+  },
+  prompt_versions: %{
+    spell_compile: "2026-03-27.spell-compile.v1",
+    turn_narration: "2026-03-27.turn-narration.v1"
+  }
+
+config :mmgo, MMGO.AI.Providers.Gemini,
+  api_base_url: "https://generativelanguage.googleapis.com/v1beta",
+  api_key: nil
+
 # Configure the endpoint
 config :mmgo, MMGOWeb.Endpoint,
   url: [host: "localhost"],
