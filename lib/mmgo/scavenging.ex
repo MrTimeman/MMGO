@@ -194,6 +194,13 @@ defmodule MMGO.Scavenging do
     |> normalize_transaction_result()
   end
 
+  def complete_due_attempts(now \\ DateTime.utc_now()) do
+    Attempt
+    |> where([attempt], attempt.status == :active and attempt.completes_at <= ^now)
+    |> Repo.all()
+    |> Enum.map(fn attempt -> complete_attempt_by_id(attempt.id, now: now, force: true) end)
+  end
+
   def refresh_resource_cache_if_due(%ResourceCache{} = resource_cache, now \\ DateTime.utc_now()) do
     if (resource_cache.status == :respawning and resource_cache.respawn_at) &&
          DateTime.compare(now, resource_cache.respawn_at) != :lt do

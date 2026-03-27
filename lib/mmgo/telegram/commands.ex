@@ -9,6 +9,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Dungeons
   alias MMGO.Grimoires
   alias MMGO.Inventory
+  alias MMGO.Operator
   alias MMGO.Parties
   alias MMGO.Repo
   alias MMGO.Scavenging
@@ -65,7 +66,10 @@ defmodule MMGO.Telegram.Commands do
        "/combat status",
        "/combat cast <spell-id>",
        "/combat wait",
-       "/combat resolve"
+       "/combat resolve",
+       "/admin status",
+       "/admin realm <slug>",
+       "/admin sweep"
      ]
      |> Enum.join("\n")}
   end
@@ -541,6 +545,95 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("combat", _args, _character),
     do: {:ok, "Usage: /combat status | /combat cast <spell-id> | /combat wait | /combat resolve"}
 
+  defp dispatch("admin", ["status"], character) do
+    if operator_authorized?(character) do
+      report = Operator.system_report()
+
+      {:ok,
+       Enum.join(
+         [
+           "System report:",
+           "Realms: #{report.realms}",
+           "Characters: #{report.characters}",
+           "Locations: #{report.locations}",
+           "Routes: #{report.routes}",
+           "Journeys: #{report.active_journeys}",
+           "Enrollments: #{report.active_enrollments}",
+           "Scavenges: #{report.active_scavenge_attempts}",
+           "Expeditions: #{report.active_expeditions}",
+           "Runs: #{report.active_runs}",
+           "Combats: #{report.active_combats}",
+           "Listings: #{report.active_market_listings}",
+           "Pending notifications: #{report.pending_notifications}",
+           "Treasury total: #{report.treasury_balance_total}",
+           "Character balances: #{report.character_balance_total}"
+         ],
+         "\n"
+       )}
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", ["realm", realm_slug], character) do
+    if operator_authorized?(character) do
+      case Operator.realm_report(realm_slug) do
+        {:ok, report} ->
+          {:ok,
+           Enum.join(
+             [
+               "Realm #{report.realm.slug} — #{report.realm.name}",
+               "Characters: #{report.characters}",
+               "Locations: #{report.locations}",
+               "Routes: #{report.routes}",
+               "Journeys: #{report.active_journeys}",
+               "Enrollments: #{report.active_enrollments}",
+               "Scavenges: #{report.active_scavenge_attempts}",
+               "Expeditions: #{report.active_expeditions}",
+               "Runs: #{report.active_runs}",
+               "Combats: #{report.active_combats}",
+               "Listings: #{report.active_market_listings}",
+               "Treasury: #{report.treasury_balance}",
+               "Character balances: #{report.character_balance_total}"
+             ],
+             "\n"
+           )}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not load realm report: #{format_changeset(changeset)}"}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", ["sweep"], character) do
+    if operator_authorized?(character) do
+      case Operator.maintenance_sweep(actor_handle: operator_handle(character)) do
+        {:ok, %{summary: summary}} ->
+          {:ok,
+           Enum.join(
+             [
+               "Maintenance sweep complete:",
+               "Completed journeys: #{summary.completed_journeys}",
+               "Completed enrollments: #{summary.completed_enrollments}",
+               "Completed scavenges: #{summary.completed_attempts}",
+               "Refreshed caches: #{summary.refreshed_resource_caches}"
+             ],
+             "\n"
+           )}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not run maintenance sweep: #{format_changeset(changeset)}"}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", _args, _character),
+    do: {:ok, "Usage: /admin status | /admin realm <slug> | /admin sweep"}
+
   defp dispatch(_command, _args, _character) do
     {:ok, "Unknown command. Use /help."}
   end
@@ -563,7 +656,7 @@ defmodule MMGO.Telegram.Commands do
   defp load_character(character_id) do
     character_id
     |> Accounts.get_character!()
-    |> Repo.preload(:current_location)
+    |> Repo.preload([:current_location, :account])
   end
 
   defp location_name(%Character{current_location: nil}), do: "Unknown"
@@ -628,6 +721,15 @@ defmodule MMGO.Telegram.Commands do
 
   defp combat_resolution_text(combat) do
     "Combat resolved. Turn #{combat.turn_number}, status #{combat.status}, winner #{combat.winner_side || "none"}."
+  end
+
+  defp operator_authorized?(%Character{} = character) do
+    Operator.operator_handle?(operator_handle(character))
+  end
+
+  defp operator_handle(%Character{} = character) do
+    (character.account && character.account.handle) ||
+      Accounts.get_account!(character.account_id).handle
   end
 
   defp parse_positive_integer(value, default) do

@@ -1,10 +1,11 @@
 defmodule MMGO.Telegram.CommandsTest do
-  use MMGO.DataCase, async: true
+  use MMGO.DataCase, async: false
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Dungeons
   alias MMGO.Grimoires
   alias MMGO.Inventory
+  alias MMGO.Operator
   alias MMGO.Parties
   alias MMGO.Repo
   alias MMGO.Spells
@@ -13,6 +14,17 @@ defmodule MMGO.Telegram.CommandsTest do
   alias MMGO.Worlds
 
   setup do
+    original_operator_config = Application.get_env(:mmgo, MMGO.Operator)
+    Application.put_env(:mmgo, MMGO.Operator, handles: ["botter"])
+
+    on_exit(fn ->
+      if original_operator_config do
+        Application.put_env(:mmgo, MMGO.Operator, original_operator_config)
+      else
+        Application.delete_env(:mmgo, MMGO.Operator)
+      end
+    end)
+
     {:ok, realm} =
       Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
 
@@ -62,6 +74,21 @@ defmodule MMGO.Telegram.CommandsTest do
     {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 12})
 
     %{realm: realm, city: city, tower: tower, route: route, character: character}
+  end
+
+  test "/admin commands expose operator reports and maintenance", %{character: character} do
+    assert Operator.operator_handle?("botter")
+
+    assert {:ok, status_text} = Commands.process_message(character, %{"text" => "/admin status"})
+    assert status_text =~ "System report"
+
+    assert {:ok, realm_text} =
+             Commands.process_message(character, %{"text" => "/admin realm canonical"})
+
+    assert realm_text =~ "Realm canonical"
+
+    assert {:ok, sweep_text} = Commands.process_message(character, %{"text" => "/admin sweep"})
+    assert sweep_text =~ "Maintenance sweep complete"
   end
 
   test "/status and /inventory expose current state", %{character: character} do

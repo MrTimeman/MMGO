@@ -109,6 +109,18 @@ defmodule MMGO.Academy do
     |> normalize_transaction_result()
   end
 
+  def complete_due_enrollments(now \\ DateTime.utc_now()) do
+    Enrollment
+    |> where(
+      [enrollment],
+      enrollment.status == :active and enrollment.expected_completion_at <= ^now
+    )
+    |> Repo.all()
+    |> Enum.map(fn enrollment ->
+      complete_enrollment_by_id(enrollment.id, now: now, force: true)
+    end)
+  end
+
   defp start_program(%Character{} = character, program_type, track, attrs, opts) do
     now = Keyword.get(opts, :started_at, DateTime.utc_now())
     duration_game_days = Keyword.get(opts, :duration_game_days, default_duration(program_type))

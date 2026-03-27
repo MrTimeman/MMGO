@@ -53,6 +53,16 @@ config :mmgo, MMGO.AI.Providers.Gemini,
       "https://generativelanguage.googleapis.com/v1beta",
   api_key: gemini_api_key
 
+operator_config = Application.get_env(:mmgo, MMGO.Operator, [])
+
+operator_handles =
+  case System.get_env("OPERATOR_HANDLES") do
+    nil -> operator_config[:handles] || []
+    raw_handles -> raw_handles |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+  end
+
+config :mmgo, MMGO.Operator, handles: operator_handles
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

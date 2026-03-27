@@ -40,6 +40,8 @@ config :mmgo, MMGO.AI.Providers.Gemini,
   api_base_url: "https://generativelanguage.googleapis.com/v1beta",
   api_key: nil
 
+config :mmgo, MMGO.Operator, handles: []
+
 # Configure the endpoint
 config :mmgo, MMGOWeb.Endpoint,
   url: [host: "localhost"],

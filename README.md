@@ -26,6 +26,7 @@ This repository currently includes:
 - food consumption, carry capacity, and encumbrance-aware travel planning
 - legal market listings, taxed purchases, and inventory escrow reservations
 - Telegram command handlers for exercising backend systems without the frontend
+- operator reports and maintenance sweeps for observability and recovery
 - AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
@@ -95,6 +96,7 @@ iex -S mix phx.server
 - `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
 - `lib/mmgo/market` - legal listings, escrowed inventory, and taxed settlement
 - `lib/mmgo/notifications` - notification queueing, formatting, and Telegram delivery
+- `lib/mmgo/operator` - live reports, maintenance sweeps, and operator audit events
 - `lib/mmgo/telegram/commands.ex` - command-driven access to travel, academy, party, dungeon, and combat loops
 - `lib/mmgo/scavenging` - location resource caches and timed scavenging attempts
 - `lib/mmgo/parties` - party formation, active memberships, and expeditions
