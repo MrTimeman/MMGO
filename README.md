@@ -14,6 +14,7 @@ This repository currently includes:
 - deterministic combat state, turn, action, and event foundations
 - inventory items, item templates, and deterministic tool-user combat actions
 - append-only economy accounts, treasury, and ledger transfers
+- world locations, routes, and scheduled journey completion
 - AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
@@ -79,10 +80,11 @@ iex -S mix phx.server
 - `lib/mmgo/grimoires` - prepared spellbooks and combat loadouts
 - `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
 - `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
+- `lib/mmgo/travel` - compressed-time helpers, journeys, and completion workers
 - `lib/mmgo/spells` - compiled spells and runtime rules
 - `lib/mmgo/combat` - deterministic combat engine and persistence
 - `lib/mmgo/ai` - provider abstraction, prompts, Gemini client, and audit logs
-- `lib/mmgo/worlds` - realm setup and world bootstrap
+- `lib/mmgo/worlds` - realms, locations, and route graph bootstrap
 - `lib/mmgo/telegram` - Telegram client and webhook update handling
 - `lib/mmgo_web` - web controllers, router, layouts, and HTTP entrypoints
 - `docs/TECH_ARCHITECTURE.md` - current technical direction

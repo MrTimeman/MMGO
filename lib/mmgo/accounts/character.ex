@@ -4,7 +4,7 @@ defmodule MMGO.Accounts.Character do
   import Ecto.Changeset
 
   alias MMGO.Accounts.Account
-  alias MMGO.Worlds.Realm
+  alias MMGO.Worlds.{Location, Realm}
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -18,6 +18,7 @@ defmodule MMGO.Accounts.Character do
 
     belongs_to :account, Account
     belongs_to :realm, Realm
+    belongs_to :current_location, Location
 
     timestamps(type: :utc_datetime_usec)
   end
@@ -31,5 +32,10 @@ defmodule MMGO.Accounts.Character do
     |> validate_number(:xp, greater_than_or_equal_to: 0)
     |> unique_constraint(:name, name: :characters_realm_name_index)
     |> unique_constraint(:account_id, name: :characters_account_realm_index)
+  end
+
+  def travel_changeset(character, attrs) do
+    character
+    |> cast(attrs, [:current_location_id])
   end
 end
