@@ -503,6 +503,7 @@ defmodule MMGO.Combat.Engine do
         inventory_updates =
           Map.put(inventory_updates, inventory_item.id, %{
             quantity: max(inventory_item.quantity - item_action.quantity_cost, 0),
+            reserved_quantity: inventory_item.reserved_quantity,
             durability: max(inventory_item.durability - item_action.durability_cost, 0)
           })
 
@@ -888,7 +889,8 @@ defmodule MMGO.Combat.Engine do
   defp periodic_state?(state), do: state in ["burning", "regenerating"]
 
   defp usable_inventory_item?(%InventoryItem{} = inventory_item, %ItemAction{} = item_action) do
-    inventory_item.quantity > 0 and inventory_item.quantity >= item_action.quantity_cost and
+    MMGO.Inventory.available_quantity(inventory_item) > 0 and
+      MMGO.Inventory.available_quantity(inventory_item) >= item_action.quantity_cost and
       inventory_item.durability >= item_action.durability_cost
   end
 

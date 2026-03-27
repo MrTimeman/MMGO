@@ -36,6 +36,10 @@ defmodule MMGO.Inventory do
     |> Repo.preload(:item_template)
   end
 
+  def available_quantity(%InventoryItem{} = inventory_item) do
+    max(inventory_item.quantity - inventory_item.reserved_quantity, 0)
+  end
+
   def grant_item(%Character{} = character, %ItemTemplate{} = item_template, attrs \\ %{}) do
     attrs = stringify_keys(attrs)
     quantity = attrs["quantity"] || 1
@@ -79,6 +83,7 @@ defmodule MMGO.Inventory do
       character_id: character.id,
       item_template_id: item_template.id,
       quantity: quantity,
+      reserved_quantity: 0,
       durability: durability,
       metadata: attrs["metadata"] || %{}
     })

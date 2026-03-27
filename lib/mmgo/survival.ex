@@ -4,6 +4,7 @@ defmodule MMGO.Survival do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Grimoires
+  alias MMGO.Inventory
   alias MMGO.Inventory.{InventoryItem, ItemTemplate}
   alias MMGO.Parties
   alias MMGO.Repo
@@ -21,7 +22,7 @@ defmodule MMGO.Survival do
   def food_units_available(%Character{} = character) do
     food_inventory_items(character.id)
     |> Enum.reduce(0, fn item, total ->
-      total + item.quantity * item.item_template.nutrition_units
+      total + Inventory.available_quantity(item) * item.item_template.nutrition_units
     end)
   end
 
@@ -95,7 +96,7 @@ defmodule MMGO.Survival do
 
         available_units =
           Enum.reduce(items, 0, fn item, total ->
-            total + item.quantity * item.item_template.nutrition_units
+            total + Inventory.available_quantity(item) * item.item_template.nutrition_units
           end)
 
         if available_units < requested_units do
@@ -109,7 +110,10 @@ defmodule MMGO.Survival do
                 {:halt, {remaining, consumed, consumed_items}}
               else
                 nutrition_units = item.item_template.nutrition_units
-                items_to_consume = min(item.quantity, ceil_div(remaining, nutrition_units))
+
+                items_to_consume =
+                  min(Inventory.available_quantity(item), ceil_div(remaining, nutrition_units))
+
                 consumed_units = items_to_consume * nutrition_units
                 updated_quantity = item.quantity - items_to_consume
 
@@ -168,7 +172,10 @@ defmodule MMGO.Survival do
 
   defp food_inventory_items(character_id) do
     InventoryItem
-    |> where([item], item.character_id == ^character_id and item.quantity > 0)
+    |> where(
+      [item],
+      item.character_id == ^character_id and item.quantity > item.reserved_quantity
+    )
     |> join(:inner, [item], template in assoc(item, :item_template))
     |> where([_item, template], template.item_type == :food and template.nutrition_units > 0)
     |> order_by([item, _template], asc: item.inserted_at)
@@ -178,7 +185,10 @@ defmodule MMGO.Survival do
 
   defp lock_food_items(repo, character_id) do
     InventoryItem
-    |> where([item], item.character_id == ^character_id and item.quantity > 0)
+    |> where(
+      [item],
+      item.character_id == ^character_id and item.quantity > item.reserved_quantity
+    )
     |> join(:inner, [item], template in assoc(item, :item_template))
     |> where([_item, template], template.item_type == :food and template.nutrition_units > 0)
     |> order_by([item, _template], asc: item.inserted_at)
