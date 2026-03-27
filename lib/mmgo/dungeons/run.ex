@@ -3,7 +3,7 @@ defmodule MMGO.Dungeons.Run do
 
   import Ecto.Changeset
 
-  alias MMGO.Dungeons.{Dungeon, Floor, Node, NodeState}
+  alias MMGO.Dungeons.{Dungeon, Encounter, Floor, LootDrop, Node, NodeState, ResourceCache}
   alias MMGO.Parties.Expedition
 
   @statuses [:active, :completed, :retreated, :failed]
@@ -23,7 +23,10 @@ defmodule MMGO.Dungeons.Run do
     belongs_to :dungeon, Dungeon
     belongs_to :current_floor, Floor
     belongs_to :current_node, Node
+    has_many :encounters, Encounter
     has_many :node_states, NodeState
+    has_many :resource_caches, ResourceCache
+    has_many :loot_drops, LootDrop
 
     timestamps(type: :utc_datetime_usec)
   end

@@ -6,7 +6,7 @@ defmodule MMGO.Dungeons.NodeState do
   alias MMGO.Dungeons.{Node, Run}
 
   @statuses [:current, :visited, :cleared, :blocked]
-  @encounter_statuses [:pending, :active, :cleared, :avoided]
+  @encounter_statuses [:pending, :active, :cleared, :avoided, :failed]
   @resource_statuses [:unknown, :available, :depleted]
 
   @primary_key {:id, :binary_id, autogenerate: true}
