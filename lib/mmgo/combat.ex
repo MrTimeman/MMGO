@@ -8,6 +8,19 @@ defmodule MMGO.Combat do
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
 
+  def active_combat_for_character(character_id) when is_binary(character_id) do
+    Combat
+    |> join(:inner, [combat], participant in assoc(combat, :participants))
+    |> where(
+      [combat, participant],
+      participant.character_id == ^character_id and
+        combat.status in [:active_turn, :locked, :resolving]
+    )
+    |> order_by([combat, _participant], desc: combat.inserted_at)
+    |> preload(participants: [:character, grimoire: :entries])
+    |> Repo.one()
+  end
+
   def get_combat!(id) do
     Combat
     |> Repo.get!(id)

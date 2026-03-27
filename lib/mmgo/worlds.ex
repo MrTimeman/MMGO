@@ -60,8 +60,28 @@ defmodule MMGO.Worlds do
         where:
           route.origin_location_id == ^location_id or
             route.destination_location_id == ^location_id,
-        order_by: [asc: route.inserted_at]
+        order_by: [asc: route.inserted_at],
+        preload: [:origin_location, :destination_location]
     )
+  end
+
+  def route_from_location_to_slug(location_id, destination_slug)
+      when is_binary(location_id) and is_binary(destination_slug) do
+    list_routes_for_location(location_id)
+    |> Enum.find(fn route ->
+      cond do
+        route.origin_location_id == location_id and
+            route.destination_location.slug == destination_slug ->
+          true
+
+        route.bidirectional and route.destination_location_id == location_id and
+            route.origin_location.slug == destination_slug ->
+          true
+
+        true ->
+          false
+      end
+    end)
   end
 
   def get_route!(id), do: Repo.get!(Route, id)

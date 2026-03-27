@@ -6,6 +6,7 @@ defmodule MMGO.Accounts do
   alias MMGO.Worlds.Realm
 
   def get_account!(id), do: Repo.get!(Account, id)
+  def get_character!(id), do: Repo.get!(Character, id)
 
   def get_account_by_telegram_user_id(telegram_user_id) when is_integer(telegram_user_id) do
     TelegramIdentity

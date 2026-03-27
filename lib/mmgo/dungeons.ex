@@ -43,6 +43,15 @@ defmodule MMGO.Dungeons do
     Repo.get_by(Dungeon, realm_id: realm_id, slug: slug)
   end
 
+  def active_dungeon_at_location(realm_id, location_id)
+      when is_binary(realm_id) and is_binary(location_id) do
+    Repo.get_by(Dungeon,
+      realm_id: realm_id,
+      entrance_location_id: location_id,
+      status: :active
+    )
+  end
+
   def create_dungeon(%Realm{} = realm, attrs \\ %{}) do
     attrs = Map.put(stringify_keys(attrs), "realm_id", realm.id)
 
@@ -76,7 +85,23 @@ defmodule MMGO.Dungeons do
   end
 
   def active_run_for_expedition(expedition_id) when is_binary(expedition_id) do
-    Repo.get_by(Run, expedition_id: expedition_id, status: :active)
+    case Repo.get_by(Run, expedition_id: expedition_id, status: :active) do
+      nil -> nil
+      run -> preload_run(run)
+    end
+  end
+
+  def current_encounter_for_run(run_id) when is_binary(run_id) do
+    run = Repo.get!(Run, run_id)
+    Repo.get_by(Encounter, run_id: run.id, node_id: run.current_node_id)
+  end
+
+  def get_node_by_slug_in_dungeon(dungeon_id, slug)
+      when is_binary(dungeon_id) and is_binary(slug) do
+    Node
+    |> join(:inner, [node], floor in assoc(node, :floor))
+    |> where([node, floor], floor.dungeon_id == ^dungeon_id and node.slug == ^slug)
+    |> Repo.one()
   end
 
   def get_run!(id) do
