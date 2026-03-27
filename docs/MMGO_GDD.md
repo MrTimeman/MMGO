@@ -78,6 +78,7 @@ March 2026
   - [16.2 Design Pillars](#162-design-pillars)
   - [16.3 Target Audience](#163-target-audience)
   - [16.4 Technical Platform](#164-technical-platform)
+  - [16.5 Audio & Soundtrack](#165-audio--soundtrack)
 
 # 1. Overview
 
@@ -939,3 +940,25 @@ MMGO is a slow, social, text-based MMO where the journey matters more than the d
 - Starsector-style map rendered in the Mini App
 
 - Text-based event system for all non-map interactions
+
+## 16.5 Audio & Soundtrack
+
+MMGO should use a hybrid music approach rather than relying entirely on either a static OST or fully generative audio.
+
+- **Adaptive / generative layer** — used for long-duration states such as travel, city downtime, Academy study, base management, and low-intensity dungeon exploration. The goal is a continuous, non-fatiguing atmosphere similar in purpose to systems like Endel, but tailored to game state.
+
+- **Curated cue layer** — used for important moments: boss fights, elite duels, major discoveries, entering iconic locations, and key victory/defeat beats. These cues should feel memorable and ceremonial.
+
+- **Priority rule** — when a major event cue is active, it overrides the adaptive layer. Once the event ends, the game returns to the appropriate adaptive state.
+
+- **Semantic triggers** — music should be selected from gameplay context rather than hardcoded screens. Example cue families: `travel.safe`, `travel.danger`, `dungeon.explore.upper`, `dungeon.explore.deep`, `combat.duel.elite`, `combat.boss`, `tower.arrival`.
+
+- **Classical inspiration** — iconic public-domain compositions or arrangements may be used for major moments, but only with legally usable recordings or original in-house arrangements. Public-domain composition does not automatically mean public-domain recording.
+
+Examples of intended tone:
+
+- An elite duel between legendary players may trigger a grand classical confrontation cue in the spirit of Prokofiev’s *Dance of the Knights*
+
+- A major boss encounter may trigger a sweeping symphonic cue in the spirit of Dvorak’s *From the New World*
+
+The soundtrack should make ordinary play feel alive and important play feel historic.

@@ -150,6 +150,35 @@ Initial target providers:
 
 The codebase must not hardcode the game to a single provider API. Use an internal provider abstraction with versioned prompt contracts.
 
+### 3.6 Audio and music
+
+MMGO should use a hybrid audio model:
+
+- adaptive/generative music for long-running ambient states such as travel, cities, study, and low-intensity dungeon exploration
+- curated event-driven music cues for bosses, elite duels, major discoveries, and iconic location transitions
+
+The backend should not choose literal track files. It should emit semantic cue ids derived from simulation state and major events.
+
+Examples:
+
+- `travel.safe`
+- `travel.danger`
+- `dungeon.explore.upper`
+- `dungeon.explore.deep`
+- `combat.duel.elite`
+- `combat.boss`
+- `tower.arrival`
+
+The client audio layer should resolve those cue ids to either:
+
+- a generative/adaptive music engine, or
+- a curated track pool
+
+Important legal requirement:
+
+- if classical works are used for major beats, use only licensed recordings, public-domain recordings, or original arrangements/performances
+- public-domain composition does not imply public-domain recording
+
 ## 4. System Shape
 
 MMGO should start as a modular monolith.
