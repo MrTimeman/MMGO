@@ -6,7 +6,16 @@ defmodule MMGO.Economy.LedgerEntry do
   alias MMGO.Economy.EconomyAccount
   alias MMGO.Worlds.Realm
 
-  @entry_types [:realm_seed, :transfer, :tax, :reward, :wager, :purchase, :manual_adjustment]
+  @entry_types [
+    :realm_seed,
+    :transfer,
+    :tax,
+    :reward,
+    :wager,
+    :purchase,
+    :black_market,
+    :manual_adjustment
+  ]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
