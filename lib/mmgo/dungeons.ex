@@ -3,6 +3,8 @@ defmodule MMGO.Dungeons do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
+  alias MMGO.Combat
+  alias MMGO.Combat.Combat, as: CombatSchema
 
   alias MMGO.Dungeons.{
     Dungeon,
@@ -18,7 +20,7 @@ defmodule MMGO.Dungeons do
 
   alias MMGO.Economy
   alias MMGO.Inventory
-  alias MMGO.Parties.Expedition
+  alias MMGO.Parties.{Expedition, ExpeditionMember}
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
 
@@ -80,6 +82,136 @@ defmodule MMGO.Dungeons do
     Run
     |> Repo.get!(id)
     |> preload_run()
+  end
+
+  def start_encounter_combat(%Encounter{} = encounter, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      encounter = lock_encounter!(encounter.id)
+      run = Repo.get!(Run, encounter.run_id)
+      expedition = Repo.get!(Expedition, run.expedition_id)
+      dungeon = Repo.get!(Dungeon, run.dungeon_id)
+
+      cond do
+        encounter.status not in [:pending, :active] ->
+          Repo.rollback(
+            encounter_changeset("encounter cannot enter combat from its current state")
+          )
+
+        encounter.combat_id ->
+          Repo.rollback(encounter_changeset("encounter already has a linked combat"))
+
+        true ->
+          expedition_members = active_expedition_members(expedition.id)
+
+          if expedition_members == [] do
+            Repo.rollback(encounter_changeset("expedition has no active members for combat"))
+          end
+
+          combat_attrs = %{
+            participants:
+              expedition_members
+              |> Enum.with_index()
+              |> Enum.map(fn {member, index} ->
+                %{
+                  character_id: member.character_id,
+                  side: "party",
+                  position: index,
+                  metadata: %{"expedition_member_id" => member.id}
+                }
+              end),
+            sides: %{
+              party: %{
+                "label" => "Party",
+                "shared_hp" => party_shared_hp(expedition_members),
+                "max_shared_hp" => party_shared_hp(expedition_members)
+              },
+              encounter: %{
+                "label" => encounter_label(encounter),
+                "shared_hp" => encounter_shared_hp(encounter, expedition_members),
+                "max_shared_hp" => encounter_shared_hp(encounter, expedition_members)
+              }
+            },
+            metadata: %{
+              "encounter_id" => encounter.id,
+              "run_id" => run.id,
+              "expedition_id" => expedition.id,
+              "dungeon_id" => dungeon.id,
+              "node_id" => encounter.node_id,
+              "encounter_kind" => encounter.encounter_kind,
+              "started_at" => DateTime.to_iso8601(now)
+            }
+          }
+
+          {:ok, %{combat: combat}} =
+            Combat.create_dungeon_encounter(%Realm{id: dungeon.realm_id}, combat_attrs)
+
+          updated_encounter =
+            encounter
+            |> Encounter.changeset(%{status: :active, combat_id: combat.id, started_at: now})
+            |> Repo.update!()
+
+          node_state =
+            NodeState
+            |> where([state], state.run_id == ^run.id and state.node_id == ^encounter.node_id)
+            |> lock("FOR UPDATE")
+            |> Repo.one!()
+            |> NodeState.changeset(%{encounter_status: :active, last_seen_at: now})
+            |> Repo.update!()
+
+          %{combat: combat, encounter: updated_encounter, node_state: node_state}
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def sync_encounter_combat(%CombatSchema{} = combat, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      combat = Combat.get_combat!(combat.id)
+
+      if combat.kind != :dungeon_encounter do
+        Repo.rollback(encounter_changeset("combat is not a dungeon encounter combat"))
+      end
+
+      if combat.status != :finished do
+        Repo.rollback(
+          encounter_changeset("combat must be finished before it can resolve the encounter")
+        )
+      end
+
+      encounter_id = combat.metadata["encounter_id"] || combat.metadata[:encounter_id]
+      encounter = lock_encounter!(encounter_id)
+
+      if encounter.status not in [:pending, :active] do
+        Repo.rollback(encounter_changeset("encounter has already been resolved"))
+      end
+
+      outcome = encounter_outcome_from_combat(combat)
+
+      result =
+        resolve_encounter(
+          encounter,
+          outcome,
+          Map.put(stringify_keyword_opts(opts), "resolved_via", "combat")
+        )
+
+      case result do
+        {:ok, resolved_result} ->
+          if outcome == :failed do
+            run = Repo.get!(Run, encounter.run_id)
+            {:ok, _failed_run} = end_run(run, :failed, now: now)
+          end
+
+          Map.put(resolved_result, :combat, combat)
+
+        {:error, %Changeset{} = changeset} ->
+          Repo.rollback(changeset)
+      end
+    end)
+    |> normalize_transaction_result()
   end
 
   def list_encounters_for_run(run_id) when is_binary(run_id) do
@@ -594,6 +726,49 @@ defmodule MMGO.Dungeons do
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  defp stringify_keyword_opts(opts) when is_list(opts) do
+    opts
+    |> Keyword.delete(:now)
+    |> Enum.into(%{}, fn {key, value} -> {to_string(key), value} end)
+  end
+
+  defp active_expedition_members(expedition_id) do
+    ExpeditionMember
+    |> where([member], member.expedition_id == ^expedition_id and member.status == :active)
+    |> order_by([member], asc: member.joined_at)
+    |> preload(:character)
+    |> Repo.all()
+  end
+
+  defp party_shared_hp(expedition_members) do
+    max(length(expedition_members), 1) * 100
+  end
+
+  defp encounter_shared_hp(%Encounter{} = encounter, expedition_members) do
+    max(encounter.threat_level * max(length(expedition_members), 1), 25)
+  end
+
+  defp encounter_label(%Encounter{} = encounter) do
+    encounter.encounter_kind
+    |> to_string()
+    |> String.replace("_", " ")
+    |> String.capitalize()
+  end
+
+  defp encounter_outcome_from_combat(%CombatSchema{} = combat) do
+    case combat.winner_side do
+      "party" -> :cleared
+      _other -> :failed
+    end
+  end
+
+  defp lock_encounter!(encounter_id) do
+    Encounter
+    |> where([encounter], encounter.id == ^encounter_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one!()
   end
 
   defp content_attrs_from_opts(opts) when is_list(opts) do

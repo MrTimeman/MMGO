@@ -6,13 +6,14 @@ defmodule MMGO.Combat.Combat do
   alias MMGO.Combat.{Event, Participant, Turn}
   alias MMGO.Worlds.Realm
 
+  @kinds [:duel, :dungeon_encounter]
   @statuses [:forming, :active_turn, :locked, :resolving, :resolved, :finished]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
   schema "combats" do
-    field :kind, Ecto.Enum, values: [:duel], default: :duel
+    field :kind, Ecto.Enum, values: @kinds, default: :duel
     field :status, Ecto.Enum, values: @statuses, default: :forming
     field :turn_number, :integer, default: 1
     field :seed, :integer

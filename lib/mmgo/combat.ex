@@ -15,6 +15,14 @@ defmodule MMGO.Combat do
   end
 
   def create_duel(%Realm{} = realm, attrs) when is_map(attrs) do
+    create_combat_instance(realm, :duel, attrs)
+  end
+
+  def create_dungeon_encounter(%Realm{} = realm, attrs) when is_map(attrs) do
+    create_combat_instance(realm, :dungeon_encounter, attrs)
+  end
+
+  defp create_combat_instance(%Realm{} = realm, kind, attrs) when is_map(attrs) do
     participant_attrs = Map.get(attrs, :participants) || Map.get(attrs, "participants") || []
     sides = build_sides(attrs, participant_attrs)
 
@@ -27,13 +35,14 @@ defmodule MMGO.Combat do
       :combat,
       Combat.changeset(%Combat{}, %{
         realm_id: realm.id,
-        kind: :duel,
+        kind: kind,
         status: :active_turn,
         turn_number: 1,
         seed: seed,
         sides: sides,
         environment_tags:
-          Map.get(attrs, :environment_tags) || Map.get(attrs, "environment_tags") || []
+          Map.get(attrs, :environment_tags) || Map.get(attrs, "environment_tags") || [],
+        metadata: Map.get(attrs, :metadata) || Map.get(attrs, "metadata") || %{}
       })
     )
     |> Multi.run(:participants, fn repo, %{combat: combat} ->
@@ -241,6 +250,8 @@ defmodule MMGO.Combat do
 
   defp side_label("attackers"), do: "Attackers"
   defp side_label("defenders"), do: "Defenders"
+  defp side_label("party"), do: "Party"
+  defp side_label("encounter"), do: "Encounter"
   defp side_label(side), do: side |> to_string() |> String.capitalize()
 
   defp stringify_keys(map) when is_map(map) do
