@@ -20,6 +20,7 @@ This repository currently includes:
 - dungeon encounter, resource, and loot state tied to runs
 - dungeon encounters can now spawn real combat instances and resolve back into run state
 - expedition XP reward shares tied to encounters and run completion
+- academy enrollments, completion scheduling, and specialization state
 - AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
@@ -85,6 +86,7 @@ iex -S mix phx.server
 - `lib/mmgo/grimoires` - prepared spellbooks and combat loadouts
 - `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
 - `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
+- `lib/mmgo/academy` - education progression, timed enrollments, and specialization state
 - `lib/mmgo/parties` - party formation, active memberships, and expeditions
 - `lib/mmgo/dungeons` - dungeon graphs, runs, links, and per-node expedition state
 - `lib/mmgo/dungeons` - encounter, resource, and loot state for dungeon runs
