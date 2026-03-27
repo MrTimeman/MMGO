@@ -23,6 +23,10 @@ defmodule MMGO.Repo.Migrations.CreateNotifications do
 
     create index(:notifications, [:character_id])
     create index(:notifications, [:status])
-    create unique_index(:notifications, [:dedupe_key], where: "dedupe_key IS NOT NULL")
+
+    create unique_index(:notifications, [:character_id, :dedupe_key],
+             where: "dedupe_key IS NOT NULL",
+             name: :notifications_character_dedupe_key_index
+           )
   end
 end

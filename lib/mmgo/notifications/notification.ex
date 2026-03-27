@@ -44,6 +44,6 @@ defmodule MMGO.Notifications.Notification do
     |> validate_required([:channel, :kind, :status, :scheduled_at, :payload, :character_id])
     |> validate_length(:kind, min: 3, max: 120)
     |> validate_length(:dedupe_key, min: 3, max: 200)
-    |> unique_constraint(:dedupe_key)
+    |> unique_constraint(:dedupe_key, name: :notifications_character_dedupe_key_index)
   end
 end
