@@ -20,6 +20,7 @@ defmodule MMGO.Dungeons do
 
   alias MMGO.Economy
   alias MMGO.Inventory
+  alias MMGO.Parties
   alias MMGO.Parties.{Expedition, ExpeditionMember}
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
@@ -425,6 +426,22 @@ defmodule MMGO.Dungeons do
         |> Encounter.changeset(%{status: outcome, resolved_at: now})
         |> Repo.update!()
 
+      xp_rewards =
+        if outcome == :cleared do
+          expedition = Repo.get!(Expedition, run_expedition_id!(updated_encounter.run_id))
+
+          Parties.distribute_xp_shares(Repo, expedition, encounter_xp(updated_encounter), %{
+            "source_type" => "encounter",
+            "reward_kind" => "xp",
+            "run_id" => updated_encounter.run_id,
+            "encounter_id" => updated_encounter.id,
+            "granted_at" => now,
+            "encounter_kind" => updated_encounter.encounter_kind
+          })
+        else
+          []
+        end
+
       loot_drops = maybe_create_loot_drops!(updated_encounter, attrs)
 
       node_state =
@@ -441,7 +458,12 @@ defmodule MMGO.Dungeons do
         |> NodeState.changeset(%{encounter_status: outcome, last_seen_at: now})
         |> Repo.update!()
 
-      %{encounter: updated_encounter, node_state: updated_state, loot_drops: loot_drops}
+      %{
+        encounter: updated_encounter,
+        node_state: updated_state,
+        loot_drops: loot_drops,
+        xp_rewards: xp_rewards
+      }
     end)
     |> normalize_transaction_result()
   end
@@ -622,10 +644,27 @@ defmodule MMGO.Dungeons do
         Repo.rollback(run_changeset("run is not active"))
       end
 
-      run
-      |> Run.changeset(%{status: status, ended_at: now, last_progressed_at: now})
-      |> Repo.update!()
-      |> preload_run()
+      updated_run =
+        run
+        |> Run.changeset(%{status: status, ended_at: now, last_progressed_at: now})
+        |> Repo.update!()
+
+      expedition = Repo.get!(Expedition, updated_run.expedition_id)
+
+      xp_rewards =
+        if status == :completed do
+          Parties.distribute_xp_shares(Repo, expedition, run_completion_xp(updated_run), %{
+            "source_type" => "run",
+            "reward_kind" => "xp",
+            "run_id" => updated_run.id,
+            "granted_at" => now,
+            "reason" => "run_completion"
+          })
+        else
+          []
+        end
+
+      %{run: preload_run(updated_run), xp_rewards: xp_rewards}
     end)
     |> normalize_transaction_result()
   end
@@ -967,6 +1006,11 @@ defmodule MMGO.Dungeons do
       character.realm_id != run_realm_id!(loot_drop.run_id) ->
         Repo.rollback(loot_changeset("character must belong to the same realm as the run"))
 
+      not eligible_character_for_run?(loot_drop.run_id, character.id) ->
+        Repo.rollback(
+          loot_changeset("character must belong to the expedition that earned this loot")
+        )
+
       true ->
         :ok
     end
@@ -990,6 +1034,13 @@ defmodule MMGO.Dungeons do
       character.realm_id != run_realm_id!(resource_cache.run_id) ->
         Repo.rollback(resource_changeset("character must belong to the same realm as the run"))
 
+      not eligible_character_for_run?(resource_cache.run_id, character.id) ->
+        Repo.rollback(
+          resource_changeset(
+            "character must belong to the expedition that discovered this resource"
+          )
+        )
+
       true ->
         :ok
     end
@@ -999,6 +1050,22 @@ defmodule MMGO.Dungeons do
     run = Repo.get!(Run, run_id)
     dungeon = Repo.get!(Dungeon, run.dungeon_id)
     dungeon.realm_id
+  end
+
+  defp run_expedition_id!(run_id) do
+    Repo.get!(Run, run_id).expedition_id
+  end
+
+  defp eligible_character_for_run?(run_id, character_id) do
+    Parties.eligible_member_for_expedition?(run_expedition_id!(run_id), character_id)
+  end
+
+  defp encounter_xp(%Encounter{} = encounter) do
+    max(encounter.threat_level * 6, 10)
+  end
+
+  defp run_completion_xp(%Run{} = run) do
+    max(run.steps_taken * 4, 20)
   end
 
   defp loot_changeset(message) do

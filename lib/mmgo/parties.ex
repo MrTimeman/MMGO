@@ -3,7 +3,7 @@ defmodule MMGO.Parties do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
-  alias MMGO.Parties.{Expedition, ExpeditionMember, Membership, Party}
+  alias MMGO.Parties.{Expedition, ExpeditionMember, Membership, Party, Reward}
   alias MMGO.Repo
   alias MMGO.Travel.Journey
 
@@ -177,6 +177,94 @@ defmodule MMGO.Parties do
     |> Repo.one()
   end
 
+  def active_members_for_expedition(expedition_id) when is_binary(expedition_id) do
+    ExpeditionMember
+    |> where([member], member.expedition_id == ^expedition_id and member.status == :active)
+    |> order_by([member], asc: member.joined_at)
+    |> preload(:character)
+    |> Repo.all()
+  end
+
+  def eligible_member_for_expedition?(expedition_id, character_id)
+      when is_binary(expedition_id) and is_binary(character_id) do
+    Repo.exists?(
+      from member in ExpeditionMember,
+        where:
+          member.expedition_id == ^expedition_id and member.character_id == ^character_id and
+            member.status in [:active, :completed]
+    )
+  end
+
+  def list_rewards_for_expedition(expedition_id) when is_binary(expedition_id) do
+    Reward
+    |> where([reward], reward.expedition_id == ^expedition_id)
+    |> order_by([reward], asc: reward.inserted_at)
+    |> Repo.all()
+  end
+
+  def distribute_xp_shares(repo \\ Repo, %Expedition{} = expedition, total_xp, attrs \\ %{})
+      when is_integer(total_xp) do
+    attrs = stringify_keys(attrs)
+
+    if total_xp <= 0 do
+      []
+    else
+      members =
+        ExpeditionMember
+        |> where([member], member.expedition_id == ^expedition.id and member.status == :active)
+        |> order_by([member], asc: member.joined_at)
+        |> preload(:character)
+        |> repo.all()
+
+      if members == [] do
+        []
+      else
+        characters = lock_characters(repo, Enum.map(members, & &1.character_id))
+        count = length(members)
+        base_share = div(total_xp, count)
+        remainder = rem(total_xp, count)
+        now = attrs["granted_at"] || DateTime.utc_now()
+        source_type = normalize_source_type(attrs["source_type"])
+        reward_kind = normalize_reward_kind(attrs["reward_kind"])
+
+        Enum.with_index(members)
+        |> Enum.reduce([], fn {member, index}, rewards ->
+          share = base_share + if(index < remainder, do: 1, else: 0)
+
+          if share <= 0 do
+            rewards
+          else
+            character = Map.fetch!(characters, member.character_id)
+
+            updated_character =
+              character
+              |> Character.changeset(%{xp: character.xp + share})
+              |> repo.update!()
+
+            reward =
+              %Reward{}
+              |> Reward.changeset(%{
+                reward_kind: reward_kind,
+                source_type: source_type,
+                reward_code: reward_code(attrs, member.character_id, reward_kind),
+                amount: share,
+                granted_at: now,
+                metadata: Map.put(attrs, "character_name", updated_character.name),
+                expedition_id: expedition.id,
+                run_id: attrs["run_id"],
+                encounter_id: attrs["encounter_id"],
+                character_id: member.character_id
+              })
+              |> repo.insert!()
+
+            [reward | rewards]
+          end
+        end)
+        |> Enum.reverse()
+      end
+    end
+  end
+
   def start_expedition(%Party{} = party, attrs \\ %{}) do
     attrs = stringify_keys(attrs)
     started_at = attrs["started_at"] || DateTime.utc_now()
@@ -342,6 +430,29 @@ defmodule MMGO.Parties do
       order_by: [asc: membership.joined_at],
       preload: [:character]
   end
+
+  defp lock_characters(repo, character_ids) do
+    Character
+    |> where([character], character.id in ^character_ids)
+    |> order_by([character], asc: character.id)
+    |> lock("FOR UPDATE")
+    |> repo.all()
+    |> Map.new(&{&1.id, &1})
+  end
+
+  defp reward_code(attrs, character_id, reward_kind) do
+    source_type = attrs["source_type"] || "run"
+    source_id = attrs["encounter_id"] || attrs["run_id"] || "unknown"
+    "#{source_type}:#{source_id}:#{reward_kind}:#{character_id}"
+  end
+
+  defp normalize_source_type("encounter"), do: :encounter
+  defp normalize_source_type(:encounter), do: :encounter
+  defp normalize_source_type(_source_type), do: :run
+
+  defp normalize_reward_kind("xp"), do: :xp
+  defp normalize_reward_kind(:xp), do: :xp
+  defp normalize_reward_kind(_reward_kind), do: :xp
 
   defp lock_party!(party_id) do
     Party

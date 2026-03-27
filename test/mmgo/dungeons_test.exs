@@ -180,9 +180,12 @@ defmodule MMGO.DungeonsTest do
   test "end_run/3 marks a dungeon run as completed", %{expedition: expedition, dungeon: dungeon} do
     {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
 
-    assert {:ok, %Run{} = updated_run} = Dungeons.end_run(run, :completed)
+    assert {:ok, %{run: %Run{} = updated_run, xp_rewards: xp_rewards}} =
+             Dungeons.end_run(run, :completed)
+
     assert updated_run.status == :completed
     assert updated_run.ended_at
+    assert xp_rewards != []
   end
 
   test "enter_dungeon/3 rejects expeditions not at the entrance location", %{

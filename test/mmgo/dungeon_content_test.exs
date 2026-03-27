@@ -7,6 +7,7 @@ defmodule MMGO.DungeonContentTest do
   alias MMGO.Economy
   alias MMGO.Inventory
   alias MMGO.Parties
+  alias MMGO.Parties.Reward
   alias MMGO.Repo
   alias MMGO.Worlds
 
@@ -91,17 +92,21 @@ defmodule MMGO.DungeonContentTest do
       })
 
     character = character_fixture(realm, tower, "delver", "Delver")
+    outsider = character_fixture(realm, tower, "outsider", "Outsider")
     {:ok, %{party: party}} = Parties.create_party(character, %{name: "Delvers"})
     {:ok, %{expedition: expedition}} = Parties.start_expedition(party)
     {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
 
     %{
       realm: realm,
+      tower: tower,
       dungeon: dungeon,
       entrance_node: entrance_node,
       rest_node: rest_node,
       herb_template: herb_template,
       character: character,
+      outsider: outsider,
+      expedition: expedition,
       run: run
     }
   end
@@ -121,20 +126,55 @@ defmodule MMGO.DungeonContentTest do
 
   test "resolve_encounter/3 creates default currency loot and updates node state", %{
     run: run,
-    entrance_node: entrance_node
+    entrance_node: entrance_node,
+    character: character,
+    expedition: expedition
   } do
     encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: entrance_node.id)
 
     assert {:ok,
-            %{encounter: resolved_encounter, loot_drops: [loot_drop], node_state: node_state}} =
+            %{
+              encounter: resolved_encounter,
+              loot_drops: [loot_drop],
+              node_state: node_state,
+              xp_rewards: xp_rewards
+            }} =
              Dungeons.resolve_encounter(encounter, :cleared)
 
     assert resolved_encounter.status == :cleared
     assert loot_drop.reward_kind == :currency
     assert node_state.encounter_status == :cleared
+    assert Enum.map(xp_rewards, & &1.character_id) == [character.id]
+
+    assert Enum.map(Parties.list_rewards_for_expedition(expedition.id), & &1.id) ==
+             Enum.map(xp_rewards, & &1.id)
   end
 
-  test "claim_loot/3 transfers currency from the treasury to the character", %{
+  test "resolve_encounter/3 distributes XP shares to all active expedition members", %{
+    realm: realm,
+    tower: tower,
+    dungeon: dungeon,
+    entrance_node: entrance_node
+  } do
+    leader = character_fixture(realm, tower, "leader-two", "Leader Two")
+    supporter = character_fixture(realm, tower, "supporter", "Supporter")
+    {:ok, %{party: party}} = Parties.create_party(leader, %{name: "Second Delvers"})
+    {:ok, %{membership: _membership}} = Parties.add_member(party, supporter)
+    {:ok, %{expedition: expedition}} = Parties.start_expedition(party)
+    {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+    encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: entrance_node.id)
+
+    assert {:ok, %{xp_rewards: xp_rewards}} = Dungeons.resolve_encounter(encounter, :cleared)
+
+    assert length(xp_rewards) == 2
+    assert Enum.sort(Enum.map(xp_rewards, & &1.amount)) == [15, 15]
+
+    reward_codes = Enum.map(xp_rewards, & &1.reward_code)
+    assert Enum.uniq(reward_codes) == reward_codes
+    assert Repo.aggregate(Reward, :count, :id) == 2
+  end
+
+  test "claim_loot/3 transfers currency from the treasury to an eligible expedition member", %{
     realm: realm,
     run: run,
     entrance_node: entrance_node,
@@ -151,6 +191,20 @@ defmodule MMGO.DungeonContentTest do
     {:ok, character_account} = Economy.ensure_character_account(character)
     assert Economy.get_account!(character_account.id).current_balance == loot_drop.amount
     assert balance_sum(realm.id) == 10_000
+  end
+
+  test "claim_loot/3 rejects characters outside the expedition", %{
+    run: run,
+    entrance_node: entrance_node,
+    outsider: outsider
+  } do
+    encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: entrance_node.id)
+    {:ok, %{loot_drops: [loot_drop]}} = Dungeons.resolve_encounter(encounter, :cleared)
+
+    assert {:error, changeset} = Dungeons.claim_loot(loot_drop, outsider)
+
+    assert %{status: ["character must belong to the expedition that earned this loot"]} =
+             errors_on(changeset)
   end
 
   test "resolve_encounter/3 can create item loot that is granted through inventory", %{
@@ -211,6 +265,17 @@ defmodule MMGO.DungeonContentTest do
 
     assert depleted_cache.quantity_remaining == 0
     assert depleted_cache.status == :depleted
+  end
+
+  test "end_run/3 grants completion XP shares", %{run: run, expedition: expedition} do
+    assert {:ok, %{run: finished_run, xp_rewards: xp_rewards}} = Dungeons.end_run(run, :completed)
+
+    assert finished_run.status == :completed
+    assert length(xp_rewards) == 1
+    assert hd(xp_rewards).source_type == :run
+
+    assert Parties.list_rewards_for_expedition(expedition.id)
+           |> Enum.any?(&(&1.source_type == :run))
   end
 
   defp balance_sum(realm_id) do

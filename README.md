@@ -19,6 +19,7 @@ This repository currently includes:
 - dungeon graphs, run progression, and expedition node state
 - dungeon encounter, resource, and loot state tied to runs
 - dungeon encounters can now spawn real combat instances and resolve back into run state
+- expedition XP reward shares tied to encounters and run completion
 - AI request logging plus spell compiler and turn narrator interfaces
 - automated tests for core account provisioning and webhook behavior
 
