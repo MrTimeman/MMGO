@@ -5,6 +5,7 @@ defmodule MMGO.Combat.NarratorTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat
   alias MMGO.Combat.Narrator
+  alias MMGO.Grimoires
   alias MMGO.Repo
   alias MMGO.Spells
   alias MMGO.Worlds
@@ -30,6 +31,8 @@ defmodule MMGO.Combat.NarratorTest do
         failure_profile: %{difficulty: 6, base_success_rate: 95, partial_success_rate: 3}
       })
 
+    _grimoire = grimoire_fixture(attacker, spell, "Narrator Tome")
+
     {:ok, %{combat: combat}} =
       Combat.create_duel(realm, %{
         participants: [
@@ -38,7 +41,7 @@ defmodule MMGO.Combat.NarratorTest do
         ]
       })
 
-    combat = Repo.preload(combat, participants: [:character])
+    combat = Combat.get_combat!(combat.id)
     attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
 
     {:ok, _action} =
@@ -78,5 +81,15 @@ defmodule MMGO.Combat.NarratorTest do
   defp spell_fixture(character, attrs) do
     {:ok, spell} = Spells.create_spell(character, attrs)
     spell
+  end
+
+  defp grimoire_fixture(character, spell, name) do
+    {:ok, grimoire} = Grimoires.create_grimoire(character, %{name: name, capacity: 5, weight: 1})
+    {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+
+    {:ok, %{activate_grimoire: activated_grimoire}} =
+      Grimoires.activate_grimoire(character, Grimoires.get_grimoire!(grimoire.id))
+
+    activated_grimoire
   end
 end

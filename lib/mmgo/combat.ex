@@ -3,13 +3,14 @@ defmodule MMGO.Combat do
 
   alias Ecto.Multi
   alias MMGO.Combat.{Action, Combat, Engine, Event, Participant, Turn}
+  alias MMGO.Grimoires
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
 
   def get_combat!(id) do
     Combat
     |> Repo.get!(id)
-    |> Repo.preload(participants: [:character])
+    |> Repo.preload(participants: [:character, grimoire: :entries])
   end
 
   def create_duel(%Realm{} = realm, attrs) when is_map(attrs) do
@@ -41,12 +42,22 @@ defmodule MMGO.Combat do
       Turn.changeset(%Turn{}, %{combat_id: combat.id, number: 1, status: :open})
     end)
     |> Repo.transaction()
+    |> case do
+      {:error, :participants, %{step: :participant, changeset: changeset, inserted: inserted},
+       _changes} ->
+        {:error, :participant, changeset, inserted}
+
+      other ->
+        other
+    end
   end
 
   def submit_action(%Combat{} = combat, participant_id, attrs) do
-    with {:ok, turn} <- fetch_open_turn(combat),
+    current_combat = Repo.get!(Combat, combat.id)
+
+    with {:ok, turn} <- fetch_open_turn(current_combat),
          %Participant{} = participant <-
-           Repo.get_by(Participant, id: participant_id, combat_id: combat.id) do
+           Repo.get_by(Participant, id: participant_id, combat_id: current_combat.id) do
       attrs =
         attrs
         |> Map.new(fn {key, value} -> {key, value} end)
@@ -63,7 +74,7 @@ defmodule MMGO.Combat do
         |> Repo.insert_or_update()
 
       with {:ok, _action} <- result do
-        maybe_lock_turn(combat, turn)
+        maybe_lock_turn(current_combat, turn)
       end
     else
       nil -> {:error, :participant_not_found}
@@ -72,11 +83,9 @@ defmodule MMGO.Combat do
   end
 
   def resolve_turn(%Combat{} = combat) do
-    with {:ok, turn} <- fetch_turn(combat, combat.turn_number) do
-      runtime_combat =
-        combat
-        |> Repo.preload(participants: [:character])
+    runtime_combat = get_combat!(combat.id)
 
+    with {:ok, turn} <- fetch_turn(runtime_combat, runtime_combat.turn_number) do
       actions =
         Action
         |> where([action], action.combat_turn_id == ^turn.id)
@@ -105,7 +114,7 @@ defmodule MMGO.Combat do
         end)
 
         updated_combat =
-          combat
+          runtime_combat
           |> Combat.changeset(resolution.combat_attrs)
           |> Repo.update!()
 
@@ -173,9 +182,23 @@ defmodule MMGO.Combat do
         |> Map.new(fn {key, value} -> {key, value} end)
         |> Map.put(:combat_id, combat.id)
 
-      case %Participant{} |> Participant.changeset(attrs) |> repo.insert() do
-        {:ok, participant} -> {:cont, {:ok, [participant | inserted]}}
-        {:error, changeset} -> {:halt, {:error, :participant, changeset, inserted}}
+      character_id = attrs[:character_id] || attrs["character_id"]
+      provided_grimoire_id = attrs[:grimoire_id] || attrs["grimoire_id"]
+
+      case Grimoires.resolve_selected_grimoire(character_id, provided_grimoire_id) do
+        {:ok, grimoire} ->
+          attrs = Map.put(attrs, :grimoire_id, grimoire && grimoire.id)
+
+          case %Participant{} |> Participant.changeset(attrs) |> repo.insert() do
+            {:ok, participant} ->
+              {:cont, {:ok, [participant | inserted]}}
+
+            {:error, changeset} ->
+              {:halt, {:error, %{step: :participant, changeset: changeset, inserted: inserted}}}
+          end
+
+        {:error, changeset} ->
+          {:halt, {:error, %{step: :participant, changeset: changeset, inserted: inserted}}}
       end
     end)
   end

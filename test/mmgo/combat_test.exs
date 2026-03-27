@@ -5,6 +5,7 @@ defmodule MMGO.CombatTest do
   alias MMGO.Combat
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Combat.{Event, Participant}
+  alias MMGO.Grimoires
   alias MMGO.Repo
   alias MMGO.Spells
   alias MMGO.Worlds
@@ -45,6 +46,9 @@ defmodule MMGO.CombatTest do
         failure_profile: %{difficulty: 5, base_success_rate: 95, partial_success_rate: 4}
       })
 
+    _attacker_grimoire = grimoire_fixture(attacker, fireball, "Attacker's Grimoire")
+    _defender_grimoire = grimoire_fixture(defender, ward, "Defender's Grimoire")
+
     {:ok, %{combat: combat}} =
       Combat.create_duel(realm, %{
         participants: [
@@ -72,7 +76,7 @@ defmodule MMGO.CombatTest do
     attacker: attacker,
     fireball: fireball
   } do
-    combat = Repo.preload(combat, participants: [:character])
+    combat = Combat.get_combat!(combat.id)
     attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
 
     assert {:ok, _action} =
@@ -100,7 +104,7 @@ defmodule MMGO.CombatTest do
     fireball: fireball,
     ward: ward
   } do
-    combat = Repo.preload(combat, participants: [:character])
+    combat = Combat.get_combat!(combat.id)
     attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
     defender_participant = Enum.find(combat.participants, &(&1.character_id == defender.id))
 
@@ -130,6 +134,75 @@ defmodule MMGO.CombatTest do
     refute Enum.any?(defender_after.active_states, &(&1["state"] == "shielded"))
   end
 
+  test "silenced casters cannot cast prepared spells", %{
+    combat: combat,
+    attacker: attacker,
+    fireball: fireball
+  } do
+    combat = Combat.get_combat!(combat.id)
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    attacker_participant
+    |> Participant.changeset(%{
+      active_states: [%{"state" => "silenced", "remaining_turns" => 2, "intensity" => 1}]
+    })
+    |> Repo.update!()
+
+    assert {:ok, _action} =
+             Combat.submit_action(combat, attacker_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: fireball.id,
+               target_side: "defenders"
+             })
+
+    assert {:ok, _resolved} = Combat.resolve_turn(combat)
+
+    blocked_event = Repo.get_by!(Event, combat_id: combat.id, event_type: "action_blocked")
+    assert blocked_event.payload["state"] == "silenced"
+  end
+
+  test "spells not inscribed in the active grimoire are rejected", %{
+    realm: realm,
+    attacker: attacker,
+    defender: defender
+  } do
+    other_spell =
+      spell_fixture(attacker, %{
+        name: "Terra Murus",
+        formula: "Terra Murus Magnus",
+        school: :earth,
+        targeting: :enemy,
+        delivery_form: :wall,
+        effects: [
+          %{applies_to: :target, state: "impact", intensity: 15, variance: 0, duration: 0}
+        ],
+        failure_profile: %{difficulty: 5, base_success_rate: 95, partial_success_rate: 4}
+      })
+
+    {:ok, %{combat: combat}} =
+      Combat.create_duel(realm, %{
+        participants: [
+          %{character_id: attacker.id, side: "attackers", position: 0},
+          %{character_id: defender.id, side: "defenders", position: 0}
+        ]
+      })
+
+    combat = Combat.get_combat!(combat.id)
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    assert {:ok, _action} =
+             Combat.submit_action(combat, attacker_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: other_spell.id,
+               target_side: "defenders"
+             })
+
+    assert {:ok, _resolved} = Combat.resolve_turn(combat)
+
+    rejected_event = Repo.get_by!(Event, combat_id: combat.id, event_type: "spell_not_prepared")
+    assert rejected_event.payload["spell_id"] == other_spell.id
+  end
+
   defp character_fixture(handle, realm, name) do
     account =
       %Account{}
@@ -144,5 +217,15 @@ defmodule MMGO.CombatTest do
   defp spell_fixture(character, attrs) do
     {:ok, spell} = Spells.create_spell(character, attrs)
     spell
+  end
+
+  defp grimoire_fixture(character, spell, name) do
+    {:ok, grimoire} = Grimoires.create_grimoire(character, %{name: name, capacity: 6, weight: 1})
+    {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+
+    {:ok, %{activate_grimoire: activated_grimoire}} =
+      Grimoires.activate_grimoire(character, Grimoires.get_grimoire!(grimoire.id))
+
+    activated_grimoire
   end
 end

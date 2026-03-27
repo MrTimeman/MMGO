@@ -4,6 +4,7 @@ defmodule MMGO.Combat.EngineTest do
 
   alias MMGO.Accounts.Character
   alias MMGO.Combat.{Action, Combat, Engine, Participant, RNG, Turn}
+  alias MMGO.Grimoires.{Grimoire, GrimoireEntry}
   alias MMGO.Spells.{FailureProfile, Spell, SpellEffect}
 
   test "resolve_turn/4 is deterministic for the same inputs" do
@@ -35,6 +36,38 @@ defmodule MMGO.Combat.EngineTest do
     end
   end
 
+  test "staggered blocks one spell cast and consumes the state" do
+    spell = spell_fixture()
+    combat = combat_fixture()
+    turn = %Turn{number: 1, status: :locked}
+
+    [attacker, defender] = participants_fixture()
+
+    attacker = %{
+      attacker
+      | active_states: [%{"state" => "staggered", "remaining_turns" => 1, "intensity" => 1}]
+    }
+
+    actions = [
+      %Action{
+        participant_id: attacker.id,
+        action_type: :cast_spell,
+        spell: spell,
+        spell_id: spell.id,
+        target_side: "defenders"
+      }
+    ]
+
+    resolution = Engine.resolve_turn(combat, turn, [attacker, defender], actions)
+
+    assert Enum.any?(resolution.events, &(&1.event_type == "action_blocked"))
+
+    refute Enum.any?(
+             Map.fetch!(resolution.participant_updates, attacker.id).active_states,
+             &(&1["state"] == "staggered")
+           )
+  end
+
   defp combat_fixture do
     %Combat{
       id: "combat-1",
@@ -49,6 +82,8 @@ defmodule MMGO.Combat.EngineTest do
   end
 
   defp participants_fixture do
+    grimoire = %Grimoire{id: "g1", entries: [%GrimoireEntry{spell_id: "spell-1", slot_index: 1}]}
+
     [
       %Participant{
         id: "p1",
@@ -59,6 +94,8 @@ defmodule MMGO.Combat.EngineTest do
         fatigue: 0,
         cooldowns: %{},
         active_states: [],
+        grimoire_id: grimoire.id,
+        grimoire: grimoire,
         character: %Character{id: "c1", level: 15}
       },
       %Participant{

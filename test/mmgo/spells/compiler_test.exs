@@ -84,6 +84,20 @@ defmodule MMGO.Spells.CompilerTest do
     assert Repo.aggregate(Request, :count, :id) == 1
   end
 
+  test "compile_and_store/3 rejects malformed incantations before AI execution", %{
+    character: character
+  } do
+    assert {:error, changeset} =
+             Compiler.compile_and_store(character, %{
+               name: "Bad Formula",
+               formula: "ignis 123",
+               school: "fire"
+             })
+
+    assert %{formula: ["must contain only alphabetic words and hyphens"]} = errors_on(changeset)
+    assert Repo.aggregate(Request, :count, :id) == 0
+  end
+
   defp character_fixture(realm, handle, name) do
     account =
       %Account{}

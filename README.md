@@ -9,6 +9,7 @@ This repository currently includes:
 - Oban background jobs
 - Telegram Bot API client and webhook endpoint
 - foundational game data models for realms, accounts, Telegram identities, and characters
+- grimoires and prepared spell loadouts
 - compiled spell schemas and runtime validation
 - deterministic combat state, turn, action, and event foundations
 - AI request logging plus spell compiler and turn narrator interfaces
@@ -73,6 +74,7 @@ iex -S mix phx.server
 ## Project structure
 
 - `lib/mmgo/accounts` - account, identity, and character domain logic
+- `lib/mmgo/grimoires` - prepared spellbooks and combat loadouts
 - `lib/mmgo/spells` - compiled spells and runtime rules
 - `lib/mmgo/combat` - deterministic combat engine and persistence
 - `lib/mmgo/ai` - provider abstraction, prompts, Gemini client, and audit logs

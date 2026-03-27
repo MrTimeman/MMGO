@@ -31,6 +31,8 @@ defmodule MMGO.Combat.Engine do
         end
       )
 
+    participants_by_id = expire_non_periodic_states(participants_by_id)
+
     winner_side = determine_winner(sides)
     participants_by_id = finalize_participants(participants_by_id, sides, winner_side)
     next_turn_number = if winner_side, do: combat.turn_number, else: combat.turn_number + 1
@@ -103,55 +105,60 @@ defmodule MMGO.Combat.Engine do
 
   defp tick_states(combat, %Participant{} = participant, sides, seq) do
     {active_states, sides, events, next_seq} =
-      Enum.reduce(participant.active_states || [], {[], sides, [], seq}, fn state,
-                                                                            {states_acc,
-                                                                             sides_acc,
-                                                                             events_acc, seq_acc} ->
-        remaining_turns = max(Map.get(state, "remaining_turns", 0) - 1, 0)
+      Enum.reduce(
+        participant.active_states || [],
+        {[], sides, [], seq},
+        fn state, {states_acc, sides_acc, events_acc, seq_acc} ->
+          if periodic_state?(Map.get(state, "state")) do
+            remaining_turns = max(Map.get(state, "remaining_turns", 0) - 1, 0)
 
-        {sides_acc, tick_event_payload} =
-          case Map.get(state, "state") do
-            "burning" ->
-              intensity = Map.get(state, "intensity", 0)
+            {sides_acc, tick_event_payload} =
+              case Map.get(state, "state") do
+                "burning" ->
+                  intensity = Map.get(state, "intensity", 0)
 
-              {apply_side_delta(sides_acc, participant.side, -intensity),
-               %{"damage" => intensity}}
+                  {apply_side_delta(sides_acc, participant.side, -intensity),
+                   %{"damage" => intensity}}
 
-            "regenerating" ->
-              intensity = Map.get(state, "intensity", 0)
+                "regenerating" ->
+                  intensity = Map.get(state, "intensity", 0)
 
-              {apply_side_delta(sides_acc, participant.side, intensity),
-               %{"healing" => intensity}}
+                  {apply_side_delta(sides_acc, participant.side, intensity),
+                   %{"healing" => intensity}}
 
-            _other ->
-              {sides_acc, nil}
-          end
+                _other ->
+                  {sides_acc, nil}
+              end
 
-        events_acc =
-          if tick_event_payload do
-            [
-              event(seq_acc, combat.turn_number, "state_tick", %{
-                "participant_id" => participant.id,
-                "state" => Map.get(state, "state"),
-                "side" => participant.side,
-                "details" => tick_event_payload
-              })
-              | events_acc
-            ]
+            events_acc =
+              if tick_event_payload do
+                [
+                  event(seq_acc, combat.turn_number, "state_tick", %{
+                    "participant_id" => participant.id,
+                    "state" => Map.get(state, "state"),
+                    "side" => participant.side,
+                    "details" => tick_event_payload
+                  })
+                  | events_acc
+                ]
+              else
+                events_acc
+              end
+
+            states_acc =
+              if remaining_turns > 0 do
+                [Map.put(state, "remaining_turns", remaining_turns) | states_acc]
+              else
+                states_acc
+              end
+
+            {states_acc, sides_acc, events_acc,
+             if(tick_event_payload, do: seq_acc + 1, else: seq_acc)}
           else
-            events_acc
+            {[state | states_acc], sides_acc, events_acc, seq_acc}
           end
-
-        states_acc =
-          if remaining_turns > 0 do
-            [Map.put(state, "remaining_turns", remaining_turns) | states_acc]
-          else
-            states_acc
-          end
-
-        {states_acc, sides_acc, events_acc,
-         if(tick_event_payload, do: seq_acc + 1, else: seq_acc)}
-      end)
+        end
+      )
 
     {%{participant | active_states: Enum.reverse(active_states)}, sides, Enum.reverse(events),
      next_seq}
@@ -210,6 +217,20 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
+      blocked = blocked_spell_cast(participant) ->
+        {updated_participant, blocked_state, consumed?} = blocked
+        participants = Map.put(participants, participant.id, updated_participant)
+
+        {participants, sides, tags, seq + 1,
+         [
+           event(seq, combat.turn_number, "action_blocked", %{
+             "participant_id" => participant.id,
+             "state" => blocked_state,
+             "consumed" => consumed?
+           })
+           | events
+         ]}
+
       is_nil(action.spell) ->
         {participants, sides, tags, seq + 1,
          [
@@ -223,6 +244,17 @@ defmodule MMGO.Combat.Engine do
            event(seq, combat.turn_number, "unauthorized_spell", %{
              "participant_id" => participant.id,
              "spell_id" => action.spell_id
+           })
+           | events
+         ]}
+
+      not spell_available?(participant, action.spell.id) ->
+        {participants, sides, tags, seq + 1,
+         [
+           event(seq, combat.turn_number, "spell_not_prepared", %{
+             "participant_id" => participant.id,
+             "spell_id" => action.spell.id,
+             "grimoire_id" => participant.grimoire_id
            })
            | events
          ]}
@@ -569,6 +601,64 @@ defmodule MMGO.Combat.Engine do
       %{participant | active_states: [state | participant.active_states || []]}
     end)
   end
+
+  defp expire_non_periodic_states(participants) do
+    Map.new(participants, fn {participant_id, participant} ->
+      active_states =
+        participant.active_states
+        |> Enum.reduce([], fn state, acc ->
+          if periodic_state?(Map.get(state, "state")) do
+            [state | acc]
+          else
+            remaining_turns = max(Map.get(state, "remaining_turns", 0) - 1, 0)
+
+            if remaining_turns > 0 do
+              [Map.put(state, "remaining_turns", remaining_turns) | acc]
+            else
+              acc
+            end
+          end
+        end)
+        |> Enum.reverse()
+
+      {participant_id, %{participant | active_states: active_states}}
+    end)
+  end
+
+  defp blocked_spell_cast(%Participant{} = participant) do
+    active_states = participant.active_states || []
+
+    cond do
+      has_state?(active_states, "trapped") ->
+        {participant, "trapped", false}
+
+      has_state?(active_states, "silenced") ->
+        {participant, "silenced", false}
+
+      has_state?(active_states, "channeling") ->
+        {participant, "channeling", false}
+
+      has_state?(active_states, "staggered") ->
+        {_state, remaining_states} = pop_first_state(active_states, "staggered")
+        {%{participant | active_states: remaining_states}, "staggered", true}
+
+      true ->
+        false
+    end
+  end
+
+  defp spell_available?(%Participant{grimoire: nil}, _spell_id), do: false
+
+  defp spell_available?(%Participant{grimoire: grimoire}, spell_id) do
+    entries = if Ecto.assoc_loaded?(grimoire.entries), do: grimoire.entries, else: []
+    Enum.any?(entries, &(&1.spell_id == spell_id))
+  end
+
+  defp has_state?(states, state_name) do
+    Enum.any?(states, &(&1["state"] == state_name))
+  end
+
+  defp periodic_state?(state), do: state in ["burning", "regenerating"]
 
   defp resolve_target_side(
          %Action{target_side: target_side},

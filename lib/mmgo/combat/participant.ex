@@ -5,6 +5,7 @@ defmodule MMGO.Combat.Participant do
 
   alias MMGO.Accounts.Character
   alias MMGO.Combat.{Action, Combat}
+  alias MMGO.Grimoires.Grimoire
 
   @statuses [:ready, :defeated, :fled]
 
@@ -21,6 +22,7 @@ defmodule MMGO.Combat.Participant do
 
     belongs_to :combat, Combat
     belongs_to :character, Character
+    belongs_to :grimoire, Grimoire
     has_many :actions, Action
 
     timestamps(type: :utc_datetime_usec)
@@ -36,7 +38,8 @@ defmodule MMGO.Combat.Participant do
       :status,
       :fatigue,
       :cooldowns,
-      :active_states
+      :active_states,
+      :grimoire_id
     ])
     |> validate_required([:combat_id, :character_id, :side, :position, :status])
     |> validate_number(:position, greater_than_or_equal_to: 0)
