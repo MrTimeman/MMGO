@@ -7,6 +7,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Academy
   alias MMGO.Alchemy
   alias MMGO.Combat
+  alias MMGO.Crafting
   alias MMGO.Dungeons
   alias MMGO.Grimoires
   alias MMGO.Inventory
@@ -60,6 +61,11 @@ defmodule MMGO.Telegram.Commands do
        "/alchemy recipes",
        "/alchemy brew <recipe-code> [quantity]",
        "/alchemy jobs",
+       "/craft workshop",
+       "/craft setup [tool1,tool2,...]",
+       "/craft recipes",
+       "/craft build <recipe-code> [quantity]",
+       "/craft jobs",
        "/scavenge <resource_code> [quantity]",
        "/party create [name]",
        "/party status",
@@ -384,6 +390,130 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("alchemy", _args, _character) do
     {:ok,
      "Usage: /alchemy workspace | /alchemy setup [tool1,tool2,...] | /alchemy recipes | /alchemy brew <recipe-code> [quantity] | /alchemy jobs"}
+  end
+
+  defp dispatch("craft", ["workspace"], character) do
+    case Crafting.get_workshop_for_character(character.id) do
+      nil ->
+        {:ok,
+         "No active crafting workshop. Use /craft setup [tool1,tool2,...] to create one at your current location."}
+
+      workshop ->
+        location_name = location_name_by_id(workshop.location_id)
+
+        tools =
+          if workshop.installed_tool_codes == [],
+            do: "none",
+            else: Enum.join(workshop.installed_tool_codes, ", ")
+
+        {:ok,
+         Enum.join(
+           [
+             "Workshop: #{workshop.name}",
+             "Location: #{location_name}",
+             "Status: #{workshop.status}",
+             "Tools: #{tools}"
+           ],
+           "\n"
+         )}
+    end
+  end
+
+  defp dispatch("craft", ["setup"], character) do
+    dispatch("craft", ["setup", "forge,anvil"], character)
+  end
+
+  defp dispatch("craft", ["setup", tool_codes_csv], character) do
+    with %{id: location_id} <- character.current_location do
+      tool_codes =
+        tool_codes_csv
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+
+      attrs = %{
+        name: "#{character.name}'s Workshop",
+        location_id: location_id,
+        installed_tool_codes: tool_codes
+      }
+
+      result =
+        case Crafting.get_workshop_for_character(character.id) do
+          nil -> Crafting.create_workshop(character, attrs)
+          workshop -> Crafting.update_workshop(workshop, attrs)
+        end
+
+      case result do
+        {:ok, workshop} ->
+          {:ok,
+           "Crafting workshop ready at #{location_name_by_id(workshop.location_id)} with tools: #{Enum.join(workshop.installed_tool_codes, ", ")}."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not set up crafting workshop: #{format_changeset(changeset)}"}
+      end
+    else
+      nil -> {:ok, "You must be at a location to set up a crafting workshop."}
+    end
+  end
+
+  defp dispatch("craft", ["recipes"], _character) do
+    recipes = Crafting.list_recipes()
+
+    if recipes == [] do
+      {:ok, "No crafting recipes are currently registered."}
+    else
+      {:ok,
+       Enum.join(
+         ["Crafting recipes:"] ++
+           Enum.map(recipes, fn recipe ->
+             "- #{recipe.code}: #{recipe.name} -> #{recipe.result_item_template.name} (#{recipe.craft_time_game_days} game-days, difficulty #{recipe.difficulty})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("craft", ["build", recipe_code], character) do
+    dispatch("craft", ["build", recipe_code, "1"], character)
+  end
+
+  defp dispatch("craft", ["build", recipe_code, quantity_raw], character) do
+    quantity = parse_positive_integer(quantity_raw, 1)
+
+    with %{} = workshop <- Crafting.get_workshop_for_character(character.id),
+         %{} = recipe <- Crafting.get_recipe_by_code(recipe_code),
+         {:ok, %{craft_job: craft_job}} <- Crafting.craft(character, workshop, recipe, quantity) do
+      {:ok,
+       "Crafting started for #{recipe.name}. Completion: #{Formatter.datetime(craft_job.completes_at)}. Quantity #{craft_job.quantity}."}
+    else
+      nil ->
+        {:ok, "Recipe or workshop not found for crafting request."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not start crafting: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("craft", ["jobs"], character) do
+    jobs = Crafting.list_craft_jobs_for_character(character.id)
+
+    if jobs == [] do
+      {:ok, "No craft jobs."}
+    else
+      {:ok,
+       Enum.join(
+         ["Craft jobs:"] ++
+           Enum.map(jobs, fn craft_job ->
+             "- #{craft_job.id}: #{craft_job.recipe.name} x#{craft_job.quantity} (#{craft_job.status})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("craft", _args, _character) do
+    {:ok,
+     "Usage: /craft workshop | /craft setup [tool1,tool2,...] | /craft recipes | /craft build <recipe-code> [quantity] | /craft jobs"}
   end
 
   defp dispatch("scavenge", [resource_code], character) do
@@ -795,6 +925,7 @@ defmodule MMGO.Telegram.Commands do
            "Journeys: #{report.active_journeys}",
            "Enrollments: #{report.active_enrollments}",
            "Brew jobs: #{report.active_brew_jobs}",
+           "Craft jobs: #{report.active_craft_jobs}",
            "Scavenges: #{report.active_scavenge_attempts}",
            "Expeditions: #{report.active_expeditions}",
            "Runs: #{report.active_runs}",
@@ -827,6 +958,7 @@ defmodule MMGO.Telegram.Commands do
                "Journeys: #{report.active_journeys}",
                "Enrollments: #{report.active_enrollments}",
                "Brew jobs: #{report.active_brew_jobs}",
+               "Craft jobs: #{report.active_craft_jobs}",
                "Scavenges: #{report.active_scavenge_attempts}",
                "Expeditions: #{report.active_expeditions}",
                "Runs: #{report.active_runs}",
@@ -859,6 +991,7 @@ defmodule MMGO.Telegram.Commands do
                "Completed journeys: #{summary.completed_journeys}",
                "Completed enrollments: #{summary.completed_enrollments}",
                "Completed brew jobs: #{summary.completed_brew_jobs}",
+               "Completed craft jobs: #{summary.completed_craft_jobs}",
                "Completed scavenges: #{summary.completed_attempts}",
                "Refreshed caches: #{summary.refreshed_resource_caches}"
              ],

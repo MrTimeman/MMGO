@@ -42,5 +42,14 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "craft_completed", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Crafting complete. Yield: #{payload["yielded_quantity"]} unit(s). Craft job ##{payload["craft_job_id"]}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
   def render(%Notification{}), do: {:error, :unsupported_notification_kind}
 end

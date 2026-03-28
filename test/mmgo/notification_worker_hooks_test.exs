@@ -4,6 +4,9 @@ defmodule MMGO.NotificationWorkerHooksTest do
   alias MMGO.Accounts.{Account, Character, TelegramIdentity}
   alias MMGO.Academy
   alias MMGO.Academy.CompleteEnrollmentWorker
+  alias MMGO.Academy.Specialization
+  alias MMGO.Crafting
+  alias MMGO.Crafting.CompleteCraftJobWorker
   alias MMGO.Inventory
   alias MMGO.Notifications.Notification
   alias MMGO.Repo
@@ -108,6 +111,88 @@ defmodule MMGO.NotificationWorkerHooksTest do
     notification =
       Repo.get_by!(Notification, character_id: character.id, kind: "scavenge_completed")
 
+    assert notification.status == :pending
+  end
+
+  test "crafting completion worker queues a notification", %{character: character, tower: tower} do
+    character =
+      character
+      |> Character.travel_changeset(%{current_location_id: tower.id})
+      |> Repo.update!()
+
+    %Specialization{}
+    |> Specialization.changeset(%{
+      character_id: character.id,
+      realm_id: character.realm_id,
+      track: :mastery,
+      status: :active,
+      started_at: DateTime.utc_now(),
+      metadata: %{}
+    })
+    |> Repo.insert!()
+
+    {:ok, ore_template} =
+      Inventory.create_item_template(%{
+        code: "notify_ore",
+        name: "Notify Ore",
+        item_type: :ingredient,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 0,
+        actions: []
+      })
+
+    {:ok, sword_template} =
+      Inventory.create_item_template(%{
+        code: "notify_sword",
+        name: "Notify Sword",
+        item_type: :weapon,
+        stackable: false,
+        weight: 4,
+        max_durability: 10,
+        nutrition_units: 0,
+        actions: [
+          %{
+            key: "strike",
+            action_kind: :strike,
+            targeting: :enemy,
+            durability_cost: 1,
+            effects: [
+              %{applies_to: :target, state: "impact", intensity: 10, variance: 0, duration: 0}
+            ]
+          }
+        ]
+      })
+
+    {:ok, _ore} = Inventory.grant_item(character, ore_template, %{quantity: 3})
+
+    {:ok, workshop} =
+      Crafting.create_workshop(character, %{
+        name: "Notify Forge",
+        location_id: tower.id,
+        installed_tool_codes: ["forge"]
+      })
+
+    {:ok, recipe} =
+      Crafting.create_recipe(%{
+        code: "notify-sword",
+        name: "Notify Sword",
+        result_item_template_id: sword_template.id,
+        craft_time_game_days: 1,
+        difficulty: 2,
+        required_tool_codes: ["forge"],
+        result_quantity: 1,
+        result_durability: 10,
+        requirements: [%{item_template_id: ore_template.id, quantity: 2}]
+      })
+
+    {:ok, %{craft_job: craft_job}} = Crafting.craft(character, workshop, recipe, 1)
+
+    assert :ok =
+             CompleteCraftJobWorker.perform(%Oban.Job{args: %{"craft_job_id" => craft_job.id}})
+
+    notification = Repo.get_by!(Notification, character_id: character.id, kind: "craft_completed")
     assert notification.status == :pending
   end
 

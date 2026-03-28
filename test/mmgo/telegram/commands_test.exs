@@ -10,6 +10,7 @@ defmodule MMGO.Telegram.CommandsTest do
   alias MMGO.Repo
   alias MMGO.Academy.Specialization
   alias MMGO.Alchemy
+  alias MMGO.Crafting
   alias MMGO.Spells
   alias MMGO.Telegram.Commands
   alias MMGO.Travel
@@ -229,6 +230,94 @@ defmodule MMGO.Telegram.CommandsTest do
 
     assert {:ok, jobs_text} = Commands.process_message(character, %{"text" => "/alchemy jobs"})
     assert jobs_text =~ "Bot Potion"
+  end
+
+  test "/craft commands create a workshop and start a craft job", %{
+    character: character,
+    tower: tower
+  } do
+    character =
+      character
+      |> Character.travel_changeset(%{current_location_id: tower.id})
+      |> Repo.update!()
+
+    %Specialization{}
+    |> Specialization.changeset(%{
+      character_id: character.id,
+      realm_id: character.realm_id,
+      track: :mastery,
+      status: :active,
+      started_at: DateTime.utc_now(),
+      metadata: %{}
+    })
+    |> Repo.insert!()
+
+    {:ok, ore_template} =
+      Inventory.create_item_template(%{
+        code: "bot_ore",
+        name: "Bot Ore",
+        item_type: :ingredient,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 0,
+        actions: []
+      })
+
+    {:ok, sword_template} =
+      Inventory.create_item_template(%{
+        code: "bot_sword",
+        name: "Bot Sword",
+        item_type: :weapon,
+        stackable: false,
+        weight: 4,
+        max_durability: 10,
+        nutrition_units: 0,
+        actions: [
+          %{
+            key: "strike",
+            action_kind: :strike,
+            targeting: :enemy,
+            durability_cost: 1,
+            effects: [
+              %{applies_to: :target, state: "impact", intensity: 10, variance: 0, duration: 0}
+            ]
+          }
+        ]
+      })
+
+    {:ok, _materials} = Inventory.grant_item(character, ore_template, %{quantity: 4})
+
+    {:ok, _recipe} =
+      Crafting.create_recipe(%{
+        code: "bot-sword",
+        name: "Bot Sword",
+        result_item_template_id: sword_template.id,
+        craft_time_game_days: 1,
+        difficulty: 2,
+        required_tool_codes: ["forge"],
+        result_quantity: 1,
+        result_durability: 10,
+        requirements: [%{item_template_id: ore_template.id, quantity: 2}]
+      })
+
+    assert {:ok, workspace_text} =
+             Commands.process_message(character, %{"text" => "/craft setup forge"})
+
+    assert workspace_text =~ "Crafting workshop ready"
+
+    assert {:ok, recipes_text} =
+             Commands.process_message(character, %{"text" => "/craft recipes"})
+
+    assert recipes_text =~ "bot-sword"
+
+    assert {:ok, craft_text} =
+             Commands.process_message(character, %{"text" => "/craft build bot-sword 1"})
+
+    assert craft_text =~ "Crafting started"
+
+    assert {:ok, jobs_text} = Commands.process_message(character, %{"text" => "/craft jobs"})
+    assert jobs_text =~ "Bot Sword"
   end
 
   test "party, expedition, dungeon, and combat commands work together", %{
