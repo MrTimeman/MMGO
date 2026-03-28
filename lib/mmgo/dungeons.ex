@@ -1,6 +1,7 @@
 defmodule MMGO.Dungeons do
   import Ecto.Query, warn: false
 
+  alias MMGO.Actors
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Combat
@@ -9,6 +10,7 @@ defmodule MMGO.Dungeons do
   alias MMGO.Dungeons.{
     Dungeon,
     Encounter,
+    EncounterSpawn,
     Floor,
     Link,
     LootDrop,
@@ -130,23 +132,16 @@ defmodule MMGO.Dungeons do
 
         true ->
           expedition_members = active_expedition_members(expedition.id)
+          {:ok, spawns} = Actors.ensure_default_spawns(encounter, %Realm{id: dungeon.realm_id})
 
           if expedition_members == [] do
             Repo.rollback(encounter_changeset("expedition has no active members for combat"))
           end
 
+          encounter_participants = build_encounter_participants(spawns)
+
           combat_attrs = %{
-            participants:
-              expedition_members
-              |> Enum.with_index()
-              |> Enum.map(fn {member, index} ->
-                %{
-                  character_id: member.character_id,
-                  side: "party",
-                  position: index,
-                  metadata: %{"expedition_member_id" => member.id}
-                }
-              end),
+            participants: build_party_participants(expedition_members) ++ encounter_participants,
             sides: %{
               party: %{
                 "label" => "Party",
@@ -155,8 +150,8 @@ defmodule MMGO.Dungeons do
               },
               encounter: %{
                 "label" => encounter_label(encounter),
-                "shared_hp" => encounter_shared_hp(encounter, expedition_members),
-                "max_shared_hp" => encounter_shared_hp(encounter, expedition_members)
+                "shared_hp" => encounter_shared_hp_from_spawns(encounter, spawns),
+                "max_shared_hp" => encounter_shared_hp_from_spawns(encounter, spawns)
               }
             },
             metadata: %{
@@ -811,9 +806,45 @@ defmodule MMGO.Dungeons do
     max(length(expedition_members), 1) * 100
   end
 
-  defp encounter_shared_hp(%Encounter{} = encounter, expedition_members) do
-    max(encounter.threat_level * max(length(expedition_members), 1), 25)
+  defp encounter_shared_hp_from_spawns(%Encounter{} = encounter, spawns) when is_list(spawns) do
+    spawns
+    |> Enum.reduce(0, fn spawn, total -> total + spawn.current_hp * spawn.quantity end)
+    |> max(max(encounter.threat_level, 1) * 3)
   end
+
+  defp build_party_participants(expedition_members) do
+    expedition_members
+    |> Enum.with_index()
+    |> Enum.map(fn {member, index} ->
+      %{
+        character_id: member.character_id,
+        side: "party",
+        position: index,
+        metadata: %{"expedition_member_id" => member.id}
+      }
+    end)
+  end
+
+  defp build_encounter_participants(spawns) do
+    spawns
+    |> Enum.flat_map(fn spawn ->
+      Enum.map(0..(spawn.quantity - 1), fn offset ->
+        %{
+          actor_template_id: spawn.actor_template_id,
+          side: "encounter",
+          position: offset,
+          display_name: encounter_spawn_name(spawn, offset),
+          combat_level: spawn.actor_template.combat_level,
+          metadata: %{"encounter_spawn_id" => spawn.id}
+        }
+      end)
+    end)
+  end
+
+  defp encounter_spawn_name(%EncounterSpawn{} = spawn, 0), do: spawn.actor_template.name
+
+  defp encounter_spawn_name(%EncounterSpawn{} = spawn, offset),
+    do: "#{spawn.actor_template.name} #{offset + 1}"
 
   defp encounter_label(%Encounter{} = encounter) do
     encounter.encounter_kind
@@ -845,6 +876,7 @@ defmodule MMGO.Dungeons do
   defp materialize_node_content!(%Run{} = run, %Node{} = node, now, attrs) do
     encounter = ensure_encounter!(run, node, now, Map.get(attrs, "encounter"))
     resource_cache = ensure_resource_cache!(run, node, Map.get(attrs, "resource"))
+    _spawns = ensure_spawns!(encounter, run.dungeon_id)
 
     node_state =
       NodeState
@@ -862,6 +894,20 @@ defmodule MMGO.Dungeons do
       |> Repo.update!()
 
     %{encounter: encounter, resource_cache: resource_cache, node_state: updated_state}
+  end
+
+  defp ensure_spawns!(nil, _dungeon_id), do: []
+
+  defp ensure_spawns!(%Encounter{} = encounter, dungeon_id) do
+    encounter = Repo.preload(encounter, spawns: :actor_template)
+
+    if encounter.spawns == [] do
+      dungeon = Repo.get!(Dungeon, dungeon_id)
+      {:ok, spawns} = Actors.ensure_default_spawns(encounter, %Realm{id: dungeon.realm_id})
+      spawns
+    else
+      encounter.spawns
+    end
   end
 
   defp ensure_encounter!(%Run{} = run, %Node{} = node, now, custom_encounter) do

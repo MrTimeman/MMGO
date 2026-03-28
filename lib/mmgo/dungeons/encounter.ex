@@ -4,7 +4,7 @@ defmodule MMGO.Dungeons.Encounter do
   import Ecto.Changeset
 
   alias MMGO.Combat.Combat
-  alias MMGO.Dungeons.{Node, Run}
+  alias MMGO.Dungeons.{EncounterSpawn, Node, Run}
 
   @statuses [:pending, :active, :cleared, :avoided, :failed]
 
@@ -22,6 +22,7 @@ defmodule MMGO.Dungeons.Encounter do
     belongs_to :run, Run
     belongs_to :node, Node
     belongs_to :combat, Combat
+    has_many :spawns, EncounterSpawn
 
     timestamps(type: :utc_datetime_usec)
   end

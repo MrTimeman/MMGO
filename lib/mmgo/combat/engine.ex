@@ -256,6 +256,16 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
+      is_nil(participant.character_id) ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "invalid_action", %{
+             "participant_id" => participant.id,
+             "reason" => "actor_cannot_cast_player_spell"
+           })
+           | events
+         ]}
+
       action.spell.creator_character_id != participant.character_id ->
         {participants, sides, tags, inventory_updates, seq + 1,
          [
@@ -383,7 +393,7 @@ defmodule MMGO.Combat.Engine do
     environment_outcome = Runtime.environment_outcome(spell, tags)
 
     success_rate =
-      Runtime.success_rate(spell, participant.character.level, div(participant.fatigue, 5))
+      Runtime.success_rate(spell, participant_level(participant), div(participant.fatigue, 5))
 
     success_roll =
       RNG.percent(combat.seed, [combat.turn_number, participant.id, spell.id, :success])
@@ -900,6 +910,14 @@ defmodule MMGO.Combat.Engine do
   end
 
   defp periodic_state?(state), do: state in ["burning", "regenerating"]
+
+  defp participant_level(%Participant{combat_level: combat_level}) when is_integer(combat_level),
+    do: combat_level
+
+  defp participant_level(%Participant{character: %{level: level}}) when is_integer(level),
+    do: level
+
+  defp participant_level(_participant), do: 1
 
   defp usable_inventory_item?(%InventoryItem{} = inventory_item, %ItemAction{} = item_action) do
     MMGO.Inventory.available_quantity(inventory_item) > 0 and

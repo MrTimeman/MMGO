@@ -1,6 +1,7 @@
 defmodule MMGO.Combat do
   import Ecto.Query, warn: false
 
+  alias MMGO.Actors.ActorTemplate
   alias Ecto.Multi
   alias MMGO.Combat.{Action, Combat, Engine, Event, Participant, Turn}
   alias MMGO.Grimoires
@@ -17,14 +18,14 @@ defmodule MMGO.Combat do
         combat.status in [:active_turn, :locked, :resolving]
     )
     |> order_by([combat, _participant], desc: combat.inserted_at)
-    |> preload(participants: [:character, grimoire: :entries])
+    |> preload(participants: [:character, :actor_template, grimoire: :entries])
     |> Repo.one()
   end
 
   def get_combat!(id) do
     Combat
     |> Repo.get!(id)
-    |> Repo.preload(participants: [:character, grimoire: :entries])
+    |> Repo.preload(participants: [:character, :actor_template, grimoire: :entries])
   end
 
   def create_duel(%Realm{} = realm, attrs) when is_map(attrs) do
@@ -219,9 +220,12 @@ defmodule MMGO.Combat do
         |> Map.put(:combat_id, combat.id)
 
       character_id = attrs[:character_id] || attrs["character_id"]
+      actor_template_id = attrs[:actor_template_id] || attrs["actor_template_id"]
       provided_grimoire_id = attrs[:grimoire_id] || attrs["grimoire_id"]
 
-      case Grimoires.resolve_selected_grimoire(character_id, provided_grimoire_id) do
+      attrs = participant_defaults(attrs, character_id, actor_template_id)
+
+      case resolve_grimoire(character_id, provided_grimoire_id) do
         {:ok, grimoire} ->
           attrs = Map.put(attrs, :grimoire_id, grimoire && grimoire.id)
 
@@ -238,6 +242,31 @@ defmodule MMGO.Combat do
       end
     end)
   end
+
+  defp resolve_grimoire(character_id, provided_grimoire_id) when is_binary(character_id) do
+    Grimoires.resolve_selected_grimoire(character_id, provided_grimoire_id)
+  end
+
+  defp resolve_grimoire(_character_id, _provided_grimoire_id), do: {:ok, nil}
+
+  defp participant_defaults(attrs, character_id, nil) when is_binary(character_id) do
+    character = Repo.get!(MMGO.Accounts.Character, character_id)
+
+    attrs
+    |> Map.put_new(:display_name, character.name)
+    |> Map.put_new(:combat_level, character.level)
+  end
+
+  defp participant_defaults(attrs, _character_id, actor_template_id)
+       when is_binary(actor_template_id) do
+    actor_template = Repo.get!(ActorTemplate, actor_template_id)
+
+    attrs
+    |> Map.put_new(:display_name, actor_template.name)
+    |> Map.put_new(:combat_level, actor_template.combat_level)
+  end
+
+  defp participant_defaults(attrs, _character_id, _actor_template_id), do: attrs
 
   defp build_sides(attrs, participant_attrs) do
     provided_sides = Map.get(attrs, :sides) || Map.get(attrs, "sides") || %{}
