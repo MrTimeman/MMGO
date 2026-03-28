@@ -11,6 +11,7 @@ defmodule MMGO.Operator do
   alias MMGO.Notifications.Notification
   alias MMGO.Operator.AuditEvent
   alias MMGO.Parties.Expedition
+  alias MMGO.Reputation.{CrimeRecord, Profile}
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Scavenging.Attempt
@@ -32,6 +33,8 @@ defmodule MMGO.Operator do
       active_runs: count_active(Run),
       active_combats: count_combat_active(),
       active_market_listings: count_active(Listing),
+      active_market_bans: count_active_market_bans(),
+      open_crimes: count_status(CrimeRecord, :open),
       pending_notifications: count_status(Notification, :pending),
       treasury_balance_total: balance_total(:treasury),
       character_balance_total: balance_total(:character)
@@ -121,6 +124,24 @@ defmodule MMGO.Operator do
           :count,
           :id
         ),
+      active_market_bans:
+        Repo.aggregate(
+          from(profile in Profile,
+            where:
+              profile.realm_id == ^realm.id and not is_nil(profile.market_ban_until) and
+                profile.market_ban_until > ^DateTime.utc_now()
+          ),
+          :count,
+          :id
+        ),
+      open_crimes:
+        Repo.aggregate(
+          from(crime in CrimeRecord,
+            where: crime.realm_id == ^realm.id and crime.status == :open
+          ),
+          :count,
+          :id
+        ),
       treasury_balance:
         Repo.aggregate(
           from(account in EconomyAccount,
@@ -197,6 +218,18 @@ defmodule MMGO.Operator do
   defp count_combat_active do
     Repo.aggregate(
       from(combat in Combat, where: combat.status in [:active_turn, :locked, :resolving]),
+      :count,
+      :id
+    )
+  end
+
+  defp count_active_market_bans do
+    now = DateTime.utc_now()
+
+    Repo.aggregate(
+      from(profile in Profile,
+        where: not is_nil(profile.market_ban_until) and profile.market_ban_until > ^now
+      ),
       :count,
       :id
     )

@@ -87,6 +87,16 @@ defmodule MMGO.Telegram.CommandsTest do
 
     assert realm_text =~ "Realm canonical"
 
+    assert {:ok, profile_text} =
+             Commands.process_message(character, %{"text" => "/admin profile botter"})
+
+    assert profile_text =~ "Profile for botter"
+
+    assert {:ok, crime_text} =
+             Commands.process_message(character, %{"text" => "/admin crime botter smuggling 12 5"})
+
+    assert crime_text =~ "Crime recorded"
+
     assert {:ok, sweep_text} = Commands.process_message(character, %{"text" => "/admin sweep"})
     assert sweep_text =~ "Maintenance sweep complete"
   end

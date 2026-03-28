@@ -7,6 +7,7 @@ defmodule MMGO.Market do
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Market.Listing
+  alias MMGO.Reputation
   alias MMGO.Repo
 
   def list_active_listings(realm_id) when is_binary(realm_id) do
@@ -156,6 +157,9 @@ defmodule MMGO.Market do
       seller.id != inventory_item.character_id ->
         Repo.rollback(listing_changeset("inventory item does not belong to the seller"))
 
+      not Reputation.market_access_allowed?(seller.id) ->
+        Repo.rollback(listing_changeset("seller is banned from the legal market"))
+
       quantity <= 0 ->
         Repo.rollback(listing_changeset("quantity must be greater than zero"))
 
@@ -194,6 +198,12 @@ defmodule MMGO.Market do
 
       buyer.id == seller.id ->
         Repo.rollback(listing_changeset("seller cannot buy their own listing"))
+
+      not Reputation.market_access_allowed?(seller.id) ->
+        Repo.rollback(listing_changeset("seller is banned from the legal market"))
+
+      not Reputation.market_access_allowed?(buyer.id) ->
+        Repo.rollback(listing_changeset("buyer is banned from the legal market"))
 
       buyer.realm_id != listing.realm_id ->
         Repo.rollback(listing_changeset("buyer must belong to the same realm"))

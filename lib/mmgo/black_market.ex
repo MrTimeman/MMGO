@@ -7,6 +7,7 @@ defmodule MMGO.BlackMarket do
   alias MMGO.Economy
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
+  alias MMGO.Reputation
   alias MMGO.Repo
 
   def list_active_offers(realm_id) when is_binary(realm_id) do
@@ -217,6 +218,14 @@ defmodule MMGO.BlackMarket do
         |> lock_offer!()
         |> Offer.changeset(%{status: :defaulted, defaulted_at: DateTime.utc_now()})
         |> Repo.update!()
+
+      {:ok, _crime_result} =
+        Reputation.record_black_market_default(seller, deal.total_price, %{
+          deal_id: deal.id,
+          offer_id: deal.offer_id,
+          buyer_character_id: deal.buyer_character_id,
+          reason: reason
+        })
 
       %{deal: updated_deal, offer: updated_offer}
     end)

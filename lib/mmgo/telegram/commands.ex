@@ -12,6 +12,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Operator
   alias MMGO.Parties
   alias MMGO.PVP
+  alias MMGO.Reputation
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Survival
@@ -75,7 +76,9 @@ defmodule MMGO.Telegram.Commands do
        "/combat resolve",
        "/admin status",
        "/admin realm <slug>",
-       "/admin sweep"
+       "/admin sweep",
+       "/admin profile <handle>",
+       "/admin crime <handle> <crime_type> <severity> [fine]"
      ]
      |> Enum.join("\n")}
   end
@@ -666,6 +669,8 @@ defmodule MMGO.Telegram.Commands do
            "Runs: #{report.active_runs}",
            "Combats: #{report.active_combats}",
            "Listings: #{report.active_market_listings}",
+           "Market bans: #{report.active_market_bans}",
+           "Open crimes: #{report.open_crimes}",
            "Pending notifications: #{report.pending_notifications}",
            "Treasury total: #{report.treasury_balance_total}",
            "Character balances: #{report.character_balance_total}"
@@ -695,6 +700,8 @@ defmodule MMGO.Telegram.Commands do
                "Runs: #{report.active_runs}",
                "Combats: #{report.active_combats}",
                "Listings: #{report.active_market_listings}",
+               "Market bans: #{report.active_market_bans}",
+               "Open crimes: #{report.open_crimes}",
                "Treasury: #{report.treasury_balance}",
                "Character balances: #{report.character_balance_total}"
              ],
@@ -733,8 +740,67 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp dispatch("admin", ["profile", handle], character) do
+    if operator_authorized?(character) do
+      with %{} = target <- Accounts.get_character_by_handle(character.realm_id, handle) do
+        profile = Reputation.profile_for_character(target.id)
+        crimes = Reputation.list_crimes_for_character(target.id) |> Enum.take(3)
+
+        {:ok,
+         Enum.join(
+           [
+             "Profile for #{handle}:",
+             "Reputation: #{(profile && profile.reputation_score) || 0}",
+             "Crimes: #{(profile && profile.crime_count) || 0}",
+             "Outstanding fines: #{(profile && profile.outstanding_fine) || 0}",
+             "NPC hostility: #{(profile && profile.npc_hostility_level) || 0}",
+             "Market ban until: #{(profile && profile.market_ban_until && Formatter.datetime(profile.market_ban_until)) || "none"}",
+             "Recent crimes: #{recent_crimes_line(crimes)}"
+           ],
+           "\n"
+         )}
+      else
+        nil -> {:ok, "No character with handle #{handle} found in your realm."}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", ["crime", handle, crime_type, severity_raw], character) do
+    dispatch("admin", ["crime", handle, crime_type, severity_raw, "0"], character)
+  end
+
+  defp dispatch("admin", ["crime", handle, crime_type, severity_raw, fine_raw], character) do
+    if operator_authorized?(character) do
+      severity = parse_positive_integer(severity_raw, 0)
+      fine_amount = parse_non_negative_integer(fine_raw, 0)
+
+      with %{} = target <- Accounts.get_character_by_handle(character.realm_id, handle),
+           {:ok, %{crime_record: crime_record}} <-
+             Reputation.record_crime(target, crime_type, %{
+               severity: severity,
+               fine_amount: fine_amount,
+               metadata: %{"source" => "operator_command", "actor" => operator_handle(character)}
+             }) do
+        {:ok,
+         "Crime recorded for #{handle}. Type #{crime_record.crime_type}, severity #{crime_record.severity}, fine #{crime_record.fine_amount}."}
+      else
+        nil ->
+          {:ok, "No character with handle #{handle} found in your realm."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not record crime: #{format_changeset(changeset)}"}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
   defp dispatch("admin", _args, _character),
-    do: {:ok, "Usage: /admin status | /admin realm <slug> | /admin sweep"}
+    do:
+      {:ok,
+       "Usage: /admin status | /admin realm <slug> | /admin sweep | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
 
   defp dispatch(_command, _args, _character) do
     {:ok, "Unknown command. Use /help."}
@@ -841,6 +907,13 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp parse_non_negative_integer(value, default) do
+    case Integer.parse(value) do
+      {integer, ""} when integer >= 0 -> integer
+      _ -> default
+    end
+  end
+
   defp load_owned_duel(duel_id, character_id, status \\ nil) do
     duel = PVP.get_duel!(duel_id)
 
@@ -852,6 +925,14 @@ defmodule MMGO.Telegram.Commands do
     end
   rescue
     Ecto.NoResultsError -> nil
+  end
+
+  defp recent_crimes_line([]), do: "none"
+
+  defp recent_crimes_line(crimes) do
+    Enum.map_join(crimes, ", ", fn crime ->
+      "#{crime.crime_type}(sev #{crime.severity})"
+    end)
   end
 
   defp format_changeset(%Changeset{} = changeset) do
