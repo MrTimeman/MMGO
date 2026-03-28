@@ -48,6 +48,16 @@ defmodule MMGO.Academy do
     end
   end
 
+  def basic_education_completed?(character_id) when is_binary(character_id) do
+    completed_program?(character_id, :basic_education)
+  end
+
+  def academic_affiliated?(character_id) when is_binary(character_id) do
+    not is_nil(current_enrollment(character_id)) or
+      not is_nil(active_specialization(character_id)) or
+      basic_education_completed?(character_id)
+  end
+
   def begin_basic_education(%Character{} = character, opts \\ []) do
     start_program(character, :basic_education, nil, %{}, opts)
   end

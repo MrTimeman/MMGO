@@ -60,5 +60,14 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "club_invitation", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Club invitation: #{payload["club_name"]} (#{payload["club_type"]}). Invitation ##{payload["invitation_id"]}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
   def render(%Notification{}), do: {:error, :unsupported_notification_kind}
 end

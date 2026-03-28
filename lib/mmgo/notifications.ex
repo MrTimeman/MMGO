@@ -173,6 +173,20 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_club_invitation(%Character{} = character, invitation, club) do
+    enqueue(
+      character,
+      :club_invitation,
+      %{
+        invitation_id: invitation.id,
+        club_id: club.id,
+        club_name: club.name,
+        club_type: to_string(club.club_type)
+      },
+      dedupe_key: "club-invitation:#{invitation.id}"
+    )
+  end
+
   defp validate_channel(channel) when channel in @channels, do: :ok
 
   defp validate_channel(_channel),

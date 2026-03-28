@@ -23,6 +23,7 @@ This repository currently includes:
 - academy enrollments, completion scheduling, and specialization state
 - alchemy workspaces, recipes, and timed brew jobs
 - bases, storage transfer, and timed construction completion
+- academy clubs, memberships, and invitation flows
 - overworld scavenging, resource caches, and scheduled harvest completion
 - notification outbox and Telegram delivery hooks for timed system completions
 - food consumption, carry capacity, and encumbrance-aware travel planning
@@ -100,6 +101,7 @@ iex -S mix phx.server
 - `lib/mmgo/academy` - education progression, timed enrollments, and specialization state
 - `lib/mmgo/alchemy` - workspaces, recipes, and brewing jobs for potion crafting
 - `lib/mmgo/bases` - property ownership, construction, and protected base storage
+- `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
 - `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
 - `lib/mmgo/market` - legal listings, escrowed inventory, and taxed settlement
 - `lib/mmgo/black_market` - untaxed unsafe deals with manual delivery and scam/default risk

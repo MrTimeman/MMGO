@@ -8,6 +8,7 @@ defmodule MMGO.Operator do
   alias MMGO.Alchemy.BrewJob
   alias MMGO.Bases
   alias MMGO.Bases.Base
+  alias MMGO.Clubs.{Club, Invitation}
   alias MMGO.Combat.Combat
   alias MMGO.Crafting
   alias MMGO.Crafting.CraftJob
@@ -38,6 +39,8 @@ defmodule MMGO.Operator do
       active_craft_jobs: count_active(CraftJob),
       active_bases: count_active(Base),
       building_bases: count_status(Base, :building),
+      active_clubs: count_active(Club),
+      pending_club_invitations: count_status(Invitation, :pending),
       active_scavenge_attempts: count_active(Attempt),
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
@@ -116,6 +119,21 @@ defmodule MMGO.Operator do
       building_bases:
         Repo.aggregate(
           from(base in Base, where: base.realm_id == ^realm.id and base.status == :building),
+          :count,
+          :id
+        ),
+      active_clubs:
+        Repo.aggregate(
+          from(club in Club, where: club.realm_id == ^realm.id and club.status == :active),
+          :count,
+          :id
+        ),
+      pending_club_invitations:
+        Repo.aggregate(
+          from(invitation in Invitation,
+            join: club in assoc(invitation, :club),
+            where: club.realm_id == ^realm.id and invitation.status == :pending
+          ),
           :count,
           :id
         ),

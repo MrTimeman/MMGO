@@ -7,6 +7,8 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Academy
   alias MMGO.Alchemy
   alias MMGO.Bases
+  alias MMGO.Clubs
+  alias MMGO.Clubs.Invitation, as: ClubInvitation
   alias MMGO.Combat
   alias MMGO.Crafting
   alias MMGO.Dungeons
@@ -76,6 +78,14 @@ defmodule MMGO.Telegram.Commands do
        "/scavenge <resource_code> [quantity]",
        "/party create [name]",
        "/party status",
+       "/club create <type> <name>",
+       "/club list",
+       "/club status <club-id>",
+       "/club invite <club-id> <handle>",
+       "/club invites",
+       "/club accept <invite-id>",
+       "/club reject <invite-id>",
+       "/club leave <club-id>",
        "/duel challenge <handle> <stake>",
        "/duel accept <duel-id>",
        "/duel reject <duel-id>",
@@ -694,6 +704,132 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("party", _args, _character),
     do: {:ok, "Usage: /party create [name] | /party status"}
 
+  defp dispatch("club", ["create", club_type | name_parts], character) do
+    name = Enum.join(name_parts, " ")
+
+    if name == "" do
+      {:ok, "Usage: /club create <type> <name>"}
+    else
+      case Clubs.create_club(character, %{club_type: club_type, name: name}) do
+        {:ok, %{club: club}} ->
+          {:ok, "Club created: #{club.name} (#{club.club_type})."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not create club: #{format_changeset(changeset)}"}
+      end
+    end
+  end
+
+  defp dispatch("club", ["list"], character) do
+    clubs = Clubs.list_clubs_for_character(character.id)
+
+    if clubs == [] do
+      {:ok, "No active clubs."}
+    else
+      {:ok,
+       Enum.join(
+         ["Clubs:"] ++
+           Enum.map(clubs, fn club ->
+             "- #{club.id}: #{club.name} (#{club.club_type})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("club", ["status", club_id], character) do
+    with %{} = club <- load_member_club(club_id, character.id) do
+      members = Clubs.list_members(club)
+
+      {:ok,
+       Enum.join(
+         [
+           "Club: #{club.name}",
+           "Type: #{club.club_type}",
+           "Members: #{Enum.map_join(members, ", ", & &1.character.name)}"
+         ],
+         "\n"
+       )}
+    else
+      nil -> {:ok, "No matching club membership found."}
+    end
+  end
+
+  defp dispatch("club", ["invite", club_id, handle], character) do
+    with %{} = club <- load_leader_club(club_id, character.id),
+         %{} = invitee <- Accounts.get_character_by_handle(character.realm_id, handle),
+         {:ok, %{invitation: invitation}} <- Clubs.invite_member(club, character, invitee) do
+      {:ok, "Invitation #{invitation.id} sent to #{handle}."}
+    else
+      nil ->
+        {:ok, "Club or invitee not found, or you are not the club leader."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not invite member: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("club", ["invites"], character) do
+    invitations = Clubs.pending_invitations_for_character(character.id)
+
+    if invitations == [] do
+      {:ok, "No pending club invitations."}
+    else
+      {:ok,
+       Enum.join(
+         ["Pending club invitations:"] ++
+           Enum.map(invitations, fn invitation ->
+             "- #{invitation.id}: #{invitation.club.name} from #{invitation.inviter_character.name}"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("club", ["accept", invitation_id], character) do
+    with %{} = invitation <- load_invitation(invitation_id, character.id),
+         {:ok, %{club: club}} <- Clubs.accept_invitation(invitation, character) do
+      {:ok, "Joined club #{club.name}."}
+    else
+      nil ->
+        {:ok, "No matching pending invitation found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not accept invitation: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("club", ["reject", invitation_id], character) do
+    with %{} = invitation <- load_invitation(invitation_id, character.id),
+         {:ok, _updated_invitation} <- Clubs.reject_invitation(invitation, character) do
+      {:ok, "Invitation rejected."}
+    else
+      nil ->
+        {:ok, "No matching pending invitation found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not reject invitation: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("club", ["leave", club_id], character) do
+    with %{} = club <- load_member_club(club_id, character.id),
+         {:ok, updated_club} <- Clubs.leave_club(club, character) do
+      {:ok, "Left club #{updated_club.name}."}
+    else
+      nil ->
+        {:ok, "No matching club membership found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not leave club: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("club", _args, _character) do
+    {:ok,
+     "Usage: /club create <type> <name> | /club list | /club status <club-id> | /club invite <club-id> <handle> | /club invites | /club accept <invite-id> | /club reject <invite-id> | /club leave <club-id>"}
+  end
+
   defp dispatch("duel", ["challenge", handle, stake_raw], character) do
     stake = parse_positive_integer(stake_raw, 0)
 
@@ -1045,6 +1181,8 @@ defmodule MMGO.Telegram.Commands do
            "Craft jobs: #{report.active_craft_jobs}",
            "Active bases: #{report.active_bases}",
            "Building bases: #{report.building_bases}",
+           "Clubs: #{report.active_clubs}",
+           "Pending club invites: #{report.pending_club_invitations}",
            "Scavenges: #{report.active_scavenge_attempts}",
            "Expeditions: #{report.active_expeditions}",
            "Runs: #{report.active_runs}",
@@ -1080,6 +1218,8 @@ defmodule MMGO.Telegram.Commands do
                "Craft jobs: #{report.active_craft_jobs}",
                "Active bases: #{report.active_bases}",
                "Building bases: #{report.building_bases}",
+               "Clubs: #{report.active_clubs}",
+               "Pending club invites: #{report.pending_club_invitations}",
                "Scavenges: #{report.active_scavenge_attempts}",
                "Expeditions: #{report.active_expeditions}",
                "Runs: #{report.active_runs}",
@@ -1318,6 +1458,47 @@ defmodule MMGO.Telegram.Commands do
   defp load_owned_base(base_id, character_id) do
     base = Bases.get_base!(base_id)
     if base.owner_character_id == character_id, do: base, else: nil
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_member_club(club_id, character_id) do
+    club = Clubs.get_club!(club_id)
+
+    if Enum.any?(club.memberships, &(&1.character_id == character_id and &1.status == :active)) do
+      club
+    else
+      nil
+    end
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_leader_club(club_id, character_id) do
+    club = load_member_club(club_id, character_id)
+
+    if club &&
+         Enum.any?(
+           club.memberships,
+           &(&1.character_id == character_id and &1.role == :leader and &1.status == :active)
+         ) do
+      club
+    else
+      nil
+    end
+  end
+
+  defp load_invitation(invitation_id, character_id) do
+    invitation =
+      ClubInvitation
+      |> Repo.get!(invitation_id)
+      |> Repo.preload([:club, :inviter_character])
+
+    if invitation.invitee_character_id == character_id and invitation.status == :pending do
+      invitation
+    else
+      nil
+    end
   rescue
     Ecto.NoResultsError -> nil
   end
