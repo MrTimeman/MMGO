@@ -7,6 +7,8 @@ defmodule MMGO.NotificationWorkerHooksTest do
   alias MMGO.Academy.Specialization
   alias MMGO.Crafting
   alias MMGO.Crafting.CompleteCraftJobWorker
+  alias MMGO.Bases
+  alias MMGO.Bases.CompleteBaseBuildWorker
   alias MMGO.Inventory
   alias MMGO.Notifications.Notification
   alias MMGO.Repo
@@ -193,6 +195,26 @@ defmodule MMGO.NotificationWorkerHooksTest do
              CompleteCraftJobWorker.perform(%Oban.Job{args: %{"craft_job_id" => craft_job.id}})
 
     notification = Repo.get_by!(Notification, character_id: character.id, kind: "craft_completed")
+    assert notification.status == :pending
+  end
+
+  test "base build completion worker queues a notification", %{character: character} do
+    {:ok, wilderness} =
+      Worlds.create_location(Repo.get!(Worlds.Realm, character.realm_id), %{
+        slug: "wild-post",
+        name: "Wild Post",
+        kind: :wilderness,
+        x: 80,
+        y: 80,
+        safe_zone: false
+      })
+
+    {:ok, %{base: base}} =
+      Bases.start_custom_base_build(character, wilderness, %{}, build_days: 1)
+
+    assert :ok = CompleteBaseBuildWorker.perform(%Oban.Job{args: %{"base_id" => base.id}})
+
+    notification = Repo.get_by!(Notification, character_id: character.id, kind: "base_ready")
     assert notification.status == :pending
   end
 

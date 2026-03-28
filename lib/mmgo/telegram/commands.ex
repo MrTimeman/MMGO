@@ -6,6 +6,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Accounts.Character
   alias MMGO.Academy
   alias MMGO.Alchemy
+  alias MMGO.Bases
   alias MMGO.Combat
   alias MMGO.Crafting
   alias MMGO.Dungeons
@@ -56,6 +57,12 @@ defmodule MMGO.Telegram.Commands do
        "/journey",
        "/academy status",
        "/academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia",
+       "/base status",
+       "/base buy <location-slug>",
+       "/base build <location-slug>",
+       "/base storage <base-id>",
+       "/base deposit <base-id> <inventory-item-id> [quantity]",
+       "/base withdraw <base-id> <storage-item-id> [quantity]",
        "/alchemy workspace",
        "/alchemy setup [tool1,tool2,...]",
        "/alchemy recipes",
@@ -266,6 +273,116 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("academy", _args, _character) do
     {:ok,
      "Usage: /academy status | /academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia"}
+  end
+
+  defp dispatch("base", ["status"], character) do
+    bases = Bases.list_bases_for_character(character.id)
+
+    if bases == [] do
+      {:ok, "No bases."}
+    else
+      {:ok,
+       Enum.join(
+         ["Bases:"] ++
+           Enum.map(bases, fn base ->
+             "- #{base.id}: #{base.name} @ #{base.location.name} (#{base.status}, cap #{base.storage_weight_capacity}, used #{Bases.storage_weight(base)})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("base", ["buy", location_slug], character) do
+    with %{} = location <- Worlds.get_location_by_slug(character.realm_id, location_slug),
+         {:ok, base} <- Bases.purchase_city_base(character, location) do
+      {:ok, "Base purchased: #{base.name} at #{location.name}."}
+    else
+      nil ->
+        {:ok, "No location with slug #{location_slug} found in your realm."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not buy base: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("base", ["build", location_slug], character) do
+    with %{} = location <- Worlds.get_location_by_slug(character.realm_id, location_slug),
+         {:ok, %{base: base}} <- Bases.start_custom_base_build(character, location) do
+      {:ok,
+       "Base construction started at #{location.name}. Ready: #{Formatter.datetime(base.ready_at)}."}
+    else
+      nil ->
+        {:ok, "No location with slug #{location_slug} found in your realm."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not start base construction: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("base", ["storage", base_id], character) do
+    with %{} = base <- load_owned_base(base_id, character.id) do
+      items = Bases.list_storage_items(base.id)
+
+      if items == [] do
+        {:ok, "Base storage is empty."}
+      else
+        {:ok,
+         Enum.join(
+           ["Storage for #{base.name}:"] ++
+             Enum.map(items, fn item ->
+               "- #{item.id}: #{item.item_template.name} x#{item.quantity}"
+             end),
+           "\n"
+         )}
+      end
+    else
+      nil -> {:ok, "No owned base found for that id."}
+    end
+  end
+
+  defp dispatch("base", ["deposit", base_id, inventory_item_id], character) do
+    dispatch("base", ["deposit", base_id, inventory_item_id, "1"], character)
+  end
+
+  defp dispatch("base", ["deposit", base_id, inventory_item_id, quantity_raw], character) do
+    quantity = parse_positive_integer(quantity_raw, 1)
+
+    with %{} = base <- load_owned_base(base_id, character.id),
+         %{} = inventory_item <- load_owned_inventory_item(inventory_item_id, character.id),
+         {:ok, _result} <- Bases.deposit_item(character, base, inventory_item, quantity) do
+      {:ok, "Deposited #{quantity} item(s) into #{base.name}."}
+    else
+      nil ->
+        {:ok, "Base or inventory item not found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not deposit to base: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("base", ["withdraw", base_id, storage_item_id], character) do
+    dispatch("base", ["withdraw", base_id, storage_item_id, "1"], character)
+  end
+
+  defp dispatch("base", ["withdraw", base_id, storage_item_id, quantity_raw], character) do
+    quantity = parse_positive_integer(quantity_raw, 1)
+
+    with %{} = base <- load_owned_base(base_id, character.id),
+         %{} = storage_item <- load_storage_item_for_base(storage_item_id, base.id),
+         {:ok, _result} <- Bases.withdraw_item(character, base, storage_item, quantity) do
+      {:ok, "Withdrew #{quantity} item(s) from #{base.name}."}
+    else
+      nil ->
+        {:ok, "Base or storage item not found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not withdraw from base: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("base", _args, _character) do
+    {:ok,
+     "Usage: /base status | /base buy <location-slug> | /base build <location-slug> | /base storage <base-id> | /base deposit <base-id> <inventory-item-id> [quantity] | /base withdraw <base-id> <storage-item-id> [quantity]"}
   end
 
   defp dispatch("alchemy", ["workspace"], character) do
@@ -926,6 +1043,8 @@ defmodule MMGO.Telegram.Commands do
            "Enrollments: #{report.active_enrollments}",
            "Brew jobs: #{report.active_brew_jobs}",
            "Craft jobs: #{report.active_craft_jobs}",
+           "Active bases: #{report.active_bases}",
+           "Building bases: #{report.building_bases}",
            "Scavenges: #{report.active_scavenge_attempts}",
            "Expeditions: #{report.active_expeditions}",
            "Runs: #{report.active_runs}",
@@ -959,6 +1078,8 @@ defmodule MMGO.Telegram.Commands do
                "Enrollments: #{report.active_enrollments}",
                "Brew jobs: #{report.active_brew_jobs}",
                "Craft jobs: #{report.active_craft_jobs}",
+               "Active bases: #{report.active_bases}",
+               "Building bases: #{report.building_bases}",
                "Scavenges: #{report.active_scavenge_attempts}",
                "Expeditions: #{report.active_expeditions}",
                "Runs: #{report.active_runs}",
@@ -992,6 +1113,7 @@ defmodule MMGO.Telegram.Commands do
                "Completed enrollments: #{summary.completed_enrollments}",
                "Completed brew jobs: #{summary.completed_brew_jobs}",
                "Completed craft jobs: #{summary.completed_craft_jobs}",
+               "Completed bases: #{summary.completed_bases}",
                "Completed scavenges: #{summary.completed_attempts}",
                "Refreshed caches: #{summary.refreshed_resource_caches}"
              ],
@@ -1189,6 +1311,27 @@ defmodule MMGO.Telegram.Commands do
       duel.status == status -> duel
       true -> nil
     end
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_owned_base(base_id, character_id) do
+    base = Bases.get_base!(base_id)
+    if base.owner_character_id == character_id, do: base, else: nil
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_owned_inventory_item(inventory_item_id, character_id) do
+    inventory_item = Inventory.get_inventory_item!(inventory_item_id)
+    if inventory_item.character_id == character_id, do: inventory_item, else: nil
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_storage_item_for_base(storage_item_id, base_id) do
+    storage_item = Bases.get_storage_item!(storage_item_id)
+    if storage_item.base_id == base_id, do: storage_item, else: nil
   rescue
     Ecto.NoResultsError -> nil
   end

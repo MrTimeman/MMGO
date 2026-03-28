@@ -160,6 +160,19 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_base_ready(%Character{} = character, base) do
+    enqueue(
+      character,
+      :base_ready,
+      %{
+        base_id: base.id,
+        location_id: base.location_id,
+        kind: to_string(base.kind)
+      },
+      dedupe_key: "base-ready:#{base.id}"
+    )
+  end
+
   defp validate_channel(channel) when channel in @channels, do: :ok
 
   defp validate_channel(_channel),

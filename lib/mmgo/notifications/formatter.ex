@@ -51,5 +51,14 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "base_ready", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Base ready. Base ##{payload["base_id"]} at location ##{payload["location_id"]} is now active.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
   def render(%Notification{}), do: {:error, :unsupported_notification_kind}
 end

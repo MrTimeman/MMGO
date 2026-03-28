@@ -6,6 +6,8 @@ defmodule MMGO.Operator do
   alias MMGO.Academy.Enrollment
   alias MMGO.Alchemy
   alias MMGO.Alchemy.BrewJob
+  alias MMGO.Bases
+  alias MMGO.Bases.Base
   alias MMGO.Combat.Combat
   alias MMGO.Crafting
   alias MMGO.Crafting.CraftJob
@@ -34,6 +36,8 @@ defmodule MMGO.Operator do
       active_enrollments: count_active(Enrollment),
       active_brew_jobs: count_active(BrewJob),
       active_craft_jobs: count_active(CraftJob),
+      active_bases: count_active(Base),
+      building_bases: count_status(Base, :building),
       active_scavenge_attempts: count_active(Attempt),
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
@@ -100,6 +104,18 @@ defmodule MMGO.Operator do
           from(craft_job in CraftJob,
             where: craft_job.realm_id == ^realm.id and craft_job.status == :active
           ),
+          :count,
+          :id
+        ),
+      active_bases:
+        Repo.aggregate(
+          from(base in Base, where: base.realm_id == ^realm.id and base.status == :active),
+          :count,
+          :id
+        ),
+      building_bases:
+        Repo.aggregate(
+          from(base in Base, where: base.realm_id == ^realm.id and base.status == :building),
           :count,
           :id
         ),
@@ -192,6 +208,7 @@ defmodule MMGO.Operator do
       enrollments = Academy.complete_due_enrollments(now)
       brew_jobs = Alchemy.complete_due_brew_jobs(now)
       craft_jobs = Crafting.complete_due_craft_jobs(now)
+      bases = Bases.complete_due_base_builds(now)
       attempts = Scavenging.complete_due_attempts(now)
       refreshed_caches = Scavenging.refresh_due_resource_caches(now)
 
@@ -200,6 +217,7 @@ defmodule MMGO.Operator do
         completed_enrollments: count_ok(enrollments),
         completed_brew_jobs: count_ok(brew_jobs),
         completed_craft_jobs: count_ok(craft_jobs),
+        completed_bases: count_ok(bases),
         completed_attempts: count_ok(attempts),
         refreshed_resource_caches: length(refreshed_caches)
       }
