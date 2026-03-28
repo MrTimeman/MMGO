@@ -4,6 +4,8 @@ defmodule MMGO.Operator do
   alias Ecto.Changeset
   alias MMGO.Academy
   alias MMGO.Academy.Enrollment
+  alias MMGO.Academia
+  alias MMGO.Academia.{Professor, Project, Publication}
   alias MMGO.Alchemy
   alias MMGO.Alchemy.BrewJob
   alias MMGO.Bases
@@ -18,6 +20,7 @@ defmodule MMGO.Operator do
   alias MMGO.Federation
   alias MMGO.Federation.Migration
   alias MMGO.Market.Listing
+  alias MMGO.NPCShops.{Offer, Shop}
   alias MMGO.Notifications.Notification
   alias MMGO.Overworld.Encounter
   alias MMGO.Operator.AuditEvent
@@ -39,6 +42,9 @@ defmodule MMGO.Operator do
       routes: Repo.aggregate(Route, :count, :id),
       active_journeys: count_active(Journey),
       active_enrollments: count_active(Enrollment),
+      active_research_projects: count_active(Project),
+      active_professors: count_active(Professor),
+      publications: Repo.aggregate(Publication, :count, :id),
       active_brew_jobs: count_active(BrewJob),
       active_craft_jobs: count_active(CraftJob),
       active_bases: count_active(Base),
@@ -54,6 +60,8 @@ defmodule MMGO.Operator do
       active_overworld_encounters: count_active(Encounter),
       active_combats: count_combat_active(),
       active_market_listings: count_active(Listing),
+      active_npc_shops: count_active(Shop),
+      npc_shop_offers: Repo.aggregate(Offer, :count, :id),
       active_market_bans: count_active_market_bans(),
       open_crimes: count_status(CrimeRecord, :open),
       pending_notifications: count_status(Notification, :pending),
@@ -99,6 +107,28 @@ defmodule MMGO.Operator do
           from(enrollment in Enrollment,
             where: enrollment.realm_id == ^realm.id and enrollment.status == :active
           ),
+          :count,
+          :id
+        ),
+      active_research_projects:
+        Repo.aggregate(
+          from(project in Project,
+            where: project.realm_id == ^realm.id and project.status == :active
+          ),
+          :count,
+          :id
+        ),
+      active_professors:
+        Repo.aggregate(
+          from(professor in Professor,
+            where: professor.realm_id == ^realm.id and professor.status == :active
+          ),
+          :count,
+          :id
+        ),
+      publications:
+        Repo.aggregate(
+          from(publication in Publication, where: publication.realm_id == ^realm.id),
           :count,
           :id
         ),
@@ -223,6 +253,21 @@ defmodule MMGO.Operator do
           :count,
           :id
         ),
+      active_npc_shops:
+        Repo.aggregate(
+          from(shop in Shop, where: shop.realm_id == ^realm.id and shop.status == :active),
+          :count,
+          :id
+        ),
+      npc_shop_offers:
+        Repo.aggregate(
+          from(offer in Offer,
+            join: shop in assoc(offer, :shop),
+            where: shop.realm_id == ^realm.id
+          ),
+          :count,
+          :id
+        ),
       active_market_bans:
         Repo.aggregate(
           from(profile in Profile,
@@ -267,6 +312,7 @@ defmodule MMGO.Operator do
     Repo.transaction(fn ->
       journeys = Travel.complete_due_journeys(now)
       enrollments = Academy.complete_due_enrollments(now)
+      projects = Academia.complete_due_projects(now)
       brew_jobs = Alchemy.complete_due_brew_jobs(now)
       craft_jobs = Crafting.complete_due_craft_jobs(now)
       bases = Bases.complete_due_base_builds(now)
@@ -279,6 +325,7 @@ defmodule MMGO.Operator do
       summary = %{
         completed_journeys: count_ok(journeys),
         completed_enrollments: count_ok(enrollments),
+        completed_research_projects: count_ok(projects),
         completed_brew_jobs: count_ok(brew_jobs),
         completed_craft_jobs: count_ok(craft_jobs),
         completed_bases: count_ok(bases),

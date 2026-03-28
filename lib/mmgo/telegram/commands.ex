@@ -5,6 +5,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Accounts
   alias MMGO.Accounts.Character
   alias MMGO.Academy
+  alias MMGO.Academia
   alias MMGO.Alchemy
   alias MMGO.Bases
   alias MMGO.Clubs
@@ -15,6 +16,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Federation
   alias MMGO.Grimoires
   alias MMGO.Inventory
+  alias MMGO.NPCShops
   alias MMGO.Operator
   alias MMGO.Overworld
   alias MMGO.Parties
@@ -71,6 +73,10 @@ defmodule MMGO.Telegram.Commands do
        "/realms migrations",
        "/academy status",
        "/academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia",
+       "/academia projects",
+       "/academia start <spell|potion|tool|thesis|course> <title>",
+       "/academia professor",
+       "/academia publish-course <title>",
        "/base status",
        "/base buy <location-slug>",
        "/base build <location-slug>",
@@ -82,6 +88,12 @@ defmodule MMGO.Telegram.Commands do
        "/alchemy recipes",
        "/alchemy brew <recipe-code> [quantity]",
        "/alchemy jobs",
+       "/npc shops",
+       "/npc browse <shop-code>",
+       "/npc buy <offer-id> [quantity]",
+       "/npc sell <offer-id> <inventory-item-id> [quantity]",
+       "/charity donate <amount>",
+       "/academy tuition <amount>",
        "/craft workshop",
        "/craft setup [tool1,tool2,...]",
        "/craft recipes",
@@ -434,9 +446,86 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp dispatch("academy", ["tuition", amount_raw], character) do
+    amount = parse_positive_integer(amount_raw, 0)
+
+    case NPCShops.pay_tuition(character, amount) do
+      {:ok, _result} ->
+        {:ok, "Paid academy tuition: #{amount}."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not pay tuition: #{format_changeset(changeset)}"}
+    end
+  end
+
   defp dispatch("academy", _args, _character) do
     {:ok,
-     "Usage: /academy status | /academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia"}
+     "Usage: /academy status | /academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia | /academy tuition <amount>"}
+  end
+
+  defp dispatch("academia", ["projects"], character) do
+    projects = Academia.list_projects_for_character(character.id)
+
+    if projects == [] do
+      {:ok, "No research projects."}
+    else
+      {:ok,
+       Enum.join(
+         ["Research projects:"] ++
+           Enum.map(projects, fn project ->
+             "- #{project.id}: #{project.project_kind} #{project.title} (#{project.status})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("academia", ["start", project_kind | title_parts], character) do
+    title = Enum.join(title_parts, " ")
+
+    if title == "" do
+      {:ok, "Usage: /academia start <spell|potion|tool|thesis|course> <title>"}
+    else
+      case Academia.start_project(character, project_kind, title) do
+        {:ok, %{project: project}} ->
+          {:ok,
+           "Research started: #{project.title}. Completion #{Formatter.datetime(project.completes_at)}."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not start research: #{format_changeset(changeset)}"}
+      end
+    end
+  end
+
+  defp dispatch("academia", ["professor"], character) do
+    case Academia.appoint_professor(character) do
+      {:ok, professor} ->
+        {:ok, "Professor appointment granted at #{Formatter.datetime(professor.appointed_at)}."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not appoint professor: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("academia", ["publish-course" | title_parts], character) do
+    title = Enum.join(title_parts, " ")
+
+    if title == "" do
+      {:ok, "Usage: /academia publish-course <title>"}
+    else
+      case Academia.publish_course(character, title) do
+        {:ok, publication} ->
+          {:ok, "Course published: #{publication.title}."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not publish course: #{format_changeset(changeset)}"}
+      end
+    end
+  end
+
+  defp dispatch("academia", _args, _character) do
+    {:ok,
+     "Usage: /academia projects | /academia start <spell|potion|tool|thesis|course> <title> | /academia professor | /academia publish-course <title>"}
   end
 
   defp dispatch("base", ["status"], character) do
@@ -672,6 +761,99 @@ defmodule MMGO.Telegram.Commands do
     {:ok,
      "Usage: /alchemy workspace | /alchemy setup [tool1,tool2,...] | /alchemy recipes | /alchemy brew <recipe-code> [quantity] | /alchemy jobs"}
   end
+
+  defp dispatch("npc", ["shops"], character) do
+    shops =
+      (character.current_location &&
+         NPCShops.list_shops_for_location(character.current_location.id)) || []
+
+    if shops == [] do
+      {:ok, "No NPC shops at your location."}
+    else
+      {:ok,
+       Enum.join(
+         ["NPC shops:"] ++
+           Enum.map(shops, fn shop ->
+             "- #{shop.code}: #{shop.name}"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("npc", ["browse", shop_code], character) do
+    with %{id: location_id} <- character.current_location,
+         %{} = shop <- NPCShops.get_shop_by_code(location_id, shop_code) do
+      {:ok,
+       Enum.join(
+         ["Shop #{shop.name}:"] ++
+           Enum.map(shop.offers, fn offer ->
+             "- #{offer.id}: #{offer.item_template.name} buy #{offer.buy_price} / sell #{offer.sell_price}"
+           end),
+         "\n"
+       )}
+    else
+      nil -> {:ok, "No shop with code #{shop_code} at your current location."}
+    end
+  end
+
+  defp dispatch("npc", ["buy", offer_id], character) do
+    dispatch("npc", ["buy", offer_id, "1"], character)
+  end
+
+  defp dispatch("npc", ["buy", offer_id, quantity_raw], character) do
+    quantity = parse_positive_integer(quantity_raw, 1)
+
+    with %{} = offer <- safe_get_offer(offer_id),
+         {:ok, _result} <- NPCShops.buy(character, offer, quantity) do
+      {:ok, "Bought #{quantity} item(s) from the NPC shop."}
+    else
+      nil ->
+        {:ok, "No NPC shop offer found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not buy from NPC shop: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("npc", ["sell", offer_id, inventory_item_id], character) do
+    dispatch("npc", ["sell", offer_id, inventory_item_id, "1"], character)
+  end
+
+  defp dispatch("npc", ["sell", offer_id, inventory_item_id, quantity_raw], character) do
+    quantity = parse_positive_integer(quantity_raw, 1)
+
+    with %{} = offer <- safe_get_offer(offer_id),
+         %{} = inventory_item <- load_owned_inventory_item(inventory_item_id, character.id),
+         {:ok, %{payout: payout}} <- NPCShops.sell(character, offer, inventory_item, quantity) do
+      {:ok, "Sold #{quantity} item(s) to the NPC shop for #{payout}."}
+    else
+      nil ->
+        {:ok, "NPC offer or inventory item not found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not sell to NPC shop: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("npc", _args, _character) do
+    {:ok,
+     "Usage: /npc shops | /npc browse <shop-code> | /npc buy <offer-id> [quantity] | /npc sell <offer-id> <inventory-item-id> [quantity]"}
+  end
+
+  defp dispatch("charity", ["donate", amount_raw], character) do
+    amount = parse_positive_integer(amount_raw, 0)
+
+    case NPCShops.donate_to_charity(character, amount) do
+      {:ok, _result} ->
+        {:ok, "Donated #{amount} to the charity fund."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not donate: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("charity", _args, _character), do: {:ok, "Usage: /charity donate <amount>"}
 
   defp dispatch("craft", ["workspace"], character) do
     case Crafting.get_workshop_for_character(character.id) do
@@ -1387,6 +1569,9 @@ defmodule MMGO.Telegram.Commands do
            "Journeys: #{report.active_journeys}",
            "Migrations: #{report.active_migrations}",
            "Enrollments: #{report.active_enrollments}",
+           "Research projects: #{report.active_research_projects}",
+           "Professors: #{report.active_professors}",
+           "Publications: #{report.publications}",
            "Brew jobs: #{report.active_brew_jobs}",
            "Craft jobs: #{report.active_craft_jobs}",
            "Active bases: #{report.active_bases}",
@@ -1399,6 +1584,8 @@ defmodule MMGO.Telegram.Commands do
            "Runs: #{report.active_runs}",
            "Combats: #{report.active_combats}",
            "Listings: #{report.active_market_listings}",
+           "NPC shops: #{report.active_npc_shops}",
+           "NPC offers: #{report.npc_shop_offers}",
            "Market bans: #{report.active_market_bans}",
            "Open crimes: #{report.open_crimes}",
            "Pending notifications: #{report.pending_notifications}",
@@ -1426,6 +1613,9 @@ defmodule MMGO.Telegram.Commands do
                "Journeys: #{report.active_journeys}",
                "Migrations: #{report.active_migrations}",
                "Enrollments: #{report.active_enrollments}",
+               "Research projects: #{report.active_research_projects}",
+               "Professors: #{report.active_professors}",
+               "Publications: #{report.publications}",
                "Brew jobs: #{report.active_brew_jobs}",
                "Craft jobs: #{report.active_craft_jobs}",
                "Active bases: #{report.active_bases}",
@@ -1438,6 +1628,8 @@ defmodule MMGO.Telegram.Commands do
                "Runs: #{report.active_runs}",
                "Combats: #{report.active_combats}",
                "Listings: #{report.active_market_listings}",
+               "NPC shops: #{report.active_npc_shops}",
+               "NPC offers: #{report.npc_shop_offers}",
                "Market bans: #{report.active_market_bans}",
                "Open crimes: #{report.open_crimes}",
                "Treasury: #{report.treasury_balance}",
@@ -1465,6 +1657,7 @@ defmodule MMGO.Telegram.Commands do
                "Completed journeys: #{summary.completed_journeys}",
                "Completed migrations: #{summary.completed_migrations}",
                "Completed enrollments: #{summary.completed_enrollments}",
+               "Completed research projects: #{summary.completed_research_projects}",
                "Completed brew jobs: #{summary.completed_brew_jobs}",
                "Completed craft jobs: #{summary.completed_craft_jobs}",
                "Completed bases: #{summary.completed_bases}",
@@ -1825,6 +2018,12 @@ defmodule MMGO.Telegram.Commands do
   defp load_storage_item_for_base(storage_item_id, base_id) do
     storage_item = Bases.get_storage_item!(storage_item_id)
     if storage_item.base_id == base_id, do: storage_item, else: nil
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp safe_get_offer(offer_id) do
+    NPCShops.get_offer!(offer_id)
   rescue
     Ecto.NoResultsError -> nil
   end

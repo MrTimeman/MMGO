@@ -51,6 +51,15 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "research_completed", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Research complete. #{payload["project_kind"]}: #{payload["title"]}. Project ##{payload["project_id"]}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
   def render(%Notification{kind: "base_ready", payload: payload}) do
     {:ok,
      %{

@@ -160,6 +160,19 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_research_completed(%Character{} = character, project) do
+    enqueue(
+      character,
+      :research_completed,
+      %{
+        project_id: project.id,
+        project_kind: to_string(project.project_kind),
+        title: project.title
+      },
+      dedupe_key: "research-completed:#{project.id}"
+    )
+  end
+
   def notify_base_ready(%Character{} = character, base) do
     enqueue(
       character,

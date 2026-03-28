@@ -21,10 +21,12 @@ This repository currently includes:
 - dungeon encounters can now spawn real combat instances and resolve back into run state
 - expedition XP reward shares tied to encounters and run completion
 - academy enrollments, completion scheduling, and specialization state
+- academia research, publications, and professor progression
 - alchemy workspaces, recipes, and timed brew jobs
 - bases, storage transfer, and timed construction completion
 - academy clubs, memberships, and invitation flows
 - actor templates and concrete enemy spawns for PvE combats
+- NPC shops, tuition, and charity-fund economy hooks
 - inter-realm discovery, exchange rates, and migration workflow
 - dungeon macro AI for link pressure, anomalies, and node/resource drift
 - overworld encounter events and ambush escalation into combat
@@ -111,12 +113,14 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 - `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
 - `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
 - `lib/mmgo/academy` - education progression, timed enrollments, and specialization state
+- `lib/mmgo/academia` - research projects, publications, and professor state
 - `lib/mmgo/alchemy` - workspaces, recipes, and brewing jobs for potion crafting
 - `lib/mmgo/bases` - property ownership, construction, and protected base storage
 - `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
 - `lib/mmgo/actors` - reusable enemy/NPC actor templates and encounter spawns
 - `lib/mmgo/dungeons` - macro maintenance, link states, node overrides, extraction, and run state
 - `lib/mmgo/overworld` - road encounters, social choices, and ambush escalation
+- `lib/mmgo/npc_shops` - shop listings, NPC buy/sell, tuition, and charity flows
 - `lib/mmgo/federation` - remote realm registry, rulesets, exchange, and migration mechanics
 - `priv/realms/starter_realm_manifest.json` - starter realm file for non-code realm tweaking
 - `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations

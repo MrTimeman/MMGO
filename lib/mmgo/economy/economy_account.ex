@@ -7,7 +7,7 @@ defmodule MMGO.Economy.EconomyAccount do
   alias MMGO.Economy.LedgerEntry
   alias MMGO.Worlds.Realm
 
-  @owner_types [:treasury, :character, :escrow]
+  @owner_types [:treasury, :character, :escrow, :charity_fund]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -40,6 +40,7 @@ defmodule MMGO.Economy.EconomyAccount do
       :treasury -> validate_absence(changeset, :character_id)
       :character -> validate_required(changeset, [:character_id])
       :escrow -> validate_absence(changeset, :character_id)
+      :charity_fund -> validate_absence(changeset, :character_id)
       _other -> changeset
     end
   end
