@@ -1,6 +1,7 @@
 defmodule MMGO.Worlds do
   import Ecto.Query, warn: false
 
+  alias MMGO.Federation.Ruleset
   alias MMGO.Repo
   alias MMGO.Worlds.{Location, Realm, Route}
 
@@ -30,6 +31,23 @@ defmodule MMGO.Worlds do
 
   def change_realm(%Realm{} = realm, attrs \\ %{}) do
     Realm.changeset(realm, attrs)
+  end
+
+  def realm_ruleset(%Realm{} = realm), do: Ruleset.normalize(realm.ruleset)
+
+  def realm_ruleset(realm_id) when is_binary(realm_id),
+    do: realm_id |> get_realm!() |> realm_ruleset()
+
+  def magic_allowed_for_combat?(combat) do
+    location_kind = combat.metadata["location_kind"] || combat.metadata[:location_kind]
+
+    if is_nil(location_kind) do
+      true
+    else
+      combat.realm_id
+      |> realm_ruleset()
+      |> Ruleset.magic_allowed?(to_string(location_kind), combat.kind)
+    end
   end
 
   def list_locations_for_realm(realm_id) when is_binary(realm_id) do

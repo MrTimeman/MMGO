@@ -30,6 +30,8 @@ defmodule MMGOWeb.Router do
     pipe_through :api
 
     post "/telegram/webhook", TelegramWebhookController, :create
+    get "/federation/realm-manifest", FederationController, :manifest
+    post "/federation/import-migration", FederationController, :import_migration
   end
 
   # Enable LiveDashboard and Swoosh mailbox preview in development

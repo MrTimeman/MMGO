@@ -139,6 +139,8 @@ defmodule MMGO.PVP do
           role: "opponent"
         })
 
+      location_kind = location_kind(challenger.current_location_id)
+
       {:ok, %{combat: combat}} =
         Combat.create_duel(realm, %{
           participants: [
@@ -148,7 +150,9 @@ defmodule MMGO.PVP do
           metadata: %{
             duel_id: duel.id,
             challenger_character_id: challenger.id,
-            opponent_character_id: opponent.id
+            opponent_character_id: opponent.id,
+            location_id: challenger.current_location_id,
+            location_kind: location_kind
           }
         })
 
@@ -286,6 +290,9 @@ defmodule MMGO.PVP do
       Combat.active_combat_for_character(opponent.id) ->
         Repo.rollback(duel_changeset("opponent already has an active combat"))
 
+      challenger.current_location_id != opponent.current_location_id ->
+        Repo.rollback(duel_changeset("duel participants must be at the same location"))
+
       insufficient_funds?(challenger, duel.stake_amount) ->
         Repo.rollback(duel_changeset("challenger lacks the required stake"))
 
@@ -379,6 +386,14 @@ defmodule MMGO.PVP do
     |> where([character], character.id == ^character_id)
     |> lock("FOR UPDATE")
     |> Repo.one!()
+  end
+
+  defp location_kind(nil), do: nil
+
+  defp location_kind(location_id) do
+    MMGO.Worlds.get_location!(location_id).kind |> to_string()
+  rescue
+    Ecto.NoResultsError -> nil
   end
 
   defp tax_rate_bps do

@@ -41,6 +41,13 @@ config :mmgo, MMGO.AI.Providers.Gemini,
   api_base_url: "http://localhost:8082",
   api_key: "test-gemini-key"
 
+config :mmgo, MMGO.Federation,
+  freeze_game_days: 28,
+  level_retention_bps: 800,
+  xp_retention_bps: 700,
+  public_base_url: "http://localhost:4002",
+  import_token: "test-federation-token"
+
 # We don't run a server during test. If one is required,
 # you can enable the server option below.
 config :mmgo, MMGOWeb.Endpoint,

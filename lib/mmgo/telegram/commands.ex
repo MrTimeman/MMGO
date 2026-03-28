@@ -111,6 +111,9 @@ defmodule MMGO.Telegram.Commands do
        "/admin status",
        "/admin realm <slug>",
        "/admin sweep",
+       "/admin federation manifest",
+       "/admin federation register <manifest-url> [token]",
+       "/admin federation sync <realm-slug>",
        "/admin profile <handle>",
        "/admin crime <handle> <crime_type> <severity> [fine]"
      ]
@@ -215,8 +218,8 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
-  defp dispatch("realms", ["list"], character) do
-    realms = Federation.list_discoverable_realms(character.realm_id)
+  defp dispatch("realms", ["list"], _character) do
+    realms = Federation.list_remote_realms()
 
     if realms == [] do
       {:ok, "No discoverable realms."}
@@ -227,7 +230,8 @@ defmodule MMGO.Telegram.Commands do
            Enum.map(realms, fn realm ->
              currency = realm.currency_code || "unknown"
              endpoint = realm.public_endpoint || "no-endpoint"
-             "- #{realm.slug}: #{realm.name} (#{currency}, #{endpoint})"
+             population = realm.population_hint || 1
+             "- #{realm.slug}: #{realm.name} (#{currency}, pop #{population}, #{endpoint})"
            end),
          "\n"
        )}
@@ -236,12 +240,13 @@ defmodule MMGO.Telegram.Commands do
 
   defp dispatch("realms", ["quote", realm_slug, amount_raw], character) do
     amount = parse_positive_integer(amount_raw, 0)
+    origin_realm = Worlds.get_realm!(character.realm_id)
 
-    with %{} = destination_realm <- Worlds.get_realm_by_slug(realm_slug),
+    with %{} = destination_realm <- Federation.get_remote_realm_by_slug(realm_slug),
          {:ok, quote} <-
-           Federation.quote_exchange(character.realm_id, destination_realm.id, amount) do
+           Federation.quote_remote_exchange(origin_realm, destination_realm, amount) do
       {:ok,
-       "Exchange quote: #{amount} #{quote.exchange_rate.source_realm.currency_code || "src"} -> #{quote.converted_amount} #{quote.exchange_rate.destination_realm.currency_code || "dst"}."}
+       "Exchange quote: #{amount} #{origin_realm.currency_code || "src"} -> #{quote.converted_amount} #{destination_realm.currency_code || "dst"}. Source pop #{quote.source_population}, destination pop #{quote.destination_population}."}
     else
       nil ->
         {:ok, "No realm with slug #{realm_slug} found."}
@@ -254,11 +259,11 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("realms", ["migrate", realm_slug, amount_raw], character) do
     amount = parse_positive_integer(amount_raw, 0)
 
-    with %{} = destination_realm <- Worlds.get_realm_by_slug(realm_slug),
-         {:ok, %{migration: migration, destination_character: destination_character}} <-
+    with %{} = destination_realm <- Federation.get_remote_realm_by_slug(realm_slug),
+         {:ok, %{migration: migration, remote_response: remote_response}} <-
            Federation.start_migration(character, destination_realm, amount) do
       {:ok,
-       "Migration started to #{destination_realm.name}. New character #{destination_character.name}. Freeze ends #{Formatter.datetime(migration.freeze_ends_at)}."}
+       "Migration started to #{destination_realm.name}. Remote character #{remote_response["destination_character_name"]}. Freeze ends #{Formatter.datetime(migration.freeze_ends_at)}."}
     else
       nil ->
         {:ok, "No realm with slug #{realm_slug} found."}
@@ -278,7 +283,11 @@ defmodule MMGO.Telegram.Commands do
        Enum.join(
          ["Realm migrations:"] ++
            Enum.map(migrations, fn migration ->
-             "- #{migration.id}: #{migration.origin_realm.slug} -> #{migration.destination_realm.slug} (#{migration.status})"
+             destination_slug =
+               (migration.remote_realm && migration.remote_realm.slug) ||
+                 (migration.destination_realm && migration.destination_realm.slug) || "unknown"
+
+             "- #{migration.id}: #{migration.origin_realm.slug} -> #{destination_slug} (#{migration.status})"
            end),
          "\n"
        )}
@@ -1351,6 +1360,67 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp dispatch("admin", ["federation", "manifest"], character) do
+    if operator_authorized?(character) do
+      manifest = Federation.export_realm_manifest(Federation.local_realm!())
+
+      {:ok,
+       Enum.join(
+         [
+           "Local realm manifest:",
+           "Slug: #{manifest.slug}",
+           "Name: #{manifest.name}",
+           "Currency: #{manifest.currency_code || "unknown"}",
+           "Endpoint: #{manifest.public_endpoint || "unset"}",
+           "Population: #{manifest.population_hint}",
+           "Magic scope: #{manifest.ruleset["magic_scope"]}"
+         ],
+         "\n"
+       )}
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", ["federation", "register", manifest_url], character) do
+    dispatch("admin", ["federation", "register", manifest_url, ""], character)
+  end
+
+  defp dispatch("admin", ["federation", "register", manifest_url, access_token], character) do
+    if operator_authorized?(character) do
+      token = if access_token == "", do: nil, else: access_token
+
+      case Federation.register_remote_realm(manifest_url, token) do
+        {:ok, remote_realm} ->
+          {:ok,
+           "Registered remote realm #{remote_realm.slug} at #{remote_realm.public_endpoint}."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not register remote realm: #{format_changeset(changeset)}"}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", ["federation", "sync", realm_slug], character) do
+    if operator_authorized?(character) do
+      with %{} = remote_realm <- Federation.get_remote_realm_by_slug(realm_slug),
+           {:ok, updated_remote_realm} <- Federation.sync_remote_realm(remote_realm) do
+        {:ok,
+         "Synced remote realm #{updated_remote_realm.slug}. Population #{updated_remote_realm.population_hint}."}
+      else
+        nil ->
+          {:ok, "No remote realm with slug #{realm_slug} found."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not sync remote realm: #{format_changeset(changeset)}"}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
   defp dispatch("admin", ["profile", handle], character) do
     if operator_authorized?(character) do
       with %{} = target <- Accounts.get_character_by_handle(character.realm_id, handle) do
@@ -1411,7 +1481,7 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("admin", _args, _character),
     do:
       {:ok,
-       "Usage: /admin status | /admin realm <slug> | /admin sweep | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
+       "Usage: /admin status | /admin realm <slug> | /admin sweep | /admin federation manifest | /admin federation register <manifest-url> [token] | /admin federation sync <realm-slug> | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
 
   defp dispatch(_command, _args, _character) do
     {:ok, "Unknown command. Use /help."}

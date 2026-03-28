@@ -1,26 +1,15 @@
-defmodule MMGO.Telegram.RealmCommandsTest do
+defmodule MMGO.FederationRemoteTest do
   use MMGO.DataCase, async: false
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Economy
   alias MMGO.Federation
   alias MMGO.Repo
-  alias MMGO.Telegram.Commands
   alias MMGO.Worlds
   alias MMGO.Worlds.Realm
 
   setup do
     bypass = Bypass.open()
-    original_operator_config = Application.get_env(:mmgo, MMGO.Operator)
-    Application.put_env(:mmgo, MMGO.Operator, handles: ["traveler"])
-
-    on_exit(fn ->
-      if original_operator_config do
-        Application.put_env(:mmgo, MMGO.Operator, original_operator_config)
-      else
-        Application.delete_env(:mmgo, MMGO.Operator)
-      end
-    end)
 
     {:ok, origin_realm} =
       Worlds.create_realm(%{
@@ -29,7 +18,8 @@ defmodule MMGO.Telegram.RealmCommandsTest do
         is_default: true,
         currency_code: "GLD",
         allow_migration: true,
-        public_endpoint: "http://localhost:4002"
+        public_endpoint: "http://localhost:4002",
+        ruleset: %{"magic_scope" => "tower_and_dungeon"}
       })
 
     {:ok, origin_city} =
@@ -48,7 +38,8 @@ defmodule MMGO.Telegram.RealmCommandsTest do
       |> Repo.update!()
 
     {:ok, _origin_treasury} = Economy.ensure_treasury_account(origin_realm, 1_000)
-    character = character_fixture(origin_realm, origin_city, "traveler", "Traveler")
+
+    character = character_fixture(origin_realm, origin_city, "migrant", "Migrant")
     {:ok, _funding} = Economy.grant_from_treasury(origin_realm, character, 200)
 
     remote_manifest = %{
@@ -58,7 +49,7 @@ defmodule MMGO.Telegram.RealmCommandsTest do
       "ruleset_version" => 1,
       "currency_code" => "SLV",
       "public_endpoint" => "http://localhost:#{bypass.port}",
-      "public_description" => "A test destination realm",
+      "public_description" => "A remote realm",
       "operator_name" => "Silver Keeper",
       "allow_migration" => true,
       "population_hint" => 42,
@@ -73,55 +64,66 @@ defmodule MMGO.Telegram.RealmCommandsTest do
 
     Bypass.stub(bypass, "POST", "/api/federation/import-migration", fn conn ->
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer remote-token"]
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "migrant"
 
       Plug.Conn.resp(
         conn,
         200,
         Jason.encode!(%{
           "destination_character_id" => "remote-char-1",
-          "destination_character_name" => "Traveler Remote",
+          "destination_character_name" => "Migrant Remote",
           "destination_character_ref" => "remote-ref-1"
         })
       )
     end)
 
-    {:ok, _remote_realm} =
+    %{bypass: bypass, origin_realm: origin_realm, character: character}
+  end
+
+  test "register_remote_realm/2 stores a remote realm from its manifest", %{bypass: bypass} do
+    assert {:ok, remote_realm} =
+             Federation.register_remote_realm(
+               "http://localhost:#{bypass.port}/manifest",
+               "remote-token"
+             )
+
+    assert remote_realm.slug == "silver-sea"
+    assert remote_realm.ruleset["magic_scope"] == "global"
+    assert remote_realm.population_hint == 42
+  end
+
+  test "quote_remote_exchange/3 discounts small-population realms", %{
+    origin_realm: origin_realm,
+    bypass: bypass
+  } do
+    {:ok, remote_realm} =
       Federation.register_remote_realm("http://localhost:#{bypass.port}/manifest", "remote-token")
 
-    %{character: character, bypass: bypass}
+    assert {:ok, quote} = Federation.quote_remote_exchange(origin_realm, remote_realm, 100)
+    assert quote.source_population == 1
+    assert quote.destination_population == 42
+    assert quote.converted_amount == 2
   end
 
-  test "/realms commands expose discovery, quote, and migration", %{character: character} do
-    assert {:ok, list_text} = Commands.process_message(character, %{"text" => "/realms list"})
-    assert list_text =~ "silver-sea"
+  test "start_migration/4 to a remote realm freezes the origin character and records a remote migration",
+       %{character: character, bypass: bypass} do
+    {:ok, remote_realm} =
+      Federation.register_remote_realm("http://localhost:#{bypass.port}/manifest", "remote-token")
 
-    assert {:ok, quote_text} =
-             Commands.process_message(character, %{"text" => "/realms quote silver-sea 100"})
+    assert {:ok,
+            %{migration: migration, origin_character: frozen_origin, remote_response: response}} =
+             Federation.start_migration(character, remote_realm, 100,
+               started_at: ~U[2026-03-28 12:00:00Z],
+               freeze_game_days: 1
+             )
 
-    assert quote_text =~ "100 GLD"
-    assert quote_text =~ "SLV"
-
-    assert {:ok, migrate_text} =
-             Commands.process_message(character, %{"text" => "/realms migrate silver-sea 100"})
-
-    assert migrate_text =~ "Migration started"
-
-    assert {:ok, migrations_text} =
-             Commands.process_message(character, %{"text" => "/realms migrations"})
-
-    assert migrations_text =~ "canonical -> silver-sea"
-  end
-
-  test "/admin federation commands register sync and show manifest", %{character: character} do
-    assert {:ok, manifest_text} =
-             Commands.process_message(character, %{"text" => "/admin federation manifest"})
-
-    assert manifest_text =~ "Local realm manifest"
-
-    assert {:ok, sync_text} =
-             Commands.process_message(character, %{"text" => "/admin federation sync silver-sea"})
-
-    assert sync_text =~ "Synced remote realm"
+    assert migration.mode == :remote
+    assert migration.remote_realm_id == remote_realm.id
+    assert migration.destination_character_name == "Migrant Remote"
+    assert migration.destination_external_ref == "remote-ref-1"
+    assert frozen_origin.status == :frozen
+    assert response["destination_character_ref"] == "remote-ref-1"
   end
 
   defp character_fixture(realm, location, handle, name) do

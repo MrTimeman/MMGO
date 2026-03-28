@@ -47,7 +47,9 @@ config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
 config :mmgo, MMGO.Federation,
   freeze_game_days: 28,
   level_retention_bps: 800,
-  xp_retention_bps: 700
+  xp_retention_bps: 700,
+  public_base_url: nil,
+  import_token: nil
 
 # Configure the endpoint
 config :mmgo, MMGOWeb.Endpoint,

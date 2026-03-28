@@ -103,7 +103,7 @@ iex -S mix phx.server
 - `lib/mmgo/alchemy` - workspaces, recipes, and brewing jobs for potion crafting
 - `lib/mmgo/bases` - property ownership, construction, and protected base storage
 - `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
-- `lib/mmgo/federation` - realm discovery, exchange rates, and migration mechanics
+- `lib/mmgo/federation` - remote realm registry, rulesets, exchange, and migration mechanics
 - `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
 - `lib/mmgo/market` - legal listings, escrowed inventory, and taxed settlement
 - `lib/mmgo/black_market` - untaxed unsafe deals with manual delivery and scam/default risk

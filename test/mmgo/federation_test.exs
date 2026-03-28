@@ -78,12 +78,10 @@ defmodule MMGO.FederationTest do
     }
   end
 
-  test "list_discoverable_realms/1 excludes the origin realm", %{
-    origin_realm: origin_realm,
-    destination_realm: destination_realm
+  test "list_discoverable_realms/1 returns no remote realms when none are registered", %{
+    origin_realm: origin_realm
   } do
-    realms = Federation.list_discoverable_realms(origin_realm.id)
-    assert Enum.map(realms, & &1.id) == [destination_realm.id]
+    assert Federation.list_discoverable_realms(origin_realm.id) == []
   end
 
   test "quote_exchange/3 uses configured exchange rates", %{
@@ -151,7 +149,8 @@ defmodule MMGO.FederationTest do
     assert manifest.slug == "silver-sea"
     assert manifest.currency_code == "SLV"
     assert manifest.public_endpoint == "https://silver-sea.test"
-    assert manifest.population_hint == 42
+    assert manifest.population_hint == 1
+    assert manifest.ruleset["magic_scope"] == "tower_and_dungeon"
   end
 
   defp character_fixture(realm, location, handle, name) do

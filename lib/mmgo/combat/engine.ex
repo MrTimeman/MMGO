@@ -2,6 +2,7 @@ defmodule MMGO.Combat.Engine do
   alias MMGO.Combat.{Action, Combat, Participant, RNG, Turn}
   alias MMGO.Inventory.{InventoryItem, ItemAction}
   alias MMGO.Spells.{Runtime, Spell, SpellEffect}
+  alias MMGO.Worlds
 
   def resolve_turn(%Combat{} = combat, %Turn{} = turn, participants, actions) do
     participants_by_id = Map.new(participants, &{&1.id, &1})
@@ -240,6 +241,18 @@ defmodule MMGO.Combat.Engine do
         {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "invalid_action", %{"participant_id" => participant.id})
+           | events
+         ]}
+
+      not Worlds.magic_allowed_for_combat?(combat) ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "magic_suppressed", %{
+             "participant_id" => participant.id,
+             "spell_id" => action.spell_id,
+             "location_kind" =>
+               combat.metadata["location_kind"] || combat.metadata[:location_kind]
+           })
            | events
          ]}
 

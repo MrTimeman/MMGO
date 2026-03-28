@@ -166,6 +166,7 @@ defmodule MMGO.Dungeons do
               "dungeon_id" => dungeon.id,
               "node_id" => encounter.node_id,
               "encounter_kind" => encounter.encounter_kind,
+              "location_kind" => "dungeon",
               "started_at" => DateTime.to_iso8601(now)
             }
           }

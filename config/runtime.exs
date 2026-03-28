@@ -88,7 +88,10 @@ config :mmgo, MMGO.Federation,
     String.to_integer(
       System.get_env("FEDERATION_XP_RETENTION_BPS") ||
         to_string(federation_config[:xp_retention_bps] || 700)
-    )
+    ),
+  public_base_url:
+    System.get_env("FEDERATION_PUBLIC_BASE_URL") || federation_config[:public_base_url],
+  import_token: System.get_env("FEDERATION_IMPORT_TOKEN") || federation_config[:import_token]
 
 if config_env() == :prod do
   database_url =

@@ -9,10 +9,37 @@ defmodule MMGO.Repo.Migrations.CreateFederationSystem do
       add :operator_name, :string
       add :allow_migration, :boolean, null: false, default: true
       add :population_hint, :integer
+      add :ruleset, :map, null: false, default: %{}
       add :entry_location_id, references(:locations, type: :binary_id, on_delete: :nilify_all)
     end
 
     create index(:realms, [:entry_location_id])
+
+    create table(:federation_remote_realms, primary_key: false) do
+      add :id, :binary_id, primary_key: true
+      add :slug, :string, null: false
+      add :name, :string, null: false
+      add :status, :string, null: false, default: "active"
+      add :manifest_url, :text, null: false
+      add :public_endpoint, :text, null: false
+      add :currency_code, :string, null: false
+      add :public_description, :text
+      add :operator_name, :string
+      add :allow_migration, :boolean, null: false, default: true
+      add :population_hint, :integer, null: false, default: 1
+      add :ruleset_version, :integer, null: false, default: 1
+      add :ruleset, :map, null: false, default: %{}
+      add :entry_location_slug, :string
+      add :access_token, :text
+      add :last_synced_at, :utc_datetime_usec
+      add :metadata, :map, null: false, default: %{}
+
+      timestamps(type: :utc_datetime_usec)
+    end
+
+    create unique_index(:federation_remote_realms, [:slug])
+    create unique_index(:federation_remote_realms, [:manifest_url])
+    create unique_index(:federation_remote_realms, [:public_endpoint])
 
     create table(:federation_exchange_rates, primary_key: false) do
       add :id, :binary_id, primary_key: true
@@ -20,8 +47,9 @@ defmodule MMGO.Repo.Migrations.CreateFederationSystem do
       add :source_realm_id, references(:realms, type: :binary_id, on_delete: :delete_all),
         null: false
 
-      add :destination_realm_id, references(:realms, type: :binary_id, on_delete: :delete_all),
-        null: false
+      add :destination_realm_id,
+          references(:realms, type: :binary_id, on_delete: :delete_all),
+          null: false
 
       add :numerator, :bigint, null: false
       add :denominator, :bigint, null: false
@@ -44,15 +72,18 @@ defmodule MMGO.Repo.Migrations.CreateFederationSystem do
       add :origin_realm_id, references(:realms, type: :binary_id, on_delete: :restrict),
         null: false
 
-      add :destination_realm_id, references(:realms, type: :binary_id, on_delete: :restrict),
-        null: false
+      add :destination_realm_id, references(:realms, type: :binary_id, on_delete: :restrict)
+
+      add :remote_realm_id,
+          references(:federation_remote_realms, type: :binary_id, on_delete: :nilify_all)
 
       add :origin_character_id, references(:characters, type: :binary_id, on_delete: :restrict),
         null: false
 
       add :destination_character_id,
-          references(:characters, type: :binary_id, on_delete: :restrict), null: false
+          references(:characters, type: :binary_id, on_delete: :restrict)
 
+      add :mode, :string, null: false, default: "local"
       add :status, :string, null: false, default: "active"
       add :currency_amount, :bigint, null: false
       add :converted_currency_amount, :bigint, null: false
@@ -64,6 +95,8 @@ defmodule MMGO.Repo.Migrations.CreateFederationSystem do
       add :freeze_ends_at, :utc_datetime_usec, null: false
       add :completed_at, :utc_datetime_usec
       add :passive_xp_awarded, :bigint, null: false, default: 0
+      add :destination_character_name, :string, null: false
+      add :destination_external_ref, :string
       add :metadata, :map, null: false, default: %{}
 
       timestamps(type: :utc_datetime_usec)
