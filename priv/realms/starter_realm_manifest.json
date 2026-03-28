@@ -1,0 +1,25 @@
+{
+  "slug": "starter-realm",
+  "name": "Starter Realm",
+  "status": "active",
+  "ruleset_version": 1,
+  "currency_code": "GLD",
+  "public_endpoint": "https://example-realm.test",
+  "public_description": "A starter realm manifest you can copy and tweak.",
+  "operator_name": "Realm Operator",
+  "allow_migration": true,
+  "population_hint": 100,
+  "entry_location_slug": "capital-city",
+  "ruleset": {
+    "magic_scope": "tower_and_dungeon",
+    "overworld_pvp_enabled": true,
+    "dungeon_pvp_enabled": true,
+    "legal_market_enabled": true,
+    "black_market_enabled": true,
+    "travel_food_units_per_day": 1,
+    "carry_capacity_scale_bps": 1000
+  },
+  "metadata": {
+    "notes": "Copy this file, edit fields, then run mix mmgo.realm.validate and mix mmgo.realm.apply"
+  }
+}

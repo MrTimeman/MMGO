@@ -79,6 +79,14 @@ mix precommit
 iex -S mix phx.server
 ```
 
+Realm manifest tools:
+
+```bash
+mix mmgo.realm.validate priv/realms/starter_realm_manifest.json
+mix mmgo.realm.apply priv/realms/starter_realm_manifest.json --set-default
+mix mmgo.realm.export canonical priv/realms/canonical_export.json
+```
+
 ## Key endpoints
 
 - `GET /healthz`
@@ -104,6 +112,7 @@ iex -S mix phx.server
 - `lib/mmgo/bases` - property ownership, construction, and protected base storage
 - `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
 - `lib/mmgo/federation` - remote realm registry, rulesets, exchange, and migration mechanics
+- `priv/realms/starter_realm_manifest.json` - starter realm file for non-code realm tweaking
 - `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
 - `lib/mmgo/market` - legal listings, escrowed inventory, and taxed settlement
 - `lib/mmgo/black_market` - untaxed unsafe deals with manual delivery and scam/default risk
