@@ -11,6 +11,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Inventory
   alias MMGO.Operator
   alias MMGO.Parties
+  alias MMGO.PVP
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Survival
@@ -55,6 +56,11 @@ defmodule MMGO.Telegram.Commands do
        "/scavenge <resource_code> [quantity]",
        "/party create [name]",
        "/party status",
+       "/duel challenge <handle> <stake>",
+       "/duel accept <duel-id>",
+       "/duel reject <duel-id>",
+       "/duel cancel <duel-id>",
+       "/duel status",
        "/expedition start",
        "/expedition status",
        "/dungeon enter",
@@ -308,6 +314,95 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("party", _args, _character),
     do: {:ok, "Usage: /party create [name] | /party status"}
 
+  defp dispatch("duel", ["challenge", handle, stake_raw], character) do
+    stake = parse_positive_integer(stake_raw, 0)
+
+    with %{} = opponent <- Accounts.get_character_by_handle(character.realm_id, handle),
+         {:ok, duel} <- PVP.challenge_duel(character, opponent, stake) do
+      {:ok, "Duel challenge sent to #{handle}. Duel id #{duel.id}. Stake #{duel.stake_amount}."}
+    else
+      nil ->
+        {:ok, "No character with handle #{handle} found in your realm."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not challenge duel: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("duel", ["accept", duel_id], character) do
+    with %{} = duel <- load_owned_duel(duel_id, character.id, :pending),
+         true <- duel.opponent_character_id == character.id,
+         {:ok, updated_duel} <- PVP.accept_duel(duel) do
+      {:ok, "Duel accepted. Combat #{updated_duel.combat_id} is ready."}
+    else
+      nil ->
+        {:ok, "No matching pending duel found."}
+
+      false ->
+        {:ok, "Only the challenged opponent can accept this duel."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not accept duel: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("duel", ["reject", duel_id], character) do
+    with %{} = duel <- load_owned_duel(duel_id, character.id, :pending),
+         true <- duel.opponent_character_id == character.id,
+         {:ok, _updated_duel} <- PVP.reject_duel(duel, character) do
+      {:ok, "Duel rejected."}
+    else
+      nil ->
+        {:ok, "No matching pending duel found."}
+
+      false ->
+        {:ok, "Only the challenged opponent can reject this duel."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not reject duel: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("duel", ["cancel", duel_id], character) do
+    with %{} = duel <- load_owned_duel(duel_id, character.id),
+         {:ok, _updated_duel} <- PVP.cancel_duel(duel, character) do
+      {:ok, "Duel cancelled."}
+    else
+      nil ->
+        {:ok, "No matching duel found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not cancel duel: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("duel", ["status"], character) do
+    duels = PVP.list_open_duels_for_character(character.id)
+
+    if duels == [] do
+      {:ok, "No open duels."}
+    else
+      {:ok,
+       Enum.join(
+         ["Open duels:"] ++
+           Enum.map(duels, fn duel ->
+             opponent_id =
+               if duel.challenger_character_id == character.id,
+                 do: duel.opponent_character_id,
+                 else: duel.challenger_character_id
+
+             "- #{duel.id}: status #{duel.status}, opponent ##{opponent_id}, stake #{duel.stake_amount}"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("duel", _args, _character),
+    do:
+      {:ok,
+       "Usage: /duel challenge <handle> <stake> | /duel accept <duel-id> | /duel reject <duel-id> | /duel cancel <duel-id> | /duel status"}
+
   defp dispatch("expedition", ["start"], character) do
     with %{} = party <- Parties.active_party_for_character(character.id),
          {:ok, %{expedition: expedition}} <- Parties.start_expedition(party) do
@@ -524,6 +619,13 @@ defmodule MMGO.Telegram.Commands do
           {:ok, _result} = Dungeons.sync_encounter_combat(finished_combat)
           {:ok, combat_resolution_text(finished_combat)}
 
+        %{status: :finished, kind: :duel} = finished_combat ->
+          if finished_combat.metadata["duel_id"] || finished_combat.metadata[:duel_id] do
+            {:ok, _result} = PVP.settle_duel_from_combat(finished_combat)
+          end
+
+          {:ok, combat_resolution_text(finished_combat)}
+
         finished_combat ->
           {:ok, combat_resolution_text(finished_combat)}
       end
@@ -737,6 +839,19 @@ defmodule MMGO.Telegram.Commands do
       {integer, ""} when integer > 0 -> integer
       _ -> default
     end
+  end
+
+  defp load_owned_duel(duel_id, character_id, status \\ nil) do
+    duel = PVP.get_duel!(duel_id)
+
+    cond do
+      character_id not in [duel.challenger_character_id, duel.opponent_character_id] -> nil
+      is_nil(status) -> duel
+      duel.status == status -> duel
+      true -> nil
+    end
+  rescue
+    Ecto.NoResultsError -> nil
   end
 
   defp format_changeset(%Changeset{} = changeset) do

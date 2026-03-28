@@ -1,4 +1,6 @@
 defmodule MMGO.Accounts do
+  import Ecto.Query, warn: false
+
   alias Ecto.Multi
   alias MMGO.Accounts.{Account, Character, TelegramIdentity}
   alias MMGO.Repo
@@ -7,6 +9,16 @@ defmodule MMGO.Accounts do
 
   def get_account!(id), do: Repo.get!(Account, id)
   def get_character!(id), do: Repo.get!(Character, id)
+
+  def get_character_by_handle(realm_id, handle) when is_binary(realm_id) and is_binary(handle) do
+    from(character in Character,
+      join: account in Account,
+      on: account.id == character.account_id,
+      where: character.realm_id == ^realm_id and account.handle == ^handle,
+      select: character
+    )
+    |> Repo.one()
+  end
 
   def get_account_by_telegram_user_id(telegram_user_id) when is_integer(telegram_user_id) do
     TelegramIdentity

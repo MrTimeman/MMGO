@@ -42,6 +42,8 @@ config :mmgo, MMGO.AI.Providers.Gemini,
 
 config :mmgo, MMGO.Operator, handles: []
 
+config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
+
 # Configure the endpoint
 config :mmgo, MMGOWeb.Endpoint,
   url: [host: "localhost"],

@@ -63,6 +63,14 @@ operator_handles =
 
 config :mmgo, MMGO.Operator, handles: operator_handles
 
+pvp_config = Application.get_env(:mmgo, MMGO.PVP, [])
+
+config :mmgo, MMGO.PVP,
+  duel_tax_rate_bps:
+    String.to_integer(
+      System.get_env("DUEL_TAX_RATE_BPS") || to_string(pvp_config[:duel_tax_rate_bps] || 500)
+    )
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

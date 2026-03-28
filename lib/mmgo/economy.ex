@@ -81,6 +81,17 @@ defmodule MMGO.Economy do
     end
   end
 
+  def create_escrow_account(%Realm{} = realm, metadata \\ %{}) do
+    %EconomyAccount{}
+    |> EconomyAccount.changeset(%{
+      realm_id: realm.id,
+      owner_type: :escrow,
+      current_balance: 0,
+      metadata: normalize_metadata(metadata)
+    })
+    |> Repo.insert()
+  end
+
   def transfer(
         %EconomyAccount{} = debit_account,
         %EconomyAccount{} = credit_account,
