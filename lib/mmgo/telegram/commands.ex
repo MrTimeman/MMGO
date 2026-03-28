@@ -16,6 +16,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Operator
+  alias MMGO.Overworld
   alias MMGO.Parties
   alias MMGO.PVP
   alias MMGO.Reputation
@@ -56,6 +57,12 @@ defmodule MMGO.Telegram.Commands do
        "/status",
        "/inventory",
        "/routes",
+       "/road encounter <handle>",
+       "/road status",
+       "/road greet <encounter-id>",
+       "/road trade <encounter-id>",
+       "/road attack <encounter-id>",
+       "/road avoid <encounter-id>",
        "/travel <location-slug>",
        "/journey",
        "/realms list",
@@ -188,6 +195,60 @@ defmodule MMGO.Telegram.Commands do
     else
       nil -> {:ok, "You are not currently placed at a location."}
     end
+  end
+
+  defp dispatch("road", ["encounter", handle], character) do
+    with %{} = target <- Accounts.get_character_by_handle(character.realm_id, handle),
+         {:ok, encounter} <- Overworld.create_encounter(character, target) do
+      {:ok, "Overworld encounter created: #{encounter.id}. Use /road status."}
+    else
+      nil ->
+        {:ok, "No character with handle #{handle} found in your realm."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not create encounter: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("road", ["status"], character) do
+    encounters = Overworld.list_open_encounters_for_character(character.id)
+
+    if encounters == [] do
+      {:ok, "No active overworld encounters."}
+    else
+      {:ok,
+       Enum.join(
+         ["Overworld encounters:"] ++
+           Enum.map(encounters, fn encounter ->
+             other_character =
+               if encounter.initiator_character_id == character.id,
+                 do: encounter.target_character.name,
+                 else: encounter.initiator_character.name
+
+             "- #{encounter.id}: #{encounter.status} with #{other_character} at #{encounter.location.name}"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("road", [action, encounter_id], character)
+       when action in ["greet", "trade", "attack", "avoid"] do
+    with %{} = encounter <- load_overworld_encounter(encounter_id, character.id),
+         {:ok, result} <- Overworld.respond(encounter, character, action) do
+      {:ok, road_response_text(action, result)}
+    else
+      nil ->
+        {:ok, "No matching overworld encounter found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not resolve overworld action: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("road", _args, _character) do
+    {:ok,
+     "Usage: /road encounter <handle> | /road status | /road greet <encounter-id> | /road trade <encounter-id> | /road attack <encounter-id> | /road avoid <encounter-id>"}
   end
 
   defp dispatch("travel", [destination_slug], character) do
@@ -1617,6 +1678,21 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp road_response_text(_action, %{combat: combat}),
+    do: "Overworld combat started: #{combat.id}. Use /combat status."
+
+  defp road_response_text("greet", %{encounter: encounter}),
+    do: "You greeted the other traveler. Encounter status: #{encounter.status}."
+
+  defp road_response_text("trade", %{encounter: encounter}),
+    do: "You proposed trade. Encounter status: #{encounter.status}."
+
+  defp road_response_text("avoid", %{encounter: encounter}),
+    do: "You avoided the encounter. Encounter status: #{encounter.status}."
+
+  defp road_response_text(_action, %{encounter: encounter}),
+    do: "Encounter updated: #{encounter.status}."
+
   defp encounter_line(nil), do: "none"
   defp encounter_line(encounter), do: "#{encounter.encounter_kind} (#{encounter.status})"
 
@@ -1727,6 +1803,18 @@ defmodule MMGO.Telegram.Commands do
   defp load_storage_item_for_base(storage_item_id, base_id) do
     storage_item = Bases.get_storage_item!(storage_item_id)
     if storage_item.base_id == base_id, do: storage_item, else: nil
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_overworld_encounter(encounter_id, character_id) do
+    encounter = Overworld.get_encounter!(encounter_id)
+
+    if character_id in [encounter.initiator_character_id, encounter.target_character_id] do
+      encounter
+    else
+      nil
+    end
   rescue
     Ecto.NoResultsError -> nil
   end

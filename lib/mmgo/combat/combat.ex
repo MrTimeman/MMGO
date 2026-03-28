@@ -6,7 +6,7 @@ defmodule MMGO.Combat.Combat do
   alias MMGO.Combat.{Event, Participant, Turn}
   alias MMGO.Worlds.Realm
 
-  @kinds [:duel, :dungeon_encounter]
+  @kinds [:duel, :dungeon_encounter, :overworld_encounter]
   @statuses [:forming, :active_turn, :locked, :resolving, :resolved, :finished]
 
   @primary_key {:id, :binary_id, autogenerate: true}

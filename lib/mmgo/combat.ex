@@ -36,6 +36,10 @@ defmodule MMGO.Combat do
     create_combat_instance(realm, :dungeon_encounter, attrs)
   end
 
+  def create_overworld_encounter(%Realm{} = realm, attrs) when is_map(attrs) do
+    create_combat_instance(realm, :overworld_encounter, attrs)
+  end
+
   defp create_combat_instance(%Realm{} = realm, kind, attrs) when is_map(attrs) do
     participant_attrs = Map.get(attrs, :participants) || Map.get(attrs, "participants") || []
     sides = build_sides(attrs, participant_attrs)

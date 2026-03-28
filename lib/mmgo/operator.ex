@@ -20,6 +20,7 @@ defmodule MMGO.Operator do
   alias MMGO.Federation.Migration
   alias MMGO.Market.Listing
   alias MMGO.Notifications.Notification
+  alias MMGO.Overworld.Encounter
   alias MMGO.Operator.AuditEvent
   alias MMGO.Parties.Expedition
   alias MMGO.Reputation.{CrimeRecord, Profile}
@@ -50,6 +51,7 @@ defmodule MMGO.Operator do
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
       active_extractions: count_active(Extraction),
+      active_overworld_encounters: count_active(Encounter),
       active_combats: count_combat_active(),
       active_market_listings: count_active(Listing),
       active_market_bans: count_active_market_bans(),
@@ -182,6 +184,14 @@ defmodule MMGO.Operator do
             join: run in assoc(extraction, :run),
             join: expedition in assoc(run, :expedition),
             where: expedition.realm_id == ^realm.id and extraction.status == :active
+          ),
+          :count,
+          :id
+        ),
+      active_overworld_encounters:
+        Repo.aggregate(
+          from(encounter in Encounter,
+            where: encounter.realm_id == ^realm.id and encounter.status in [:pending, :active]
           ),
           :count,
           :id
