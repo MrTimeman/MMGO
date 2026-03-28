@@ -12,7 +12,9 @@ defmodule MMGO.Operator do
   alias MMGO.Combat.Combat
   alias MMGO.Crafting
   alias MMGO.Crafting.CraftJob
+  alias MMGO.Dungeons
   alias MMGO.Dungeons.Run
+  alias MMGO.Dungeons.Extraction
   alias MMGO.Economy.EconomyAccount
   alias MMGO.Federation
   alias MMGO.Federation.Migration
@@ -47,6 +49,7 @@ defmodule MMGO.Operator do
       active_scavenge_attempts: count_active(Attempt),
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
+      active_extractions: count_active(Extraction),
       active_combats: count_combat_active(),
       active_market_listings: count_active(Listing),
       active_market_bans: count_active_market_bans(),
@@ -173,6 +176,16 @@ defmodule MMGO.Operator do
           :count,
           :id
         ),
+      active_extractions:
+        Repo.aggregate(
+          from(extraction in Extraction,
+            join: run in assoc(extraction, :run),
+            join: expedition in assoc(run, :expedition),
+            where: expedition.realm_id == ^realm.id and extraction.status == :active
+          ),
+          :count,
+          :id
+        ),
       active_combats:
         Repo.aggregate(
           from(combat in Combat,
@@ -239,6 +252,7 @@ defmodule MMGO.Operator do
       craft_jobs = Crafting.complete_due_craft_jobs(now)
       bases = Bases.complete_due_base_builds(now)
       migrations = Federation.complete_due_migrations(now)
+      extractions = Dungeons.complete_due_extractions(now)
       attempts = Scavenging.complete_due_attempts(now)
       refreshed_caches = Scavenging.refresh_due_resource_caches(now)
 
@@ -248,6 +262,7 @@ defmodule MMGO.Operator do
         completed_brew_jobs: count_ok(brew_jobs),
         completed_craft_jobs: count_ok(craft_jobs),
         completed_bases: count_ok(bases),
+        completed_extractions: count_ok(extractions),
         completed_migrations: count_ok(migrations),
         completed_attempts: count_ok(attempts),
         refreshed_resource_caches: length(refreshed_caches)

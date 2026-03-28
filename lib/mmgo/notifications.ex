@@ -199,6 +199,31 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_extraction_completed(%Character{} = character, run, extraction_type) do
+    enqueue(
+      character,
+      :dungeon_extraction_completed,
+      %{
+        run_id: run.id,
+        extraction_type: to_string(extraction_type),
+        status: to_string(run.status)
+      },
+      dedupe_key: "dungeon-extraction-completed:#{run.id}:#{extraction_type}"
+    )
+  end
+
+  def notify_run_failed(%Character{} = character, run, lost_item_count) do
+    enqueue(
+      character,
+      :dungeon_run_failed,
+      %{
+        run_id: run.id,
+        lost_item_count: lost_item_count
+      },
+      dedupe_key: "dungeon-run-failed:#{run.id}:#{character.id}"
+    )
+  end
+
   def notify_club_invitation(%Character{} = character, invitation, club) do
     enqueue(
       character,

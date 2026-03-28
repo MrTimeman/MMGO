@@ -78,6 +78,24 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "dungeon_extraction_completed", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Dungeon extraction complete. Run ##{payload["run_id"]} exited via #{payload["extraction_type"]}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
+  def render(%Notification{kind: "dungeon_run_failed", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Dungeon run failed. Run ##{payload["run_id"]}. Lost drops recorded: #{payload["lost_item_count"]}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
   def render(%Notification{kind: "club_invitation", payload: payload}) do
     {:ok,
      %{

@@ -330,6 +330,19 @@ defmodule MMGO.Telegram.CommandsTest do
       |> Character.travel_changeset(%{current_location_id: tower.id})
       |> Repo.update!()
 
+    %Specialization{}
+    |> Specialization.changeset(%{
+      character_id: character.id,
+      realm_id: character.realm_id,
+      track: :wizardry,
+      status: :active,
+      primary_school: :fire,
+      secondary_school: :air,
+      started_at: DateTime.utc_now(),
+      metadata: %{}
+    })
+    |> Repo.insert!()
+
     {:ok, dungeon} =
       Dungeons.create_dungeon(realm, %{
         slug: "tower-dungeon",
@@ -431,6 +444,16 @@ defmodule MMGO.Telegram.CommandsTest do
              Commands.process_message(character, %{"text" => "/dungeon move rest"})
 
     assert move_text =~ "Rest Chamber"
+
+    assert {:ok, ritual_text} =
+             Commands.process_message(character, %{"text" => "/dungeon ritual"})
+
+    assert ritual_text =~ "Return ritual started"
+
+    assert {:ok, status_text} =
+             Commands.process_message(character, %{"text" => "/dungeon status"})
+
+    assert status_text =~ "Extraction: return_ritual"
   end
 
   defp character_fixture(realm, location, handle, name) do

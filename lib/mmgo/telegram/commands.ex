@@ -101,6 +101,9 @@ defmodule MMGO.Telegram.Commands do
        "/dungeon enter",
        "/dungeon status",
        "/dungeon move <node-slug>",
+       "/dungeon extract",
+       "/dungeon ritual",
+       "/dungeon drops",
        "/encounter status",
        "/encounter fight",
        "/spells",
@@ -1066,6 +1069,7 @@ defmodule MMGO.Telegram.Commands do
     with %{} = expedition <- Parties.active_expedition_for_character(character.id),
          %{} = run <- Dungeons.active_run_for_expedition(expedition.id) do
       encounter = Dungeons.current_encounter_for_run(run.id)
+      extraction = Dungeons.active_extraction(run.id)
 
       {:ok,
        Enum.join(
@@ -1074,6 +1078,7 @@ defmodule MMGO.Telegram.Commands do
            "Floor: #{run.current_floor.number}",
            "Node: #{run.current_node.slug} — #{run.current_node.name}",
            "Encounter: #{encounter_line(encounter)}",
+           "Extraction: #{extraction_line(extraction)}",
            "Steps: #{run.steps_taken}"
          ],
          "\n"
@@ -1099,8 +1104,61 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp dispatch("dungeon", ["extract"], character) do
+    with %{} = expedition <- Parties.active_expedition_for_character(character.id),
+         %{} = run <- Dungeons.active_run_for_expedition(expedition.id),
+         {:ok, %{run: updated_run}} <- Dungeons.extract_via_ascent(run) do
+      {:ok, "Dungeon extraction complete. Run #{updated_run.id} exited safely."}
+    else
+      nil ->
+        {:ok, "No active dungeon run."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not extract: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("dungeon", ["ritual"], character) do
+    with %{} = expedition <- Parties.active_expedition_for_character(character.id),
+         %{} = run <- Dungeons.active_run_for_expedition(expedition.id),
+         {:ok, %{extraction: extraction}} <- Dungeons.start_return_ritual(run, character) do
+      {:ok,
+       "Return ritual started. Extraction completes at #{Formatter.datetime(extraction.completes_at)}."}
+    else
+      nil ->
+        {:ok, "No active dungeon run."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not start return ritual: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("dungeon", ["drops"], character) do
+    with %{} = expedition <- Parties.active_expedition_for_character(character.id),
+         %{} = run <- Dungeons.active_run_for_expedition(expedition.id) do
+      drops = Dungeons.list_drops_for_run(run.id)
+
+      if drops == [] do
+        {:ok, "No dungeon drops recorded for this run."}
+      else
+        {:ok,
+         Enum.join(
+           ["Dungeon drops:"] ++
+             Enum.map(drops, fn drop ->
+               "- #{drop.id}: #{drop.name} x#{drop.quantity} (#{drop.drop_kind})"
+             end),
+           "\n"
+         )}
+      end
+    else
+      nil -> {:ok, "No active dungeon run."}
+    end
+  end
+
   defp dispatch("dungeon", _args, _character),
-    do: {:ok, "Usage: /dungeon enter | /dungeon status | /dungeon move <node-slug>"}
+    do:
+      {:ok,
+       "Usage: /dungeon enter | /dungeon status | /dungeon move <node-slug> | /dungeon extract | /dungeon ritual | /dungeon drops"}
 
   defp dispatch("encounter", ["status"], character) do
     with %{} = expedition <- Parties.active_expedition_for_character(character.id),
@@ -1561,6 +1619,9 @@ defmodule MMGO.Telegram.Commands do
 
   defp encounter_line(nil), do: "none"
   defp encounter_line(encounter), do: "#{encounter.encounter_kind} (#{encounter.status})"
+
+  defp extraction_line(nil), do: "none"
+  defp extraction_line(extraction), do: "#{extraction.extraction_type} (#{extraction.status})"
 
   defp combat_target_side(combat, participant_side) do
     combat.sides

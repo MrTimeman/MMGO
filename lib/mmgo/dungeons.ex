@@ -8,9 +8,12 @@ defmodule MMGO.Dungeons do
   alias MMGO.Combat.Combat, as: CombatSchema
 
   alias MMGO.Dungeons.{
+    CompleteExtractionWorker,
+    Drop,
     Dungeon,
     Encounter,
     EncounterSpawn,
+    Extraction,
     Floor,
     Link,
     LootDrop,
@@ -21,7 +24,9 @@ defmodule MMGO.Dungeons do
   }
 
   alias MMGO.Economy
+  alias MMGO.Grimoires
   alias MMGO.Inventory
+  alias MMGO.Notifications
   alias MMGO.Parties
   alias MMGO.Parties.{Expedition, ExpeditionMember}
   alias MMGO.Repo
@@ -110,6 +115,19 @@ defmodule MMGO.Dungeons do
     Run
     |> Repo.get!(id)
     |> preload_run()
+  end
+
+  def active_extraction(run_id) when is_binary(run_id) do
+    Repo.get_by(Extraction, run_id: run_id, status: :active)
+  end
+
+  def list_drops_for_run(run_id) when is_binary(run_id) do
+    Repo.all(
+      from drop in Drop,
+        where: drop.run_id == ^run_id,
+        order_by: [asc: drop.inserted_at],
+        preload: [:item_template, :owner_character]
+    )
   end
 
   def start_encounter_combat(%Encounter{} = encounter, opts \\ []) do
@@ -224,7 +242,7 @@ defmodule MMGO.Dungeons do
         {:ok, resolved_result} ->
           if outcome == :failed do
             run = Repo.get!(Run, encounter.run_id)
-            {:ok, _failed_run} = end_run(run, :failed, now: now)
+            {:ok, _failed_result} = fail_run_with_sacrifice(run, now: now)
           end
 
           Map.put(resolved_result, :combat, combat)
@@ -654,6 +672,129 @@ defmodule MMGO.Dungeons do
     |> normalize_transaction_result()
   end
 
+  def extract_via_ascent(%Run{} = run, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      run = lock_run!(run.id)
+      validate_extraction_ready!(run, nil, :ascent, nil)
+
+      current_node = Repo.get!(Node, run.current_node_id)
+
+      if current_node.kind not in [:entrance, :stairs_up, :exit] do
+        Repo.rollback(extraction_changeset("current node is not a valid ascent point"))
+      end
+
+      complete_run_exit!(run, :completed, :ascent, now)
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def start_return_ritual(%Run{} = run, %Character{} = caster, opts \\ []) do
+    now = Keyword.get(opts, :started_at, DateTime.utc_now())
+    ritual_game_days = Keyword.get(opts, :ritual_game_days, 1)
+
+    Repo.transaction(fn ->
+      run = lock_run!(run.id)
+      caster = Repo.get!(Character, caster.id)
+      validate_extraction_ready!(run, caster, :return_ritual, nil)
+
+      completes_at = MMGO.Travel.Clock.arrival_at(now, ritual_game_days)
+
+      extraction =
+        %Extraction{}
+        |> Extraction.changeset(%{
+          run_id: run.id,
+          initiator_character_id: caster.id,
+          extraction_type: :return_ritual,
+          status: :active,
+          started_at: now,
+          completes_at: completes_at,
+          metadata: %{"ritual_game_days" => ritual_game_days}
+        })
+        |> Repo.insert!()
+
+      job =
+        %{"extraction_id" => extraction.id}
+        |> CompleteExtractionWorker.new(
+          schedule_in: max(DateTime.diff(completes_at, DateTime.utc_now(), :second), 0)
+        )
+        |> Oban.insert!()
+
+      %{extraction: extraction, worker_job: job}
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def complete_extraction_by_id(extraction_id, opts \\ []) when is_binary(extraction_id) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    force? = Keyword.get(opts, :force, false)
+
+    Repo.transaction(fn ->
+      extraction =
+        Extraction
+        |> where([extraction], extraction.id == ^extraction_id)
+        |> lock("FOR UPDATE")
+        |> Repo.one!()
+
+      if extraction.status != :active do
+        Repo.rollback(extraction_changeset("extraction is not active"))
+      end
+
+      if (not force? and extraction.completes_at) &&
+           DateTime.compare(now, extraction.completes_at) == :lt do
+        Repo.rollback(extraction_changeset("extraction is not due yet"))
+      end
+
+      run = lock_run!(extraction.run_id)
+
+      validate_extraction_ready!(
+        run,
+        Repo.get!(Character, extraction.initiator_character_id),
+        extraction.extraction_type,
+        extraction.id
+      )
+
+      result = complete_run_exit!(run, :completed, extraction.extraction_type, now)
+
+      updated_extraction =
+        extraction
+        |> Extraction.changeset(%{status: :completed, completed_at: now})
+        |> Repo.update!()
+
+      Map.put(result, :extraction, updated_extraction)
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def complete_due_extractions(now \\ DateTime.utc_now()) do
+    Extraction
+    |> where(
+      [extraction],
+      extraction.status == :active and not is_nil(extraction.completes_at) and
+        extraction.completes_at <= ^now
+    )
+    |> Repo.all()
+    |> Enum.map(fn extraction ->
+      complete_extraction_by_id(extraction.id, now: now, force: true)
+    end)
+  end
+
+  def fail_run_with_sacrifice(%Run{} = run, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      run = lock_run!(run.id)
+
+      if run.status != :active do
+        Repo.rollback(run_changeset("run is not active"))
+      end
+
+      complete_run_exit!(run, :failed, :sacrifice, now)
+    end)
+    |> normalize_transaction_result()
+  end
+
   def end_run(%Run{} = run, status \\ :completed, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
     status = normalize_run_status(status)
@@ -665,29 +806,58 @@ defmodule MMGO.Dungeons do
         Repo.rollback(run_changeset("run is not active"))
       end
 
-      updated_run =
-        run
-        |> Run.changeset(%{status: status, ended_at: now, last_progressed_at: now})
-        |> Repo.update!()
-
-      expedition = Repo.get!(Expedition, updated_run.expedition_id)
-
-      xp_rewards =
-        if status == :completed do
-          Parties.distribute_xp_shares(Repo, expedition, run_completion_xp(updated_run), %{
-            "source_type" => "run",
-            "reward_kind" => "xp",
-            "run_id" => updated_run.id,
-            "granted_at" => now,
-            "reason" => "run_completion"
-          })
-        else
-          []
-        end
-
-      %{run: preload_run(updated_run), xp_rewards: xp_rewards}
+      complete_run_exit!(run, status, :manual, now)
     end)
     |> normalize_transaction_result()
+  end
+
+  defp complete_run_exit!(%Run{} = run, status, extraction_type, now) do
+    dungeon = Repo.get!(Dungeon, run.dungeon_id)
+    expedition = Repo.get!(Expedition, run.expedition_id)
+    expedition_members = active_expedition_members(expedition.id)
+
+    {drops, lost_grimoires} =
+      if status == :failed do
+        expedition_members
+        |> Enum.map(&Repo.get!(Character, &1.character_id))
+        |> Enum.reduce({[], []}, fn character, {drops_acc, grimoire_acc} ->
+          {character_drops, grimoire_drop} = collect_character_drops!(run, character)
+          grimoire_acc = if grimoire_drop, do: [grimoire_drop | grimoire_acc], else: grimoire_acc
+          {drops_acc ++ character_drops, grimoire_acc}
+        end)
+      else
+        {[], []}
+      end
+
+    updated_run =
+      run
+      |> Run.changeset(%{status: status, ended_at: now, last_progressed_at: now})
+      |> Repo.update!()
+
+    xp_rewards =
+      if status == :completed do
+        Parties.distribute_xp_shares(Repo, expedition, run_completion_xp(updated_run), %{
+          "source_type" => "run",
+          "reward_kind" => "xp",
+          "run_id" => updated_run.id,
+          "granted_at" => now,
+          "reason" => "run_completion"
+        })
+      else
+        []
+      end
+
+    conclude_expedition!(expedition, expedition_status_from_run(status), now)
+    move_expedition_members_to_location!(expedition_members, dungeon.entrance_location_id)
+
+    notify_run_exit!(
+      expedition_members,
+      updated_run,
+      extraction_type,
+      length(drops) + length(lost_grimoires)
+    )
+
+    %{run: preload_run(updated_run), xp_rewards: xp_rewards, drops: drops ++ lost_grimoires}
   end
 
   defp validate_run_entry!(%Expedition{} = expedition, %Dungeon{} = dungeon) do
@@ -707,6 +877,176 @@ defmodule MMGO.Dungeons do
       true ->
         :ok
     end
+  end
+
+  defp validate_extraction_ready!(%Run{} = run, caster, extraction_type, current_extraction_id) do
+    expedition = Repo.get!(Expedition, run.expedition_id)
+    encounter = current_encounter_for_run(run.id)
+    extraction = active_extraction(run.id)
+
+    cond do
+      run.status != :active ->
+        Repo.rollback(extraction_changeset("run is not active"))
+
+      expedition.status != :active ->
+        Repo.rollback(extraction_changeset("expedition is not active"))
+
+      extraction && extraction.id != current_extraction_id ->
+        Repo.rollback(extraction_changeset("run already has an active extraction"))
+
+      encounter && encounter.status in [:pending, :active] ->
+        Repo.rollback(
+          extraction_changeset("current encounter must be resolved before extraction")
+        )
+
+      extraction_type == :return_ritual and is_nil(caster) ->
+        Repo.rollback(extraction_changeset("a caster must initiate the return ritual"))
+
+      extraction_type == :return_ritual and not ritual_caster?(caster) ->
+        Repo.rollback(
+          extraction_changeset(
+            "initiator must be a wizardry specialist to perform the return ritual"
+          )
+        )
+
+      extraction_type == :return_ritual and not expedition_member?(expedition.id, caster.id) ->
+        Repo.rollback(extraction_changeset("ritual caster must belong to the expedition"))
+
+      true ->
+        :ok
+    end
+  end
+
+  defp ritual_caster?(%Character{} = character) do
+    case MMGO.Academy.active_specialization(character.id) do
+      %MMGO.Academy.Specialization{track: :wizardry} -> true
+      _other -> false
+    end
+  end
+
+  defp expedition_member?(expedition_id, character_id) do
+    Repo.exists?(
+      from member in ExpeditionMember,
+        where:
+          member.expedition_id == ^expedition_id and member.character_id == ^character_id and
+            member.status == :active
+    )
+  end
+
+  defp conclude_expedition!(%Expedition{} = expedition, status, now) do
+    expedition_members =
+      ExpeditionMember
+      |> where([member], member.expedition_id == ^expedition.id and member.status == :active)
+      |> lock("FOR UPDATE")
+      |> Repo.all()
+
+    Enum.each(expedition_members, fn member ->
+      member
+      |> ExpeditionMember.changeset(%{status: :completed, left_at: now})
+      |> Repo.update!()
+    end)
+
+    expedition
+    |> Expedition.changeset(%{status: status, ended_at: now})
+    |> Repo.update!()
+  end
+
+  defp expedition_status_from_run(:failed), do: :failed
+  defp expedition_status_from_run(_status), do: :completed
+
+  defp move_expedition_members_to_location!(members, location_id) do
+    Enum.each(members, fn member ->
+      Repo.get!(Character, member.character_id)
+      |> Character.travel_changeset(%{current_location_id: location_id})
+      |> Repo.update!()
+    end)
+  end
+
+  defp collect_character_drops!(%Run{} = run, %Character{} = character) do
+    inventory_drops =
+      Inventory.InventoryItem
+      |> where(
+        [item],
+        item.character_id == ^character.id and item.quantity > item.reserved_quantity
+      )
+      |> Repo.all()
+      |> Enum.flat_map(fn item ->
+        item = Repo.preload(item, :item_template)
+        available_quantity = Inventory.available_quantity(item)
+
+        drop =
+          %Drop{}
+          |> Drop.changeset(%{
+            run_id: run.id,
+            node_id: run.current_node_id,
+            owner_character_id: character.id,
+            item_template_id: item.item_template_id,
+            drop_kind: :inventory,
+            name: item.item_template.name,
+            quantity: available_quantity,
+            durability: item.durability,
+            metadata: item.metadata || %{}
+          })
+          |> Repo.insert!()
+
+        if item.quantity - available_quantity == 0 do
+          Repo.delete!(item)
+        else
+          item
+          |> Inventory.InventoryItem.changeset(%{
+            quantity: item.quantity - available_quantity,
+            reserved_quantity: item.reserved_quantity
+          })
+          |> Repo.update!()
+        end
+
+        [drop]
+      end)
+
+    grimoire_drop =
+      case Grimoires.active_grimoire_for_character(character.id) do
+        nil ->
+          nil
+
+        grimoire ->
+          grimoire = Grimoires.get_grimoire!(grimoire.id)
+
+          drop =
+            %Drop{}
+            |> Drop.changeset(%{
+              run_id: run.id,
+              node_id: run.current_node_id,
+              owner_character_id: character.id,
+              drop_kind: :grimoire,
+              name: grimoire.name,
+              quantity: 1,
+              durability: 0,
+              metadata: %{"spell_count" => length(grimoire.entries)}
+            })
+            |> Repo.insert!()
+
+          Repo.delete!(grimoire)
+          drop
+      end
+
+    {inventory_drops, grimoire_drop}
+  end
+
+  defp notify_run_exit!(members, run, extraction_type, lost_item_count) do
+    Enum.each(members, fn member ->
+      character = Repo.get!(Character, member.character_id)
+
+      case run.status do
+        :failed -> _ = Notifications.notify_run_failed(character, run, lost_item_count)
+        _other -> _ = Notifications.notify_extraction_completed(character, run, extraction_type)
+      end
+    end)
+  end
+
+  defp extraction_changeset(message) do
+    %Extraction{}
+    |> Changeset.change()
+    |> Changeset.add_error(:status, message)
   end
 
   defp default_entrance_node!(dungeon_id) do
