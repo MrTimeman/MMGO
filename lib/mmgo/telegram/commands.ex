@@ -5,6 +5,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Accounts
   alias MMGO.Accounts.Character
   alias MMGO.Academy
+  alias MMGO.Alchemy
   alias MMGO.Combat
   alias MMGO.Dungeons
   alias MMGO.Grimoires
@@ -54,6 +55,11 @@ defmodule MMGO.Telegram.Commands do
        "/journey",
        "/academy status",
        "/academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia",
+       "/alchemy workspace",
+       "/alchemy setup [tool1,tool2,...]",
+       "/alchemy recipes",
+       "/alchemy brew <recipe-code> [quantity]",
+       "/alchemy jobs",
        "/scavenge <resource_code> [quantity]",
        "/party create [name]",
        "/party status",
@@ -254,6 +260,130 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("academy", _args, _character) do
     {:ok,
      "Usage: /academy status | /academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia"}
+  end
+
+  defp dispatch("alchemy", ["workspace"], character) do
+    case Alchemy.get_workshop_for_character(character.id) do
+      nil ->
+        {:ok,
+         "No active alchemy workspace. Use /alchemy setup [tool1,tool2,...] to create one at your current location."}
+
+      workspace ->
+        location_name = location_name_by_id(workspace.location_id)
+
+        tools =
+          if workspace.installed_tool_codes == [],
+            do: "none",
+            else: Enum.join(workspace.installed_tool_codes, ", ")
+
+        {:ok,
+         Enum.join(
+           [
+             "Workspace: #{workspace.name}",
+             "Location: #{location_name}",
+             "Status: #{workspace.status}",
+             "Tools: #{tools}"
+           ],
+           "\n"
+         )}
+    end
+  end
+
+  defp dispatch("alchemy", ["setup"], character) do
+    dispatch("alchemy", ["setup", "cauldron"], character)
+  end
+
+  defp dispatch("alchemy", ["setup", tool_codes_csv], character) do
+    with %{id: location_id} <- character.current_location do
+      tool_codes =
+        tool_codes_csv
+        |> String.split(",", trim: true)
+        |> Enum.map(&String.trim/1)
+        |> Enum.reject(&(&1 == ""))
+
+      attrs = %{
+        name: "#{character.name}'s Workshop",
+        location_id: location_id,
+        installed_tool_codes: tool_codes
+      }
+
+      result =
+        case Alchemy.get_workshop_for_character(character.id) do
+          nil -> Alchemy.create_workshop(character, attrs)
+          workspace -> Alchemy.update_workshop(workspace, attrs)
+        end
+
+      case result do
+        {:ok, workspace} ->
+          {:ok,
+           "Alchemy workspace ready at #{location_name_by_id(workspace.location_id)} with tools: #{Enum.join(workspace.installed_tool_codes, ", ")}."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not set up alchemy workspace: #{format_changeset(changeset)}"}
+      end
+    else
+      nil -> {:ok, "You must be at a location to set up an alchemy workspace."}
+    end
+  end
+
+  defp dispatch("alchemy", ["recipes"], _character) do
+    recipes = Alchemy.list_recipes()
+
+    if recipes == [] do
+      {:ok, "No alchemy recipes are currently registered."}
+    else
+      {:ok,
+       Enum.join(
+         ["Alchemy recipes:"] ++
+           Enum.map(recipes, fn recipe ->
+             "- #{recipe.code}: #{recipe.name} -> #{recipe.result_item_template.name} (#{recipe.brew_time_game_days} game-days, difficulty #{recipe.difficulty})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("alchemy", ["brew", recipe_code], character) do
+    dispatch("alchemy", ["brew", recipe_code, "1"], character)
+  end
+
+  defp dispatch("alchemy", ["brew", recipe_code, quantity_raw], character) do
+    quantity = parse_positive_integer(quantity_raw, 1)
+
+    with %{} = workspace <- Alchemy.get_workshop_for_character(character.id),
+         %{} = recipe <- Alchemy.get_recipe_by_code(recipe_code),
+         {:ok, %{brew_job: brew_job}} <- Alchemy.brew(character, workspace, recipe, quantity) do
+      {:ok,
+       "Brewing started for #{recipe.name}. Completion: #{Formatter.datetime(brew_job.completes_at)}. Quantity #{brew_job.quantity}."}
+    else
+      nil ->
+        {:ok, "Recipe or workspace not found for brewing request."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not start brew: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("alchemy", ["jobs"], character) do
+    jobs = Alchemy.list_brew_jobs_for_character(character.id)
+
+    if jobs == [] do
+      {:ok, "No brew jobs."}
+    else
+      {:ok,
+       Enum.join(
+         ["Brew jobs:"] ++
+           Enum.map(jobs, fn brew_job ->
+             "- #{brew_job.id}: #{brew_job.recipe.name} x#{brew_job.quantity} (#{brew_job.status})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("alchemy", _args, _character) do
+    {:ok,
+     "Usage: /alchemy workspace | /alchemy setup [tool1,tool2,...] | /alchemy recipes | /alchemy brew <recipe-code> [quantity] | /alchemy jobs"}
   end
 
   defp dispatch("scavenge", [resource_code], character) do
@@ -664,6 +794,7 @@ defmodule MMGO.Telegram.Commands do
            "Routes: #{report.routes}",
            "Journeys: #{report.active_journeys}",
            "Enrollments: #{report.active_enrollments}",
+           "Brew jobs: #{report.active_brew_jobs}",
            "Scavenges: #{report.active_scavenge_attempts}",
            "Expeditions: #{report.active_expeditions}",
            "Runs: #{report.active_runs}",
@@ -695,6 +826,7 @@ defmodule MMGO.Telegram.Commands do
                "Routes: #{report.routes}",
                "Journeys: #{report.active_journeys}",
                "Enrollments: #{report.active_enrollments}",
+               "Brew jobs: #{report.active_brew_jobs}",
                "Scavenges: #{report.active_scavenge_attempts}",
                "Expeditions: #{report.active_expeditions}",
                "Runs: #{report.active_runs}",
@@ -726,6 +858,7 @@ defmodule MMGO.Telegram.Commands do
                "Maintenance sweep complete:",
                "Completed journeys: #{summary.completed_journeys}",
                "Completed enrollments: #{summary.completed_enrollments}",
+               "Completed brew jobs: #{summary.completed_brew_jobs}",
                "Completed scavenges: #{summary.completed_attempts}",
                "Refreshed caches: #{summary.refreshed_resource_caches}"
              ],

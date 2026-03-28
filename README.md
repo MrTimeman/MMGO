@@ -21,6 +21,7 @@ This repository currently includes:
 - dungeon encounters can now spawn real combat instances and resolve back into run state
 - expedition XP reward shares tied to encounters and run completion
 - academy enrollments, completion scheduling, and specialization state
+- alchemy workspaces, recipes, and timed brew jobs
 - overworld scavenging, resource caches, and scheduled harvest completion
 - notification outbox and Telegram delivery hooks for timed system completions
 - food consumption, carry capacity, and encumbrance-aware travel planning
@@ -96,6 +97,7 @@ iex -S mix phx.server
 - `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
 - `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
 - `lib/mmgo/academy` - education progression, timed enrollments, and specialization state
+- `lib/mmgo/alchemy` - workspaces, recipes, and brewing jobs for potion crafting
 - `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
 - `lib/mmgo/market` - legal listings, escrowed inventory, and taxed settlement
 - `lib/mmgo/black_market` - untaxed unsafe deals with manual delivery and scam/default risk

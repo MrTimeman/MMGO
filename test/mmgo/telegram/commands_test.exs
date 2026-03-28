@@ -8,6 +8,8 @@ defmodule MMGO.Telegram.CommandsTest do
   alias MMGO.Operator
   alias MMGO.Parties
   alias MMGO.Repo
+  alias MMGO.Academy.Specialization
+  alias MMGO.Alchemy
   alias MMGO.Spells
   alias MMGO.Telegram.Commands
   alias MMGO.Travel
@@ -134,6 +136,99 @@ defmodule MMGO.Telegram.CommandsTest do
              Commands.process_message(character, %{"text" => "/academy status"})
 
     assert status_text =~ "basic_education"
+  end
+
+  test "/alchemy commands create a workspace and start a brew", %{
+    character: character,
+    tower: tower
+  } do
+    character =
+      character
+      |> Character.travel_changeset(%{current_location_id: tower.id})
+      |> Repo.update!()
+
+    %Specialization{}
+    |> Specialization.changeset(%{
+      character_id: character.id,
+      realm_id: character.realm_id,
+      track: :alchemy,
+      status: :active,
+      started_at: DateTime.utc_now(),
+      metadata: %{}
+    })
+    |> Repo.insert!()
+
+    {:ok, herb_template} =
+      Inventory.create_item_template(%{
+        code: "bot_herb",
+        name: "Bot Herb",
+        item_type: :ingredient,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 0,
+        actions: []
+      })
+
+    {:ok, potion_template} =
+      Inventory.create_item_template(%{
+        code: "bot_potion",
+        name: "Bot Potion",
+        item_type: :potion,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 0,
+        actions: [
+          %{
+            key: "throw",
+            action_kind: :throw,
+            targeting: :ally,
+            quantity_cost: 1,
+            effects: [
+              %{
+                applies_to: :target,
+                state: "regenerating",
+                intensity: 3,
+                variance: 0,
+                duration: 2
+              }
+            ]
+          }
+        ]
+      })
+
+    {:ok, _ingredients} = Inventory.grant_item(character, herb_template, %{quantity: 5})
+
+    {:ok, _recipe} =
+      Alchemy.create_recipe(%{
+        code: "bot-potion",
+        name: "Bot Potion",
+        result_item_template_id: potion_template.id,
+        brew_time_game_days: 1,
+        difficulty: 2,
+        required_tool_codes: ["cauldron"],
+        result_quantity: 1,
+        requirements: [%{item_template_id: herb_template.id, quantity: 2}]
+      })
+
+    assert {:ok, workspace_text} =
+             Commands.process_message(character, %{"text" => "/alchemy setup cauldron"})
+
+    assert workspace_text =~ "Alchemy workspace ready"
+
+    assert {:ok, recipes_text} =
+             Commands.process_message(character, %{"text" => "/alchemy recipes"})
+
+    assert recipes_text =~ "bot-potion"
+
+    assert {:ok, brew_text} =
+             Commands.process_message(character, %{"text" => "/alchemy brew bot-potion 1"})
+
+    assert brew_text =~ "Brewing started"
+
+    assert {:ok, jobs_text} = Commands.process_message(character, %{"text" => "/alchemy jobs"})
+    assert jobs_text =~ "Bot Potion"
   end
 
   test "party, expedition, dungeon, and combat commands work together", %{

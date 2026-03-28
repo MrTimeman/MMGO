@@ -5,7 +5,7 @@ defmodule MMGO.Inventory.ItemTemplate do
 
   alias MMGO.Inventory.ItemAction
 
-  @item_types [:weapon, :shield, :potion, :tool, :food]
+  @item_types [:weapon, :shield, :potion, :tool, :food, :ingredient]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -59,7 +59,7 @@ defmodule MMGO.Inventory.ItemTemplate do
         add_error(changeset, :nutrition_units, "must be greater than zero for food items")
 
       actions == [] ->
-        if get_field(changeset, :item_type) == :food do
+        if get_field(changeset, :item_type) in [:food, :ingredient] do
           changeset
         else
           add_error(changeset, :actions, "must include at least one action for non-food items")

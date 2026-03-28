@@ -4,6 +4,8 @@ defmodule MMGO.Operator do
   alias Ecto.Changeset
   alias MMGO.Academy
   alias MMGO.Academy.Enrollment
+  alias MMGO.Alchemy
+  alias MMGO.Alchemy.BrewJob
   alias MMGO.Combat.Combat
   alias MMGO.Dungeons.Run
   alias MMGO.Economy.EconomyAccount
@@ -28,6 +30,7 @@ defmodule MMGO.Operator do
       routes: Repo.aggregate(Route, :count, :id),
       active_journeys: count_active(Journey),
       active_enrollments: count_active(Enrollment),
+      active_brew_jobs: count_active(BrewJob),
       active_scavenge_attempts: count_active(Attempt),
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
@@ -77,6 +80,14 @@ defmodule MMGO.Operator do
         Repo.aggregate(
           from(enrollment in Enrollment,
             where: enrollment.realm_id == ^realm.id and enrollment.status == :active
+          ),
+          :count,
+          :id
+        ),
+      active_brew_jobs:
+        Repo.aggregate(
+          from(brew_job in BrewJob,
+            where: brew_job.realm_id == ^realm.id and brew_job.status == :active
           ),
           :count,
           :id
@@ -168,12 +179,14 @@ defmodule MMGO.Operator do
     Repo.transaction(fn ->
       journeys = Travel.complete_due_journeys(now)
       enrollments = Academy.complete_due_enrollments(now)
+      brew_jobs = Alchemy.complete_due_brew_jobs(now)
       attempts = Scavenging.complete_due_attempts(now)
       refreshed_caches = Scavenging.refresh_due_resource_caches(now)
 
       summary = %{
         completed_journeys: count_ok(journeys),
         completed_enrollments: count_ok(enrollments),
+        completed_brew_jobs: count_ok(brew_jobs),
         completed_attempts: count_ok(attempts),
         refreshed_resource_caches: length(refreshed_caches)
       }

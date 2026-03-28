@@ -134,6 +134,19 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_brew_completed(%Character{} = character, brew_job) do
+    enqueue(
+      character,
+      :brew_completed,
+      %{
+        brew_job_id: brew_job.id,
+        recipe_id: brew_job.recipe_id,
+        yielded_quantity: brew_job.yielded_quantity
+      },
+      dedupe_key: "brew-completed:#{brew_job.id}"
+    )
+  end
+
   defp validate_channel(channel) when channel in @channels, do: :ok
 
   defp validate_channel(_channel),
