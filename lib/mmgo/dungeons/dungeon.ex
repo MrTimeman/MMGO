@@ -3,7 +3,7 @@ defmodule MMGO.Dungeons.Dungeon do
 
   import Ecto.Changeset
 
-  alias MMGO.Dungeons.{Floor, Run}
+  alias MMGO.Dungeons.{Floor, LinkState, NodeOverride, Run, State}
   alias MMGO.Worlds.{Location, Realm}
 
   @statuses [:draft, :active, :archived]
@@ -20,7 +20,10 @@ defmodule MMGO.Dungeons.Dungeon do
     belongs_to :realm, Realm
     belongs_to :entrance_location, Location
     has_many :floors, Floor
+    has_many :link_states, LinkState
+    has_many :node_overrides, NodeOverride
     has_many :runs, Run
+    has_one :state, State
 
     timestamps(type: :utc_datetime_usec)
   end

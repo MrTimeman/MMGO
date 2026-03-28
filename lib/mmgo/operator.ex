@@ -13,8 +13,7 @@ defmodule MMGO.Operator do
   alias MMGO.Crafting
   alias MMGO.Crafting.CraftJob
   alias MMGO.Dungeons
-  alias MMGO.Dungeons.Run
-  alias MMGO.Dungeons.Extraction
+  alias MMGO.Dungeons.{Extraction, Run, State}
   alias MMGO.Economy.EconomyAccount
   alias MMGO.Federation
   alias MMGO.Federation.Migration
@@ -51,6 +50,7 @@ defmodule MMGO.Operator do
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
       active_extractions: count_active(Extraction),
+      active_dungeon_cycles: count_dungeon_cycles(),
       active_overworld_encounters: count_active(Encounter),
       active_combats: count_combat_active(),
       active_market_listings: count_active(Listing),
@@ -188,6 +188,15 @@ defmodule MMGO.Operator do
           :count,
           :id
         ),
+      active_dungeon_cycles:
+        Repo.aggregate(
+          from(state in State,
+            join: dungeon in assoc(state, :dungeon),
+            where: dungeon.realm_id == ^realm.id
+          ),
+          :count,
+          :id
+        ),
       active_overworld_encounters:
         Repo.aggregate(
           from(encounter in Encounter,
@@ -262,6 +271,7 @@ defmodule MMGO.Operator do
       craft_jobs = Crafting.complete_due_craft_jobs(now)
       bases = Bases.complete_due_base_builds(now)
       migrations = Federation.complete_due_migrations(now)
+      dungeons = Dungeons.maintain_due_dungeons(now)
       extractions = Dungeons.complete_due_extractions(now)
       attempts = Scavenging.complete_due_attempts(now)
       refreshed_caches = Scavenging.refresh_due_resource_caches(now)
@@ -272,6 +282,7 @@ defmodule MMGO.Operator do
         completed_brew_jobs: count_ok(brew_jobs),
         completed_craft_jobs: count_ok(craft_jobs),
         completed_bases: count_ok(bases),
+        completed_dungeon_cycles: count_ok(dungeons),
         completed_extractions: count_ok(extractions),
         completed_migrations: count_ok(migrations),
         completed_attempts: count_ok(attempts),
@@ -321,6 +332,10 @@ defmodule MMGO.Operator do
       :count,
       :id
     )
+  end
+
+  defp count_dungeon_cycles do
+    Repo.aggregate(from(state in State), :count, :id)
   end
 
   defp count_active_market_bans do

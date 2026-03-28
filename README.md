@@ -26,6 +26,7 @@ This repository currently includes:
 - academy clubs, memberships, and invitation flows
 - actor templates and concrete enemy spawns for PvE combats
 - inter-realm discovery, exchange rates, and migration workflow
+- dungeon macro AI for link pressure, anomalies, and node/resource drift
 - overworld encounter events and ambush escalation into combat
 - overworld scavenging, resource caches, and scheduled harvest completion
 - notification outbox and Telegram delivery hooks for timed system completions
@@ -114,6 +115,7 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 - `lib/mmgo/bases` - property ownership, construction, and protected base storage
 - `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
 - `lib/mmgo/actors` - reusable enemy/NPC actor templates and encounter spawns
+- `lib/mmgo/dungeons` - macro maintenance, link states, node overrides, extraction, and run state
 - `lib/mmgo/overworld` - road encounters, social choices, and ambush escalation
 - `lib/mmgo/federation` - remote realm registry, rulesets, exchange, and migration mechanics
 - `priv/realms/starter_realm_manifest.json` - starter realm file for non-code realm tweaking

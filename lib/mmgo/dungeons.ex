@@ -16,11 +16,15 @@ defmodule MMGO.Dungeons do
     Extraction,
     Floor,
     Link,
+    LinkState,
     LootDrop,
     Node,
+    NodeOverride,
     NodeState,
     ResourceCache,
-    Run
+    Run,
+    State,
+    MaintenanceWorker
   }
 
   alias MMGO.Economy
@@ -43,7 +47,33 @@ defmodule MMGO.Dungeons do
   def get_dungeon!(id) do
     Dungeon
     |> Repo.get!(id)
-    |> Repo.preload([:entrance_location, floors: [nodes: []]])
+    |> Repo.preload([
+      :entrance_location,
+      :state,
+      link_states: [],
+      node_overrides: [],
+      floors: [nodes: []]
+    ])
+  end
+
+  def get_state_for_dungeon(dungeon_id) when is_binary(dungeon_id) do
+    Repo.get_by(State, dungeon_id: dungeon_id)
+  end
+
+  def list_node_overrides(dungeon_id) when is_binary(dungeon_id) do
+    Repo.all(
+      from node_override in NodeOverride,
+        where: node_override.dungeon_id == ^dungeon_id,
+        order_by: [asc: node_override.inserted_at]
+    )
+  end
+
+  def list_link_states(dungeon_id) when is_binary(dungeon_id) do
+    Repo.all(
+      from link_state in LinkState,
+        where: link_state.dungeon_id == ^dungeon_id,
+        order_by: [asc: link_state.inserted_at]
+    )
   end
 
   def get_dungeon_by_slug(realm_id, slug) when is_binary(realm_id) and is_binary(slug) do
@@ -115,6 +145,48 @@ defmodule MMGO.Dungeons do
     Run
     |> Repo.get!(id)
     |> preload_run()
+  end
+
+  def maintain_dungeon_by_id(dungeon_id, opts \\ []) when is_binary(dungeon_id) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      dungeon = Repo.get!(Dungeon, dungeon_id)
+      state = lock_or_init_state!(dungeon.id, now)
+      active_run_count = count_active_runs(dungeon.id)
+      pressure_level = min(active_run_count * 10, 100)
+      anomaly_level = rem(state.cycle_number + active_run_count, 100)
+
+      updated_state =
+        state
+        |> State.changeset(%{
+          cycle_number: state.cycle_number + 1,
+          active_run_count_snapshot: active_run_count,
+          pressure_level: pressure_level,
+          anomaly_level: anomaly_level,
+          last_maintained_at: now,
+          next_maintenance_at: DateTime.add(now, 300, :second)
+        })
+        |> Repo.update!()
+
+      node_overrides = refresh_node_overrides!(dungeon.id, updated_state)
+      link_states = refresh_link_states!(dungeon.id, updated_state)
+      schedule_maintenance!(dungeon.id, updated_state.next_maintenance_at)
+
+      %{state: updated_state, node_overrides: node_overrides, link_states: link_states}
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def maintain_due_dungeons(now \\ DateTime.utc_now()) do
+    Repo.all(
+      from dungeon in Dungeon,
+        left_join: state in assoc(dungeon, :state),
+        where:
+          dungeon.status == :active and (is_nil(state.id) or state.next_maintenance_at <= ^now),
+        select: dungeon.id
+    )
+    |> Enum.map(&maintain_dungeon_by_id(&1, now: now))
   end
 
   def active_extraction(run_id) when is_binary(run_id) do
@@ -1043,6 +1115,140 @@ defmodule MMGO.Dungeons do
     end)
   end
 
+  defp lock_or_init_state!(dungeon_id, now) do
+    State
+    |> where([state], state.dungeon_id == ^dungeon_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+    |> case do
+      nil ->
+        %State{}
+        |> State.changeset(%{
+          dungeon_id: dungeon_id,
+          cycle_number: 0,
+          active_run_count_snapshot: 0,
+          pressure_level: 0,
+          anomaly_level: 0,
+          last_maintained_at: now,
+          next_maintenance_at: now,
+          metadata: %{}
+        })
+        |> Repo.insert!()
+
+      state ->
+        state
+    end
+  end
+
+  defp refresh_node_overrides!(dungeon_id, %State{} = state) do
+    nodes =
+      Node
+      |> join(:inner, [node], floor in assoc(node, :floor))
+      |> where([_node, floor], floor.dungeon_id == ^dungeon_id)
+      |> Repo.all()
+
+    Enum.map(nodes, fn node ->
+      base_status =
+        if state.pressure_level >= 60 and node.kind == :rest, do: :depleted, else: :stable
+
+      threat_bias =
+        if node.kind in [:room, :hazard, :boss],
+          do: min(div(state.pressure_level, 5), 20),
+          else: 0
+
+      resource_bias =
+        if node.kind == :rest,
+          do: -min(div(state.pressure_level, 10), 5),
+          else: max(5 - div(state.pressure_level, 20), -5)
+
+      anomaly_tag = anomaly_tag_for(node, state)
+
+      case Repo.get_by(NodeOverride, dungeon_id: dungeon_id, node_id: node.id) do
+        nil ->
+          %NodeOverride{}
+          |> NodeOverride.changeset(%{
+            dungeon_id: dungeon_id,
+            node_id: node.id,
+            status: base_status,
+            threat_bias: threat_bias,
+            resource_bias: resource_bias,
+            anomaly_tag: anomaly_tag,
+            metadata: %{"cycle_number" => state.cycle_number}
+          })
+          |> Repo.insert!()
+
+        %NodeOverride{} = node_override ->
+          node_override
+          |> NodeOverride.changeset(%{
+            status: base_status,
+            threat_bias: threat_bias,
+            resource_bias: resource_bias,
+            anomaly_tag: anomaly_tag,
+            metadata: Map.put(node_override.metadata || %{}, "cycle_number", state.cycle_number)
+          })
+          |> Repo.update!()
+      end
+    end)
+  end
+
+  defp refresh_link_states!(dungeon_id, %State{} = state) do
+    links = Repo.all(from link in Link, where: link.dungeon_id == ^dungeon_id)
+
+    Enum.map(links, fn link ->
+      status =
+        if rem(state.cycle_number + link.travel_cost, 4) == 0 and state.pressure_level >= 20,
+          do: :blocked,
+          else: :active
+
+      case Repo.get_by(LinkState, dungeon_id: dungeon_id, link_id: link.id) do
+        nil ->
+          %LinkState{}
+          |> LinkState.changeset(%{
+            dungeon_id: dungeon_id,
+            link_id: link.id,
+            status: status,
+            metadata: %{"cycle_number" => state.cycle_number}
+          })
+          |> Repo.insert!()
+
+        %LinkState{} = link_state ->
+          link_state
+          |> LinkState.changeset(%{
+            status: status,
+            metadata: Map.put(link_state.metadata || %{}, "cycle_number", state.cycle_number)
+          })
+          |> Repo.update!()
+      end
+    end)
+  end
+
+  defp anomaly_tag_for(%Node{kind: :boss}, %State{anomaly_level: level}) when level >= 40,
+    do: "wrath"
+
+  defp anomaly_tag_for(%Node{kind: :rest}, %State{pressure_level: level}) when level >= 60,
+    do: "depleted"
+
+  defp anomaly_tag_for(%Node{kind: :room}, %State{anomaly_level: level}) when level >= 50,
+    do: "volatile"
+
+  defp anomaly_tag_for(_node, _state), do: nil
+
+  defp count_active_runs(dungeon_id) do
+    Repo.aggregate(
+      from(run in Run, where: run.dungeon_id == ^dungeon_id and run.status == :active),
+      :count,
+      :id
+    )
+  end
+
+  defp schedule_maintenance!(dungeon_id, maintenance_at) do
+    %{"dungeon_id" => dungeon_id}
+    |> MaintenanceWorker.new(
+      schedule_in: max(DateTime.diff(maintenance_at, DateTime.utc_now(), :second), 0)
+    )
+    |> Oban.insert()
+  end
+
   defp extraction_changeset(message) do
     %Extraction{}
     |> Changeset.change()
@@ -1075,8 +1281,17 @@ defmodule MMGO.Dungeons do
     )
     |> Repo.one()
     |> case do
-      nil -> Repo.rollback(run_changeset("target node is not reachable from the current node"))
-      link -> link
+      nil ->
+        Repo.rollback(run_changeset("target node is not reachable from the current node"))
+
+      link ->
+        case Repo.get_by(LinkState, dungeon_id: link.dungeon_id, link_id: link.id) do
+          %LinkState{status: :blocked} ->
+            Repo.rollback(run_changeset("target node path is currently blocked by the dungeon"))
+
+          _other ->
+            link
+        end
     end
   end
 
@@ -1256,7 +1471,7 @@ defmodule MMGO.Dungeons do
         encounter
 
       nil ->
-        attrs = default_encounter_attrs(node, now, custom_encounter)
+        attrs = default_encounter_attrs(run.dungeon_id, node, now, custom_encounter)
 
         case attrs do
           nil ->
@@ -1276,7 +1491,7 @@ defmodule MMGO.Dungeons do
         Repo.preload(resource_cache, :item_template)
 
       nil ->
-        attrs = default_resource_attrs(node, custom_resource)
+        attrs = default_resource_attrs(run.dungeon_id, node, custom_resource)
 
         case attrs do
           nil ->
@@ -1293,32 +1508,66 @@ defmodule MMGO.Dungeons do
     end
   end
 
-  defp default_encounter_attrs(%Node{threat_level: threat_level} = node, now, nil)
+  defp default_encounter_attrs(dungeon_id, %Node{threat_level: threat_level} = node, now, nil)
        when threat_level > 0 do
+    node_override = Repo.get_by(NodeOverride, dungeon_id: dungeon_id, node_id: node.id)
+    adjusted_threat = max(threat_level + ((node_override && node_override.threat_bias) || 0), 1)
+
     %{
       "encounter_kind" => default_encounter_kind(node.kind),
       "status" => "pending",
-      "threat_level" => threat_level,
+      "threat_level" => adjusted_threat,
       "started_at" => now,
-      "metadata" => %{"generated" => true}
+      "metadata" => %{
+        "generated" => true,
+        "anomaly_tag" => node_override && node_override.anomaly_tag
+      }
     }
   end
 
-  defp default_encounter_attrs(_node, _now, nil), do: nil
-  defp default_encounter_attrs(_node, _now, attrs) when is_map(attrs), do: stringify_keys(attrs)
+  defp default_encounter_attrs(_dungeon_id, _node, _now, nil), do: nil
 
-  defp default_resource_attrs(%Node{kind: :rest}, nil) do
+  defp default_encounter_attrs(_dungeon_id, _node, _now, attrs) when is_map(attrs),
+    do: stringify_keys(attrs)
+
+  defp default_resource_attrs(dungeon_id, %Node{kind: :rest} = node, nil) do
+    node_override = Repo.get_by(NodeOverride, dungeon_id: dungeon_id, node_id: node.id)
+    quantity_total = max(1 + ((node_override && node_override.resource_bias) || 0), 0)
+
     %{
       "resource_code" => "rest_supplies",
-      "status" => "available",
-      "quantity_total" => 1,
-      "quantity_remaining" => 1,
-      "metadata" => %{"generated" => true}
+      "status" => if(quantity_total == 0, do: "depleted", else: "available"),
+      "quantity_total" => quantity_total,
+      "quantity_remaining" => quantity_total,
+      "metadata" => %{
+        "generated" => true,
+        "anomaly_tag" => node_override && node_override.anomaly_tag
+      }
     }
   end
 
-  defp default_resource_attrs(_node, nil), do: nil
-  defp default_resource_attrs(_node, attrs) when is_map(attrs), do: stringify_keys(attrs)
+  defp default_resource_attrs(dungeon_id, %Node{} = node, nil) do
+    node_override = Repo.get_by(NodeOverride, dungeon_id: dungeon_id, node_id: node.id)
+    quantity_total = max(1 + ((node_override && node_override.resource_bias) || 0), 0)
+
+    if quantity_total == 0 do
+      nil
+    else
+      %{
+        "resource_code" => "salvage",
+        "status" => "available",
+        "quantity_total" => quantity_total,
+        "quantity_remaining" => quantity_total,
+        "metadata" => %{
+          "generated" => true,
+          "anomaly_tag" => node_override && node_override.anomaly_tag
+        }
+      }
+    end
+  end
+
+  defp default_resource_attrs(_dungeon_id, _node, attrs) when is_map(attrs),
+    do: stringify_keys(attrs)
 
   defp default_encounter_kind(:boss), do: "boss"
   defp default_encounter_kind(:hazard), do: "hazard"

@@ -121,6 +121,7 @@ defmodule MMGO.Telegram.Commands do
        "/admin status",
        "/admin realm <slug>",
        "/admin sweep",
+       "/admin dungeon maintain <dungeon-slug>",
        "/admin federation manifest",
        "/admin federation register <manifest-url> [token]",
        "/admin federation sync <realm-slug>",
@@ -1390,6 +1391,7 @@ defmodule MMGO.Telegram.Commands do
            "Craft jobs: #{report.active_craft_jobs}",
            "Active bases: #{report.active_bases}",
            "Building bases: #{report.building_bases}",
+           "Dungeon cycles: #{report.active_dungeon_cycles}",
            "Clubs: #{report.active_clubs}",
            "Pending club invites: #{report.pending_club_invitations}",
            "Scavenges: #{report.active_scavenge_attempts}",
@@ -1428,6 +1430,7 @@ defmodule MMGO.Telegram.Commands do
                "Craft jobs: #{report.active_craft_jobs}",
                "Active bases: #{report.active_bases}",
                "Building bases: #{report.building_bases}",
+               "Dungeon cycles: #{report.active_dungeon_cycles}",
                "Clubs: #{report.active_clubs}",
                "Pending club invites: #{report.pending_club_invitations}",
                "Scavenges: #{report.active_scavenge_attempts}",
@@ -1465,6 +1468,7 @@ defmodule MMGO.Telegram.Commands do
                "Completed brew jobs: #{summary.completed_brew_jobs}",
                "Completed craft jobs: #{summary.completed_craft_jobs}",
                "Completed bases: #{summary.completed_bases}",
+               "Completed dungeon cycles: #{summary.completed_dungeon_cycles}",
                "Completed scavenges: #{summary.completed_attempts}",
                "Refreshed caches: #{summary.refreshed_resource_caches}"
              ],
@@ -1473,6 +1477,24 @@ defmodule MMGO.Telegram.Commands do
 
         {:error, %Changeset{} = changeset} ->
           {:ok, "Could not run maintenance sweep: #{format_changeset(changeset)}"}
+      end
+    else
+      {:ok, "Unauthorized."}
+    end
+  end
+
+  defp dispatch("admin", ["dungeon", "maintain", dungeon_slug], character) do
+    if operator_authorized?(character) do
+      with %{} = dungeon <- Dungeons.get_dungeon_by_slug(character.realm_id, dungeon_slug),
+           {:ok, %{state: state}} <- Dungeons.maintain_dungeon_by_id(dungeon.id) do
+        {:ok,
+         "Dungeon maintenance complete for #{dungeon.slug}. Cycle #{state.cycle_number}, pressure #{state.pressure_level}, anomaly #{state.anomaly_level}."}
+      else
+        nil ->
+          {:ok, "No dungeon with slug #{dungeon_slug} found in your realm."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not maintain dungeon: #{format_changeset(changeset)}"}
       end
     else
       {:ok, "Unauthorized."}
@@ -1597,10 +1619,10 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
-  defp dispatch("admin", _args, _character),
-    do:
-      {:ok,
-       "Usage: /admin status | /admin realm <slug> | /admin sweep | /admin federation manifest | /admin federation register <manifest-url> [token] | /admin federation sync <realm-slug> | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
+  defp dispatch("admin", _args, _character) do
+    {:ok,
+     "Usage: /admin status | /admin realm <slug> | /admin sweep | /admin dungeon maintain <dungeon-slug> | /admin federation manifest | /admin federation register <manifest-url> [token] | /admin federation sync <realm-slug> | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
+  end
 
   defp dispatch(_command, _args, _character) do
     {:ok, "Unknown command. Use /help."}
