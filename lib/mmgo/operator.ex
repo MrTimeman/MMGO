@@ -14,6 +14,8 @@ defmodule MMGO.Operator do
   alias MMGO.Crafting.CraftJob
   alias MMGO.Dungeons.Run
   alias MMGO.Economy.EconomyAccount
+  alias MMGO.Federation
+  alias MMGO.Federation.Migration
   alias MMGO.Market.Listing
   alias MMGO.Notifications.Notification
   alias MMGO.Operator.AuditEvent
@@ -41,6 +43,7 @@ defmodule MMGO.Operator do
       building_bases: count_status(Base, :building),
       active_clubs: count_active(Club),
       pending_club_invitations: count_status(Invitation, :pending),
+      active_migrations: count_active(Migration),
       active_scavenge_attempts: count_active(Attempt),
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
@@ -137,6 +140,14 @@ defmodule MMGO.Operator do
           :count,
           :id
         ),
+      active_migrations:
+        Repo.aggregate(
+          from(migration in Migration,
+            where: migration.origin_realm_id == ^realm.id and migration.status == :active
+          ),
+          :count,
+          :id
+        ),
       active_scavenge_attempts:
         Repo.aggregate(
           from(attempt in Attempt,
@@ -227,6 +238,7 @@ defmodule MMGO.Operator do
       brew_jobs = Alchemy.complete_due_brew_jobs(now)
       craft_jobs = Crafting.complete_due_craft_jobs(now)
       bases = Bases.complete_due_base_builds(now)
+      migrations = Federation.complete_due_migrations(now)
       attempts = Scavenging.complete_due_attempts(now)
       refreshed_caches = Scavenging.refresh_due_resource_caches(now)
 
@@ -236,6 +248,7 @@ defmodule MMGO.Operator do
         completed_brew_jobs: count_ok(brew_jobs),
         completed_craft_jobs: count_ok(craft_jobs),
         completed_bases: count_ok(bases),
+        completed_migrations: count_ok(migrations),
         completed_attempts: count_ok(attempts),
         refreshed_resource_caches: length(refreshed_caches)
       }

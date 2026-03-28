@@ -44,6 +44,11 @@ config :mmgo, MMGO.Operator, handles: []
 
 config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
 
+config :mmgo, MMGO.Federation,
+  freeze_game_days: 28,
+  level_retention_bps: 800,
+  xp_retention_bps: 700
+
 # Configure the endpoint
 config :mmgo, MMGOWeb.Endpoint,
   url: [host: "localhost"],

@@ -60,6 +60,24 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "realm_migration_started", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Realm migration started to #{payload["destination_realm_name"]}. Migration ##{payload["migration_id"]}. Freeze ends at #{payload["freeze_ends_at"] || "unknown"}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
+  def render(%Notification{kind: "realm_migration_completed", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Realm migration complete. Passive XP awarded: #{payload["passive_xp_awarded"]}. Migration ##{payload["migration_id"]}.",
+       opts: [parse_mode: "HTML"]
+     }}
+  end
+
   def render(%Notification{kind: "club_invitation", payload: payload}) do
     {:ok,
      %{

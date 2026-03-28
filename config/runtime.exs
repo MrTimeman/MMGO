@@ -71,6 +71,25 @@ config :mmgo, MMGO.PVP,
       System.get_env("DUEL_TAX_RATE_BPS") || to_string(pvp_config[:duel_tax_rate_bps] || 500)
     )
 
+federation_config = Application.get_env(:mmgo, MMGO.Federation, [])
+
+config :mmgo, MMGO.Federation,
+  freeze_game_days:
+    String.to_integer(
+      System.get_env("FEDERATION_FREEZE_GAME_DAYS") ||
+        to_string(federation_config[:freeze_game_days] || 28)
+    ),
+  level_retention_bps:
+    String.to_integer(
+      System.get_env("FEDERATION_LEVEL_RETENTION_BPS") ||
+        to_string(federation_config[:level_retention_bps] || 800)
+    ),
+  xp_retention_bps:
+    String.to_integer(
+      System.get_env("FEDERATION_XP_RETENTION_BPS") ||
+        to_string(federation_config[:xp_retention_bps] || 700)
+    )
+
 if config_env() == :prod do
   database_url =
     System.get_env("DATABASE_URL") ||

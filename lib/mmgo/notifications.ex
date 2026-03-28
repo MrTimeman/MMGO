@@ -173,6 +173,32 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_realm_migration_started(%Character{} = character, migration, destination_realm) do
+    enqueue(
+      character,
+      :realm_migration_started,
+      %{
+        migration_id: migration.id,
+        destination_realm_id: destination_realm.id,
+        destination_realm_name: destination_realm.name,
+        freeze_ends_at: migration.freeze_ends_at && DateTime.to_iso8601(migration.freeze_ends_at)
+      },
+      dedupe_key: "realm-migration-started:#{migration.id}"
+    )
+  end
+
+  def notify_realm_migration_completed(%Character{} = character, migration) do
+    enqueue(
+      character,
+      :realm_migration_completed,
+      %{
+        migration_id: migration.id,
+        passive_xp_awarded: migration.passive_xp_awarded
+      },
+      dedupe_key: "realm-migration-completed:#{migration.id}"
+    )
+  end
+
   def notify_club_invitation(%Character{} = character, invitation, club) do
     enqueue(
       character,

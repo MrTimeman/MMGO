@@ -11,7 +11,7 @@ defmodule MMGO.Accounts.Character do
 
   schema "characters" do
     field :name, :string
-    field :status, Ecto.Enum, values: [:new, :active, :retired], default: :new
+    field :status, Ecto.Enum, values: [:new, :active, :frozen, :retired], default: :new
     field :level, :integer, default: 1
     field :xp, :integer, default: 0
     field :metadata, :map, default: %{}

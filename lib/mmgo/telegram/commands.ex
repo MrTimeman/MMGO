@@ -12,6 +12,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Combat
   alias MMGO.Crafting
   alias MMGO.Dungeons
+  alias MMGO.Federation
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Operator
@@ -57,6 +58,10 @@ defmodule MMGO.Telegram.Commands do
        "/routes",
        "/travel <location-slug>",
        "/journey",
+       "/realms list",
+       "/realms quote <realm-slug> <amount>",
+       "/realms migrate <realm-slug> <amount>",
+       "/realms migrations",
        "/academy status",
        "/academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia",
        "/base status",
@@ -208,6 +213,81 @@ defmodule MMGO.Telegram.Commands do
         {:ok,
          "Journey: #{journey.from_location.name} -> #{journey.to_location.name}, arrival #{Formatter.datetime(journey.arrival_at)}, food #{journey.food_units_consumed}."}
     end
+  end
+
+  defp dispatch("realms", ["list"], character) do
+    realms = Federation.list_discoverable_realms(character.realm_id)
+
+    if realms == [] do
+      {:ok, "No discoverable realms."}
+    else
+      {:ok,
+       Enum.join(
+         ["Discoverable realms:"] ++
+           Enum.map(realms, fn realm ->
+             currency = realm.currency_code || "unknown"
+             endpoint = realm.public_endpoint || "no-endpoint"
+             "- #{realm.slug}: #{realm.name} (#{currency}, #{endpoint})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("realms", ["quote", realm_slug, amount_raw], character) do
+    amount = parse_positive_integer(amount_raw, 0)
+
+    with %{} = destination_realm <- Worlds.get_realm_by_slug(realm_slug),
+         {:ok, quote} <-
+           Federation.quote_exchange(character.realm_id, destination_realm.id, amount) do
+      {:ok,
+       "Exchange quote: #{amount} #{quote.exchange_rate.source_realm.currency_code || "src"} -> #{quote.converted_amount} #{quote.exchange_rate.destination_realm.currency_code || "dst"}."}
+    else
+      nil ->
+        {:ok, "No realm with slug #{realm_slug} found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not quote migration currency: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("realms", ["migrate", realm_slug, amount_raw], character) do
+    amount = parse_positive_integer(amount_raw, 0)
+
+    with %{} = destination_realm <- Worlds.get_realm_by_slug(realm_slug),
+         {:ok, %{migration: migration, destination_character: destination_character}} <-
+           Federation.start_migration(character, destination_realm, amount) do
+      {:ok,
+       "Migration started to #{destination_realm.name}. New character #{destination_character.name}. Freeze ends #{Formatter.datetime(migration.freeze_ends_at)}."}
+    else
+      nil ->
+        {:ok, "No realm with slug #{realm_slug} found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not start migration: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("realms", ["migrations"], character) do
+    migrations = Federation.list_migrations_for_account(character.account_id)
+
+    if migrations == [] do
+      {:ok, "No realm migrations."}
+    else
+      {:ok,
+       Enum.join(
+         ["Realm migrations:"] ++
+           Enum.map(migrations, fn migration ->
+             "- #{migration.id}: #{migration.origin_realm.slug} -> #{migration.destination_realm.slug} (#{migration.status})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("realms", _args, _character) do
+    {:ok,
+     "Usage: /realms list | /realms quote <realm-slug> <amount> | /realms migrate <realm-slug> <amount> | /realms migrations"}
   end
 
   defp dispatch("academy", ["status"], character) do
@@ -1176,6 +1256,7 @@ defmodule MMGO.Telegram.Commands do
            "Locations: #{report.locations}",
            "Routes: #{report.routes}",
            "Journeys: #{report.active_journeys}",
+           "Migrations: #{report.active_migrations}",
            "Enrollments: #{report.active_enrollments}",
            "Brew jobs: #{report.active_brew_jobs}",
            "Craft jobs: #{report.active_craft_jobs}",
@@ -1213,6 +1294,7 @@ defmodule MMGO.Telegram.Commands do
                "Locations: #{report.locations}",
                "Routes: #{report.routes}",
                "Journeys: #{report.active_journeys}",
+               "Migrations: #{report.active_migrations}",
                "Enrollments: #{report.active_enrollments}",
                "Brew jobs: #{report.active_brew_jobs}",
                "Craft jobs: #{report.active_craft_jobs}",
@@ -1250,6 +1332,7 @@ defmodule MMGO.Telegram.Commands do
              [
                "Maintenance sweep complete:",
                "Completed journeys: #{summary.completed_journeys}",
+               "Completed migrations: #{summary.completed_migrations}",
                "Completed enrollments: #{summary.completed_enrollments}",
                "Completed brew jobs: #{summary.completed_brew_jobs}",
                "Completed craft jobs: #{summary.completed_craft_jobs}",
