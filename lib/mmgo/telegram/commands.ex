@@ -18,8 +18,10 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Inventory
   alias MMGO.NPCShops
   alias MMGO.Operator
+  alias MMGO.Organizations
   alias MMGO.Overworld
   alias MMGO.Parties
+  alias MMGO.Progression
   alias MMGO.PVP
   alias MMGO.Reputation
   alias MMGO.Repo
@@ -58,6 +60,7 @@ defmodule MMGO.Telegram.Commands do
        "Available commands:",
        "/status",
        "/inventory",
+       "/progression milestones",
        "/routes",
        "/road encounter <handle>",
        "/road status",
@@ -102,6 +105,14 @@ defmodule MMGO.Telegram.Commands do
        "/scavenge <resource_code> [quantity]",
        "/party create [name]",
        "/party status",
+       "/org create <cult|company|council|guild> <name>",
+       "/org list",
+       "/org role <org-id> <code> <rank> <perm1,perm2,...> <title>",
+       "/org invite <org-id> <handle> <role-code>",
+       "/org invites",
+       "/org accept <invite-id>",
+       "/org reject <invite-id>",
+       "/org travel <org-id> <location-slug>",
        "/club create <type> <name>",
        "/club list",
        "/club status <club-id>",
@@ -186,6 +197,29 @@ defmodule MMGO.Telegram.Commands do
 
     {:ok, Enum.join(["Inventory:"] ++ body, "\n")}
   end
+
+  defp dispatch("progression", ["milestones"], character) do
+    grants = Progression.list_reward_grants(character.id)
+    milestones = Progression.list_milestones()
+
+    if milestones == [] do
+      {:ok, "No progression milestones are configured."}
+    else
+      claimed = MapSet.new(Enum.map(grants, & &1.milestone_id))
+
+      {:ok,
+       Enum.join(
+         ["Progression milestones:"] ++
+           Enum.map(milestones, fn milestone ->
+             status = if MapSet.member?(claimed, milestone.id), do: "claimed", else: "locked"
+             "- lvl #{milestone.level}: #{milestone.title} (#{status})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("progression", _args, _character), do: {:ok, "Usage: /progression milestones"}
 
   defp dispatch("routes", _args, character) do
     with %{id: location_id} = location <- character.current_location do
@@ -1039,6 +1073,148 @@ defmodule MMGO.Telegram.Commands do
 
   defp dispatch("party", _args, _character),
     do: {:ok, "Usage: /party create [name] | /party status"}
+
+  defp dispatch("org", ["create", kind | name_parts], character) do
+    name = Enum.join(name_parts, " ")
+
+    if name == "" do
+      {:ok, "Usage: /org create <cult|company|council|guild> <name>"}
+    else
+      attrs =
+        if kind == "cult" do
+          %{fast_travel_enabled: true, linked_location_ids: [character.current_location_id]}
+        else
+          %{}
+        end
+
+      case Organizations.create_organization(character, kind, name, attrs) do
+        {:ok, %{organization: organization}} ->
+          {:ok, "Organization created: #{organization.name} (#{organization.kind})."}
+
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Could not create organization: #{format_changeset(changeset)}"}
+      end
+    end
+  end
+
+  defp dispatch("org", ["list"], character) do
+    orgs = Organizations.list_organizations_for_character(character.id)
+
+    if orgs == [] do
+      {:ok, "No organizations."}
+    else
+      {:ok,
+       Enum.join(
+         ["Organizations:"] ++
+           Enum.map(orgs, fn org ->
+             "- #{org.id}: #{org.name} (#{org.kind})"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("org", ["role", org_id, code, rank_raw, permissions_csv | title_parts], character) do
+    rank = parse_non_negative_integer(rank_raw, 0)
+    permissions = permissions_csv |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
+    title = Enum.join(title_parts, " ")
+
+    with %{} = organization <- load_owned_organization(org_id, character.id),
+         {:ok, role} <-
+           Organizations.add_role(organization, character, %{
+             code: code,
+             title: title,
+             rank: rank,
+             permissions: permissions
+           }) do
+      {:ok, "Role created: #{role.title} (#{role.code})."}
+    else
+      nil ->
+        {:ok, "No matching organization membership found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not create role: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("org", ["invite", org_id, handle, role_code], character) do
+    with %{} = organization <- load_owned_organization(org_id, character.id),
+         %{} = invitee <- Accounts.get_character_by_handle(character.realm_id, handle),
+         %{} = role <- Enum.find(organization.roles, &(&1.code == role_code)),
+         {:ok, invitation} <- Organizations.invite_member(organization, character, invitee, role) do
+      {:ok, "Organization invitation #{invitation.id} sent to #{handle}."}
+    else
+      nil ->
+        {:ok, "Organization, invitee, or role not found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not invite member: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("org", ["invites"], character) do
+    invitations = Organizations.pending_invitations_for_character(character.id)
+
+    if invitations == [] do
+      {:ok, "No pending organization invitations."}
+    else
+      {:ok,
+       Enum.join(
+         ["Pending organization invitations:"] ++
+           Enum.map(invitations, fn invitation ->
+             "- #{invitation.id}: #{invitation.organization.name} as #{invitation.role.title}"
+           end),
+         "\n"
+       )}
+    end
+  end
+
+  defp dispatch("org", ["accept", invitation_id], character) do
+    with %{} = invitation <- load_org_invitation(invitation_id, character.id),
+         {:ok, _membership} <- Organizations.accept_invitation(invitation, character) do
+      {:ok, "Organization invitation accepted."}
+    else
+      nil ->
+        {:ok, "No matching organization invitation found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not accept invitation: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("org", ["reject", invitation_id], character) do
+    with %{} = invitation <- load_org_invitation(invitation_id, character.id),
+         {:ok, _invitation} <- Organizations.reject_invitation(invitation, character) do
+      {:ok, "Organization invitation rejected."}
+    else
+      nil ->
+        {:ok, "No matching organization invitation found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not reject invitation: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("org", ["travel", org_id, location_slug], character) do
+    with %{} = organization <- load_owned_organization(org_id, character.id),
+         %{} = location <- Worlds.get_location_by_slug(character.realm_id, location_slug),
+         {:ok, updated_character} <-
+           Organizations.use_fast_travel(character, organization, location) do
+      {:ok,
+       "Organization travel complete. New location: #{location_name_by_id(updated_character.current_location_id)}."}
+    else
+      nil ->
+        {:ok, "Organization or location not found."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not use organization travel: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("org", _args, _character) do
+    {:ok,
+     "Usage: /org create <cult|company|council|guild> <name> | /org list | /org role <org-id> <code> <rank> <perm1,perm2,...> <title> | /org invite <org-id> <handle> <role-code> | /org invites | /org accept <invite-id> | /org reject <invite-id> | /org travel <org-id> <location-slug>"}
+  end
 
   defp dispatch("club", ["create", club_type | name_parts], character) do
     name = Enum.join(name_parts, " ")
@@ -1972,6 +2148,36 @@ defmodule MMGO.Telegram.Commands do
 
     if Enum.any?(club.memberships, &(&1.character_id == character_id and &1.status == :active)) do
       club
+    else
+      nil
+    end
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_owned_organization(org_id, character_id) do
+    organization = Organizations.get_organization!(org_id)
+
+    if Enum.any?(
+         organization.memberships,
+         &(&1.character_id == character_id and &1.status == :active)
+       ) do
+      organization
+    else
+      nil
+    end
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_org_invitation(invitation_id, character_id) do
+    invitation =
+      MMGO.Organizations.Invitation
+      |> Repo.get!(invitation_id)
+      |> Repo.preload([:organization, :inviter_character, :role])
+
+    if invitation.invitee_character_id == character_id and invitation.status == :pending do
+      invitation
     else
       nil
     end

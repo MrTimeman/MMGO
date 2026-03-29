@@ -4,6 +4,7 @@ defmodule MMGO.Parties do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Parties.{Expedition, ExpeditionMember, Membership, Party, Reward}
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Survival
   alias MMGO.Travel.Journey
@@ -237,10 +238,13 @@ defmodule MMGO.Parties do
           else
             character = Map.fetch!(characters, member.character_id)
 
-            updated_character =
-              character
-              |> Character.changeset(%{xp: character.xp + share})
-              |> repo.update!()
+            {:ok, %{character: updated_character}} =
+              Progression.grant_xp(repo, character, share, %{
+                "source" => attrs["source"] || "party_reward",
+                "granted_at" => now,
+                "run_id" => attrs["run_id"],
+                "encounter_id" => attrs["encounter_id"]
+              })
 
             reward =
               %Reward{}

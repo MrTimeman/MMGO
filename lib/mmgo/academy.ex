@@ -4,6 +4,7 @@ defmodule MMGO.Academy do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Academy.{CompleteEnrollmentWorker, Enrollment, Specialization}
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel.Clock
 
@@ -102,10 +103,17 @@ defmodule MMGO.Academy do
                 if(enrollment.program_type == :basic_education,
                   do: :active,
                   else: character.status
-                ),
-              xp: character.xp + completion_xp(enrollment)
+                )
             })
             |> Repo.update!()
+
+          {:ok, %{character: updated_character}} =
+            Progression.grant_xp(Repo, updated_character, completion_xp(enrollment), %{
+              "source" => "academy_enrollment_completion",
+              "enrollment_id" => enrollment.id,
+              "program_type" => to_string(enrollment.program_type),
+              "granted_at" => now
+            })
 
           specialization = maybe_upsert_specialization!(updated_enrollment, now)
 

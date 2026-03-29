@@ -251,6 +251,20 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_org_invitation(%Character{} = character, invitation, organization) do
+    enqueue(
+      character,
+      :organization_invitation,
+      %{
+        invitation_id: invitation.id,
+        organization_id: organization.id,
+        organization_name: organization.name,
+        organization_kind: to_string(organization.kind)
+      },
+      dedupe_key: "organization-invitation:#{invitation.id}"
+    )
+  end
+
   defp validate_channel(channel) when channel in @channels, do: :ok
 
   defp validate_channel(_channel),

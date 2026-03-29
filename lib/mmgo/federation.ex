@@ -6,6 +6,7 @@ defmodule MMGO.Federation do
   alias MMGO.Economy
   alias MMGO.Federation.{ExchangeRate, Migration, RemoteRealm, Ruleset}
   alias MMGO.Notifications
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel.Clock
   alias MMGO.Worlds.Realm
@@ -585,11 +586,15 @@ defmodule MMGO.Federation do
 
           updated_origin_character =
             origin_character
-            |> Character.changeset(%{
-              status: :active,
-              xp: origin_character.xp + passive_xp_awarded
-            })
+            |> Character.changeset(%{status: :active})
             |> Repo.update!()
+
+          {:ok, %{character: updated_origin_character}} =
+            Progression.grant_xp(Repo, updated_origin_character, passive_xp_awarded, %{
+              "source" => "realm_migration_completion",
+              "migration_id" => migration.id,
+              "granted_at" => now
+            })
 
           updated_migration =
             migration

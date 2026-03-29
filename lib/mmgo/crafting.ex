@@ -8,6 +8,7 @@ defmodule MMGO.Crafting do
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Notifications
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel.Clock
 
@@ -144,10 +145,13 @@ defmodule MMGO.Crafting do
               durability: recipe.result_durability
             })
 
-          updated_character =
-            character
-            |> Character.changeset(%{xp: character.xp + craft_xp(recipe, craft_job.quantity)})
-            |> Repo.update!()
+          {:ok, %{character: updated_character}} =
+            Progression.grant_xp(Repo, character, craft_xp(recipe, craft_job.quantity), %{
+              "source" => "crafting_job_completion",
+              "craft_job_id" => craft_job.id,
+              "recipe_id" => recipe.id,
+              "granted_at" => now
+            })
 
           updated_craft_job =
             craft_job

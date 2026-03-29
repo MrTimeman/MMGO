@@ -5,6 +5,7 @@ defmodule MMGO.Academia do
   alias MMGO.Accounts.Character
   alias MMGO.Academia.{CompleteProjectWorker, Professor, Project, Publication}
   alias MMGO.Notifications
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel.Clock
 
@@ -92,10 +93,13 @@ defmodule MMGO.Academia do
           Repo.rollback(project_changeset("project is not due yet"))
 
         true ->
-          updated_character =
-            character
-            |> Character.changeset(%{xp: character.xp + project_xp(project)})
-            |> Repo.update!()
+          {:ok, %{character: updated_character}} =
+            Progression.grant_xp(Repo, character, project_xp(project), %{
+              "source" => "academia_project_completion",
+              "project_id" => project.id,
+              "project_kind" => to_string(project.project_kind),
+              "granted_at" => now
+            })
 
           publication = publish_project!(project, now)
 

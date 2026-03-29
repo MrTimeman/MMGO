@@ -5,6 +5,7 @@ defmodule MMGO.Scavenging do
   alias MMGO.Accounts.Character
   alias MMGO.Inventory
   alias MMGO.Parties
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Scavenging.{Attempt, CompleteAttemptWorker, ResourceCache}
   alias MMGO.Travel
@@ -165,10 +166,12 @@ defmodule MMGO.Scavenging do
 
           case reward_result do
             {:ok, reward} ->
-              updated_character =
-                character
-                |> Character.changeset(%{xp: character.xp + scavenging_xp(attempt)})
-                |> Repo.update!()
+              {:ok, %{character: updated_character}} =
+                Progression.grant_xp(Repo, character, scavenging_xp(attempt), %{
+                  "source" => "scavenge_completion",
+                  "attempt_id" => attempt.id,
+                  "granted_at" => now
+                })
 
               updated_attempt =
                 attempt

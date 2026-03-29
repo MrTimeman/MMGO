@@ -25,6 +25,8 @@ This repository currently includes:
 - alchemy workspaces, recipes, and timed brew jobs
 - bases, storage transfer, and timed construction completion
 - academy clubs, memberships, and invitation flows
+- generic organizations with cult-style hierarchy and fast-travel permissions
+- progression milestones and reward grants
 - actor templates and concrete enemy spawns for PvE combats
 - NPC shops, tuition, and charity-fund economy hooks
 - inter-realm discovery, exchange rates, and migration workflow
@@ -117,6 +119,8 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 - `lib/mmgo/alchemy` - workspaces, recipes, and brewing jobs for potion crafting
 - `lib/mmgo/bases` - property ownership, construction, and protected base storage
 - `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
+- `lib/mmgo/organizations` - general-purpose hierarchies, roles, and cult-style travel networks
+- `lib/mmgo/progression` - XP leveling, milestone definitions, and reward grants
 - `lib/mmgo/actors` - reusable enemy/NPC actor templates and encounter spawns
 - `lib/mmgo/dungeons` - macro maintenance, link states, node overrides, extraction, and run state
 - `lib/mmgo/overworld` - road encounters, social choices, and ambush escalation

@@ -24,7 +24,9 @@ defmodule MMGO.Operator do
   alias MMGO.Notifications.Notification
   alias MMGO.Overworld.Encounter
   alias MMGO.Operator.AuditEvent
+  alias MMGO.Organizations.Organization
   alias MMGO.Parties.Expedition
+  alias MMGO.Progression.{Milestone, RewardGrant}
   alias MMGO.Reputation.{CrimeRecord, Profile}
   alias MMGO.Repo
   alias MMGO.Scavenging
@@ -58,6 +60,9 @@ defmodule MMGO.Operator do
       active_extractions: count_active(Extraction),
       active_dungeon_cycles: count_dungeon_cycles(),
       active_overworld_encounters: count_active(Encounter),
+      active_organizations: count_active(Organization),
+      configured_milestones: Repo.aggregate(Milestone, :count, :id),
+      reward_grants: Repo.aggregate(RewardGrant, :count, :id),
       active_combats: count_combat_active(),
       active_market_listings: count_active(Listing),
       active_npc_shops: count_active(Shop),

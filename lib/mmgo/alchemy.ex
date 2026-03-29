@@ -8,6 +8,7 @@ defmodule MMGO.Alchemy do
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Notifications
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel.Clock
 
@@ -141,10 +142,13 @@ defmodule MMGO.Alchemy do
               quantity: brew_job.quantity * recipe.result_quantity
             })
 
-          updated_character =
-            character
-            |> Character.changeset(%{xp: character.xp + brew_xp(recipe, brew_job.quantity)})
-            |> Repo.update!()
+          {:ok, %{character: updated_character}} =
+            Progression.grant_xp(Repo, character, brew_xp(recipe, brew_job.quantity), %{
+              "source" => "alchemy_brew_completion",
+              "brew_job_id" => brew_job.id,
+              "recipe_id" => recipe.id,
+              "granted_at" => now
+            })
 
           updated_brew_job =
             brew_job
