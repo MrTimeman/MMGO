@@ -18,7 +18,6 @@ defmodule MMGOWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    live "/hooks", JsHooksShowcaseLive
   end
 
   scope "/", MMGOWeb do

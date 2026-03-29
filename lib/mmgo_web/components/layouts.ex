@@ -68,6 +68,25 @@ defmodule MMGOWeb.Layouts do
     """
   end
 
+  # ---------------------------------------------------------------------------
+  # Game layout — full-screen shell used by all in-game LiveViews.
+  # Usage: <Layouts.game flash={@flash}>...</Layouts.game>
+  # ---------------------------------------------------------------------------
+
+  attr :flash, :map, required: true, doc: "the map of flash messages"
+  slot :inner_block, required: true
+
+  def game(assigns) do
+    ~H"""
+    <div id="game-root" class="game-root">
+      <.flash_group flash={@flash} />
+      {render_slot(@inner_block)}
+    </div>
+    """
+  end
+
+  # ---------------------------------------------------------------------------
+
   attr :flash, :map, required: true, doc: "the map of flash messages"
   attr :id, :string, default: "flash-group", doc: "the optional id of flash container"
 
