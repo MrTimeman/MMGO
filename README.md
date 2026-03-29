@@ -53,31 +53,33 @@ This repository currently includes:
 
 ## Local setup
 
-1. Start PostgreSQL:
+1. Install Elixir 1.19+ and Erlang/OTP 28+ (or use your preferred version manager).
+
+2. Start PostgreSQL (requires Docker):
 
    ```bash
    docker compose up -d postgres
    ```
 
-2. Copy local environment values if you want to override defaults:
+3. Copy local environment values if you want to override defaults:
 
    ```bash
    cp .env.example .env
    ```
 
-3. Install dependencies and set up the database:
+4. Install dependencies and set up the database:
 
    ```bash
    mix setup
    ```
 
-4. Start the Phoenix server:
+5. Start the Phoenix server:
 
    ```bash
    mix phx.server
    ```
 
-Then open `http://localhost:4000`.
+6. Open `http://localhost:4000` in your browser.
 
 ## Useful commands
 
