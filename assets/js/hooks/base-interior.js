@@ -1,21 +1,4 @@
-// BaseInteriorHook — Base room view: info, storage grid, workshop tools.
-//
-// Template usage:
-//   <div id="base-interior" phx-hook="BaseInterior" phx-update="ignore"></div>
-//
-// Server → client events:
-//   push_event(socket, "base_update", %{
-//     name: "Логово Арториаса",
-//     kind: "city_purchase" | "custom_build",
-//     status: "building" | "active",
-//     build_days_remaining: 12 | nil,
-//     storage: %{
-//       used_weight: 40,
-//       capacity: 250,
-//       items: [%{name: "Зелье лечения", quantity: 3, durability: nil}, ...]
-//     },
-//     workshop: %{tools: ["кузнечный молот", "алхимический стол"]} | nil
-//   })
+// BaseInteriorHook — Base room view: header, storage grid, workshop tools.
 
 import { h } from './utils'
 
@@ -32,32 +15,35 @@ export const BaseInteriorHook = {
     root.innerHTML = ''
     root.className = 'base'
 
-    // Header
+    // ── Header ──────────────────────────────────────────────────────────────
     const header = h('div', { class: 'base__header' })
-    header.appendChild(h('div', { class: 'base__name' }, name ?? 'База'))
-    header.appendChild(h('div', { class: 'base__kind' }, KIND_LABEL[kind] ?? kind))
+    const headerTop = h('div', { class: 'base__header-top' })
+    headerTop.appendChild(h('div', { class: 'base__name' }, name ?? 'База'))
+    headerTop.appendChild(h('div', { class: 'base__kind' }, KIND_LABEL[kind] ?? kind ?? ''))
+    header.appendChild(headerTop)
+    header.appendChild(h('div', {
+      class: `base__status base__status--${status}`,
+    }, status === 'active' ? '● Активна' : `⚒ Строительство · ${build_days_remaining ?? '—'} дн.`))
     root.appendChild(header)
 
-    // Building state
-    if (status === 'building') {
-      root.appendChild(h('div', { class: 'base__building' },
-        `Строительство... осталось дней: ${build_days_remaining ?? '—'}`
-      ))
-      return
-    }
+    if (status === 'building') return
 
-    // Storage section
+    // ── Storage ──────────────────────────────────────────────────────────────
     if (storage) {
       const section = h('div', { class: 'base__section' })
       const weightPct = Math.round((storage.used_weight / (storage.capacity || 1)) * 100)
+      const barMod = weightPct > 90 ? 'danger' : weightPct > 70 ? 'warn' : ''
 
-      const sectionHead = h('div', { class: 'base__section-head' })
-      sectionHead.appendChild(h('span', {}, 'Хранилище'))
-      sectionHead.appendChild(h('span', { class: 'base__weight' }, `${storage.used_weight} / ${storage.capacity}`))
-      section.appendChild(sectionHead)
+      const sHead = h('div', { class: 'base__section-head' })
+      const sTitle = h('div', { class: 'base__section-title' })
+      sTitle.appendChild(h('span', { class: 'base__section-icon' }, '⊞'))
+      sTitle.appendChild(h('span', {}, 'Хранилище'))
+      sHead.appendChild(sTitle)
+      sHead.appendChild(h('span', { class: 'base__weight' }, `${storage.used_weight} / ${storage.capacity} ед.`))
+      section.appendChild(sHead)
 
       const bar = h('div', { class: 'base__bar-wrap' })
-      const fill = h('div', { class: 'base__bar-fill' })
+      const fill = h('div', { class: `base__bar-fill${barMod ? ' base__bar-fill--' + barMod : ''}` })
       fill.style.width = `${weightPct}%`
       bar.appendChild(fill)
       section.appendChild(bar)
@@ -66,14 +52,14 @@ export const BaseInteriorHook = {
         const grid = h('div', { class: 'base__grid' })
         for (const item of storage.items) {
           const cell = h('div', { class: 'base__cell' })
-          cell.appendChild(h('div', { class: 'base__cell-name' }, item.name))
-          const meta = h('div', { class: 'base__cell-meta' })
-          if (item.quantity > 1) meta.append(`×${item.quantity}`)
-          if (item.durability != null) {
-            if (meta.textContent) meta.append('  ')
-            meta.append(`${item.durability}%`)
-          }
-          cell.appendChild(meta)
+          cell.appendChild(h('div', { class: 'base__cell-dot' }))
+          const info = h('div', { class: 'base__cell-info' })
+          info.appendChild(h('div', { class: 'base__cell-name' }, item.name))
+          const parts = []
+          if (item.quantity > 1) parts.push(`×${item.quantity}`)
+          if (item.durability != null) parts.push(`${item.durability}%`)
+          if (parts.length) info.appendChild(h('div', { class: 'base__cell-meta' }, parts.join('  ·  ')))
+          cell.appendChild(info)
           grid.appendChild(cell)
         }
         section.appendChild(grid)
@@ -84,10 +70,16 @@ export const BaseInteriorHook = {
       root.appendChild(section)
     }
 
-    // Workshop section
+    // ── Workshop ─────────────────────────────────────────────────────────────
     if (workshop) {
       const section = h('div', { class: 'base__section' })
-      section.appendChild(h('div', { class: 'base__section-head' }, 'Мастерская'))
+      const sHead = h('div', { class: 'base__section-head' })
+      const sTitle = h('div', { class: 'base__section-title' })
+      sTitle.appendChild(h('span', { class: 'base__section-icon' }, '⚙'))
+      sTitle.appendChild(h('span', {}, 'Мастерская'))
+      sHead.appendChild(sTitle)
+      section.appendChild(sHead)
+
       if (workshop.tools?.length > 0) {
         const tools = h('div', { class: 'base__tools' })
         for (const tool of workshop.tools) {

@@ -1,20 +1,7 @@
-// GuildHallHook — Organization view: header, role list, member chips, pending invitations.
+// GuildHallHook — Organization view with visual rank ladder and optional identity obscuring.
 //
-// Template usage:
-//   <div id="guild-hall" phx-hook="GuildHall" phx-update="ignore"></div>
-//
-// Server → client events:
-//   push_event(socket, "guild_update", %{
-//     org: %{name: "Орден Пепла", kind: "cult"},
-//     roles: [%{code: "elder", title: "Старейшина", rank: 10}, ...],
-//     members: [%{name: "Арториас", avatar_url: nil, role_title: "Старейшина"}, ...],
-//     pending_invitations: 2,
-//     viewer_permissions: ["invite_members", "manage_roles"]
-//   })
-//
-// Client → server events:
-//   handle_event("guild_invite_open", %{}, socket)
-//   handle_event("guild_manage_roles", %{}, socket)
+// Members with identity_obscured: true are shown as "???" unless the viewer outranks them
+// or they're in a lower rank. viewer_rank controls what's visible.
 
 import { h, charChip, ORG_KIND_LABEL } from './utils'
 
@@ -24,7 +11,8 @@ export const GuildHallHook = {
     this.pushEvent('hook_mounted', { hook: 'GuildHall' })
   },
 
-  render({ org, roles = [], members = [], pending_invitations = 0, viewer_permissions = [] }) {
+  render({ org, roles = [], members = [], pending_invitations = 0,
+           viewer_permissions = [], viewer_rank = 999 }) {
     const root = this.el
     root.innerHTML = ''
     root.className = 'hall'
@@ -35,56 +23,96 @@ export const GuildHallHook = {
     header.appendChild(h('div', { class: 'hall__kind' }, ORG_KIND_LABEL[org?.kind] ?? org?.kind ?? ''))
     root.appendChild(header)
 
-    // Actions
-    const canInvite      = viewer_permissions.includes('invite_members')
-    const canManageRoles = viewer_permissions.includes('manage_roles')
-
-    if (canInvite || canManageRoles) {
+    // Action buttons
+    const canInvite = viewer_permissions.includes('invite_members')
+    const canManage = viewer_permissions.includes('manage_roles')
+    if (canInvite || canManage) {
       const actions = h('div', { class: 'hall__actions' })
       if (canInvite) {
-        const invBtn = h('button', { class: 'hall__btn', type: 'button' }, `Пригласить${pending_invitations > 0 ? ` (${pending_invitations})` : ''}`)
-        invBtn.addEventListener('click', () => this.pushEvent('guild_invite_open', {}))
-        actions.appendChild(invBtn)
+        const btn = h('button', { class: 'hall__btn', type: 'button' },
+          `Пригласить${pending_invitations > 0 ? ` (${pending_invitations})` : ''}`)
+        btn.addEventListener('click', () => this.pushEvent('guild_invite_open', {}))
+        actions.appendChild(btn)
       }
-      if (canManageRoles) {
-        const roleBtn = h('button', { class: 'hall__btn', type: 'button' }, 'Роли')
-        roleBtn.addEventListener('click', () => this.pushEvent('guild_manage_roles', {}))
-        actions.appendChild(roleBtn)
+      if (canManage) {
+        const btn = h('button', { class: 'hall__btn', type: 'button' }, 'Роли')
+        btn.addEventListener('click', () => this.pushEvent('guild_manage_roles', {}))
+        actions.appendChild(btn)
       }
       root.appendChild(actions)
     }
 
-    // Roles list
+    // ── Rank ladder ────────────────────────────────────────────────────────
     if (roles.length > 0) {
-      const roleSection = h('div', { class: 'hall__section' })
-      roleSection.appendChild(h('div', { class: 'hall__section-label' }, 'Иерархия'))
-      const roleList = h('div', { class: 'hall__roles' })
       const sorted = [...roles].sort((a, b) => a.rank - b.rank)
+      const section = h('div', { class: 'hall__section' })
+      section.appendChild(h('div', { class: 'hall__section-label' }, 'Иерархия'))
+
+      const ladder = h('div', { class: 'hall__ladder' })
+      const maxRank = Math.max(...sorted.map(r => r.rank))
+
       for (const role of sorted) {
-        const row = h('div', { class: 'hall__role' })
-        row.appendChild(h('span', { class: 'hall__role-rank' }, String(role.rank)))
-        row.appendChild(h('span', { class: 'hall__role-title' }, role.title))
-        roleList.appendChild(row)
+        const rung = h('div', { class: `hall__rung${role.rank === viewer_rank ? ' hall__rung--viewer' : ''}` })
+
+        // Rank bar width: rank 1 = 100% (highest), rank 100 = 20% (lowest)
+        const barPct = Math.round(100 - (role.rank / maxRank) * 75)
+        const bar = h('div', { class: 'hall__rung-bar' })
+        bar.style.width = `${barPct}%`
+        rung.appendChild(bar)
+
+        const label = h('div', { class: 'hall__rung-label' })
+        label.appendChild(h('span', { class: 'hall__rung-title' }, role.title))
+        label.appendChild(h('span', { class: 'hall__rung-rank' }, `#${role.rank}`))
+        rung.appendChild(label)
+
+        // Members in this role — inline chips
+        const roleMembers = members.filter(m => m.role_title === role.title)
+        if (roleMembers.length > 0) {
+          const chips = h('div', { class: 'hall__rung-chips' })
+          for (const m of roleMembers) {
+            const obscured = m.identity_obscured && m.rank < viewer_rank
+            const chip = obscured
+              ? this._obscuredChip()
+              : charChip(m.name, m.avatar_url ?? null, 'sm')
+            chip.title = obscured ? '???' : m.name
+            chips.appendChild(chip)
+          }
+          rung.appendChild(chips)
+        }
+
+        ladder.appendChild(rung)
       }
-      roleSection.appendChild(roleList)
-      root.appendChild(roleSection)
+
+      section.appendChild(ladder)
+      root.appendChild(section)
     }
 
-    // Member grid
-    if (members.length > 0) {
-      const memberSection = h('div', { class: 'hall__section' })
-      memberSection.appendChild(h('div', { class: 'hall__section-label' }, `Участники (${members.length})`))
+    // ── Members not tied to a visible role (or all, if no roles) ──────────
+    const unranked = members.filter(m => !roles.find(r => r.title === m.role_title))
+    if (unranked.length > 0) {
+      const section = h('div', { class: 'hall__section' })
+      section.appendChild(h('div', { class: 'hall__section-label' }, `Участники (${members.length})`))
       const grid = h('div', { class: 'hall__members' })
-      for (const m of members) {
+      for (const m of unranked) {
+        const obscured = m.identity_obscured && (m.rank ?? 999) < viewer_rank
         const card = h('div', { class: 'hall__member' })
-        card.appendChild(charChip(m.name, m.avatar_url ?? null, 'lg'))
-        card.appendChild(h('div', { class: 'hall__member-name' }, m.name))
+        card.appendChild(obscured
+          ? this._obscuredChip('lg')
+          : charChip(m.name, m.avatar_url ?? null, 'lg'))
+        card.appendChild(h('div', { class: 'hall__member-name' }, obscured ? '???' : m.name))
         if (m.role_title) card.appendChild(h('div', { class: 'hall__member-role' }, m.role_title))
         grid.appendChild(card)
       }
-      memberSection.appendChild(grid)
-      root.appendChild(memberSection)
+      section.appendChild(grid)
+      root.appendChild(section)
     }
+  },
+
+  _obscuredChip(size = 'sm') {
+    const el = document.createElement('div')
+    el.className = `char-chip char-chip--${size} char-chip--obscured`
+    el.textContent = '?'
+    return el
   },
 
   destroyed() {},

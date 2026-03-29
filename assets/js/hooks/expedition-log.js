@@ -1,38 +1,51 @@
-// ExpeditionLogHook — Expedition journal: member chips, event log, supply bars.
-//
-// Template usage:
-//   <div id="expedition-log" phx-hook="ExpeditionLog" phx-update="ignore"></div>
-//
-// Server → client events:
-//   push_event(socket, "expedition_update", %{
-//     status: "active" | "completed" | "aborted" | "failed",
-//     expedition_type: "dungeon" | "overworld",
-//     members: [%{name: "Арториас", avatar_url: nil, status: "active"}, ...],
-//     events: [%{text: "Столкновение с бандитами", kind: "encounter"}, ...],
-//     supplies: %{
-//       food_units: 12,
-//       food_demand_per_day: 3,
-//       carried_weight: 88,
-//       carry_capacity: 120
-//     }
-//   })
+// ExpeditionLogHook — Expedition journal with supply bars and flavor micro-events.
 
 import { h, charChip } from './utils'
-
-const EVENT_KIND_CLASS = {
-  encounter: 'exped__event--encounter',
-  reward:    'exped__event--reward',
-  narrative: 'exped__event--narrative',
-}
 
 const STATUS_LABEL = {
   active: 'В экспедиции', completed: 'Завершена',
   aborted: 'Прервана', failed: 'Провалена',
 }
 
+const FLAVOR = [
+  'Дор споткнулся о корень и выронил флягу.',
+  'Кто-то слышал смех в темноте. Наверное ветер.',
+  'Белка украла сухарь прямо из руки Лиры.',
+  'Арториас утверждает, что видел привидение. Мелисандра говорит — это был фонарь.',
+  'Найдена монета с профилем неизвестного короля.',
+  'Запах жареного мяса. Источник не установлен.',
+  'На стене выцарапано: «Здесь был Грот. И пожалел».',
+  'Дор и Лира поспорили, существуют ли гоблины-вегетарианцы. Спор не разрешён.',
+  'Странный гриб. Никто его не трогал. На всякий случай.',
+  'В углу нашли чьи-то очки. Стёкла целые.',
+  'Мелисандра насвистела мотив. Никто не знает, откуда он.',
+  'Летучая мышь залетела в шлем Дора. Все сделали вид, что не заметили.',
+  'На полу — отпечатки копыт. Маленьких. Очень маленьких.',
+  'Дор клянётся, что один из камней подмигнул. Камень отрицает.',
+]
+
+function pickFlavor(seed) {
+  return FLAVOR[(seed + Math.floor(Date.now() / 1000)) % FLAVOR.length]
+}
+
 export const ExpeditionLogHook = {
   mounted() {
-    this.handleEvent('expedition_update', data => this.render(data))
+    this._localEvents = []
+    this._flavorSeed  = Math.floor(Math.random() * FLAVOR.length)
+    this._flavorTimer = null
+
+    this.handleEvent('expedition_update', data => {
+      this._data = data
+      if (data.status === 'active' && !this._flavorTimer) {
+        this._flavorTimer = setInterval(() => {
+          this._flavorSeed++
+          this._localEvents.unshift({ text: pickFlavor(this._flavorSeed), kind: 'flavor' })
+          if (this._localEvents.length > 6) this._localEvents.pop()
+          this._renderLog()
+        }, 240000) // every 4 real minutes ≈ 1 game day
+      }
+      this.render(data)
+    })
     this.pushEvent('hook_mounted', { hook: 'ExpeditionLog' })
   },
 
@@ -41,10 +54,8 @@ export const ExpeditionLogHook = {
     root.innerHTML = ''
     root.className = 'exped'
 
-    // Status
     root.appendChild(h('div', { class: `exped__status exped__status--${status}` }, STATUS_LABEL[status] ?? status))
 
-    // Member chips
     if (members.length > 0) {
       const row = h('div', { class: 'exped__members' })
       for (const m of members) {
@@ -56,45 +67,54 @@ export const ExpeditionLogHook = {
       root.appendChild(row)
     }
 
-    // Supplies
     if (supplies) {
-      const foodPct   = Math.round((supplies.food_units / Math.max(supplies.food_demand_per_day * 14, 1)) * 100)
-      const weightPct = Math.round((supplies.carried_weight / (supplies.carry_capacity || 1)) * 100)
+      const block = h('div', { class: 'exped__supplies' })
 
-      const supplyBlock = h('div', { class: 'exped__supplies' })
+      const foodPct = Math.round(((supplies.food_units ?? 0) /
+        Math.max((supplies.food_demand_per_day ?? 1) * 14, 1)) * 100)
+      block.appendChild(this._supplyRow(
+        `Еда: ${supplies.food_units} ед. (${supplies.food_demand_per_day}/день)`, foodPct, 'food'))
 
-      const foodStat = h('div', { class: 'exped__supply-row' })
-      foodStat.appendChild(h('span', { class: 'exped__supply-label' }, `Еда: ${supplies.food_units} ед. (${supplies.food_demand_per_day}/день)`))
-      const fb = h('div', { class: 'exped__bar-wrap' })
-      const ff = h('div', { class: 'exped__bar-fill exped__bar-fill--food' })
-      ff.style.width = `${Math.min(foodPct, 100)}%`
-      fb.appendChild(ff)
-      foodStat.appendChild(fb)
-      supplyBlock.appendChild(foodStat)
+      const wPct = Math.round(((supplies.carried_weight ?? 0) / (supplies.carry_capacity || 1)) * 100)
+      block.appendChild(this._supplyRow(
+        `Вес: ${supplies.carried_weight} / ${supplies.carry_capacity}`, wPct, wPct > 90 ? 'danger' : ''))
 
-      const wStat = h('div', { class: 'exped__supply-row' })
-      wStat.appendChild(h('span', { class: 'exped__supply-label' }, `Вес: ${supplies.carried_weight} / ${supplies.carry_capacity}`))
-      const wb = h('div', { class: 'exped__bar-wrap' })
-      const wf = h('div', { class: 'exped__bar-fill' })
-      wf.style.width = `${Math.min(weightPct, 100)}%`
-      if (weightPct > 90) wf.classList.add('exped__bar-fill--danger')
-      wb.appendChild(wf)
-      wStat.appendChild(wb)
-      supplyBlock.appendChild(wStat)
-
-      root.appendChild(supplyBlock)
+      root.appendChild(block)
     }
 
-    // Event log (newest first)
-    if (events.length > 0) {
-      const log = h('div', { class: 'exped__log' })
-      for (const ev of [...events].reverse()) {
-        const line = h('div', { class: `exped__event ${EVENT_KIND_CLASS[ev.kind] ?? ''}` }, ev.text)
-        log.appendChild(line)
-      }
-      root.appendChild(log)
+    // Log container — re-rendered separately via _renderLog
+    this._logEl = h('div', { class: 'exped__log', id: 'exped-log-inner' })
+    root.appendChild(this._logEl)
+    this._allEvents = [...this._localEvents, ...[...events].reverse()]
+    this._renderLog()
+  },
+
+  _renderLog() {
+    if (!this._logEl) return
+    this._logEl.innerHTML = ''
+    for (const ev of this._allEvents.slice(0, 20)) {
+      const kindCls = {
+        encounter: 'exped__event--encounter',
+        reward:    'exped__event--reward',
+        narrative: 'exped__event--narrative',
+        flavor:    'exped__event--flavor',
+      }[ev.kind] ?? ''
+      this._logEl.appendChild(h('div', { class: `exped__event ${kindCls}` }, ev.text))
     }
   },
 
-  destroyed() {},
+  _supplyRow(label, pct, mod) {
+    const row = h('div', { class: 'exped__supply-row' })
+    row.appendChild(h('span', { class: 'exped__supply-label' }, label))
+    const bar = h('div', { class: 'exped__bar-wrap' })
+    const fill = h('div', { class: `exped__bar-fill${mod ? ' exped__bar-fill--' + mod : ''}` })
+    fill.style.width = `${Math.min(pct, 100)}%`
+    bar.appendChild(fill)
+    row.appendChild(bar)
+    return row
+  },
+
+  destroyed() {
+    if (this._flavorTimer) clearInterval(this._flavorTimer)
+  },
 }

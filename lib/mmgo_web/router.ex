@@ -47,6 +47,7 @@ defmodule MMGOWeb.Router do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: MMGOWeb.Telemetry
+      live "/hooks", HooksDemoLive
     end
   end
 end
