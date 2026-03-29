@@ -34,7 +34,7 @@ defmodule MMGOWeb.Router do
     post "/federation/import-migration", FederationController, :import_migration
   end
 
-  # Enable LiveDashboard and Swoosh mailbox preview in development
+  # Enable LiveDashboard in development
   if Application.compile_env(:mmgo, :dev_routes) do
     # If you want to use the LiveDashboard in production, you should put
     # it behind authentication and allow only admins to access it.
@@ -43,11 +43,10 @@ defmodule MMGOWeb.Router do
     # as long as you are also using SSL (which you should anyway).
     import Phoenix.LiveDashboard.Router
 
-    scope "/dev" do
+    scope "/dev", MMGOWeb do
       pipe_through :browser
 
       live_dashboard "/dashboard", metrics: MMGOWeb.Telemetry
-      forward "/mailbox", Plug.Swoosh.MailboxPreview
     end
   end
 end
