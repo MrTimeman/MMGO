@@ -1435,7 +1435,7 @@ code {
   50%       { opacity: 1;    transform: translate(-50%, -50%) scale(1.6); }
 }
 
-/* Option sheet */
+/* Input sheet */
 .sc__sheet {
   width: 100%;
   max-width: 340px;
@@ -1443,6 +1443,9 @@ code {
   border: 1px solid rgba(0,212,255,0.2);
   border-radius: var(--panel-radius);
   padding: 0.65rem 0.75rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
   animation: sc-sheet-in 0.18s ease;
 }
 
@@ -1456,44 +1459,64 @@ code {
   text-transform: uppercase;
   letter-spacing: 0.1em;
   color: rgba(0,212,255,0.65);
-  margin-bottom: 0.5rem;
   font-family: var(--font-sans);
 }
 
-.sc__sheet-grid {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
+.sc__sheet-input {
+  background: hsl(220, 28%, 8%);
+  border: 1px solid rgba(0,212,255,0.25);
+  border-radius: 3px;
+  padding: 0.5rem 0.65rem;
+  color: rgba(255,255,255,0.85);
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  outline: none;
+  transition: all 0.15s;
 }
 
-.sc__sheet-empty {
-  font-size: 0.82rem;
-  color: var(--color-text-muted);
+.sc__sheet-input:focus {
+  border-color: rgba(0,212,255,0.7);
+  box-shadow: 0 0 6px rgba(0,212,255,0.2);
+  background: hsl(215, 32%, 10%);
+}
+
+.sc__sheet-input::placeholder {
+  color: rgba(0,212,255,0.35);
   font-style: italic;
 }
 
-.sc__option {
-  padding: 0.28rem 0.65rem;
-  border-radius: 2px;
-  border: 1px solid rgba(0,212,255,0.18);
-  background: hsl(224, 24%, 13%);
-  color: rgba(255,255,255,0.72);
+.sc__sheet-actions {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.sc__sheet-btn {
+  flex: 1;
+  padding: 0.4rem 0.6rem;
+  border-radius: 3px;
+  border: 1px solid rgba(0,212,255,0.25);
+  background: hsl(224, 24%, 12%);
+  color: rgba(0,212,255,0.65);
   font-family: var(--font-serif);
-  font-size: 0.82rem;
+  font-size: 0.8rem;
   cursor: pointer;
-  transition: all 0.14s;
+  transition: all 0.15s;
 }
 
-.sc__option:hover {
+.sc__sheet-btn:hover {
+  background: hsl(215, 32%, 15%);
   border-color: rgba(0,212,255,0.5);
-  background: hsl(210, 34%, 17%);
+  color: rgba(0,212,255,0.85);
+}
+
+.sc__sheet-btn--ok {
+  background: hsl(200, 40%, 12%);
+  border-color: rgba(0,212,255,0.4);
   color: var(--sc-cyan);
 }
 
-.sc__option--sel {
+.sc__sheet-btn--ok:hover {
   background: hsl(200, 40%, 16%);
-  border-color: var(--sc-cyan);
-  color: var(--sc-cyan);
   box-shadow: 0 0 4px rgba(0,212,255,0.2);
 }
 

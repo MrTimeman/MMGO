@@ -1,17 +1,10 @@
 // SpellCircleHook — 8 orbital slot buttons around a runic circle.
-// All 7 required slots filled → circle charges (cyan glow, rune rings animate faster).
-//
-// Server → client:
-//   push_event("spell_circle_init", %{
-//     slots: [%{key, label, required, choices: [%{value, label}]}],
-//     current: %{}
-//   })
-// Client → server:
-//   handle_event("spell_compile", %{...slot_keys => values, "name" => _}, socket)
+// Slots are editable text inputs (human-written words).
+// All 7 required slots filled → circle charges (cyan glow, rune rings animate).
 
 const NS = 'http://www.w3.org/2000/svg'
 
-// Default slot definitions (server can override via "slots" in the event)
+// Default slot definitions (server can override)
 const DEFAULT_SLOTS = [
   { key: 'school',  label: 'Школа',   required: true  },
   { key: 'type',    label: 'Тип',     required: true  },
@@ -47,7 +40,6 @@ function orbitCenter(i) {
 function buildRingsSVG(charged) {
   const svg = svgEl('svg', { viewBox: '0 0 340 340', class: 'sc__rings' })
 
-  // Path defs for textPath
   const defs = svgEl('defs')
   ;[155, 125, 95].forEach((r, i) => {
     defs.appendChild(svgEl('path', {
@@ -57,7 +49,7 @@ function buildRingsSVG(charged) {
   })
   svg.appendChild(defs)
 
-  // Connector lines (cross + X)
+  // Connector lines
   const lc = charged ? 'rgba(0,212,255,0.35)' : 'rgba(0,212,255,0.07)'
   const lw = charged ? '1' : '0.6'
   for (const [x1,y1,x2,y2] of [[170,25,170,315],[25,170,315,170],[55,55,285,285],[285,55,55,285]]) {
@@ -75,7 +67,6 @@ function buildRingsSVG(charged) {
 
     const text = svgEl('text', { class: `sc__ring-text sc__ring-text--${i}` })
     const tp   = svgEl('textPath', { href: `#sc-rp-${i}` })
-    // Repeat rune string to fill the circumference
     const repeats = Math.ceil((2 * Math.PI * r) / 14) + 4
     tp.textContent = (RUNE_STR.repeat(Math.ceil(repeats / RUNE_STR.length) + 1)).slice(0, repeats)
     text.appendChild(tp)
@@ -97,17 +88,12 @@ export const SpellCircleHook = {
   mounted() {
     this._sel  = {}        // { [key]: value }
     this._name = ''
-    this._active = null    // key of slot with open option sheet
+    this._activeSlot = null
     this._slots  = DEFAULT_SLOTS
-    this._opts   = {}      // { [key]: { label, required, choices[] } }
 
     this.handleEvent('spell_circle_init', data => {
       if (data.slots) {
         this._slots = data.slots.map(s => ({ key: s.key, label: s.label, required: s.required }))
-        this._opts  = {}
-        for (const s of data.slots) {
-          this._opts[s.key] = { label: s.label, required: s.required, choices: s.choices ?? [] }
-        }
       }
       if (data.current) Object.assign(this._sel, data.current)
       this.render()
@@ -131,15 +117,14 @@ export const SpellCircleHook = {
     // 8 slot buttons
     this._slots.forEach((slot, i) => {
       const pos   = slotPos(i)
-      const value = this._sel[slot.key]
-      const isActive = this._active === slot.key
+      const value = this._sel[slot.key] ?? ''
 
       const btn = document.createElement('button')
       btn.type = 'button'
       btn.className = [
         'sc__slot',
-        value    ? 'sc__slot--filled'   : '',
-        isActive ? 'sc__slot--active'   : '',
+        value ? 'sc__slot--filled' : '',
+        this._activeSlot === slot.key ? 'sc__slot--active' : '',
         !slot.required ? 'sc__slot--optional' : '',
       ].filter(Boolean).join(' ')
       btn.style.left = pos.left
@@ -151,13 +136,13 @@ export const SpellCircleHook = {
 
       const val = document.createElement('span')
       val.className = 'sc__slot-value'
-      val.textContent = value ? this._choiceLabel(slot.key, value) : '—'
+      val.textContent = value ? value.slice(0, 6) : '—'
 
       btn.appendChild(lbl)
       btn.appendChild(val)
 
       btn.addEventListener('click', () => {
-        this._active = this._active === slot.key ? null : slot.key
+        this._activeSlot = this._activeSlot === slot.key ? null : slot.key
         this.render()
       })
 
@@ -190,9 +175,9 @@ export const SpellCircleHook = {
 
     root.appendChild(circle)
 
-    // ── Option sheet ─────────────────────────────────────────────────────────
-    if (this._active) {
-      root.appendChild(this._buildSheet(this._active))
+    // ── Input sheet ─────────────────────────────────────────────────────────
+    if (this._activeSlot) {
+      root.appendChild(this._buildInputSheet(this._activeSlot))
     }
 
     // ── Footer (name + cast) ─────────────────────────────────────────────────
@@ -222,48 +207,58 @@ export const SpellCircleHook = {
     root.appendChild(footer)
   },
 
-  _choiceLabel(key, value) {
-    const choice = this._opts[key]?.choices?.find(c => c.value === value)
-    return choice?.label ?? value
-  },
-
-  _buildSheet(key) {
-    const opts = this._opts[key]
+  _buildInputSheet(key) {
+    const slot = this._slots.find(s => s.key === key)
     const sheet = document.createElement('div')
     sheet.className = 'sc__sheet'
 
     const title = document.createElement('div')
     title.className  = 'sc__sheet-title'
-    title.textContent = opts?.label ?? key
+    title.textContent = slot?.label ?? key
     sheet.appendChild(title)
 
-    if (!opts?.choices?.length) {
-      const empty = document.createElement('div')
-      empty.className   = 'sc__sheet-empty'
-      empty.textContent = 'Нет доступных вариантов'
-      sheet.appendChild(empty)
-      return sheet
-    }
-
-    const grid = document.createElement('div')
-    grid.className = 'sc__sheet-grid'
-
-    for (const choice of opts.choices) {
-      const sel = this._sel[key] === choice.value
-      const btn = document.createElement('button')
-      btn.type      = 'button'
-      btn.className = `sc__option${sel ? ' sc__option--sel' : ''}`
-      btn.textContent = choice.label
-      btn.addEventListener('click', () => {
-        if (sel) delete this._sel[key]
-        else this._sel[key] = choice.value
-        this._active = null
+    const input = document.createElement('input')
+    input.type = 'text'
+    input.className = 'sc__sheet-input'
+    input.placeholder = 'Введите значение...'
+    input.value = this._sel[key] ?? ''
+    input.addEventListener('input', e => {
+      this._sel[key] = e.target.value
+    })
+    input.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        this._activeSlot = null
         this.render()
-      })
-      grid.appendChild(btn)
-    }
+      }
+    })
+    sheet.appendChild(input)
 
-    sheet.appendChild(grid)
+    const actions = document.createElement('div')
+    actions.className = 'sc__sheet-actions'
+
+    const accept = document.createElement('button')
+    accept.type = 'button'
+    accept.className = 'sc__sheet-btn sc__sheet-btn--ok'
+    accept.textContent = 'ОК'
+    accept.addEventListener('click', () => {
+      this._activeSlot = null
+      this.render()
+    })
+
+    const clear = document.createElement('button')
+    clear.type = 'button'
+    clear.className = 'sc__sheet-btn'
+    clear.textContent = 'Очистить'
+    clear.addEventListener('click', () => {
+      delete this._sel[key]
+      this._activeSlot = null
+      this.render()
+    })
+
+    actions.appendChild(accept)
+    actions.appendChild(clear)
+    sheet.appendChild(actions)
+
     return sheet
   },
 
