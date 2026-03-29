@@ -13,6 +13,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Combat
   alias MMGO.Crafting
   alias MMGO.Dungeons
+  alias MMGO.Events
   alias MMGO.Federation
   alias MMGO.Grimoires
   alias MMGO.Inventory
@@ -61,6 +62,8 @@ defmodule MMGO.Telegram.Commands do
        "/status",
        "/inventory",
        "/progression milestones",
+       "/event current",
+       "/event choose <option-code>",
        "/routes",
        "/road encounter <handle>",
        "/road status",
@@ -197,6 +200,41 @@ defmodule MMGO.Telegram.Commands do
 
     {:ok, Enum.join(["Inventory:"] ++ body, "\n")}
   end
+
+  defp dispatch("event", ["current"], character) do
+    case Events.current_event(character) do
+      nil ->
+        {:ok, "No current event."}
+
+      event ->
+        options = Enum.sort_by(event.template.options, & &1.position)
+
+        {:ok,
+         Enum.join(
+           [event.template.title, event.template.body, "Options:"] ++
+             Enum.map(options, fn option ->
+               "- #{option.code}: #{option.label}"
+             end),
+           "\n"
+         )}
+    end
+  end
+
+  defp dispatch("event", ["choose", option_code], character) do
+    with %{} = event <- Events.current_event(character),
+         {:ok, %{option: option}} <- Events.resolve_option(event, option_code) do
+      {:ok, option.result_text}
+    else
+      nil ->
+        {:ok, "No current event."}
+
+      {:error, %Changeset{} = changeset} ->
+        {:ok, "Could not resolve event option: #{format_changeset(changeset)}"}
+    end
+  end
+
+  defp dispatch("event", _args, _character),
+    do: {:ok, "Usage: /event current | /event choose <option-code>"}
 
   defp dispatch("progression", ["milestones"], character) do
     grants = Progression.list_reward_grants(character.id)

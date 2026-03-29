@@ -32,6 +32,7 @@ This repository currently includes:
 - inter-realm discovery, exchange rates, and migration workflow
 - dungeon macro AI for link pressure, anomalies, and node/resource drift
 - overworld encounter events and ambush escalation into combat
+- non-combat text event templates and per-character event instances
 - overworld scavenging, resource caches, and scheduled harvest completion
 - notification outbox and Telegram delivery hooks for timed system completions
 - food consumption, carry capacity, and encumbrance-aware travel planning
@@ -124,6 +125,7 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 - `lib/mmgo/actors` - reusable enemy/NPC actor templates and encounter spawns
 - `lib/mmgo/dungeons` - macro maintenance, link states, node overrides, extraction, and run state
 - `lib/mmgo/overworld` - road encounters, social choices, and ambush escalation
+- `lib/mmgo/events` - generic non-combat text event templates, options, and instances
 - `lib/mmgo/npc_shops` - shop listings, NPC buy/sell, tuition, and charity flows
 - `lib/mmgo/federation` - remote realm registry, rulesets, exchange, and migration mechanics
 - `priv/realms/starter_realm_manifest.json` - starter realm file for non-code realm tweaking
