@@ -40,3 +40,7 @@ npm-debug.log
 
 # macOS files
 .DS_Store
+
+# Local showcase (JS hooks demo)
+lib/mmgo_web/live/js_hooks_showcase_live.ex
+assets/js/hooks/showcase.js
