@@ -1598,6 +1598,11 @@ code {
 
 .grim__book--sealed { opacity: 0.65; }
 .grim__book--locked { opacity: 0.4; cursor: not-allowed; }
+.grim__book--dragging { opacity: 0.4; cursor: grabbing; }
+.grim__book--drop-before {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
 
 .grim__book-title {
   writing-mode: vertical-rl;
