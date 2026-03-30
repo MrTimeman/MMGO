@@ -58,8 +58,10 @@ export const ExpeditionLogHook = {
 
     if (members.length > 0) {
       const row = h('div', { class: 'exped__members' })
-      for (const m of members) {
+      for (let i = 0; i < members.length; i++) {
+        const m = members[i]
         const wrap = h('div', { class: `exped__member${m.status !== 'active' ? ' exped__member--inactive' : ''}` })
+        wrap.style.animationDelay = `${i * 0.07}s`
         wrap.appendChild(charChip(m.name, m.avatar_url ?? null, 'md'))
         wrap.appendChild(h('div', { class: 'exped__member-name' }, m.name))
         row.appendChild(wrap)
@@ -82,7 +84,6 @@ export const ExpeditionLogHook = {
       root.appendChild(block)
     }
 
-    // Log container — re-rendered separately via _renderLog
     this._logEl = h('div', { class: 'exped__log', id: 'exped-log-inner' })
     root.appendChild(this._logEl)
     this._allEvents = [...this._localEvents, ...[...events].reverse()]
@@ -91,15 +92,20 @@ export const ExpeditionLogHook = {
 
   _renderLog() {
     if (!this._logEl) return
+    const existing = this._logEl.childElementCount
     this._logEl.innerHTML = ''
-    for (const ev of this._allEvents.slice(0, 20)) {
+    for (let i = 0; i < Math.min(this._allEvents.length, 20); i++) {
+      const ev = this._allEvents[i]
       const kindCls = {
         encounter: 'exped__event--encounter',
         reward:    'exped__event--reward',
         narrative: 'exped__event--narrative',
         flavor:    'exped__event--flavor',
       }[ev.kind] ?? ''
-      this._logEl.appendChild(h('div', { class: `exped__event ${kindCls}` }, ev.text))
+      const el = h('div', { class: `exped__event ${kindCls}` }, ev.text)
+      // New events at the top get entrance animation
+      if (i === 0 && existing > 0) el.classList.add('exped__event--new')
+      this._logEl.appendChild(el)
     }
   },
 
@@ -108,7 +114,7 @@ export const ExpeditionLogHook = {
     row.appendChild(h('span', { class: 'exped__supply-label' }, label))
     const bar = h('div', { class: 'exped__bar-wrap' })
     const fill = h('div', { class: `exped__bar-fill${mod ? ' exped__bar-fill--' + mod : ''}` })
-    fill.style.width = `${Math.min(pct, 100)}%`
+    requestAnimationFrame(() => { fill.style.width = `${Math.min(pct, 100)}%` })
     bar.appendChild(fill)
     row.appendChild(bar)
     return row

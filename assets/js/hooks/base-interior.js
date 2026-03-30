@@ -44,14 +44,16 @@ export const BaseInteriorHook = {
 
       const bar = h('div', { class: 'base__bar-wrap' })
       const fill = h('div', { class: `base__bar-fill${barMod ? ' base__bar-fill--' + barMod : ''}` })
-      fill.style.width = `${weightPct}%`
+      requestAnimationFrame(() => { fill.style.width = `${weightPct}%` })
       bar.appendChild(fill)
       section.appendChild(bar)
 
       if (storage.items?.length > 0) {
         const grid = h('div', { class: 'base__grid' })
-        for (const item of storage.items) {
-          const cell = h('div', { class: 'base__cell' })
+        for (let i = 0; i < storage.items.length; i++) {
+          const item = storage.items[i]
+          const cell = h('div', { class: 'base__cell base__cell--enter' })
+          cell.style.animationDelay = `${i * 0.05}s`
           cell.appendChild(h('div', { class: 'base__cell-dot' }))
           const info = h('div', { class: 'base__cell-info' })
           info.appendChild(h('div', { class: 'base__cell-name' }, item.name))
@@ -82,8 +84,10 @@ export const BaseInteriorHook = {
 
       if (workshop.tools?.length > 0) {
         const tools = h('div', { class: 'base__tools' })
-        for (const tool of workshop.tools) {
-          tools.appendChild(h('span', { class: 'base__tool' }, tool))
+        for (let i = 0; i < workshop.tools.length; i++) {
+          const el = h('span', { class: 'base__tool base__tool--enter' }, workshop.tools[i])
+          el.style.animationDelay = `${i * 0.06}s`
+          tools.appendChild(el)
         }
         section.appendChild(tools)
       } else {

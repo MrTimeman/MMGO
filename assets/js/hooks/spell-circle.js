@@ -4,7 +4,6 @@
 
 const NS = 'http://www.w3.org/2000/svg'
 
-// Default slot definitions (server can override)
 const DEFAULT_SLOTS = [
   { key: 'school',  label: 'Школа',   required: true  },
   { key: 'type',    label: 'Тип',     required: true  },
@@ -49,14 +48,12 @@ function buildRingsSVG(charged) {
   })
   svg.appendChild(defs)
 
-  // Connector lines
   const lc = charged ? 'rgba(0,212,255,0.35)' : 'rgba(0,212,255,0.07)'
   const lw = charged ? '1' : '0.6'
   for (const [x1,y1,x2,y2] of [[170,25,170,315],[25,170,315,170],[55,55,285,285],[285,55,55,285]]) {
     svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: lc, 'stroke-width': lw }))
   }
 
-  // 3 concentric rune rings
   ;[155, 125, 95].forEach((r, i) => {
     svg.appendChild(svgEl('circle', {
       cx: 170, cy: 170, r,
@@ -73,7 +70,6 @@ function buildRingsSVG(charged) {
     svg.appendChild(text)
   })
 
-  // Center circle
   svg.appendChild(svgEl('circle', {
     cx: 170, cy: 170, r: 44,
     fill: charged ? 'rgba(0,212,255,0.05)' : 'rgba(8,10,22,0.95)',
@@ -86,10 +82,12 @@ function buildRingsSVG(charged) {
 
 export const SpellCircleHook = {
   mounted() {
-    this._sel  = {}        // { [key]: value }
+    this._sel  = {}
     this._name = ''
     this._activeSlot = null
     this._slots  = DEFAULT_SLOTS
+    this._wasCharged = false
+    this._firstRender = true
 
     this.handleEvent('spell_circle_init', data => {
       if (data.slots) {
@@ -107,28 +105,38 @@ export const SpellCircleHook = {
     root.className = 'sc'
 
     const charged = this._slots.filter(s => s.required).every(s => this._sel[s.key])
+    const justCharged = charged && !this._wasCharged
+    this._wasCharged = charged
 
     // ── Circle ───────────────────────────────────────────────────────────────
     const circle = document.createElement('div')
     circle.className = `sc__circle${charged ? ' sc__circle--charged' : ''}`
+    if (justCharged) {
+      circle.classList.add('sc__circle--ignite')
+    }
 
     circle.appendChild(buildRingsSVG(charged))
 
-    // 8 slot buttons
+    // 8 slot buttons — staggered entrance
     this._slots.forEach((slot, i) => {
       const pos   = slotPos(i)
       const value = this._sel[slot.key] ?? ''
+      const isActive = this._activeSlot === slot.key
 
       const btn = document.createElement('button')
       btn.type = 'button'
       btn.className = [
         'sc__slot',
         value ? 'sc__slot--filled' : '',
-        this._activeSlot === slot.key ? 'sc__slot--active' : '',
+        isActive ? 'sc__slot--active' : '',
         !slot.required ? 'sc__slot--optional' : '',
       ].filter(Boolean).join(' ')
       btn.style.left = pos.left
       btn.style.top  = pos.top
+      if (this._firstRender) {
+        btn.style.animationDelay = `${i * 0.06}s`
+        btn.classList.add('sc__slot--enter')
+      }
 
       const lbl = document.createElement('span')
       lbl.className = 'sc__slot-label'
@@ -149,7 +157,7 @@ export const SpellCircleHook = {
       circle.appendChild(btn)
     })
 
-    // Center rune (when charged)
+    // Center
     const center = document.createElement('div')
     center.className = 'sc__center'
     if (charged) {
@@ -160,7 +168,7 @@ export const SpellCircleHook = {
     }
     circle.appendChild(center)
 
-    // Particles (charged state)
+    // Particles
     if (charged) {
       for (let i = 0; i < 8; i++) {
         const c = orbitCenter(i)
@@ -180,7 +188,7 @@ export const SpellCircleHook = {
       root.appendChild(this._buildInputSheet(this._activeSlot))
     }
 
-    // ── Footer (name + cast) ─────────────────────────────────────────────────
+    // ── Footer ──────────────────────────────────────────────────────────────
     const footer = document.createElement('div')
     footer.className = 'sc__footer'
 
@@ -200,11 +208,14 @@ export const SpellCircleHook = {
     btn.addEventListener('click', () => {
       if (!charged) return
       btn.classList.add('sc__compile--flash')
-      setTimeout(() => this.pushEvent('spell_compile', { ...this._sel, name: this._name }), 300)
+      circle.classList.add('sc__circle--cast')
+      setTimeout(() => this.pushEvent('spell_compile', { ...this._sel, name: this._name }), 600)
     })
     footer.appendChild(btn)
 
     root.appendChild(footer)
+
+    this._firstRender = false
   },
 
   _buildInputSheet(key) {
@@ -222,14 +233,9 @@ export const SpellCircleHook = {
     input.className = 'sc__sheet-input'
     input.placeholder = 'Введите значение...'
     input.value = this._sel[key] ?? ''
-    input.addEventListener('input', e => {
-      this._sel[key] = e.target.value
-    })
+    input.addEventListener('input', e => { this._sel[key] = e.target.value })
     input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') {
-        this._activeSlot = null
-        this.render()
-      }
+      if (e.key === 'Enter') { this._activeSlot = null; this.render() }
     })
     sheet.appendChild(input)
 
@@ -240,24 +246,20 @@ export const SpellCircleHook = {
     accept.type = 'button'
     accept.className = 'sc__sheet-btn sc__sheet-btn--ok'
     accept.textContent = 'ОК'
-    accept.addEventListener('click', () => {
-      this._activeSlot = null
-      this.render()
-    })
+    accept.addEventListener('click', () => { this._activeSlot = null; this.render() })
 
     const clear = document.createElement('button')
     clear.type = 'button'
     clear.className = 'sc__sheet-btn'
     clear.textContent = 'Очистить'
-    clear.addEventListener('click', () => {
-      delete this._sel[key]
-      this._activeSlot = null
-      this.render()
-    })
+    clear.addEventListener('click', () => { delete this._sel[key]; this._activeSlot = null; this.render() })
 
     actions.appendChild(accept)
     actions.appendChild(clear)
     sheet.appendChild(actions)
+
+    // Auto-focus the input
+    requestAnimationFrame(() => input.focus())
 
     return sheet
   },

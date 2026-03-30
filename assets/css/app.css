@@ -166,12 +166,19 @@ code {
   font-size: 1.1rem;
   font-weight: 700;
   color: var(--color-accent);
+  animation: evs-fade-in 0.4s ease both;
 }
 
 .evs__body {
   font-size: 0.95rem;
   line-height: 1.7;
   color: var(--color-text);
+  animation: evs-fade-in 0.5s ease 0.1s both;
+}
+
+@keyframes evs-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .evs__options {
@@ -190,13 +197,40 @@ code {
   font-size: 0.9rem;
   text-align: left;
   cursor: pointer;
-  transition: border-color 0.15s, background 0.15s;
+  transition: border-color 0.2s, background 0.2s, color 0.2s, opacity 0.3s, transform 0.3s;
+  opacity: 0;
+  transform: translateX(-8px);
+  animation: evs-option-in 0.35s ease both;
+}
+
+@keyframes evs-option-in {
+  to { opacity: 1; transform: translateX(0); }
 }
 
 .evs__option:hover {
   border-color: var(--color-accent);
   background: var(--color-surface);
   color: var(--color-accent);
+}
+
+.evs__option--chosen {
+  border-color: var(--color-accent) !important;
+  background: hsl(45, 30%, 14%) !important;
+  color: var(--color-accent) !important;
+  transform: scale(1.02);
+}
+
+.evs__option--dimmed {
+  opacity: 0.25 !important;
+  pointer-events: none;
+}
+
+.evs__option--resolved {
+  border-color: var(--color-accent);
+  background: hsl(45, 30%, 14%);
+  color: var(--color-accent);
+  cursor: default;
+  opacity: 0.7;
 }
 
 .evs__result {
@@ -206,6 +240,7 @@ code {
   border-left: 2px solid var(--color-accent-dim);
   padding-left: 0.75rem;
   line-height: 1.6;
+  animation: evs-fade-in 0.5s ease both;
 }
 
 /* ============================================================
@@ -283,7 +318,8 @@ code {
   height: 100%;
   background: var(--color-accent);
   border-radius: 2px;
-  transition: width 0.4s ease;
+  width: 0;
+  transition: width 0.7s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .std__completion {
@@ -295,6 +331,28 @@ code {
   font-size: 0.9rem;
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+.std__spec--enter {
+  animation: std-fade-in 0.4s ease both;
+}
+
+.std__block--enter {
+  animation: std-fade-in 0.4s ease 0.1s both;
+}
+
+.std__badge--enter {
+  animation: std-badge-pop 0.35s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes std-fade-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes std-badge-pop {
+  from { opacity: 0; transform: scale(0.7); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 /* TravelCompass (.cmp) — see toggle section below */
@@ -326,6 +384,12 @@ code {
   flex-direction: column;
   gap: 0.85rem;
   transition: opacity 0.45s ease, transform 0.45s ease, filter 0.45s ease;
+  animation: duel-unfold 0.6s ease both;
+}
+
+@keyframes duel-unfold {
+  from { opacity: 0; transform: translateY(12px) rotateX(8deg); }
+  to   { opacity: 1; transform: translateY(0) rotateX(0); }
 }
 
 .duel__parchment--discarded {
@@ -462,6 +526,7 @@ code {
   color: hsl(140,60%,62%);
 }
 .duel__btn--accept:hover { background: hsl(140,40%,15%); }
+.duel__btn--accept:active { transform: scale(0.97); }
 
 .duel__btn--reject {
   background: hsl(0,35%,10%);
@@ -469,6 +534,7 @@ code {
   color: hsl(0,60%,62%);
 }
 .duel__btn--reject:hover { background: hsl(0,35%,15%); }
+.duel__btn--reject:active { transform: scale(0.97); }
 
 /* ============================================================
    BaseInterior (.base)
@@ -493,6 +559,12 @@ code {
   position: relative;
   overflow: hidden;
   margin-bottom: 0.65rem;
+  animation: base-fade-in 0.4s ease both;
+}
+
+@keyframes base-fade-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 .base__header::before {
@@ -587,9 +659,10 @@ code {
   height: 100%;
   background: var(--color-accent);
   border-radius: 3px;
-  transition: width 0.4s ease;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
+.base__bar-fill { width: 0; }
 .base__bar-fill--warn   { background: hsl(40, 72%, 45%); }
 .base__bar-fill--danger { background: var(--color-danger); }
 
@@ -653,6 +726,24 @@ code {
   font-size: 0.85rem;
   color: var(--color-text-muted);
   font-style: italic;
+}
+
+.base__cell--enter {
+  animation: base-cell-in 0.3s ease both;
+}
+
+@keyframes base-cell-in {
+  from { opacity: 0; transform: scale(0.92); }
+  to   { opacity: 1; transform: scale(1); }
+}
+
+.base__tool--enter {
+  animation: base-tool-in 0.35s ease both;
+}
+
+@keyframes base-tool-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ============================================================
@@ -1125,6 +1216,10 @@ code {
 
 .cmp__svg { display: block; flex-shrink: 0; }
 
+.cmp__needle {
+  transition: transform 1.8s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
 .cmp__panel {
   background: var(--color-surface);
   border: 1px solid var(--color-border);
@@ -1136,7 +1231,15 @@ code {
   flex-direction: column;
   gap: 0.5rem;
   min-width: 220px;
+  animation: cmp-panel-in 0.25s ease both;
 }
+
+@keyframes cmp-panel-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.cmp__bar-fill { width: 0; }
 
 .cmp__route {
   display: flex;
@@ -1176,9 +1279,30 @@ code {
   letter-spacing: -0.02em;
 }
 
-.board__score-num--good    { color: #22c55e; }
-.board__score-num--neutral { color: var(--color-accent); }
-.board__score-num--bad     { color: var(--color-danger); }
+.board__score-num--good    { color: #22c55e; filter: drop-shadow(0 0 12px #22c55e); }
+.board__score-num--neutral { color: var(--color-accent); filter: drop-shadow(0 0 10px var(--color-accent)); }
+.board__score-num--bad     { color: var(--color-danger); filter: drop-shadow(0 0 12px var(--color-danger)); }
+
+.board__score-num--good,
+.board__score-num--neutral,
+.board__score-num--bad {
+  animation: board-score-breathe 4s ease-in-out infinite;
+}
+
+@keyframes board-score-breathe {
+  0%, 100% { opacity: 0.85; }
+  50%      { opacity: 1; }
+}
+
+.board__score-num--pulse {
+  animation: board-score-punch 0.5s ease both, board-score-breathe 4s ease-in-out 0.5s infinite !important;
+}
+
+@keyframes board-score-punch {
+  0%  { transform: scale(1); }
+  40% { transform: scale(1.15); }
+  100%{ transform: scale(1); }
+}
 
 .board__score-label {
   font-family: var(--font-sans);
@@ -1187,6 +1311,23 @@ code {
   text-transform: uppercase;
   color: var(--color-text-muted);
   margin-top: 0.15rem;
+}
+
+.board__crime {
+  animation: board-crime-in 0.3s ease both;
+}
+
+@keyframes board-crime-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.board__pay-btn--click {
+  animation: board-btn-flash 0.25s ease;
+}
+
+@keyframes board-btn-flash {
+  50% { background: var(--color-accent); color: var(--color-bg); }
 }
 
 /* ============================================================
@@ -1203,13 +1344,29 @@ code {
   display: flex;
   flex-direction: column;
   gap: 0.2rem;
+  animation: hall-rung-in 0.3s ease both;
+}
+
+@keyframes hall-rung-in {
+  from { opacity: 0; transform: translateX(-10px); }
+  to   { opacity: 1; transform: translateX(0); }
 }
 
 .hall__rung-bar {
   height: 3px;
+  width: 0;
   background: var(--color-accent-dim);
   border-radius: 2px;
-  transition: width 0.3s ease;
+  transition: width 0.6s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.hall__chip-enter {
+  animation: hall-chip-pop 0.25s ease both;
+}
+
+@keyframes hall-chip-pop {
+  from { opacity: 0; transform: scale(0.6); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 .hall__rung--viewer .hall__rung-bar {
@@ -1245,9 +1402,29 @@ code {
    ExpeditionLog — flavor events
    ============================================================ */
 
+.exped__member {
+  animation: exped-member-in 0.35s ease both;
+}
+
+@keyframes exped-member-in {
+  from { opacity: 0; transform: translateY(8px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.exped__bar-fill { width: 0; }
+
 .exped__event--flavor {
   color: hsl(45,55%,58%);
   font-style: italic;
+}
+
+.exped__event--new {
+  animation: exped-event-slide 0.4s ease both;
+}
+
+@keyframes exped-event-slide {
+  from { opacity: 0; transform: translateX(-12px); max-height: 0; }
+  to   { opacity: 1; transform: translateX(0); max-height: 4em; }
 }
 
 /* ============================================================
@@ -1282,12 +1459,31 @@ code {
   background: #0b0d1a;
   border-radius: 50%;
   border: 1px solid rgba(0,212,255,0.1);
-  transition: border-color 0.5s, box-shadow 0.5s;
 }
 
 .sc__circle--charged {
   border-color: rgba(0,212,255,0.4);
   box-shadow: 0 0 32px rgba(0,212,255,0.14), inset 0 0 32px rgba(0,212,255,0.05);
+}
+
+.sc__circle--ignite {
+  animation: sc-ignite 1s ease both;
+}
+
+@keyframes sc-ignite {
+  0%  { box-shadow: 0 0 0 rgba(0,212,255,0); }
+  30% { box-shadow: 0 0 60px rgba(0,212,255,0.5), inset 0 0 50px rgba(0,212,255,0.15); }
+  100%{ box-shadow: 0 0 32px rgba(0,212,255,0.14), inset 0 0 32px rgba(0,212,255,0.05); }
+}
+
+.sc__circle--cast {
+  animation: sc-cast 0.6s ease both !important;
+}
+
+@keyframes sc-cast {
+  0%   { transform: scale(1); filter: brightness(1); }
+  40%  { transform: scale(1.04); filter: brightness(1.8); }
+  100% { transform: scale(1); filter: brightness(1); }
 }
 
 /* SVG rings overlay */
@@ -1335,6 +1531,15 @@ code {
   padding: 2px;
   transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
   overflow: hidden;
+}
+
+.sc__slot--enter {
+  animation: sc-slot-in 0.35s ease both;
+}
+
+@keyframes sc-slot-in {
+  from { opacity: 0; transform: scale(0.5); }
+  to   { opacity: 1; transform: scale(1); }
 }
 
 .sc__slot:hover {
@@ -1768,3 +1973,26 @@ code {
   font-style: italic;
   font-size: 0.78rem;
 }
+
+.grim__book--enter {
+  animation: grim-book-rise 0.4s cubic-bezier(0.34, 1.56, 0.64, 1) both;
+}
+
+@keyframes grim-book-rise {
+  from { opacity: 0; transform: translateY(12px) scale(0.9); }
+  to   { opacity: 1; transform: translateY(0) scale(1); }
+}
+
+.grim__slot--enter {
+  animation: grim-slot-in 0.25s ease both;
+}
+
+@keyframes grim-slot-in {
+  from { opacity: 0; transform: translateX(-8px); }
+  to   { opacity: 1; transform: translateX(0); }
+}
+
+.grim__panel-btn {
+  transition: transform 0.15s ease, background 0.15s ease;
+}
+.grim__panel-btn:active { transform: scale(0.95); }

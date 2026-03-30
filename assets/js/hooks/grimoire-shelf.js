@@ -35,8 +35,11 @@ export const GrimoireShelfHook = {
     const shelf = h('div', { class: 'grim__shelf' })
     const booksRow = h('div', { class: 'grim__books' })
 
-    for (const g of this._grimoires) {
-      booksRow.appendChild(this._book(g))
+    for (let i = 0; i < this._grimoires.length; i++) {
+      const bookEl = this._book(this._grimoires[i])
+      bookEl.classList.add('grim__book--enter')
+      bookEl.style.animationDelay = `${i * 0.08}s`
+      booksRow.appendChild(bookEl)
     }
 
     // Allow drop on empty shelf area
@@ -191,7 +194,8 @@ export const GrimoireShelfHook = {
       const entry = g.entries?.find(e => e.slot === i)
       const spell = entry?.spell
 
-      const slot = h('div', { class: `grim__slot${spell ? '' : ' grim__slot--empty'}` })
+      const slot = h('div', { class: `grim__slot${spell ? '' : ' grim__slot--empty'} grim__slot--enter` })
+      slot.style.animationDelay = `${i * 0.04}s`
       slot.appendChild(h('span', { class: 'grim__slot-num' }, String(i + 1)))
 
       if (spell) {

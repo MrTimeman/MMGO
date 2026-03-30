@@ -1,7 +1,4 @@
 // GuildHallHook — Organization view with visual rank ladder and optional identity obscuring.
-//
-// Members with identity_obscured: true are shown as "???" unless the viewer outranks them
-// or they're in a lower rank. viewer_rank controls what's visible.
 
 import { h, charChip, ORG_KIND_LABEL } from './utils'
 
@@ -23,7 +20,7 @@ export const GuildHallHook = {
     header.appendChild(h('div', { class: 'hall__kind' }, ORG_KIND_LABEL[org?.kind] ?? org?.kind ?? ''))
     root.appendChild(header)
 
-    // Action buttons
+    // Actions
     const canInvite = viewer_permissions.includes('invite_members')
     const canManage = viewer_permissions.includes('manage_roles')
     if (canInvite || canManage) {
@@ -51,13 +48,15 @@ export const GuildHallHook = {
       const ladder = h('div', { class: 'hall__ladder' })
       const maxRank = Math.max(...sorted.map(r => r.rank))
 
-      for (const role of sorted) {
+      for (let ri = 0; ri < sorted.length; ri++) {
+        const role = sorted[ri]
         const rung = h('div', { class: `hall__rung${role.rank === viewer_rank ? ' hall__rung--viewer' : ''}` })
+        rung.style.animationDelay = `${ri * 0.08}s`
 
-        // Rank bar width: rank 1 = 100% (highest), rank 100 = 20% (lowest)
         const barPct = Math.round(100 - (role.rank / maxRank) * 75)
         const bar = h('div', { class: 'hall__rung-bar' })
-        bar.style.width = `${barPct}%`
+        // Animate bar from 0 to target width
+        requestAnimationFrame(() => { bar.style.width = `${barPct}%` })
         rung.appendChild(bar)
 
         const label = h('div', { class: 'hall__rung-label' })
@@ -65,16 +64,19 @@ export const GuildHallHook = {
         label.appendChild(h('span', { class: 'hall__rung-rank' }, `#${role.rank}`))
         rung.appendChild(label)
 
-        // Members in this role — inline chips
+        // Members in this role
         const roleMembers = members.filter(m => m.role_title === role.title)
         if (roleMembers.length > 0) {
           const chips = h('div', { class: 'hall__rung-chips' })
-          for (const m of roleMembers) {
+          for (let ci = 0; ci < roleMembers.length; ci++) {
+            const m = roleMembers[ci]
             const obscured = m.identity_obscured && m.rank < viewer_rank
             const chip = obscured
               ? this._obscuredChip()
               : charChip(m.name, m.avatar_url ?? null, 'sm')
             chip.title = obscured ? '???' : m.name
+            chip.style.animationDelay = `${ri * 0.08 + ci * 0.05}s`
+            chip.classList.add('hall__chip-enter')
             chips.appendChild(chip)
           }
           rung.appendChild(chips)
@@ -87,7 +89,7 @@ export const GuildHallHook = {
       root.appendChild(section)
     }
 
-    // ── Members not tied to a visible role (or all, if no roles) ──────────
+    // ── Unranked members ──────────────────────────────────────────────────
     const unranked = members.filter(m => !roles.find(r => r.title === m.role_title))
     if (unranked.length > 0) {
       const section = h('div', { class: 'hall__section' })

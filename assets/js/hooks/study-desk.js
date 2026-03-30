@@ -38,11 +38,19 @@ export const StudyDeskHook = {
 
     // Active specialization strip
     if (specialization) {
-      const spec = h('div', { class: 'std__spec' })
+      const spec = h('div', { class: 'std__spec std__spec--enter' })
       spec.appendChild(h('span', { class: 'std__spec-label' }, 'Специализация'))
       const badges = h('div', { class: 'std__badges' })
-      badges.appendChild(schoolBadge(specialization.primary_school))
-      if (specialization.secondary_school) badges.appendChild(schoolBadge(specialization.secondary_school))
+      const b1 = schoolBadge(specialization.primary_school)
+      b1.classList.add('std__badge--enter')
+      b1.style.animationDelay = '0.15s'
+      badges.appendChild(b1)
+      if (specialization.secondary_school) {
+        const b2 = schoolBadge(specialization.secondary_school)
+        b2.classList.add('std__badge--enter')
+        b2.style.animationDelay = '0.25s'
+        badges.appendChild(b2)
+      }
       spec.appendChild(h('strong', {}, TRACK_LABEL[specialization.track] ?? specialization.track))
       spec.appendChild(badges)
       root.appendChild(spec)
@@ -50,7 +58,7 @@ export const StudyDeskHook = {
 
     // Enrollment block
     if (enrollment) {
-      const block = h('div', { class: 'std__block' })
+      const block = h('div', { class: 'std__block std__block--enter' })
       block.appendChild(h('div', { class: 'std__program' }, PROGRAM_LABEL[enrollment.program_type] ?? enrollment.program_type))
       block.appendChild(h('div', { class: 'std__track' }, TRACK_LABEL[enrollment.track] ?? enrollment.track))
 
@@ -65,7 +73,7 @@ export const StudyDeskHook = {
       const pct = enrollment.progress_pct ?? 0
       const bar = h('div', { class: 'std__bar-wrap' })
       const fill = h('div', { class: 'std__bar-fill' })
-      fill.style.width = `${pct}%`
+      requestAnimationFrame(() => { fill.style.width = `${pct}%` })
       bar.appendChild(fill)
       block.appendChild(bar)
       block.appendChild(h('div', { class: 'std__completion' }, `Завершение: ${enrollment.expected_completion_at ?? '—'}`))
