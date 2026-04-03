@@ -42,7 +42,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 **Plans**: 2 plans
 
 Plans:
-- [ ] 01-01: Telegram identity, linking, and deep-link routing
+- [x] 01-01: Telegram identity, linking, and deep-link routing
 - [ ] 01-02: Player shell, character snapshot, and recovery states
 
 ### Phase 2: World Travel Loop

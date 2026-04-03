@@ -7,9 +7,9 @@
 
 ### Access
 
-- [ ] **ACCESS-01**: Player can open the MMGO Mini App from Telegram and land in a linked account session.
-- [ ] **ACCESS-02**: New Telegram player can provision an account and starter character without manual database intervention.
-- [ ] **ACCESS-03**: Returning player can restore current character state and pending timers after refresh or deep link entry.
+- [x] **ACCESS-01**: Player can open the MMGO Mini App from Telegram and land in a linked account session.
+- [x] **ACCESS-02**: New Telegram player can provision an account and starter character without manual database intervention.
+- [x] **ACCESS-03**: Returning player can restore current character state and pending timers after refresh or deep link entry.
 - [ ] **ACCESS-04**: Player sees actionable recovery states when identity, session bootstrap, or account linking fails.
 
 ### World
@@ -73,9 +73,9 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| ACCESS-01 | Phase 1 | Pending |
-| ACCESS-02 | Phase 1 | Pending |
-| ACCESS-03 | Phase 1 | Pending |
+| ACCESS-01 | Phase 1 | Complete |
+| ACCESS-02 | Phase 1 | Complete |
+| ACCESS-03 | Phase 1 | Complete |
 | ACCESS-04 | Phase 1 | Pending |
 | WORLD-01 | Phase 2 | Pending |
 | WORLD-02 | Phase 2 | Pending |
