@@ -111,19 +111,12 @@ defmodule MMGO.Accounts do
     end
   end
 
-  defp restore_telegram_player(%{telegram_user: telegram_user, telegram_user_id: telegram_user_id}) do
+  defp restore_telegram_player(%{telegram_user: telegram_user}) do
     with {:ok, %{account: account, telegram_identity: identity, character: character}} <-
            provision_from_telegram(telegram_user) do
-      state =
-        if fresh_entry_provision?(account, character, telegram_user_id) do
-          :first_open
-        else
-          :resume
-        end
-
       {:ok,
        %{
-         state: state,
+         state: :first_open,
          account: account,
          telegram_identity: identity,
          character: Repo.preload(character, :realm)
@@ -327,25 +320,6 @@ defmodule MMGO.Accounts do
 
   defp invalid_target_notice,
     do: "That destination has already changed. We brought you to the nearest valid view."
-
-  defp telegram_identity_exists?(telegram_user_id) when is_integer(telegram_user_id) do
-    Repo.exists?(
-      from identity in TelegramIdentity,
-        where: identity.telegram_user_id == ^telegram_user_id,
-        select: 1
-    )
-  end
-
-  defp fresh_entry_provision?(account, character, telegram_user_id) do
-    recently_inserted?(account) and recently_inserted?(character) and
-      telegram_identity_exists?(telegram_user_id)
-  end
-
-  defp recently_inserted?(%{inserted_at: %DateTime{} = inserted_at}) do
-    DateTime.diff(DateTime.utc_now(), inserted_at, :second) <= 5
-  end
-
-  defp recently_inserted?(_record), do: false
 
   defp display_name_from_telegram(telegram_attrs) do
     [telegram_attrs.first_name, telegram_attrs.last_name]
