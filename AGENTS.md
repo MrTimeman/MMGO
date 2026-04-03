@@ -447,3 +447,59 @@ And **never** do this:
 <!-- phoenix:liveview-end -->
 
 <!-- usage-rules-end -->
+
+<!-- GSD:project-start source:PROJECT.md -->
+## Project
+
+**MMGO**
+
+MMGO is a Telegram-native, text-forward online RPG built as a Phoenix and LiveView application with a companion Telegram bot. It combines a server-authoritative simulation layer with AI-assisted spell authoring, long-running progression systems, and a player-driven social economy. The current codebase already contains a large portion of the backend world model; the remaining product work is to turn that foundation into a coherent, playable Mini App experience.
+
+**Core Value:** Players can inhabit a persistent magical world where creative spell expression, meaningful trade-offs, and social interdependence feel deeper than a typical chat game while remaining fair, deterministic, and operable.
+
+### Constraints
+
+- **Tech stack**: Phoenix 1.8, LiveView, PostgreSQL, Oban, and Req - the current codebase and project instructions lock these in.
+- **Platform**: Telegram Mini App plus Telegram bot first - primary player flows must work inside Telegram.
+- **Simulation model**: Server-authoritative, timestamp-driven world progression - travel, jobs, and long-running actions must remain auditable and recoverable.
+- **AI usage**: AI assists spell authoring and narration, not turn-by-turn runtime authority - combat and world resolution must remain deterministic.
+- **Product**: Free-to-play with donation-only support - no premium gameplay shortcuts or pay-to-win mechanics.
+<!-- GSD:project-end -->
+
+<!-- GSD:stack-start source:STACK.md -->
+## Technology Stack
+
+Technology stack not yet documented. Will populate after codebase mapping or first phase.
+<!-- GSD:stack-end -->
+
+<!-- GSD:conventions-start source:CONVENTIONS.md -->
+## Conventions
+
+Conventions not yet established. Will populate as patterns emerge during development.
+<!-- GSD:conventions-end -->
+
+<!-- GSD:architecture-start source:ARCHITECTURE.md -->
+## Architecture
+
+Architecture not yet mapped. Follow existing patterns found in the codebase.
+<!-- GSD:architecture-end -->
+
+<!-- GSD:workflow-start source:GSD defaults -->
+## GSD Workflow Enforcement
+
+Before using Edit, Write, or other file-changing tools, start work through a GSD command so planning artifacts and execution context stay in sync.
+
+Use these entry points:
+- `/gsd:quick` for small fixes, doc updates, and ad-hoc tasks
+- `/gsd:debug` for investigation and bug fixing
+- `/gsd:execute-phase` for planned phase work
+
+Do not make direct repo edits outside a GSD workflow unless the user explicitly asks to bypass it.
+<!-- GSD:workflow-end -->
+
+<!-- GSD:profile-start -->
+## Developer Profile
+
+> Profile not yet configured. Run `/gsd:profile-user` to generate your developer profile.
+> This section is managed by `generate-claude-profile` -- do not edit manually.
+<!-- GSD:profile-end -->
