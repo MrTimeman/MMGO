@@ -67,4 +67,45 @@ defmodule MMGO.AccountsTest do
   test "provision_from_telegram/1 rejects invalid payloads" do
     assert {:error, :invalid_update} = Accounts.provision_from_telegram(%{"username" => "no-id"})
   end
+
+  test "restore_telegram_entry/2 provisions a first-open entry for a new Telegram player", %{
+    realm: realm
+  } do
+    assert {:ok, result} =
+             Accounts.restore_telegram_entry(%{
+               "telegram_user" => %{
+                 "id" => 3003,
+                 "username" => "moonrunner",
+                 "first_name" => "Moon",
+                 "last_name" => "Runner",
+                 "language_code" => "en"
+               }
+             })
+
+    assert result.state == :first_open
+    assert result.account.display_name == "Moon Runner"
+    assert result.character.realm_id == realm.id
+    assert result.realm.id == realm.id
+    assert result.session["telegram_user_id"] == "3003"
+  end
+
+  test "restore_telegram_entry/2 resumes an existing Telegram player and repairs the default character" do
+    assert {:ok, %{character: original_character}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 4004,
+               "username" => "starlit",
+               "first_name" => "Star"
+             })
+
+    Repo.delete!(original_character)
+
+    assert {:ok, result} =
+             Accounts.restore_telegram_entry(%{}, session: %{"telegram_user_id" => "4004"})
+
+    assert result.state == :resume
+    assert result.character.id != original_character.id
+    assert result.character.level == 1
+    assert result.session["telegram_user_id"] == "4004"
+    assert Repo.aggregate(Character, :count, :id) == 1
+  end
 end
