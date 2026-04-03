@@ -1,0 +1,56 @@
+@import url("https://fonts.googleapis.com/css2?family=PT+Sans:wght@400;700&family=PT+Serif:wght@400;700&display=swap");
+
+:root {
+  color-scheme: dark;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+
+  --font-display: "PT Serif", serif;
+  --font-sans: "PT Sans", sans-serif;
+  --page-bg: #120f0d;
+  --page-bg-soft: #1b1714;
+  --page-surface: rgba(25, 21, 18, 0.86);
+  --page-border: rgba(245, 222, 179, 0.1);
+  --page-text: #f8f1e7;
+  --page-muted: rgba(231, 225, 216, 0.66);
+  --page-accent: #f59e0b;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#app {
+  min-height: 100%;
+}
+
+html {
+  background: var(--page-bg);
+}
+
+body {
+  margin: 0;
+  min-height: 100dvh;
+  color: var(--page-text);
+  font-family: var(--font-display);
+  background:
+    radial-gradient(circle at top, rgba(245, 158, 11, 0.14), transparent 20rem),
+    linear-gradient(180deg, #1b1714, #120f0d 32%, #100d0b 100%);
+}
+
+button,
+a,
+input {
+  font: inherit;
+}
+
+button,
+a {
+  -webkit-tap-highlight-color: transparent;
+}
