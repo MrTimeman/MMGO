@@ -17,7 +17,8 @@ defmodule MMGOWeb.Router do
   scope "/", MMGOWeb do
     pipe_through :browser
 
-    get "/", PageController, :home
+    live "/", TelegramEntryLive
+    get "/bootstrap", PageController, :home
   end
 
   scope "/", MMGOWeb do

@@ -194,7 +194,13 @@ defmodule MMGO.Accounts do
   defp normalize_entry_bootstrap(entry_attrs, session) do
     session_user_id = session["telegram_user_id"] |> normalize_integer()
     telegram_user = extract_entry_telegram_user(entry_attrs)
-    entry_user_id = telegram_user && fetch_value(telegram_user, "id") |> normalize_integer()
+
+    entry_user_id =
+      case telegram_user do
+        %{} -> fetch_value(telegram_user, "id")
+        _ -> entry_attrs["telegram_user_id"] || entry_attrs["id"]
+      end
+      |> normalize_integer()
 
     {telegram_user_id, trusted_telegram_user} =
       cond do
@@ -229,7 +235,7 @@ defmodule MMGO.Accounts do
         stringify_keys(entry_attrs["telegram_user"])
 
       Enum.any?(
-        ["telegram_user_id", "id", "telegram_username", "username", "first_name", "last_name"],
+        ["telegram_username", "username", "first_name", "last_name", "language_code"],
         &Map.has_key?(entry_attrs, &1)
       ) ->
         %{}
