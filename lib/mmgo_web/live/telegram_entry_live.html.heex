@@ -24,7 +24,9 @@
                 id="entry-character-preview"
                 class="rounded-[1.75rem] border border-stone-200 bg-stone-950 px-5 py-5 text-stone-100"
               >
-                <p class="text-xs uppercase tracking-[0.22em] text-amber-300">Character Preview</p>
+                <p class="text-xs uppercase tracking-[0.22em] text-amber-300">
+                  Character Preview
+                </p>
                 <p class="mt-3 text-2xl font-semibold">{character_name(@entry)}</p>
                 <p class="mt-1 text-sm text-stone-300">{account_name(@entry)}</p>
               </div>
@@ -37,14 +39,15 @@
                 Enter World
               </button>
             </section>
-
           <% @entry_state == :resume -> %>
             <section id="entry-resume" class="space-y-4">
               <div
                 id="entry-character-preview"
                 class="rounded-[1.75rem] border border-stone-200 bg-stone-950 px-5 py-5 text-stone-100"
               >
-                <p class="text-xs uppercase tracking-[0.22em] text-amber-300">Returning Adventurer</p>
+                <p class="text-xs uppercase tracking-[0.22em] text-amber-300">
+                  Returning Adventurer
+                </p>
                 <p class="mt-3 text-2xl font-semibold">{character_name(@entry)}</p>
                 <p class="mt-1 text-sm text-stone-300">{account_name(@entry)}</p>
               </div>
@@ -57,7 +60,6 @@
                 Resume Journey
               </button>
             </section>
-
           <% @entry_state == :deep_link -> %>
             <section id="entry-deep-link" class="space-y-4">
               <div
@@ -81,7 +83,6 @@
                 <p id="entry-notice" class="text-sm text-amber-800">{@entry.notice}</p>
               <% end %>
             </section>
-
           <% true -> %>
             <section id="entry-recovery" class="space-y-4">
               <div class="rounded-[1.75rem] border border-red-200 bg-red-50 px-5 py-5">

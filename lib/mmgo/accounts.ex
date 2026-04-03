@@ -204,7 +204,8 @@ defmodule MMGO.Accounts do
 
     {telegram_user_id, trusted_telegram_user} =
       cond do
-        is_integer(session_user_id) and is_integer(entry_user_id) and session_user_id != entry_user_id ->
+        is_integer(session_user_id) and is_integer(entry_user_id) and
+            session_user_id != entry_user_id ->
           {session_user_id, nil}
 
         is_integer(session_user_id) ->
@@ -290,8 +291,7 @@ defmodule MMGO.Accounts do
       recovery: %{
         reason: reason,
         title: "We couldn't restore your traveler seal.",
-        body:
-          "Try again from Telegram, or reopen MMGO from the bot to refresh your link."
+        body: "Try again from Telegram, or reopen MMGO from the bot to refresh your link."
       }
     }
   end
