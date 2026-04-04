@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onDestroy, onMount } from "svelte";
   import type { MapMarker, MapRoute, MapState } from "../lib/types";
 
   export let map: MapState;
@@ -7,13 +8,19 @@
   export let onSelect: ((marker: MapMarker) => void) | undefined = undefined;
   export let onCenterSelf: (() => void) | undefined = undefined;
 
-  let zoom = 1;
-  let offsetX = 0;
-  let offsetY = 0;
+  let surfaceEl: HTMLDivElement | null = null;
+  let zoomPercent = 100;
   let dragging = false;
   let pointerId: number | null = null;
   let dragStartX = 0;
   let dragStartY = 0;
+  let frameId: number | null = null;
+
+  const viewState = {
+    zoom: 1,
+    offsetX: 0,
+    offsetY: 0
+  };
 
   const accentPalette: Record<string, string> = {
     amber: "#f59e0b",
@@ -79,6 +86,49 @@
     return target instanceof HTMLElement && Boolean(target.closest("button, a, input, textarea, select"));
   }
 
+  function syncSurfaceTransform(): void {
+    if (!surfaceEl) {
+      return;
+    }
+
+    surfaceEl.style.setProperty("--atlas-zoom", `${viewState.zoom}`);
+    surfaceEl.style.setProperty("--atlas-offset-x", `${viewState.offsetX}px`);
+    surfaceEl.style.setProperty("--atlas-offset-y", `${viewState.offsetY}px`);
+  }
+
+  function queueSurfaceTransform(): void {
+    if (typeof window === "undefined" || frameId !== null) {
+      return;
+    }
+
+    frameId = window.requestAnimationFrame(() => {
+      frameId = null;
+      syncSurfaceTransform();
+    });
+  }
+
+  function setZoom(next: number): void {
+    const clamped = Math.min(2.4, Math.max(0.88, next));
+
+    if (clamped === viewState.zoom) {
+      return;
+    }
+
+    viewState.zoom = clamped;
+    zoomPercent = Math.round(clamped * 100);
+    queueSurfaceTransform();
+  }
+
+  onMount(() => {
+    syncSurfaceTransform();
+  });
+
+  onDestroy(() => {
+    if (frameId !== null && typeof window !== "undefined") {
+      window.cancelAnimationFrame(frameId);
+    }
+  });
+
   function startDrag(event: PointerEvent): void {
     if (isInteractiveTarget(event.target)) {
       return;
@@ -88,8 +138,8 @@
 
     pointerId = event.pointerId;
     dragging = true;
-    dragStartX = event.clientX - offsetX;
-    dragStartY = event.clientY - offsetY;
+    dragStartX = event.clientX - viewState.offsetX;
+    dragStartY = event.clientY - viewState.offsetY;
     viewport.setPointerCapture(event.pointerId);
   }
 
@@ -98,8 +148,9 @@
       return;
     }
 
-    offsetX = event.clientX - dragStartX;
-    offsetY = event.clientY - dragStartY;
+    viewState.offsetX = event.clientX - dragStartX;
+    viewState.offsetY = event.clientY - dragStartY;
+    queueSurfaceTransform();
   }
 
   function stopDrag(event?: PointerEvent): void {
@@ -113,13 +164,11 @@
 
   function onWheel(event: WheelEvent): void {
     event.preventDefault();
-    const next = zoom - event.deltaY * 0.0012;
-    zoom = Math.min(2.4, Math.max(0.88, next));
+    setZoom(viewState.zoom - event.deltaY * 0.0012);
   }
 
   function adjustZoom(direction: 1 | -1): void {
-    const next = zoom + direction * 0.14;
-    zoom = Math.min(2.4, Math.max(0.88, next));
+    setZoom(viewState.zoom + direction * 0.14);
   }
 </script>
 
@@ -136,9 +185,10 @@
     on:pointerleave={stopDrag}
   >
     <div
+      bind:this={surfaceEl}
       class="atlas-surface"
       class:atlas-surface--image={Boolean(map.imageUrl)}
-      style={`--atlas-zoom:${zoom}; --atlas-offset-x:${offsetX}px; --atlas-offset-y:${offsetY}px; ${map.imageUrl ? `background-image:url(${map.imageUrl});` : ""}`}
+      style={map.imageUrl ? `background-image:url(${map.imageUrl});` : ""}
     >
       {#if showRoutes}
         <svg class="atlas-routes" viewBox="0 0 100 100" aria-hidden="true">
@@ -174,7 +224,7 @@
 
     <div class="atlas-controls">
       <button type="button" aria-label="Zoom out" on:click={() => adjustZoom(-1)}>-</button>
-      <span>{Math.round(zoom * 100)}%</span>
+      <span>{zoomPercent}%</span>
       <button type="button" aria-label="Zoom in" on:click={() => adjustZoom(1)}>+</button>
       <button type="button" class="atlas-controls-reset" on:click={() => onCenterSelf?.()}>
         Reset
@@ -215,9 +265,12 @@
     inset: 50% auto auto 50%;
     width: min(112rem, max(calc(100dvw - 1.6rem), calc(100dvh - 1.6rem)));
     aspect-ratio: 1;
-    transform: translate(calc(-50% + var(--atlas-offset-x)), calc(-50% + var(--atlas-offset-y)))
-      scale(var(--atlas-zoom));
+    transform:
+      translate3d(calc(-50% + var(--atlas-offset-x, 0px)), calc(-50% + var(--atlas-offset-y, 0px)), 0)
+      scale(var(--atlas-zoom, 1));
     transform-origin: center;
+    will-change: transform;
+    backface-visibility: hidden;
     background:
       radial-gradient(circle at 78% 18%, rgba(109, 177, 184, 0.75), rgba(53, 97, 103, 0.92) 30%, transparent 31%),
       radial-gradient(circle at 84% 78%, rgba(65, 107, 52, 0.86), transparent 22%),
