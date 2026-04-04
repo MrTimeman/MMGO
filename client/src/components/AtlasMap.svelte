@@ -213,7 +213,7 @@
   .atlas-surface {
     position: absolute;
     inset: 50% auto auto 50%;
-    width: min(96rem, calc(100dvw - 1.6rem), calc(100dvh - 1.6rem));
+    width: min(112rem, max(calc(100dvw - 1.6rem), calc(100dvh - 1.6rem)));
     aspect-ratio: 1;
     transform: translate(calc(-50% + var(--atlas-offset-x)), calc(-50% + var(--atlas-offset-y)))
       scale(var(--atlas-zoom));
@@ -413,7 +413,7 @@
     }
 
     .atlas-surface {
-      width: min(calc(100dvw - 0.7rem), calc(100dvh - 0.7rem), 92rem);
+      width: min(96rem, max(calc(100dvw - 0.7rem), calc(100dvh - 0.7rem)));
     }
 
     .atlas-marker-core {

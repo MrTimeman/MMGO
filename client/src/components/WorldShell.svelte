@@ -1,10 +1,9 @@
 <script lang="ts">
   import AtlasMap from "./AtlasMap.svelte";
   import PlaceConsole from "./PlaceConsole.svelte";
-  import type { DataSource, MapMarker, ShellState } from "../lib/types";
+  import type { MapMarker, ShellState } from "../lib/types";
 
   export let shell: ShellState;
-  export let source: DataSource = "mock";
 
   let selectedLocationId = shell.selectedLocationId;
   let showRoutes = true;
@@ -21,17 +20,12 @@
 
   $: selectedIsCurrent = selectedLocation.id === shell.currentLocationId;
 
-  $: routeHelperCopy = selectedIsCurrent
-    ? "[Current location helper placeholder]"
-    : "[Travel helper placeholder]";
-
-  $: primaryActionLabel = selectedIsCurrent
-    ? `Enter ${selectedLocation.name}`
-    : `Plot trip to ${selectedLocation.name}`;
+  $: primaryActionLabel = selectedIsCurrent ? "Enter" : "Plot course";
 
   function handleSelect(marker: MapMarker): void {
     selectedLocationId = marker.id;
     transientNotice = undefined;
+
     if (viewMode === "place") {
       viewMode = "map";
     }
@@ -48,6 +42,10 @@
   function centerOnSelf(): void {
     selectedLocationId = shell.currentLocationId;
     transientNotice = undefined;
+  }
+
+  function toggleRoutes(): void {
+    showRoutes = !showRoutes;
   }
 
   function handlePrimaryAction(): void {
@@ -72,49 +70,44 @@
 
     {#if viewMode === "map"}
       <header class="shell-hud">
-        <p class="shell-kicker">{shell.map.title}</p>
-        <h1>{shell.character.name}</h1>
-        <p class="shell-location">
-          {shell.realm.name} · {currentLocation.name} · {shell.character.title}
-        </p>
+        <div class="shell-sigil">{shell.character.name.slice(0, 1)}</div>
 
-        <div class="shell-readout">
-          <span>{shell.timerLabel}</span>
-          <span>{shell.supplyLabel}</span>
-          <span>{shell.weightLabel}</span>
-          {#if source === "mock"}
-            <span>Mock session</span>
-          {/if}
+        <div class="shell-hud-copy">
+          <strong>{shell.character.name}</strong>
+          <span>{currentLocation.name}</span>
         </div>
       </header>
 
       <div class="shell-tools">
-        <button type="button" class="shell-tool" on:click={centerOnSelf}>Current</button>
-        <button type="button" class="shell-tool" on:click={() => (showRoutes = !showRoutes)}>
-          {showRoutes ? "Hide routes" : "Show routes"}
+        <button type="button" class="shell-tool" on:click={centerOnSelf}>Self</button>
+        <button type="button" class="shell-tool" on:click={toggleRoutes}>
+          {showRoutes ? "Routes on" : "Routes off"}
         </button>
       </div>
 
+      {#if transientNotice}
+        <div class="shell-toast">
+          <span>{transientNotice}</span>
+          <button type="button" on:click={() => (transientNotice = undefined)}>Dismiss</button>
+        </div>
+      {/if}
+
       <section class="selection-strip">
         <div class="selection-copy">
-          <p class="selection-kicker">{selectedIsCurrent ? "Current location" : "Selected destination"}</p>
-          <h2>{selectedLocation.name}</h2>
-          <p class="selection-summary">{selectedLocation.summary}</p>
-        </div>
+          <p class="selection-kicker">{selectedIsCurrent ? "Current" : "Selected"}</p>
 
-        <div class="selection-context">
-          <span>{selectedLocation.travelLabel}</span>
-          <p>{routeHelperCopy}</p>
-          {#if transientNotice}
-            <div class="selection-notice">
-              <p>{transientNotice}</p>
-              <button type="button" on:click={() => (transientNotice = undefined)}>Dismiss</button>
-            </div>
-          {/if}
+          <div class="selection-heading">
+            <h2>{selectedLocation.name}</h2>
+            <span>{selectedLocation.region}</span>
+          </div>
         </div>
 
         <div class="selection-actions">
-          <button type="button" class="selection-action selection-action--primary" on:click={handlePrimaryAction}>
+          <button
+            type="button"
+            class="selection-action selection-action--primary"
+            on:click={handlePrimaryAction}
+          >
             {primaryActionLabel}
           </button>
 
@@ -122,9 +115,9 @@
             <button
               type="button"
               class="selection-action selection-action--secondary"
-              on:click={() => (showRoutes = !showRoutes)}
+              on:click={toggleRoutes}
             >
-              {showRoutes ? "Hide route grid" : "Show route grid"}
+              {showRoutes ? "Hide routes" : "Show routes"}
             </button>
           {:else}
             <button
@@ -132,7 +125,7 @@
               class="selection-action selection-action--secondary"
               on:click={centerOnSelf}
             >
-              Snap back to {currentLocation.name}
+              Back to self
             </button>
           {/if}
         </div>
@@ -166,245 +159,260 @@
 
   .shell-hud,
   .shell-tools,
+  .shell-toast,
   .selection-strip {
     position: absolute;
     z-index: 5;
     border: 1px solid rgba(244, 229, 202, 0.12);
-    background: rgba(16, 13, 11, 0.7);
-    backdrop-filter: blur(14px);
+    background: rgba(16, 13, 11, 0.68);
+    backdrop-filter: blur(12px);
   }
 
   .shell-hud {
-    top: 1.1rem;
-    left: 1.1rem;
-    width: min(28rem, calc(100% - 7.4rem));
-    padding: 0.95rem 1rem;
-    border-radius: 1.35rem;
-    display: grid;
-    gap: 0.55rem;
+    top: 1.05rem;
+    left: 1.05rem;
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.5rem 0.75rem 0.5rem 0.55rem;
+    border-radius: 999px;
   }
 
-  .shell-kicker,
-  .shell-location,
-  .selection-kicker {
-    margin: 0;
+  .shell-sigil {
+    width: 2rem;
+    height: 2rem;
+    display: grid;
+    place-items: center;
+    border-radius: 999px;
+    background: linear-gradient(145deg, rgba(245, 158, 11, 0.94), rgba(180, 83, 9, 0.94));
+    color: #140f0a;
     font-family: var(--font-sans);
+    font-size: 0.82rem;
+    font-weight: 700;
+  }
+
+  .shell-hud-copy {
+    display: grid;
+    gap: 0.08rem;
+  }
+
+  .shell-hud-copy strong,
+  .shell-hud-copy span,
+  .selection-kicker,
+  .selection-heading span,
+  .shell-tool,
+  .shell-toast span,
+  .shell-toast button,
+  .selection-action {
+    font-family: var(--font-sans);
+  }
+
+  .shell-hud-copy strong {
+    font-size: 0.88rem;
+    line-height: 1;
+    color: rgba(249, 241, 231, 0.9);
+  }
+
+  .shell-hud-copy span {
+    font-size: 0.66rem;
+    letter-spacing: 0.12em;
     text-transform: uppercase;
-    letter-spacing: 0.14em;
-  }
-
-  .shell-kicker {
-    font-size: 0.68rem;
-    color: rgba(245, 200, 116, 0.92);
-  }
-
-  .shell-hud h1,
-  .shell-location,
-  .selection-strip h2,
-  .selection-summary,
-  .selection-context p,
-  .selection-notice p {
-    margin: 0;
-  }
-
-  .shell-hud h1 {
-    font-size: clamp(1.3rem, 2vw, 1.7rem);
-  }
-
-  .shell-location {
-    font-size: 0.68rem;
-    color: rgba(240, 233, 214, 0.58);
-  }
-
-  .shell-readout {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 0.5rem 0.7rem;
-    font-family: var(--font-sans);
-    font-size: 0.76rem;
-    color: rgba(240, 233, 214, 0.64);
-  }
-
-  .shell-tools {
-    top: 1.1rem;
-    right: 1.1rem;
-    padding: 0.45rem;
-    border-radius: 999px;
-    display: flex;
-    gap: 0.45rem;
-  }
-
-  .shell-tool {
-    min-height: 2.3rem;
-    padding: 0.55rem 0.9rem;
-    border: 1px solid rgba(244, 229, 202, 0.12);
-    border-radius: 999px;
-    background: rgba(255, 255, 255, 0.045);
-    color: rgba(247, 239, 214, 0.82);
-    font-family: var(--font-sans);
-    font-size: 0.76rem;
-    cursor: pointer;
-  }
-
-  .selection-strip {
-    left: 1.1rem;
-    bottom: 1.1rem;
-    width: min(40rem, calc(100% - 7.4rem));
-    padding: 1rem 1.05rem;
-    border-radius: 1.45rem;
-    display: grid;
-    gap: 0.8rem;
-  }
-
-  .selection-kicker {
-    font-size: 0.68rem;
     color: rgba(240, 233, 214, 0.5);
   }
 
-  .selection-strip h2 {
-    margin-top: 0.32rem;
-    font-size: clamp(1.45rem, 2.8vw, 2rem);
-    line-height: 0.96;
-  }
-
-  .selection-summary {
-    margin-top: 0.45rem;
-    color: rgba(247, 239, 214, 0.78);
-    line-height: 1.5;
-    line-clamp: 2;
-    display: -webkit-box;
-    -webkit-line-clamp: 2;
-    -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
-
-  .selection-context {
-    display: grid;
+  .shell-tools {
+    top: 1.05rem;
+    right: 1.05rem;
+    display: flex;
     gap: 0.35rem;
+    padding: 0.35rem;
+    border-radius: 999px;
   }
 
-  .selection-context span {
-    font-family: var(--font-sans);
+  .shell-tool {
+    min-height: 2rem;
+    padding: 0.45rem 0.72rem;
+    border: 1px solid rgba(244, 229, 202, 0.1);
+    border-radius: 999px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(247, 239, 214, 0.78);
     font-size: 0.72rem;
-    letter-spacing: 0.12em;
-    text-transform: uppercase;
-    color: rgba(245, 200, 116, 0.82);
+    cursor: pointer;
   }
 
-  .selection-context p {
-    color: rgba(240, 233, 214, 0.7);
-    line-height: 1.55;
+  .shell-toast {
+    top: 1.05rem;
+    left: 50%;
+    transform: translateX(-50%);
+    display: flex;
+    align-items: center;
+    gap: 0.7rem;
+    max-width: min(24rem, calc(100% - 8rem));
+    padding: 0.55rem 0.7rem;
+    border-radius: 999px;
   }
 
-  .selection-notice {
-    display: grid;
-    gap: 0.45rem;
-    padding-top: 0.1rem;
+  .shell-toast span {
+    min-width: 0;
+    font-size: 0.72rem;
+    color: rgba(249, 241, 231, 0.86);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
   }
 
-  .selection-notice button {
-    justify-self: start;
+  .shell-toast button {
     border: none;
     background: transparent;
-    color: rgba(245, 200, 116, 0.86);
-    font-family: var(--font-sans);
-    font-size: 0.76rem;
+    color: rgba(245, 200, 116, 0.88);
+    font-size: 0.72rem;
     cursor: pointer;
     padding: 0;
   }
 
-  .selection-actions {
+  .selection-strip {
+    left: 50%;
+    bottom: 1.05rem;
+    transform: translateX(-50%);
+    width: min(34rem, calc(100% - 2.1rem));
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    align-items: center;
+    gap: 0.8rem;
+    padding: 0.7rem 0.82rem;
+    border-radius: 1.2rem;
+  }
+
+  .selection-copy {
+    min-width: 0;
+    display: grid;
+    gap: 0.22rem;
+  }
+
+  .selection-kicker,
+  .selection-heading span {
+    margin: 0;
+    font-size: 0.64rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: rgba(240, 233, 214, 0.48);
+  }
+
+  .selection-heading {
     display: flex;
     flex-wrap: wrap;
-    gap: 0.55rem;
+    align-items: baseline;
+    gap: 0.45rem;
+    min-width: 0;
+  }
+
+  .selection-heading h2 {
+    margin: 0;
+    min-width: 0;
+    font-size: clamp(1.2rem, 2.2vw, 1.65rem);
+    line-height: 0.95;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .selection-actions {
+    display: flex;
+    gap: 0.45rem;
+    flex-shrink: 0;
   }
 
   .selection-action {
-    min-height: 2.9rem;
-    padding: 0.72rem 1rem;
-    border: 1px solid rgba(244, 229, 202, 0.08);
+    min-height: 2.45rem;
+    padding: 0.58rem 0.88rem;
+    border: 1px solid rgba(244, 229, 202, 0.1);
     border-radius: 999px;
-    background: rgba(255, 255, 255, 0.03);
-    color: rgba(247, 239, 214, 0.84);
-    font-family: var(--font-sans);
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(247, 239, 214, 0.82);
+    font-size: 0.78rem;
     cursor: pointer;
   }
 
   .selection-action--primary {
-    background: linear-gradient(145deg, rgba(98, 49, 18, 0.96), rgba(59, 31, 13, 0.96));
+    background: linear-gradient(145deg, rgba(98, 49, 18, 0.95), rgba(59, 31, 13, 0.95));
     border-color: rgba(183, 96, 35, 0.44);
     color: rgba(251, 244, 227, 0.94);
   }
 
+  @media (max-width: 820px) {
+    .shell-toast {
+      top: 4.3rem;
+      max-width: calc(100% - 2.2rem);
+    }
+  }
+
   @media (max-width: 700px) {
     .shell-stage {
-      padding: 0.6rem;
+      padding: 0.45rem;
     }
 
     :global(.shell-stage > .atlas) {
-      inset: 0.6rem;
+      inset: 0.45rem;
     }
 
     .shell-hud {
-      top: 1.1rem;
-      left: 1.1rem;
-      width: calc(100% - 7rem);
-      padding: 0.85rem 0.9rem;
+      top: 0.8rem;
+      left: 0.8rem;
+      padding: 0.42rem 0.62rem 0.42rem 0.46rem;
     }
 
-    .shell-hud h1 {
-      font-size: 1.15rem;
-    }
-
-    .shell-readout {
-      gap: 0.35rem 0.55rem;
-      font-size: 0.69rem;
+    .shell-sigil {
+      width: 1.8rem;
+      height: 1.8rem;
+      font-size: 0.76rem;
     }
 
     .shell-tools {
-      top: auto;
-      right: 1.1rem;
-      bottom: calc(1.1rem + env(safe-area-inset-bottom));
-      flex-direction: column;
-      border-radius: 1.2rem;
+      top: 0.8rem;
+      right: 0.8rem;
+      gap: 0.3rem;
+      padding: 0.3rem;
     }
 
     .shell-tool {
-      min-width: 4.75rem;
-      justify-content: center;
+      min-height: 1.9rem;
+      padding: 0.42rem 0.58rem;
+      font-size: 0.66rem;
+    }
+
+    .shell-toast {
+      top: 3.8rem;
+      left: 0.8rem;
+      right: 0.8rem;
+      transform: none;
+      max-width: none;
     }
 
     .selection-strip {
-      left: 1.1rem;
-      right: 1.1rem;
+      left: 0.8rem;
+      right: 0.8rem;
+      bottom: calc(0.8rem + env(safe-area-inset-bottom));
+      transform: none;
       width: auto;
-      bottom: calc(1.1rem + env(safe-area-inset-bottom));
-      padding: 0.9rem;
-      padding-right: 6.2rem;
-      gap: 0.7rem;
+      grid-template-columns: 1fr;
+      gap: 0.6rem;
+      padding: 0.68rem 0.72rem;
     }
 
-    .selection-strip h2 {
-      font-size: 1.3rem;
-    }
-
-    .selection-summary,
-    .selection-context p {
-      font-size: 0.92rem;
+    .selection-heading h2 {
+      font-size: 1.15rem;
     }
 
     .selection-actions {
-      flex-direction: column;
-      align-items: stretch;
+      width: 100%;
     }
 
     .selection-action {
-      width: 100%;
-      min-height: 2.7rem;
-    }
-
-    .selection-action--secondary {
-      background: rgba(255, 255, 255, 0.045);
+      flex: 1 1 0;
+      min-width: 0;
+      min-height: 2.35rem;
+      padding-inline: 0.72rem;
+      font-size: 0.74rem;
     }
   }
 </style>

@@ -46,7 +46,7 @@
 {:else if session.view === "entry" && session.entry}
   <EntryGate entry={session.entry} source={session.source} onEnter={enterWorld} />
 {:else if session.shell}
-  <WorldShell shell={session.shell} source={session.source} />
+  <WorldShell shell={session.shell} />
 {/if}
 
 {#if import.meta.env.DEV}
