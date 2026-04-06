@@ -56,7 +56,10 @@ defmodule MMGO.Notifications do
     end
   end
 
-  def deliver_notification_by_id(notification_id) when is_binary(notification_id) do
+  def deliver_notification_by_id(notification_id, opts \\ [])
+      when is_binary(notification_id) and is_list(opts) do
+    mark_failed? = Keyword.get(opts, :mark_failed?, true)
+
     Repo.transaction(fn ->
       notification =
         Notification
@@ -84,12 +87,7 @@ defmodule MMGO.Notifications do
         |> Repo.update!()
       else
         {:error, reason} ->
-          updated_notification =
-            notification
-            |> Notification.changeset(%{status: :failed, error: inspect(reason)})
-            |> Repo.update!()
-
-          Repo.rollback({:delivery_failed, updated_notification})
+          handle_delivery_failure(notification, reason, mark_failed?)
       end
     end)
     |> normalize_delivery_result()
@@ -328,10 +326,26 @@ defmodule MMGO.Notifications do
     end
   end
 
-  defp normalize_delivery_result({:ok, notification}), do: {:ok, notification}
+  defp handle_delivery_failure(%Notification{} = notification, reason, true) do
+    updated_notification =
+      notification
+      |> Notification.changeset(%{status: :failed, error: inspect(reason)})
+      |> Repo.update!()
 
-  defp normalize_delivery_result({:error, {:delivery_failed, notification}}),
+    {:delivery_failed, updated_notification}
+  end
+
+  defp handle_delivery_failure(%Notification{}, reason, false) do
+    {:retryable_delivery_failed, reason}
+  end
+
+  defp normalize_delivery_result({:ok, {:delivery_failed, notification}}),
     do: {:error, notification}
+
+  defp normalize_delivery_result({:ok, {:retryable_delivery_failed, reason}}),
+    do: {:error, {:retryable, reason}}
+
+  defp normalize_delivery_result({:ok, notification}), do: {:ok, notification}
 
   defp normalize_delivery_result({:error, %Changeset{} = changeset}), do: {:error, changeset}
 

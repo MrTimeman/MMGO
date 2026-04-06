@@ -1,7 +1,7 @@
 defmodule MMGO.Federation do
   import Ecto.Query, warn: false
 
-  alias Ecto.Changeset
+  alias Ecto.{Changeset, Multi}
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Economy
   alias MMGO.Federation.{ExchangeRate, Migration, RemoteRealm, Ruleset}
@@ -520,50 +520,15 @@ defmodule MMGO.Federation do
   def import_remote_character(%Realm{} = realm, payload) when is_map(payload) do
     payload = stringify_keys(payload)
 
-    Repo.transaction(fn ->
-      validate_remote_import!(realm, payload)
+    with :ok <- validate_remote_import(realm, payload) do
+      case imported_character_by_reference(payload["migration_reference"]) do
+        %Character{} = destination_character ->
+          {:ok, import_response(destination_character, payload["migration_reference"])}
 
-      account =
-        %Account{}
-        |> Account.registration_changeset(%{
-          display_name: payload["display_name"] || payload["character_name"],
-          handle: unique_account_handle(payload["account_handle"] || payload["character_name"])
-        })
-        |> Repo.insert!()
-
-      destination_character =
-        %Character{account_id: account.id, realm_id: realm.id}
-        |> Character.changeset(%{
-          name: unique_character_name(realm.id, payload["character_name"]),
-          status: :active,
-          level: payload["destination_level"],
-          xp: payload["destination_xp"],
-          metadata: %{"imported_from_realm_slug" => payload["origin_realm_slug"]}
-        })
-        |> Repo.insert!()
-        |> Character.travel_changeset(%{current_location_id: realm.entry_location_id})
-        |> Repo.update!()
-
-      {:ok, _funding} =
-        Economy.grant_from_treasury(
-          realm,
-          destination_character,
-          payload["converted_currency_amount"],
-          %{
-            entry_type: "transfer",
-            source: "remote_realm_migration_in",
-            origin_realm_slug: payload["origin_realm_slug"],
-            migration_reference: payload["migration_reference"]
-          }
-        )
-
-      %{
-        destination_character_id: destination_character.id,
-        destination_character_name: destination_character.name,
-        destination_character_ref: payload["migration_reference"] || destination_character.id
-      }
-    end)
-    |> normalize_transaction_result()
+        nil ->
+          create_remote_import(realm, payload)
+      end
+    end
   end
 
   def complete_migration_by_id(migration_id, opts \\ []) when is_binary(migration_id) do
@@ -715,29 +680,32 @@ defmodule MMGO.Federation do
     end
   end
 
-  defp validate_remote_import!(%Realm{} = realm, payload) do
+  defp validate_remote_import(%Realm{} = realm, payload) do
     cond do
       realm.allow_migration != true ->
-        Repo.rollback(migration_changeset("local realm is not accepting migrations"))
+        {:error, migration_changeset("local realm is not accepting migrations")}
 
       is_nil(realm.entry_location_id) ->
-        Repo.rollback(migration_changeset("local realm has no configured entry location"))
+        {:error, migration_changeset("local realm has no configured entry location")}
 
       not is_binary(payload["character_name"]) ->
-        Repo.rollback(migration_changeset("payload is missing character_name"))
+        {:error, migration_changeset("payload is missing character_name")}
 
       not is_binary(payload["account_handle"]) ->
-        Repo.rollback(migration_changeset("payload is missing account_handle"))
+        {:error, migration_changeset("payload is missing account_handle")}
+
+      not is_binary(payload["migration_reference"]) ->
+        {:error, migration_changeset("payload is missing migration_reference")}
 
       not is_integer(payload["converted_currency_amount"]) or
           payload["converted_currency_amount"] < 0 ->
-        Repo.rollback(migration_changeset("payload has invalid converted_currency_amount"))
+        {:error, migration_changeset("payload has invalid converted_currency_amount")}
 
       not is_integer(payload["destination_level"]) or payload["destination_level"] <= 0 ->
-        Repo.rollback(migration_changeset("payload has invalid destination_level"))
+        {:error, migration_changeset("payload has invalid destination_level")}
 
       not is_integer(payload["destination_xp"]) or payload["destination_xp"] < 0 ->
-        Repo.rollback(migration_changeset("payload has invalid destination_xp"))
+        {:error, migration_changeset("payload has invalid destination_xp")}
 
       true ->
         :ok
@@ -840,6 +808,111 @@ defmodule MMGO.Federation do
 
   defp normalize_transaction_result({:error, _step, %Changeset{} = changeset, _changes}),
     do: {:error, changeset}
+
+  defp create_remote_import(%Realm{} = realm, payload) do
+    Multi.new()
+    |> Multi.insert(
+      :account,
+      Account.registration_changeset(%Account{}, %{
+        display_name: payload["display_name"] || payload["character_name"],
+        handle: unique_account_handle(payload["account_handle"] || payload["character_name"])
+      })
+    )
+    |> Multi.insert(:destination_character, fn %{account: account} ->
+      %Character{account_id: account.id, realm_id: realm.id}
+      |> Character.import_changeset(%{
+        name: unique_character_name(realm.id, payload["character_name"]),
+        status: :active,
+        level: payload["destination_level"],
+        xp: payload["destination_xp"],
+        import_reference: payload["migration_reference"],
+        metadata: %{"imported_from_realm_slug" => payload["origin_realm_slug"]}
+      })
+    end)
+    |> Multi.update(:destination_character_location, fn %{
+                                                          destination_character:
+                                                            destination_character
+                                                        } ->
+      Character.travel_changeset(destination_character, %{
+        current_location_id: realm.entry_location_id
+      })
+    end)
+    |> Multi.run(:funding, fn _repo, %{destination_character_location: destination_character} ->
+      Economy.grant_from_treasury(
+        realm,
+        destination_character,
+        payload["converted_currency_amount"],
+        %{
+          entry_type: "transfer",
+          source: "remote_realm_migration_in",
+          origin_realm_slug: payload["origin_realm_slug"],
+          migration_reference: payload["migration_reference"]
+        }
+      )
+    end)
+    |> Repo.transaction()
+    |> normalize_import_result(payload)
+  end
+
+  defp normalize_import_result(
+         {:ok, %{destination_character_location: destination_character}},
+         payload
+       ) do
+    {:ok, import_response(destination_character, payload["migration_reference"])}
+  end
+
+  defp normalize_import_result(
+         {:error, :destination_character, %Changeset{} = changeset, _changes},
+         payload
+       ) do
+    case import_response_from_duplicate(changeset, payload["migration_reference"]) do
+      {:ok, response} -> {:ok, response}
+      :error -> {:error, changeset}
+    end
+  end
+
+  defp normalize_import_result({:error, _step, %Changeset{} = changeset, _changes}, _payload),
+    do: {:error, changeset}
+
+  defp normalize_import_result({:ok, result}, _payload), do: {:ok, result}
+
+  defp normalize_import_result({:error, %Changeset{} = changeset}, _payload),
+    do: {:error, changeset}
+
+  defp import_response_from_duplicate(%Changeset{} = changeset, import_reference) do
+    if import_reference_conflict?(changeset) do
+      case imported_character_by_reference(import_reference) do
+        %Character{} = destination_character ->
+          {:ok, import_response(destination_character, import_reference)}
+
+        nil ->
+          :error
+      end
+    else
+      :error
+    end
+  end
+
+  defp import_reference_conflict?(%Changeset{constraints: constraints}) do
+    Enum.any?(constraints, fn
+      %{type: :unique, constraint: "characters_import_reference_index"} -> true
+      _other -> false
+    end)
+  end
+
+  defp imported_character_by_reference(import_reference) when is_binary(import_reference) do
+    Repo.get_by(Character, import_reference: import_reference)
+  end
+
+  defp imported_character_by_reference(_import_reference), do: nil
+
+  defp import_response(%Character{} = destination_character, import_reference) do
+    %{
+      destination_character_id: destination_character.id,
+      destination_character_name: destination_character.name,
+      destination_character_ref: import_reference || destination_character.id
+    }
+  end
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)

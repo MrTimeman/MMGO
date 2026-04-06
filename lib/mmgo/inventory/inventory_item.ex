@@ -13,6 +13,7 @@ defmodule MMGO.Inventory.InventoryItem do
     field :quantity, :integer, default: 1
     field :reserved_quantity, :integer, default: 0
     field :durability, :integer, default: 0
+    field :stack_key, :string
     field :metadata, :map, default: %{}
 
     belongs_to :character, Character
@@ -29,6 +30,7 @@ defmodule MMGO.Inventory.InventoryItem do
       :quantity,
       :reserved_quantity,
       :durability,
+      :stack_key,
       :metadata
     ])
     |> validate_required([
@@ -42,6 +44,7 @@ defmodule MMGO.Inventory.InventoryItem do
     |> validate_number(:reserved_quantity, greater_than_or_equal_to: 0)
     |> validate_number(:durability, greater_than_or_equal_to: 0)
     |> validate_reserved_bound()
+    |> unique_constraint(:stack_key, name: :inventory_items_character_template_stack_key_index)
   end
 
   defp validate_reserved_bound(changeset) do

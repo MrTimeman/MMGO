@@ -5,6 +5,8 @@ defmodule MMGO.Inventory do
   alias MMGO.Inventory.{InventoryItem, ItemTemplate}
   alias MMGO.Repo
 
+  @stack_key "stack"
+
   def list_item_templates do
     Repo.all(from template in ItemTemplate, order_by: [asc: template.inserted_at])
   end
@@ -44,22 +46,14 @@ defmodule MMGO.Inventory do
     attrs = stringify_keys(attrs)
     quantity = attrs["quantity"] || 1
     durability = attrs["durability"] || default_durability(item_template)
+    metadata = attrs["metadata"] || %{}
 
-    if item_template.stackable do
-      case Repo.get_by(InventoryItem,
-             character_id: character.id,
-             item_template_id: item_template.id
-           ) do
-        %InventoryItem{} = existing_item ->
-          existing_item
-          |> InventoryItem.changeset(%{quantity: existing_item.quantity + quantity})
-          |> Repo.update()
-
-        nil ->
-          create_inventory_item(character, item_template, quantity, durability, attrs)
+    with :ok <- validate_grant_quantity(quantity) do
+      if item_template.stackable do
+        upsert_stackable_item(character, item_template, quantity, durability, metadata)
+      else
+        create_inventory_item(character, item_template, quantity, durability, metadata, nil)
       end
-    else
-      create_inventory_item(character, item_template, quantity, durability, attrs)
     end
   end
 
@@ -77,7 +71,7 @@ defmodule MMGO.Inventory do
     InventoryItem.changeset(inventory_item, attrs)
   end
 
-  defp create_inventory_item(character, item_template, quantity, durability, attrs) do
+  defp upsert_stackable_item(character, item_template, quantity, durability, metadata) do
     %InventoryItem{}
     |> InventoryItem.changeset(%{
       character_id: character.id,
@@ -85,7 +79,29 @@ defmodule MMGO.Inventory do
       quantity: quantity,
       reserved_quantity: 0,
       durability: durability,
-      metadata: attrs["metadata"] || %{}
+      stack_key: @stack_key,
+      metadata: metadata
+    })
+    |> Repo.insert(
+      on_conflict: [
+        inc: [quantity: quantity],
+        set: [updated_at: DateTime.utc_now()]
+      ],
+      conflict_target: [:character_id, :item_template_id, :stack_key],
+      returning: true
+    )
+  end
+
+  defp create_inventory_item(character, item_template, quantity, durability, metadata, stack_key) do
+    %InventoryItem{}
+    |> InventoryItem.changeset(%{
+      character_id: character.id,
+      item_template_id: item_template.id,
+      quantity: quantity,
+      reserved_quantity: 0,
+      durability: durability,
+      stack_key: stack_key,
+      metadata: metadata
     })
     |> Repo.insert()
   end
@@ -94,6 +110,15 @@ defmodule MMGO.Inventory do
     do: max_durability
 
   defp default_durability(_item_template), do: 0
+
+  defp validate_grant_quantity(quantity) when is_integer(quantity) and quantity >= 0, do: :ok
+
+  defp validate_grant_quantity(_quantity) do
+    {:error,
+     %InventoryItem{}
+     |> Ecto.Changeset.change()
+     |> Ecto.Changeset.add_error(:quantity, "must be greater than or equal to zero")}
+  end
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)

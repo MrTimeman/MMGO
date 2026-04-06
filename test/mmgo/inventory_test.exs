@@ -42,7 +42,48 @@ defmodule MMGO.InventoryTest do
     assert {:ok, item} = Inventory.grant_item(character, potion_template, %{quantity: 3})
 
     assert item.quantity == 5
+    assert item.stack_key == "stack"
     assert Repo.aggregate(InventoryItem, :count, :id) == 1
+  end
+
+  test "stackable inventory rows are protected by a unique stack key", %{character: character} do
+    {:ok, potion_template} =
+      Inventory.create_item_template(%{
+        code: "frost_phial",
+        name: "Frost Phial",
+        item_type: :potion,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        actions: [
+          %{
+            key: "splash",
+            action_kind: :throw,
+            targeting: :enemy,
+            quantity_cost: 1,
+            effects: [
+              %{applies_to: :target, state: "frozen", intensity: 3, variance: 0, duration: 1}
+            ]
+          }
+        ]
+      })
+
+    assert {:ok, item} = Inventory.grant_item(character, potion_template, %{quantity: 2})
+    assert item.stack_key == "stack"
+
+    assert {:error, changeset} =
+             %InventoryItem{}
+             |> InventoryItem.changeset(%{
+               character_id: character.id,
+               item_template_id: potion_template.id,
+               quantity: 1,
+               reserved_quantity: 0,
+               durability: 0,
+               stack_key: "stack"
+             })
+             |> Repo.insert()
+
+    assert %{stack_key: ["has already been taken"]} = errors_on(changeset)
   end
 
   test "grant_item/3 creates separate rows for non-stackable items", %{character: character} do

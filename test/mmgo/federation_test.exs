@@ -153,6 +153,58 @@ defmodule MMGO.FederationTest do
     assert manifest.ruleset["magic_scope"] == "tower_and_dungeon"
   end
 
+  test "import_remote_character/2 is idempotent for the same migration reference", %{
+    destination_realm: destination_realm
+  } do
+    payload = %{
+      "account_handle" => "remote-migrant",
+      "display_name" => "Remote Migrant",
+      "character_name" => "Remote Migrant",
+      "destination_level" => 7,
+      "destination_xp" => 99,
+      "converted_currency_amount" => 125,
+      "origin_realm_slug" => "emberkeep",
+      "migration_reference" => "migration-ref-1"
+    }
+
+    account_count_before = Repo.aggregate(Account, :count, :id)
+    character_count_before = Repo.aggregate(Character, :count, :id)
+
+    assert {:ok, first_response} =
+             Federation.import_remote_character(destination_realm, payload)
+
+    assert {:ok, second_response} =
+             Federation.import_remote_character(destination_realm, payload)
+
+    assert first_response == second_response
+    assert Repo.aggregate(Account, :count, :id) == account_count_before + 1
+    assert Repo.aggregate(Character, :count, :id) == character_count_before + 1
+
+    imported_character = Repo.get!(Character, first_response.destination_character_id)
+    assert imported_character.import_reference == "migration-ref-1"
+
+    {:ok, destination_account} = Economy.ensure_character_account(imported_character)
+    assert Economy.get_account!(destination_account.id).current_balance == 125
+    assert Economy.treasury_account_for_realm(destination_realm.id).current_balance == 1_875
+  end
+
+  test "import_remote_character/2 requires a migration reference", %{
+    destination_realm: destination_realm
+  } do
+    assert {:error, changeset} =
+             Federation.import_remote_character(destination_realm, %{
+               "account_handle" => "remote-migrant",
+               "display_name" => "Remote Migrant",
+               "character_name" => "Remote Migrant",
+               "destination_level" => 7,
+               "destination_xp" => 99,
+               "converted_currency_amount" => 125,
+               "origin_realm_slug" => "emberkeep"
+             })
+
+    assert %{status: ["payload is missing migration_reference"]} = errors_on(changeset)
+  end
+
   defp character_fixture(realm, location, handle, name) do
     account =
       %Account{}

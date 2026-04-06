@@ -4,9 +4,16 @@ defmodule MMGO.Notifications.DeliveryWorker do
   alias MMGO.Notifications
 
   @impl Oban.Worker
-  def perform(%Oban.Job{args: %{"notification_id" => notification_id}}) do
-    case Notifications.deliver_notification_by_id(notification_id) do
+  def perform(%Oban.Job{
+        args: %{"notification_id" => notification_id},
+        attempt: attempt,
+        max_attempts: max_attempts
+      }) do
+    case Notifications.deliver_notification_by_id(notification_id,
+           mark_failed?: attempt >= max_attempts
+         ) do
       {:ok, _notification} -> :ok
+      {:error, {:retryable, reason}} -> {:error, reason}
       {:error, %MMGO.Notifications.Notification{status: :failed}} -> {:discard, :delivery_failed}
       {:error, _changeset} -> {:discard, :invalid_notification}
     end

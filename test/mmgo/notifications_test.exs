@@ -3,6 +3,7 @@ defmodule MMGO.NotificationsTest do
 
   alias MMGO.Accounts.{Account, Character, TelegramIdentity}
   alias MMGO.Notifications
+  alias MMGO.Notifications.DeliveryWorker
   alias MMGO.Notifications.Notification
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -84,6 +85,39 @@ defmodule MMGO.NotificationsTest do
 
     assert delivered_notification.status == :sent
     assert delivered_notification.delivered_at
+  end
+
+  test "delivery worker retries transient Telegram failures before marking notification failed",
+       %{
+         bypass: bypass,
+         character: character
+       } do
+    Bypass.stub(bypass, "POST", "/bottest-bot-token/sendMessage", fn conn ->
+      Plug.Conn.resp(conn, 500, ~s({"ok":false,"description":"temporary outage"}))
+    end)
+
+    {:ok, notification} =
+      Notifications.enqueue(character, :journey_arrived, %{"to_location_id" => "555001"},
+        dedupe_key: "journey:3"
+      )
+
+    assert {:error, {:telegram_api, 500, _body}} =
+             DeliveryWorker.perform(%Oban.Job{
+               args: %{"notification_id" => notification.id},
+               attempt: 1,
+               max_attempts: 5
+             })
+
+    assert Repo.get!(Notification, notification.id).status == :pending
+
+    assert {:discard, :delivery_failed} =
+             DeliveryWorker.perform(%Oban.Job{
+               args: %{"notification_id" => notification.id},
+               attempt: 5,
+               max_attempts: 5
+             })
+
+    assert Repo.get!(Notification, notification.id).status == :failed
   end
 
   defp character_fixture(realm, handle, name, telegram_user_id) do
