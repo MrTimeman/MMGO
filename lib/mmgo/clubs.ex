@@ -4,7 +4,7 @@ defmodule MMGO.Clubs do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Academy
-  alias MMGO.Clubs.{Club, Invitation, Membership}
+  alias MMGO.Clubs.{Club, Event, EventAttendance, Invitation, Membership}
   alias MMGO.Notifications
   alias MMGO.Repo
 
@@ -159,6 +159,113 @@ defmodule MMGO.Clubs do
 
       invitation
       |> Invitation.changeset(%{status: :rejected, responded_at: DateTime.utc_now()})
+      |> Repo.update!()
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def get_event!(event_id) when is_binary(event_id) do
+    Event
+    |> Repo.get!(event_id)
+    |> Repo.preload([:club, :attendances])
+  end
+
+  def create_event(%Club{} = club, attrs \\ %{}) do
+    attrs = stringify_keys(attrs)
+    kind = normalize_event_kind(attrs["kind"] || :general_meeting)
+    scheduled_at = attrs["scheduled_at"] || DateTime.utc_now()
+
+    Repo.transaction(fn ->
+      club = lock_club!(club.id)
+
+      if club.status != :active do
+        Repo.rollback(club_changeset("club is not active"))
+      end
+
+      if is_nil(kind) do
+        Repo.rollback(club_changeset("event kind is invalid"))
+      end
+
+      %Event{}
+      |> Event.changeset(%{
+        club_id: club.id,
+        realm_id: club.realm_id,
+        kind: kind,
+        status: :scheduled,
+        scheduled_at: scheduled_at,
+        result_metadata: %{},
+        metadata: attrs["metadata"] || %{}
+      })
+      |> Repo.insert!()
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def list_events_for_club(club_id) when is_binary(club_id) do
+    Repo.all(
+      from event in Event,
+        where: event.club_id == ^club_id,
+        order_by: [asc: event.scheduled_at],
+        preload: [:attendances]
+    )
+  end
+
+  def list_upcoming_events_for_realm(realm_id) when is_binary(realm_id) do
+    now = DateTime.utc_now()
+
+    Repo.all(
+      from event in Event,
+        where:
+          event.realm_id == ^realm_id and event.status in [:scheduled, :active] and
+            event.scheduled_at >= ^now,
+        order_by: [asc: event.scheduled_at],
+        preload: [:club]
+    )
+  end
+
+  def attend_event(%Event{} = event, %Character{} = character) do
+    Repo.transaction(fn ->
+      event = lock_event!(event.id)
+      character = lock_character!(character.id)
+
+      cond do
+        event.status not in [:scheduled, :active] ->
+          Repo.rollback(club_changeset("event is not open for attendance"))
+
+        not active_membership_exists?(event.club_id, character.id) ->
+          Repo.rollback(club_changeset("character is not an active club member"))
+
+        already_attended?(event.id, character.id) ->
+          Repo.rollback(club_changeset("character has already attended this event"))
+
+        true ->
+          %EventAttendance{}
+          |> EventAttendance.changeset(%{
+            event_id: event.id,
+            character_id: character.id,
+            attended_at: DateTime.utc_now(),
+            metadata: %{}
+          })
+          |> Repo.insert!()
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def complete_event(%Event{} = event, result_metadata \\ %{}) do
+    Repo.transaction(fn ->
+      event = lock_event!(event.id)
+
+      if event.status not in [:scheduled, :active] do
+        Repo.rollback(club_changeset("event is not active"))
+      end
+
+      event
+      |> Event.changeset(%{
+        status: :completed,
+        completed_at: DateTime.utc_now(),
+        result_metadata: result_metadata
+      })
       |> Repo.update!()
     end)
     |> normalize_transaction_result()
@@ -346,5 +453,29 @@ defmodule MMGO.Clubs do
     %Club{}
     |> Changeset.change()
     |> Changeset.add_error(:status, message)
+  end
+
+  @event_kinds [:general_meeting, :duel_tournament, :research_session, :expedition_briefing]
+
+  defp normalize_event_kind(value) when value in @event_kinds, do: value
+  defp normalize_event_kind("general_meeting"), do: :general_meeting
+  defp normalize_event_kind("duel_tournament"), do: :duel_tournament
+  defp normalize_event_kind("research_session"), do: :research_session
+  defp normalize_event_kind("expedition_briefing"), do: :expedition_briefing
+  defp normalize_event_kind(_value), do: nil
+
+  defp lock_event!(event_id) do
+    Event
+    |> where([event], event.id == ^event_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one!()
+  end
+
+  defp already_attended?(event_id, character_id) do
+    Repo.exists?(
+      from attendance in EventAttendance,
+        where:
+          attendance.event_id == ^event_id and attendance.character_id == ^character_id
+    )
   end
 end

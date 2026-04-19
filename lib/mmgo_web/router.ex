@@ -14,10 +14,23 @@ defmodule MMGOWeb.Router do
     plug :accepts, ["json"]
   end
 
+  pipeline :browser_api do
+    plug :accepts, ["json"]
+    plug :fetch_session
+    plug :protect_from_forgery
+    plug :put_secure_browser_headers
+  end
+
   scope "/", MMGOWeb do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/play", PlayController, :show
+
+    live "/academy/bulletin-board", BulletinBoardLive
+    live "/academy/study-desk", StudyDeskLive
+    live "/academy/exam/:term_id", ExamLive
+    live "/academy/club-events/:event_id", ClubEventLive
   end
 
   scope "/", MMGOWeb do
@@ -32,6 +45,14 @@ defmodule MMGOWeb.Router do
     post "/telegram/webhook", TelegramWebhookController, :create
     get "/federation/realm-manifest", FederationController, :manifest
     post "/federation/import-migration", FederationController, :import_migration
+  end
+
+  scope "/api/play", MMGOWeb do
+    pipe_through :browser_api
+
+    get "/state", PlayApiController, :state
+    post "/journeys", PlayApiController, :create_journey
+    post "/demo/reset", PlayDemoController, :reset
   end
 
   # Enable LiveDashboard in development

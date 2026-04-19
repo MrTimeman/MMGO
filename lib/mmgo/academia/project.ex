@@ -9,6 +9,13 @@ defmodule MMGO.Academia.Project do
 
   @project_kinds [:spell, :potion, :tool, :thesis, :course]
   @statuses [:active, :completed, :failed, :cancelled]
+  @defense_states [
+    :pending_defense,
+    :under_review,
+    :accepted,
+    :accepted_with_revisions,
+    :rejected
+  ]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -20,6 +27,8 @@ defmodule MMGO.Academia.Project do
     field :started_at, :utc_datetime_usec
     field :completes_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
+    field :defense_scheduled_at, :utc_datetime_usec
+    field :defense_state, Ecto.Enum, values: @defense_states
     field :metadata, :map, default: %{}
 
     belongs_to :character, Character
@@ -38,6 +47,8 @@ defmodule MMGO.Academia.Project do
       :started_at,
       :completes_at,
       :completed_at,
+      :defense_scheduled_at,
+      :defense_state,
       :metadata,
       :character_id,
       :realm_id,

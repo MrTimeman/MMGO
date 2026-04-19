@@ -525,89 +525,186 @@ A grimoire is a physical item — a book that holds a subset of spells from your
 
 The Academy is the primary progression gateway. Every player passes through it. It provides education, social connections, and specialization. Located in the main city.
 
-## 9.1 Basic Education (Mandatory)
+## 9.0 The Term System
 
-All players begin with basic education. This is free and covers fundamentals: history of the realm, basic survival, overworld navigation, and economic literacy. Duration: 10 in-game years (~10 real days).
+The Academy’s time backbone is the **term**. One term = one game year = roughly one real day. Every enrollment is divided into terms; each term has a fixed rhythm of scheduled events that the player must engage with. Terms are the unit of attendance, grading, and social life.
 
-During basic education, players join social clubs — interest groups where they meet other players, form friendships, and find future party members. Clubs persist and become even more important during university (see 9.6).
+Each term contains, in order:
+1. **Enrollment window** (first game-month of term) — choose courses from the bulletin board.
+2. **Lecture phase** — 2–3 lecture events become available across the term.
+3. **Club window** — clubs host events; attendance opens friendships and training.
+4. **Midterm check-in** — optional formative exam (partial credit toward final grade).
+5. **Final exam** — mandatory; graded.
+6. **Term break** — short, free time for travel, light dungeon runs, base work.
+
+Durations:
+| Program | Game-years | Real-days | Terms |
+|---|---|---|---|
+| Basic Education | 10 | 10 | 10 |
+| Academy Core | 3 | 3 | 3 |
+| Extended Study | 2 | 2 | 2 |
+| Academia coursework | 4 | 4 | 4 |
+| Thesis | variable | variable | n/a |
+
+## 9.1 Basic Education (Mandatory, 10 terms)
+
+Free, universal. Curriculum is seeded and NPC-taught: history of the realm, elemental literacy, overworld survival, economic basics, civic law, Latin fundamentals (practical for incantation writing later).
+
+**Required per term:** one final exam. Missing it counts as a failed term.
+**Optional per term:** 2 lectures (+knowledge XP), 1 midterm (boosts final grade ceiling), 1–2 club events.
+
+**Grading:** each term exam scored 0–100. A running **GPA** is stored on the enrollment’s metadata and visible on the bulletin board.
+
+**Consequences of absence:**
+- Fail ≤ 3 terms → graduate as Pass.
+- Fail 4–6 terms → graduate on Probation (reduced starter spell set, no scholarship eligibility).
+- Fail ≥ 7 terms → Expulsion. Character can re-enroll after a game-year cooldown, losing the charity-fund slot.
+
+**Outcome tiers (set at graduation):**
+- **Distinction** (GPA ≥ 85, ≤ 1 failed term) → merit scholarship offer + bonus starter spells + Academy Honors title.
+- **Pass** → standard admission eligibility, self-funded by default.
+- **Probation** → admission eligibility only with professor endorsement (see 9.8).
 
 ## 9.2 Admission to the Academy
 
-After basic education, players can enter the Academy proper through two paths:
+- **Merit grant** — awarded to Distinction graduates and the top 25% of Pass graduates per cohort, funded from the Charity Fund. Covers tuition.
+- **Self-funded** — Pass graduates and below pay out of pocket.
+- **Professor endorsement** — a Probation graduate may enter if a Professor signs a recommendation letter (see 9.8).
 
-- **Merit grant** — players who performed well during basic education (good grades, club participation, etc.) receive a scholarship funded by the charity fund. Free tuition.
+## 9.3 Specialization Tracks (3 terms)
 
-- **Self-funded** — players who don’t qualify for a grant pay tuition out of pocket.
+Same three tracks: **Wizardry**, **Alchemy**, **Mastery**. Each track is structured as three year-long terms:
 
-## 9.3 Specialization Tracks
+**Year 1 — Fundamentals.** Seeded NPC courses introduce tools of the trade. For Wizards: the two chosen schools, incantation construction. For Alchemists: ingredients taxonomy, basic brewing. For Masters: materials, basic forging.
 
-Upon entering the Academy, players choose one of three tracks. This choice defines their class for the rest of the game (though retraining is possible).
+**Year 2 — Practice.** Coursework is applied: wizards compile their first three **starter spells** (which enter their library on graduation); alchemists develop three starter recipes; masters forge three starter tools. Quality of these starters depends on term grade.
+
+**Year 3 — Thesis project (mini).** A term-long capstone — not the Academia thesis, but a scaled-down graded project. Pass is required to graduate.
+
+**Required per term:** 1 midterm + 1 final.
+**Optional per term:** seminars, club events, professor office hours.
+
+**Retraining** (existing rule preserved): a graduate can re-enter Academy Core with a new track. Old specialization is retired; one school may overlap if retraining within Wizardry.
 
 ### 9.3.1 Wizardry (Caster track)
 
 - Learn to cast spells using the incantation system
-
 - Choose 2 schools of magic (out of 8) as your specialization
-
 - Can only cast spells from your chosen schools
-
 - Retraining is possible: choose 2 new schools, but old schools are lost. One of the two may overlap with a previous choice.
-
 - Spells created during training become your starter library
 
 ### 9.3.2 Alchemy (Crafter: Potions)
 
-- Phase 1 (Bachelor’s): learn basic potion creation — follow recipes, use standard ingredients
-
-- Phase 2 (Master’s): learn to use all alchemical instruments and advanced techniques
-
-- Phase 3 (Postgraduate): develop your own original methods and recipes
+- Year 1: learn basic potion creation — follow recipes, use standard ingredients
+- Year 2: develop three starter recipes; quality depends on term grade
+- Year 3: mini-thesis project — original recipe or technique
 
 ### 9.3.3 Mastery (Crafter: Tools / Tool User)
 
 - Learn to create tools, weapons, shields, and equipment from the start
-
 - This is the track for the tool user class (formerly called “Knighters” in early notes)
-
 - Tools and weapons crafted here are used in overworld combat where magic doesn’t work
 
-## 9.4 Duration & Post-Graduation
+## 9.4 The Bulletin Board & Course Catalog
+
+The Academy lobby contains a persistent **bulletin board** — the student-facing UI. It lists:
+- **Courses offered this term** — each row shows course title, professor (NPC or player), school/track, schedule, seat count, syllabus preview.
+- **Exam schedule** — upcoming midterms and finals for enrolled courses.
+- **Club events** — dueling tournaments, research symposiums, expedition briefings.
+- **Cohort leaderboard** — live GPA rankings for the current graduating class.
+- **Thesis defenses** — scheduled defense dates for senior Academia students (open to all students as audience).
+
+**How courses populate the catalog:**
+- **Seeded courses** are authored at realm creation and run every term — the floor of the curriculum. They are taught by NPC professors.
+- **Professor-authored courses** (publications of kind `:course`) appear on the bulletin when a Professor schedules a term. A player-authored course covering the same material as a seeded course **replaces** the seeded section for that term.
+- **Prestige**: high-GPA students preferentially pick player-authored courses if they know the professor or the professor has reputation, creating a reputation loop for Professors.
+
+## 9.5 Lectures and Exams
+
+**Lectures** are short text-event interactions — a few paragraphs of in-world content followed by 2–3 comprehension questions. They award knowledge XP and raise the ceiling on the term’s final exam score. Seeded lectures have static content; professor-authored lectures are written by the authoring player at course creation time.
+
+**Exams** are timed text events — ~5 real minutes. Mix of:
+- Multiple-choice knowledge questions (seeded from curriculum).
+- Applied challenges: wizards write a compliant incantation under constraints; alchemists pick ingredients for a stated effect; masters choose materials for a stated tool.
+
+Grading is deterministic where possible (MC answers, recipe matching) and uses the Spell Compiler output for wizardry applied questions. Exams produce a 0–100 score, stored as an `academy_term_result` row.
+
+**Cheating / collaboration:** exams are individual. Party chat is locked during the 5-minute window. Possession of a prior student’s exam notes (a looted “crib sheet” item) can grant a small grade boost but is detected with probability, producing a reputation hit and exam nullification.
+
+## 9.6 Duration & Post-Graduation
 
 The core Academy program takes 3 in-game years (~3 real days). After completing it, players can:
 
 - **Graduate and go to work** — enter the world as a dungeon runner, trader, crafter, etc.
-
 - **Extended study (+2 in-game years)** — deepen specialization. Approximately 2 more real days.
+- **Enter Academia** — the long-term research path (see 9.9).
 
-- **Enter Academia** — the long-term research path (see below).
+## 9.7 Grades, Rankings, Valedictorians
 
-## 9.5 Academia (Research Path)
+Every term exam score feeds:
+- **GPA**: running mean across the program.
+- **Cohort rank**: position among all students graduating in the same term.
 
-After graduation, players can choose the academic career. This is a slow, prestigious path focused on creating new knowledge for the community:
+**Rewards at graduation:**
+- **Valedictorian** (rank 1 per cohort per realm) — unique title, bonus starter spell of their choice, pinned on the bulletin board hall-of-fame for one real year.
+- **Top 10%** — Distinction or Honors title (depending on program).
+- **Merit scholarship for Academy Core** — top 25% of basic ed.
+- **Advisor pick rights in Academia** — top 10% of Academy Core graduates may request any Professor as advisor; others are matched by availability.
 
-- Work on creating new, original spells/potions/tools for the public spell database
+Rankings are public on the bulletin board — a deliberate source of rivalry.
 
-- Early research is easy (low-hanging fruit); later discoveries become progressively harder
+## 9.8 Clubs
 
-- Culminates in a doctoral thesis — the ultimate challenge
+The existing `academy_clubs` schema gains event mechanics. Every club hosts at least one **club event** per term — a scheduled, joinable activity. Four club types, each with its own event loop:
 
-- After receiving the doctorate, a player can become a Professor
+- **General-interest clubs** — lore circles, exploration societies. Events are text-based social gatherings with small knowledge XP, faction reputation seeds, and friendship ties (recorded for future party bonus).
+- **Dueling clubs** — friendly PvP with **no wager**. Uses the normal combat engine, but death is bloodless and loot is not transferred. Club ladder tracks wins/losses per term. Top duelists earn prestige and unlock access to inter-club tournaments.
+- **Research clubs** — shared notes. Members contribute partial research toward a group goal. When one member completes the work in Academia later, all contributors receive a fraction of the project XP retroactively.
+- **Expedition-planning clubs** — expedition briefings, route scouting, intended as the social origin point for later dungeon parties. Each meeting is a text-event where members discuss a simulated dungeon map and submit a plan; good plans boost the next real dungeon run of the participating members.
 
-- Professors write courses for the Academy, shaping how future players are taught
+**Founding a club** — any Academy Core student or Professor can found a club for a small fee. Clubs persist across the founder’s graduation; alumni can remain members.
 
-- This creates a player-driven education system where high-level players define the curriculum
+**Attendance consequences:** attending ≥ 1 club event per term is required to qualify for the Merit scholarship and for top-quartile rankings. This is the lever that makes school social rather than isolating.
 
-## 9.6 Clubs
+## 9.9 Professor–Student Ties
 
-Clubs are a core social mechanic that spans all stages of education and beyond. They begin during basic education and continue through university, becoming more specialized and important over time.
+**Office hours.** Every Professor (player or NPC) schedules 1 office-hour event per term on their courses. Attending office hours boosts the attending student’s grade ceiling in that course by 5 points and builds a relationship score.
 
-- Basic education clubs: general interest (exploration, history, crafting)
+**Advisors.** Upon entering Academia, a student selects an **advisor** from the Professor pool. The advisor relationship grants:
+- +20% research project speed for the advised student.
+- Advisor’s published spells/potions/tools become available as base items for the student’s research.
+- Advisor can write a **recommendation letter** (a non-transferable item that unlocks specific gated paths: scholarship overrides, foreign-realm academic visits, special club invitations).
 
-- University clubs: specialized and practical — dueling clubs (practice PvP with friends), research groups, expedition planning societies
+**Halo / reputation.** Professor reputation is a running score driven by students’ outcomes:
+- +reputation when an advised student publishes a thesis, becomes valedictorian, makes a notable discovery.
+- −reputation when an advised student fails a thesis defense, drops out of Academia, or is caught cheating.
 
-- Clubs are where players find party members, practice combat in a safe setting, and build the social connections that matter in the dungeon
+Reputation drives which students queue for a professor’s courses next term and eligibility for Academy Headship (see 9.11).
 
-- Duel clubs in particular let students train against each other with low stakes before entering real dungeons
+**Rivalry between professors.** Professors may mark another professor as a **rival**. Rivalry is visible on profiles and amplifies reputation effects in zero-sum events (shared cohort rankings, thesis defense panels).
+
+## 9.10 Academia (Research Path)
+
+After graduation, players can choose the academic career. This is a slow, prestigious path focused on creating new knowledge for the community.
+
+The existing research-project schema is preserved. The new surface is **defense and peer review**:
+
+**Publication is no longer automatic for thesis projects.** On thesis completion, a **Thesis Defense** is scheduled 3 game-days out, publicly announced on the bulletin board. The defense is a timed text event:
+- The student defends their claimed contribution.
+- A panel of 3 Professors (the advisor + 2 others, rival preferred by matching logic) pose structured questions.
+- The panel votes: **Accept**, **Accept with Revisions**, **Reject**.
+- Reject → thesis delayed one game-season for rework; two rejects in a row → thesis abandoned, character keeps Academia credentials but no Professor status.
+
+Thesis defenses are **open audience** — any character in the city can spectate. Non-thesis projects (spell/potion/tool research) keep auto-publish; only thesis gates Professor status.
+
+## 9.11 Careers After Graduation
+
+Existing options (Graduate / Extended Study / Academia) are preserved. Three long-tail career states:
+
+- **Professor** — publishes courses, takes advisees, gains reputation. Earns a stipend per term of active teaching, paid from tuition.
+- **Academy Head** — realm has one at a time. Elected every ~10 real days by current Professors from among themselves by plurality vote. The Head sets seeded-curriculum overrides, admits Probation students, and manages the Charity Fund’s scholarship allocation. Strong political hook.
+- **Researcher Emeritus** — a retired Professor who stops teaching but retains publication rights and advisor-letter authority. Soft off-ramp for high-level players.
 
 # 10. The Dungeon
 

@@ -3,7 +3,15 @@ defmodule MMGO.Academia do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
-  alias MMGO.Academia.{CompleteProjectWorker, Professor, Project, Publication}
+  alias MMGO.Academia.{
+    AdvisorRelationship,
+    CompleteProjectWorker,
+    Professor,
+    ProfessorReputation,
+    Project,
+    Publication,
+    ThesisDefenseWorker
+  }
   alias MMGO.Notifications
   alias MMGO.Progression
   alias MMGO.Repo
@@ -81,42 +89,64 @@ defmodule MMGO.Academia do
     now = Keyword.get(opts, :now, DateTime.utc_now())
     force? = Keyword.get(opts, :force, false)
 
-    Repo.transaction(fn ->
-      project = lock_project!(project_id)
-      character = lock_character!(project.character_id)
+    result =
+      Repo.transaction(fn ->
+        project = lock_project!(project_id)
+        character = lock_character!(project.character_id)
 
-      cond do
-        project.status != :active ->
-          Repo.rollback(project_changeset("project is not active"))
+        cond do
+          project.status != :active ->
+            Repo.rollback(project_changeset("project is not active"))
 
-        not force? and DateTime.compare(now, project.completes_at) == :lt ->
-          Repo.rollback(project_changeset("project is not due yet"))
+          not force? and DateTime.compare(now, project.completes_at) == :lt ->
+            Repo.rollback(project_changeset("project is not due yet"))
 
-        true ->
-          {:ok, %{character: updated_character}} =
-            Progression.grant_xp(Repo, character, project_xp(project), %{
-              "source" => "academia_project_completion",
-              "project_id" => project.id,
-              "project_kind" => to_string(project.project_kind),
-              "granted_at" => now
-            })
+          true ->
+            {:ok, %{character: updated_character}} =
+              Progression.grant_xp(Repo, character, project_xp(project), %{
+                "source" => "academia_project_completion",
+                "project_id" => project.id,
+                "project_kind" => to_string(project.project_kind),
+                "granted_at" => now
+              })
 
-          publication = publish_project!(project, now)
+            publication = if project.project_kind != :thesis, do: publish_project!(project, now), else: nil
 
-          updated_project =
-            project
-            |> Project.changeset(%{
-              status: :completed,
-              completed_at: now,
-              publication_id: publication && publication.id
-            })
-            |> Repo.update!()
+            defense_at =
+              if project.project_kind == :thesis do
+                MMGO.Travel.Clock.arrival_at(now, 3)
+              end
 
-          _ = Notifications.notify_research_completed(updated_character, updated_project)
+            updated_project =
+              project
+              |> Project.changeset(%{
+                status: :completed,
+                completed_at: now,
+                publication_id: publication && publication.id,
+                defense_scheduled_at: defense_at,
+                defense_state: if(project.project_kind == :thesis, do: :pending_defense, else: nil)
+              })
+              |> Repo.update!()
 
-          %{project: updated_project, publication: publication, character: updated_character}
-      end
-    end)
+            _ = Notifications.notify_research_completed(updated_character, updated_project)
+
+            %{project: updated_project, publication: publication, character: updated_character}
+        end
+      end)
+
+    case result do
+      {:ok, %{project: %Project{project_kind: :thesis, defense_scheduled_at: defense_at} = project}} ->
+        %{"project_id" => project.id}
+        |> ThesisDefenseWorker.new(
+          schedule_in: max(DateTime.diff(defense_at, DateTime.utc_now(), :second), 0)
+        )
+        |> Oban.insert!()
+
+        result
+
+      other ->
+        other
+    end
     |> normalize_transaction_result()
   end
 
@@ -150,6 +180,229 @@ defmodule MMGO.Academia do
             metadata: %{}
           })
           |> Repo.insert!()
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def set_advisor(%Character{} = student, %Character{} = professor, opts \\ []) do
+    now = Keyword.get(opts, :started_at, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      student = lock_character!(student.id)
+      professor = lock_character!(professor.id)
+
+      cond do
+        is_nil(active_professor(professor.id)) ->
+          Repo.rollback(advisor_changeset("target character is not an active professor"))
+
+        not is_nil(active_advisor_for_student(student.id)) ->
+          Repo.rollback(advisor_changeset("student already has an active advisor"))
+
+        student.realm_id != professor.realm_id ->
+          Repo.rollback(advisor_changeset("student and professor must be in the same realm"))
+
+        true ->
+          %AdvisorRelationship{}
+          |> AdvisorRelationship.changeset(%{
+            professor_character_id: professor.id,
+            student_character_id: student.id,
+            realm_id: student.realm_id,
+            status: :active,
+            started_at: now,
+            metadata: %{}
+          })
+          |> Repo.insert!()
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def active_advisor_for_student(student_character_id) when is_binary(student_character_id) do
+    Repo.get_by(AdvisorRelationship,
+      student_character_id: student_character_id,
+      status: :active
+    )
+  end
+
+  def list_advisees(professor_character_id) when is_binary(professor_character_id) do
+    Repo.all(
+      from rel in AdvisorRelationship,
+        where:
+          rel.professor_character_id == ^professor_character_id and rel.status == :active,
+        preload: [:student_character]
+    )
+  end
+
+  def get_reputation(professor_character_id, realm_id)
+      when is_binary(professor_character_id) and is_binary(realm_id) do
+    Repo.get_by(ProfessorReputation,
+      professor_character_id: professor_character_id,
+      realm_id: realm_id
+    )
+  end
+
+  def adjust_reputation(professor_character_id, realm_id, delta, reason \\ nil)
+      when is_binary(professor_character_id) and is_integer(delta) do
+    Repo.transaction(fn ->
+      reputation =
+        case get_reputation(professor_character_id, realm_id) do
+          nil ->
+            %ProfessorReputation{}
+            |> ProfessorReputation.changeset(%{
+              professor_character_id: professor_character_id,
+              realm_id: realm_id,
+              score: 0,
+              metadata: %{}
+            })
+            |> Repo.insert!()
+
+          existing ->
+            existing
+        end
+
+      metadata = if reason, do: Map.put(reputation.metadata || %{}, "last_reason", reason), else: reputation.metadata
+
+      reputation
+      |> ProfessorReputation.changeset(%{
+        score: max(reputation.score + delta, 0),
+        metadata: metadata
+      })
+      |> Repo.update!()
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def schedule_thesis_defense(project_id, opts \\ []) when is_binary(project_id) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+    defense_game_days = Keyword.get(opts, :defense_game_days, 3)
+
+    Repo.transaction(fn ->
+      project =
+        Project
+        |> where([p], p.id == ^project_id)
+        |> lock("FOR UPDATE")
+        |> Repo.one!()
+
+      cond do
+        project.project_kind != :thesis ->
+          Repo.rollback(project_changeset("only thesis projects require a defense"))
+
+        project.status != :completed ->
+          Repo.rollback(project_changeset("project must be completed to schedule defense"))
+
+        not is_nil(project.defense_scheduled_at) ->
+          Repo.rollback(project_changeset("defense is already scheduled"))
+
+        true ->
+          defense_at = MMGO.Travel.Clock.arrival_at(now, defense_game_days)
+
+          updated_project =
+            project
+            |> Project.changeset(%{
+              defense_scheduled_at: defense_at,
+              defense_state: :pending_defense
+            })
+            |> Repo.update!()
+
+          job =
+            %{"project_id" => project_id}
+            |> ThesisDefenseWorker.new(
+              schedule_in:
+                max(DateTime.diff(defense_at, DateTime.utc_now(), :second), 0)
+            )
+            |> Oban.insert!()
+
+          %{project: updated_project, job: job}
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def run_thesis_defense(project_id, opts \\ []) when is_binary(project_id) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      project =
+        Project
+        |> where([p], p.id == ^project_id)
+        |> lock("FOR UPDATE")
+        |> Repo.one!()
+
+      cond do
+        project.defense_state != :pending_defense ->
+          Repo.rollback(project_changeset("project is not pending defense"))
+
+        true ->
+          votes = Map.get(project.metadata || %{}, "defense_votes", %{})
+          outcome = tally_defense_votes(votes)
+
+          reject_count =
+            Map.get(project.metadata || %{}, "defense_reject_count", 0)
+
+          {new_state, new_reject_count} =
+            case outcome do
+              :accept -> {:accepted, reject_count}
+              :accept_with_revisions -> {:accepted_with_revisions, reject_count}
+              :reject when reject_count + 1 >= 2 -> {:rejected, reject_count + 1}
+              :reject -> {:pending_defense, reject_count + 1}
+            end
+
+          updated_project =
+            project
+            |> Project.changeset(%{
+              defense_state: new_state,
+              metadata:
+                Map.merge(project.metadata || %{}, %{
+                  "defense_outcome" => to_string(outcome),
+                  "defense_completed_at" => DateTime.to_iso8601(now),
+                  "defense_reject_count" => new_reject_count
+                })
+            })
+            |> Repo.update!()
+
+          if new_state == :accepted or new_state == :accepted_with_revisions do
+            maybe_adjust_advisor_reputation(project.character_id, project.realm_id, +5, "thesis_accepted")
+          end
+
+          if new_state == :rejected do
+            maybe_adjust_advisor_reputation(project.character_id, project.realm_id, -5, "thesis_rejected")
+          end
+
+          updated_project
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  def submit_defense_vote(project_id, professor_character_id, vote, opts \\ [])
+      when vote in [:accept, :accept_with_revisions, :reject] do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      project =
+        Project
+        |> where([p], p.id == ^project_id)
+        |> lock("FOR UPDATE")
+        |> Repo.one!()
+
+      cond do
+        project.defense_state != :pending_defense ->
+          Repo.rollback(project_changeset("defense is not open for voting"))
+
+        is_nil(active_professor(professor_character_id)) ->
+          Repo.rollback(project_changeset("only professors can vote on defenses"))
+
+        true ->
+          existing_votes = Map.get(project.metadata || %{}, "defense_votes", %{})
+          updated_votes = Map.put(existing_votes, professor_character_id, %{"vote" => to_string(vote), "voted_at" => DateTime.to_iso8601(now)})
+
+          project
+          |> Project.changeset(%{
+            defense_state: :under_review,
+            metadata: Map.put(project.metadata || %{}, "defense_votes", updated_votes)
+          })
+          |> Repo.update!()
       end
     end)
     |> normalize_transaction_result()
@@ -226,10 +479,10 @@ defmodule MMGO.Academia do
 
   defp completed_thesis?(character_id) do
     Repo.exists?(
-      from publication in Publication,
+      from project in Project,
         where:
-          publication.author_character_id == ^character_id and
-            publication.publication_kind == :thesis
+          project.character_id == ^character_id and project.project_kind == :thesis and
+            project.defense_state in [:accepted, :accepted_with_revisions]
     )
   end
 
@@ -299,5 +552,42 @@ defmodule MMGO.Academia do
     %Publication{}
     |> Changeset.change()
     |> Changeset.add_error(:publication_kind, message)
+  end
+
+  defp advisor_changeset(message) do
+    %AdvisorRelationship{}
+    |> Changeset.change()
+    |> Changeset.add_error(:status, message)
+  end
+
+  defp tally_defense_votes(votes) when map_size(votes) == 0, do: :accept
+
+  defp tally_defense_votes(votes) do
+    counts =
+      votes
+      |> Map.values()
+      |> Enum.frequencies_by(& &1["vote"])
+
+    accepts = Map.get(counts, "accept", 0)
+    revisions = Map.get(counts, "accept_with_revisions", 0)
+    rejects = Map.get(counts, "reject", 0)
+    total = accepts + revisions + rejects
+
+    cond do
+      total == 0 -> :accept
+      rejects > total / 2 -> :reject
+      revisions > accepts -> :accept_with_revisions
+      true -> :accept
+    end
+  end
+
+  defp maybe_adjust_advisor_reputation(student_character_id, realm_id, delta, reason) do
+    case Repo.get_by(AdvisorRelationship,
+           student_character_id: student_character_id,
+           status: :active
+         ) do
+      nil -> :ok
+      relationship -> adjust_reputation(relationship.professor_character_id, realm_id, delta, reason)
+    end
   end
 end

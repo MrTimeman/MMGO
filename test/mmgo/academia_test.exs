@@ -63,6 +63,7 @@ defmodule MMGO.AcademiaTest do
       Academia.start_project(scholar, :thesis, "Tower Thesis", duration_game_days: 1)
 
     {:ok, _result} = Academia.complete_project_by_id(thesis_project.id, force: true)
+    {:ok, _defense} = Academia.run_thesis_defense(thesis_project.id)
 
     assert {:ok, %Professor{} = professor} = Academia.appoint_professor(scholar)
     assert professor.status == :active
@@ -73,6 +74,7 @@ defmodule MMGO.AcademiaTest do
       Academia.start_project(scholar, :thesis, "Tower Thesis", duration_game_days: 1)
 
     {:ok, _result} = Academia.complete_project_by_id(thesis_project.id, force: true)
+    {:ok, _defense} = Academia.run_thesis_defense(thesis_project.id)
     {:ok, _professor} = Academia.appoint_professor(scholar)
 
     assert {:ok, %Publication{} = publication} = Academia.publish_course(scholar, "Battle Theory")
