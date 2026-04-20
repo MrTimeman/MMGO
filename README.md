@@ -81,6 +81,31 @@ This repository currently includes:
 
 6. Open `http://localhost:4000` in your browser.
 
+## Local Map Demo
+
+After `mix setup`, you already have a small overworld graph seeded for the map hub.
+
+1. Start the app with `mix phx.server`.
+2. Open `http://localhost:4000/play`.
+3. The browser session boots into a local fallback character at `Capital City` with starter rations.
+4. Suggested demo path:
+   - `Capital City -> Ash Crossing`
+   - `Ash Crossing -> The Tower`
+5. Use the in-panel `Reset demo to start` button to snap the local demo character back to the entry city and clear any active route.
+
+The seeded local map currently includes:
+
+- `Capital City`
+- `Amber Harbor`
+- `Ash Crossing`
+- `Watchpoint`
+- `The Tower`
+
+`just` shortcuts:
+
+- `just demo-setup` resets and reseeds the demo world
+- `just demo` starts the app and prints the suggested local demo route
+
 ## Useful commands
 
 ```bash

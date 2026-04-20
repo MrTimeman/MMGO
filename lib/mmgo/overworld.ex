@@ -5,6 +5,7 @@ defmodule MMGO.Overworld do
   alias MMGO.Accounts.Character
   alias MMGO.Combat
   alias MMGO.Overworld.{Encounter, Response}
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel
   alias MMGO.Worlds.Location
@@ -223,10 +224,16 @@ defmodule MMGO.Overworld do
   end
 
   defp finalize_encounter!(%Encounter{} = encounter, status) do
+    now = DateTime.utc_now()
+
     updated_encounter =
       encounter
-      |> Encounter.changeset(%{status: status, resolved_at: DateTime.utc_now()})
+      |> Encounter.changeset(%{status: status, resolved_at: now})
       |> Repo.update!()
+
+    if status == :trading do
+      award_trade_xp!(updated_encounter, now)
+    end
 
     %{
       encounter:
@@ -237,6 +244,24 @@ defmodule MMGO.Overworld do
           :combat
         ])
     }
+  end
+
+  defp award_trade_xp!(%Encounter{} = encounter, now) do
+    xp_amount = 8
+
+    Enum.each(
+      [encounter.initiator_character_id, encounter.target_character_id],
+      fn character_id ->
+        character = Repo.get!(Character, character_id)
+
+        {:ok, _result} =
+          Progression.grant_xp(Repo, character, xp_amount, %{
+            "source" => "overworld_trade",
+            "encounter_id" => encounter.id,
+            "granted_at" => now
+          })
+      end
+    )
   end
 
   defp active_encounter_exists?(character_a_id, character_b_id) do

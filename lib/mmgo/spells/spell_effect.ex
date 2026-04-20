@@ -4,6 +4,7 @@ defmodule MMGO.Spells.SpellEffect do
   import Ecto.Changeset
 
   @supported_states [
+    # combat states
     "impact",
     "burning",
     "frozen",
@@ -15,8 +16,15 @@ defmodule MMGO.Spells.SpellEffect do
     "shielded",
     "regenerating",
     "empowered",
-    "exposed"
+    "exposed",
+    # utility / environment states
+    "revealed",
+    "warded",
+    "illuminated",
+    "detected",
+    "transmuted"
   ]
+  @utility_states ["revealed", "warded", "illuminated", "detected", "transmuted"]
 
   @applies_to [:target, :caster, :environment]
 
@@ -42,6 +50,7 @@ defmodule MMGO.Spells.SpellEffect do
   end
 
   def supported_states, do: @supported_states
+  def utility_states, do: @utility_states
 
   defp validate_variance_bound(changeset) do
     intensity = get_field(changeset, :intensity, 0)

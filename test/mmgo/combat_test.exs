@@ -161,6 +161,87 @@ defmodule MMGO.CombatTest do
     assert blocked_event.payload["state"] == "silenced"
   end
 
+  test "passive wards reserve mana and halve incoming damage while active", %{
+    realm: realm,
+    attacker: attacker,
+    defender: defender
+  } do
+    impact_spell =
+      spell_fixture(attacker, %{
+        name: "Ferrum Impetus",
+        formula: "Ferrum Impetus Magnus",
+        school: :earth,
+        targeting: :enemy,
+        delivery_form: :beam,
+        effects: [
+          %{applies_to: :target, state: "impact", intensity: 20, variance: 0, duration: 0}
+        ],
+        failure_profile: %{difficulty: 5, base_success_rate: 95, partial_success_rate: 4}
+      })
+
+    passive_ward =
+      spell_fixture(defender, %{
+        name: "Ward of Glasswater",
+        formula: "Aqua Aegis Teneo",
+        school: :water,
+        spell_type: :passive,
+        mana_reservation: 30,
+        targeting: :self,
+        delivery_form: :self,
+        fatigue_cost: 0,
+        effects: [
+          %{applies_to: :caster, state: "warded", intensity: 50, variance: 0, duration: 3}
+        ],
+        failure_profile: %{difficulty: 5, base_success_rate: 95, partial_success_rate: 4}
+      })
+
+    _attacker_grimoire = grimoire_fixture(attacker, impact_spell, "Attacker's Strike Book")
+    _defender_grimoire = grimoire_fixture(defender, passive_ward, "Defender's Ward Book")
+
+    {:ok, %{combat: combat}} =
+      Combat.create_duel(realm, %{
+        participants: [
+          %{character_id: attacker.id, side: "attackers", position: 0},
+          %{character_id: defender.id, side: "defenders", position: 0}
+        ]
+      })
+
+    combat = Combat.get_combat!(combat.id)
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+    defender_participant = Enum.find(combat.participants, &(&1.character_id == defender.id))
+
+    assert {:ok, _action} =
+             Combat.submit_action(combat, defender_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: passive_ward.id
+             })
+
+    assert {:ok, _resolved} = Combat.resolve_turn(combat)
+
+    defender_after_toggle =
+      Repo.get_by!(Participant, combat_id: combat.id, character_id: defender.id)
+
+    mana = defender_after_toggle.metadata["mana"]
+
+    assert mana["reserved_mana"] == 30
+    assert mana["max_mana"] == mana["base_max_mana"] - 30
+
+    reloaded = Combat.get_combat!(combat.id)
+
+    assert {:ok, _action} =
+             Combat.submit_action(reloaded, attacker_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: impact_spell.id,
+               target_side: "defenders"
+             })
+
+    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(reloaded)
+    assert resolved_combat.sides["defenders"]["shared_hp"] == 90
+
+    passive_event = Repo.get_by!(Event, combat_id: combat.id, event_type: "passive_toggled")
+    assert passive_event.payload["mode"] == "on"
+  end
+
   test "spells not inscribed in the active grimoire are rejected", %{
     realm: realm,
     attacker: attacker,
@@ -219,9 +300,17 @@ defmodule MMGO.CombatTest do
     spell
   end
 
-  defp grimoire_fixture(character, spell, name) do
+  defp grimoire_fixture(character, spells, name) do
+    spells = List.wrap(spells)
+
     {:ok, grimoire} = Grimoires.create_grimoire(character, %{name: name, capacity: 6, weight: 1})
-    {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+
+    Enum.reduce(spells, grimoire, fn spell, current_grimoire ->
+      {:ok, _entry} =
+        Grimoires.inscribe_spell(Grimoires.get_grimoire!(current_grimoire.id), spell)
+
+      Grimoires.get_grimoire!(current_grimoire.id)
+    end)
 
     {:ok, %{activate_grimoire: activated_grimoire}} =
       Grimoires.activate_grimoire(character, Grimoires.get_grimoire!(grimoire.id))

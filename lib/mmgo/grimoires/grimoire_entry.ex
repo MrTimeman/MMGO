@@ -11,6 +11,7 @@ defmodule MMGO.Grimoires.GrimoireEntry do
 
   schema "grimoire_entries" do
     field :slot_index, :integer
+    field :inscribed_at, :utc_datetime_usec
 
     belongs_to :grimoire, Grimoire
     belongs_to :spell, Spell

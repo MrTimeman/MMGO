@@ -100,6 +100,100 @@ defmodule MMGO.AI do
     end
   end
 
+  def orchestrate_combat(prompt_payload, opts \\ []) when is_map(prompt_payload) do
+    provider = provider(opts)
+    model = model_for(:combat_orchestrator, opts)
+    prompt_version = Keyword.get(opts, :prompt_version, PromptVersions.for!(:combat_orchestrator))
+    metadata = normalize_map(Keyword.get(opts, :metadata, %{}))
+    started_at = System.monotonic_time(:millisecond)
+
+    case provider.orchestrate_combat(prompt_payload, Keyword.put(opts, :model, model)) do
+      {:ok, directives} ->
+        ai_request_attrs = %{
+          kind: :combat_orchestrator,
+          status: :succeeded,
+          provider: provider_name(provider),
+          model: model,
+          prompt_version: prompt_version,
+          request_payload: prompt_payload,
+          response_payload: directives,
+          latency_ms: elapsed_ms(started_at),
+          metadata: metadata,
+          combat_id: metadata["combat_id"],
+          combat_turn_id: metadata["combat_turn_id"]
+        }
+
+        with {:ok, ai_request} <- create_request(ai_request_attrs) do
+          {:ok, %{directives: directives, ai_request: ai_request}}
+        end
+
+      {:error, reason} ->
+        ai_request_attrs = %{
+          kind: :combat_orchestrator,
+          status: :failed,
+          provider: provider_name(provider),
+          model: model,
+          prompt_version: prompt_version,
+          request_payload: prompt_payload,
+          response_payload: %{},
+          latency_ms: elapsed_ms(started_at),
+          error: inspect(reason),
+          metadata: metadata,
+          combat_id: metadata["combat_id"],
+          combat_turn_id: metadata["combat_turn_id"]
+        }
+
+        with {:ok, _ai_request} <- create_request(ai_request_attrs) do
+          {:error, reason}
+        end
+    end
+  end
+
+  def tick_dungeon(prompt_payload, opts \\ []) when is_map(prompt_payload) do
+    provider = provider(opts)
+    model = model_for(:dungeon_tick, opts)
+    prompt_version = Keyword.get(opts, :prompt_version, PromptVersions.for!(:dungeon_tick))
+    metadata = normalize_map(Keyword.get(opts, :metadata, %{}))
+    started_at = System.monotonic_time(:millisecond)
+
+    case provider.tick_dungeon(prompt_payload, Keyword.put(opts, :model, model)) do
+      {:ok, directives} ->
+        ai_request_attrs = %{
+          kind: :dungeon_tick,
+          status: :succeeded,
+          provider: provider_name(provider),
+          model: model,
+          prompt_version: prompt_version,
+          request_payload: prompt_payload,
+          response_payload: directives,
+          latency_ms: elapsed_ms(started_at),
+          metadata: metadata
+        }
+
+        with {:ok, ai_request} <- create_request(ai_request_attrs) do
+          {:ok, %{directives: directives, ai_request: ai_request}}
+        end
+
+      {:error, reason} ->
+        ai_request_attrs = %{
+          kind: :dungeon_tick,
+          status: :failed,
+          provider: provider_name(provider),
+          model: model,
+          prompt_version: prompt_version,
+          request_payload: prompt_payload,
+          response_payload: %{},
+          latency_ms: elapsed_ms(started_at),
+          error: inspect(reason),
+          metadata: metadata
+        }
+
+        with {:ok, _ai_request} <- create_request(ai_request_attrs) do
+          {:error, reason}
+        end
+    end
+  end
+
   def update_request(%Request{} = request, attrs) when is_map(attrs) do
     request
     |> Request.changeset(attrs)

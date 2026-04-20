@@ -46,14 +46,16 @@ defmodule MMGOWeb.ClubEventLive do
       <h1>Club Event</h1>
 
       <section class="event-details">
-        <p>Type: <strong><%= @event.kind %></strong></p>
-        <p>Club: <strong><%= @event.club && @event.club.name %></strong></p>
-        <p>Scheduled: <strong><%= Calendar.strftime(@event.scheduled_at, "%Y-%m-%d %H:%M UTC") %></strong></p>
-        <p>Status: <strong><%= @event.status %></strong></p>
+        <p>Type: <strong>{@event.kind}</strong></p>
+        <p>Club: <strong>{@event.club && @event.club.name}</strong></p>
+        <p>
+          Scheduled: <strong>{Calendar.strftime(@event.scheduled_at, "%Y-%m-%d %H:%M UTC")}</strong>
+        </p>
+        <p>Status: <strong>{@event.status}</strong></p>
       </section>
 
       <section class="event-description">
-        <%= event_description(@event.kind) %>
+        {event_description(@event.kind)}
       </section>
 
       <section class="event-action">

@@ -10,6 +10,15 @@ defmodule MMGO.Combat.NarratorTest do
   alias MMGO.Spells
   alias MMGO.Worlds
 
+  defmodule NonRussianNarrationProvider do
+    @behaviour MMGO.AI.Provider
+
+    def compile_spell(_prompt_payload, _opts), do: {:error, :unused}
+    def orchestrate_combat(_prompt_payload, _opts), do: {:error, :unused}
+    def tick_dungeon(_prompt_payload, _opts), do: {:error, :unused}
+    def narrate_turn(_prompt_payload, _opts), do: {:ok, "Turn 1 resolved cleanly."}
+  end
+
   setup do
     {:ok, realm} =
       Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
@@ -51,7 +60,8 @@ defmodule MMGO.Combat.NarratorTest do
         target_side: "defenders"
       })
 
-    {:ok, _resolved_combat} = Combat.resolve_turn(combat)
+    {:ok, _resolved_combat} =
+      Combat.resolve_turn(combat, orchestrate: false, auto_narrate?: false)
 
     %{combat: combat}
   end
@@ -59,12 +69,19 @@ defmodule MMGO.Combat.NarratorTest do
   test "narrate_turn/3 stores AI narration on the turn", %{combat: combat} do
     assert {:ok, turn} = Narrator.narrate_turn(combat.id, 1)
 
-    assert turn.narration =~ "mock storyteller"
+    assert turn.narration =~ "Ход 1"
     assert Repo.aggregate(Request, :count, :id) == 1
 
     ai_request = Repo.one!(Request)
     assert ai_request.kind == :turn_narration
     assert ai_request.combat_id == combat.id
+  end
+
+  test "narrate_turn/3 falls back when narration is not Russian", %{combat: combat} do
+    assert {:ok, turn} =
+             Narrator.narrate_turn(combat.id, 1, provider: NonRussianNarrationProvider)
+
+    assert turn.narration =~ "Ход 1"
   end
 
   defp character_fixture(realm, handle, name) do

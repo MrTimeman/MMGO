@@ -28,12 +28,16 @@ config :mmgo, MMGO.Telegram,
 config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
   models: %{
-    spell_compile: "gemini-3-flash",
-    turn_narration: "g3f-lite"
+    spell_compile: "gemini-2.5-flash",
+    turn_narration: "gemini-2.5-flash-lite",
+    combat_orchestrator: "gemini-2.5-flash",
+    dungeon_tick: "gemini-2.5-flash"
   },
   prompt_versions: %{
-    spell_compile: "2026-03-27.spell-compile.v1",
-    turn_narration: "2026-03-27.turn-narration.v1"
+    spell_compile: "2026-04-19.spell-compile.v2",
+    turn_narration: "2026-04-19.turn-narration.v2",
+    combat_orchestrator: "2026-04-19.combat-orchestrator.v1",
+    dungeon_tick: "2026-04-19.dungeon-tick.v1"
   }
 
 config :mmgo, MMGO.AI.Providers.Gemini,

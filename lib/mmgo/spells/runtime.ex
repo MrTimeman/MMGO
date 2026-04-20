@@ -11,12 +11,20 @@ defmodule MMGO.Spells.Runtime do
     spell.interaction_rules
     |> Enum.filter(&match_environment_rule?(&1, environment_tags))
     |> Enum.reduce(
-      %{negated?: false, intensity_bonus: 0, replacement_tags: nil, bonus_states: []},
+      %{
+        negated?: false,
+        intensity_bonus: 0,
+        replacement_tags: nil,
+        spread_tags: [],
+        bonus_states: []
+      },
       fn rule, acc ->
         case rule.outcome do
           :negate -> %{acc | negated?: true}
           :amplify -> %{acc | intensity_bonus: acc.intensity_bonus + rule.modifier}
           :replace_environment -> %{acc | replacement_tags: rule.replacement_tags}
+          :spread -> %{acc | spread_tags: Enum.uniq(acc.spread_tags ++ rule.replacement_tags)}
+          :transform -> %{acc | replacement_tags: rule.replacement_tags}
           :apply_bonus_state -> %{acc | bonus_states: [bonus_state(rule) | acc.bonus_states]}
         end
       end

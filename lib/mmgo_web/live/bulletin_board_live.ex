@@ -38,14 +38,16 @@ defmodule MMGOWeb.BulletinBoardLive do
           <tbody>
             <%= for course <- @courses do %>
               <tr>
-                <td><%= course.title %></td>
-                <td><%= course.track || "—" %></td>
-                <td><%= course.npc_professor_code || "Player" %></td>
-                <td><%= course.source %></td>
+                <td>{course.title}</td>
+                <td>{course.track || "—"}</td>
+                <td>{course.npc_professor_code || "Player"}</td>
+                <td>{course.source}</td>
               </tr>
             <% end %>
             <%= if @courses == [] do %>
-              <tr><td colspan="4">No courses available this term.</td></tr>
+              <tr>
+                <td colspan="4">No courses available this term.</td>
+              </tr>
             <% end %>
           </tbody>
         </table>
@@ -56,9 +58,8 @@ defmodule MMGOWeb.BulletinBoardLive do
         <ul class="bb-list">
           <%= for event <- @upcoming_events do %>
             <li>
-              <strong><%= event.club && event.club.name %></strong>
-              — <%= event.kind %>
-              @ <%= Calendar.strftime(event.scheduled_at, "%Y-%m-%d %H:%M UTC") %>
+              <strong>{event.club && event.club.name}</strong>
+              — {event.kind} @ {Calendar.strftime(event.scheduled_at, "%Y-%m-%d %H:%M UTC")}
               <.link navigate={~p"/academy/club-events/#{event.id}"}>Join</.link>
             </li>
           <% end %>
@@ -73,8 +74,7 @@ defmodule MMGOWeb.BulletinBoardLive do
         <ol class="bb-list">
           <%= for {enrollment, gpa, rank} <- @leaderboard do %>
             <li>
-              #<%= rank %> — character <code><%= enrollment.character_id %></code>
-              — GPA <%= gpa || "—" %>
+              #{rank} — character <code>{enrollment.character_id}</code> — GPA {gpa || "—"}
             </li>
           <% end %>
           <%= if @leaderboard == [] do %>

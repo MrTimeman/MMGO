@@ -28,6 +28,8 @@ export const MapHook = {
     this._markers = {}
     this._playerMarker = null
 
+    this.pushEvent('hook_mounted', { hook: 'Map' })
+
     // Server → client: initialize the map with a world image
     this.handleEvent("map_init", ({ width, height, image_url }) => {
       const bounds = [[0, 0], [height, width]]

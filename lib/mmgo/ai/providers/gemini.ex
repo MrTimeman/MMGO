@@ -3,24 +3,31 @@ defmodule MMGO.AI.Providers.Gemini do
 
   def compile_spell(prompt_payload, opts) do
     model = Keyword.fetch!(opts, :model)
+    request_json(model, prompt_payload, 0.3)
+  end
 
-    body = %{
-      systemInstruction: %{
-        role: "system",
-        parts: [%{text: prompt_payload.system_prompt}]
-      },
-      contents: [
-        %{
-          role: "user",
-          parts: [%{text: prompt_payload.user_prompt}]
-        }
-      ],
-      generationConfig: %{
+  def narrate_turn(prompt_payload, opts) do
+    model = Keyword.fetch!(opts, :model)
+    request_text(model, prompt_payload, 0.7)
+  end
+
+  def orchestrate_combat(prompt_payload, opts) do
+    model = Keyword.fetch!(opts, :model)
+    request_json(model, prompt_payload, 0.4)
+  end
+
+  def tick_dungeon(prompt_payload, opts) do
+    model = Keyword.fetch!(opts, :model)
+    request_json(model, prompt_payload, 0.5)
+  end
+
+  defp request_json(model, prompt_payload, temperature) do
+    body =
+      request_body(prompt_payload, %{
         responseMimeType: "application/json",
         responseSchema: prompt_payload.schema,
-        temperature: 0.3
-      }
-    }
+        temperature: temperature
+      })
 
     with {:ok, response} <- request(model, body),
          {:ok, text} <- extract_text(response),
@@ -31,10 +38,21 @@ defmodule MMGO.AI.Providers.Gemini do
     end
   end
 
-  def narrate_turn(prompt_payload, opts) do
-    model = Keyword.fetch!(opts, :model)
+  defp request_text(model, prompt_payload, temperature) do
+    body =
+      request_body(prompt_payload, %{
+        responseMimeType: "text/plain",
+        temperature: temperature
+      })
 
-    body = %{
+    with {:ok, response} <- request(model, body),
+         {:ok, text} <- extract_text(response) do
+      {:ok, String.trim(text)}
+    end
+  end
+
+  defp request_body(prompt_payload, generation_config) do
+    %{
       systemInstruction: %{
         role: "system",
         parts: [%{text: prompt_payload.system_prompt}]
@@ -45,16 +63,8 @@ defmodule MMGO.AI.Providers.Gemini do
           parts: [%{text: prompt_payload.user_prompt}]
         }
       ],
-      generationConfig: %{
-        responseMimeType: "text/plain",
-        temperature: 0.7
-      }
+      generationConfig: generation_config
     }
-
-    with {:ok, response} <- request(model, body),
-         {:ok, text} <- extract_text(response) do
-      {:ok, String.trim(text)}
-    end
   end
 
   defp request(model, body) do

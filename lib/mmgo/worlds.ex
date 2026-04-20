@@ -58,6 +58,15 @@ defmodule MMGO.Worlds do
     )
   end
 
+  def list_routes_for_realm(realm_id) when is_binary(realm_id) do
+    Repo.all(
+      from route in Route,
+        where: route.realm_id == ^realm_id,
+        order_by: [asc: route.inserted_at],
+        preload: [:origin_location, :destination_location]
+    )
+  end
+
   def get_location!(id), do: Repo.get!(Location, id)
 
   def get_location_by_slug(realm_id, slug) when is_binary(realm_id) and is_binary(slug) do

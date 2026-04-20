@@ -4,6 +4,8 @@ defmodule MMGO.AcademyTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Academy
   alias MMGO.Academy.{CompleteEnrollmentWorker, Enrollment}
+  alias MMGO.Economy
+  alias MMGO.NPCShops
   alias MMGO.Repo
   alias MMGO.Worlds
 
@@ -117,6 +119,96 @@ defmodule MMGO.AcademyTest do
 
     assert {:error, changeset} = Academy.start_extended_study(character)
     assert %{status: ["academy core study must be completed first"]} = errors_on(changeset)
+  end
+
+  test "term rhythm tracks phases and exam ceiling inputs", %{character: character} do
+    {:ok, %{enrollment: basic_enrollment}} =
+      Academy.begin_basic_education(character, duration_game_days: 1)
+
+    {:ok, _result} = Academy.complete_enrollment_by_id(basic_enrollment.id, force: true)
+
+    {:ok, %{enrollment: academy_enrollment}} =
+      Academy.start_academy_track(
+        character,
+        :wizardry,
+        %{primary_school: :fire, secondary_school: :air},
+        duration_game_days: 1
+      )
+
+    assert {:ok, term} = Academy.begin_term(academy_enrollment.id)
+    assert Academy.term_phase(term) == :enrollment_window
+    assert Academy.exam_score_ceiling(term) == 70
+
+    assert {:ok, lecture_term_result} =
+             Academy.record_lecture_attendance(term.id, %{
+               title: "Foundations of Fire",
+               comprehension_score: 88,
+               knowledge_xp: 12
+             })
+
+    assert lecture_term_result.character.xp == 112
+
+    assert {:ok, _office_hours_term} = Academy.attend_office_hours(term.id)
+    assert {:ok, midterm_term} = Academy.submit_midterm(term.id, 82)
+    assert {:ok, advanced_term} = Academy.advance_term_phase(term.id)
+
+    assert Academy.term_phase(advanced_term) == :lecture_phase
+    assert Academy.exam_score_ceiling(midterm_term) == 87
+
+    assert {:ok, completed_term} = Academy.submit_exam(term.id, 100)
+    assert completed_term.exam_score == 87
+    assert completed_term.metadata["final_exam"]["raw_score"] == 100
+    assert completed_term.metadata["final_exam"]["effective_score"] == 87
+  end
+
+  test "scholarship funding draws from charity and distinction graduates enter the hall of fame",
+       %{
+         realm: realm,
+         character: character
+       } do
+    {:ok, _treasury} = Economy.ensure_treasury_account(realm, 10_000)
+    {:ok, charity_account} = NPCShops.ensure_charity_fund_account(realm)
+
+    charity_account
+    |> Economy.EconomyAccount.changeset(%{current_balance: 1_000})
+    |> Repo.update!()
+
+    {:ok, %{enrollment: basic_enrollment}} =
+      Academy.begin_basic_education(character, duration_game_days: 1)
+
+    {:ok, basic_term} = Academy.begin_term(basic_enrollment.id)
+
+    {:ok, _lecture_term} =
+      Academy.record_lecture_attendance(basic_term.id, %{
+        title: "Honors Lecture",
+        comprehension_score: 95
+      })
+
+    {:ok, _office_hours_term} = Academy.attend_office_hours(basic_term.id)
+    {:ok, _midterm_term} = Academy.submit_midterm(basic_term.id, 95)
+    {:ok, _completed_term} = Academy.submit_exam(basic_term.id, 95)
+
+    assert {:ok, %{enrollment: completed_basic}} =
+             Academy.complete_enrollment_by_id(basic_enrollment.id, force: true)
+
+    assert completed_basic.metadata["merit_scholarship_eligible"] == true
+    assert completed_basic.metadata["hall_of_fame"] == true
+
+    assert {:ok, %{enrollment: academy_enrollment}} =
+             Academy.start_academy_track(
+               character,
+               :wizardry,
+               %{
+                 primary_school: :fire,
+                 secondary_school: :air,
+                 funding_type: :grant
+               },
+               duration_game_days: 1
+             )
+
+    assert academy_enrollment.funding_type == :grant
+    assert Economy.get_account!(charity_account.id).current_balance == 880
+    assert length(Academy.list_hall_of_fame(realm.id)) >= 1
   end
 
   defp character_fixture(realm, handle, name) do

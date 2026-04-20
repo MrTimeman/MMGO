@@ -30,11 +30,15 @@ config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
   models: %{
     spell_compile: "gemini-3-flash-test",
-    turn_narration: "g3f-lite-test"
+    turn_narration: "g3f-lite-test",
+    combat_orchestrator: "g3f-orchestrator-test",
+    dungeon_tick: "g3f-dungeon-test"
   },
   prompt_versions: %{
-    spell_compile: "test.spell-compile.v1",
-    turn_narration: "test.turn-narration.v1"
+    spell_compile: "test.spell-compile.v2",
+    turn_narration: "test.turn-narration.v2",
+    combat_orchestrator: "test.combat-orchestrator.v1",
+    dungeon_tick: "test.dungeon-tick.v1"
   }
 
 config :mmgo, MMGO.AI.Providers.Gemini,

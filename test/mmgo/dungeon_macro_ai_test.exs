@@ -1,10 +1,41 @@
 defmodule MMGO.DungeonMacroAiTest do
   use MMGO.DataCase, async: true
 
+  alias MMGO.AI.Request
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Dungeons
   alias MMGO.Repo
   alias MMGO.Worlds
+
+  defmodule ScriptedDungeonTickProvider do
+    @behaviour MMGO.AI.Provider
+
+    def compile_spell(_prompt_payload, _opts), do: {:error, :unused}
+    def narrate_turn(_prompt_payload, _opts), do: {:error, :unused}
+    def orchestrate_combat(_prompt_payload, _opts), do: {:error, :unused}
+
+    def tick_dungeon(prompt_payload, _opts) do
+      floor_id =
+        prompt_payload
+        |> Map.fetch!(:user_prompt)
+        |> Jason.decode!()
+        |> get_in(["floors", Access.at(0), "id"])
+
+      {:ok,
+       %{
+         "floor_directives" => [
+           %{
+             "floor_id" => floor_id,
+             "threat_delta" => 4,
+             "resource_delta" => -2,
+             "connection_shift" => "block",
+             "anomaly_tag" => "volatile"
+           }
+         ],
+         "summary" => "pressure spike on the upper floor"
+       }}
+    end
+  end
 
   setup do
     {:ok, realm} =
@@ -127,6 +158,36 @@ defmodule MMGO.DungeonMacroAiTest do
     node_override = Repo.get_by!(Dungeons.NodeOverride, dungeon_id: dungeon.id, node_id: room.id)
 
     assert encounter.threat_level >= max(room.threat_level + node_override.threat_bias, 1)
+  end
+
+  test "maintain_dungeon_by_id/2 applies scripted dungeon tick directives", %{
+    dungeon: dungeon,
+    room: room,
+    link_a: link_a
+  } do
+    assert {:ok, %{state: state}} =
+             Dungeons.maintain_dungeon_by_id(
+               dungeon.id,
+               now: ~U[2026-03-28 12:00:00Z],
+               provider: ScriptedDungeonTickProvider
+             )
+
+    assert state.metadata["ai_tick"]["mode"] == "ai"
+    [directive] = state.metadata["ai_tick"]["floor_directives"]
+    assert directive["anomaly_tag"] == "volatile"
+    assert directive["connection_shift"] == "block"
+    assert directive["resource_delta"] == -2
+    assert directive["threat_delta"] == 4
+
+    node_override = Repo.get_by!(Dungeons.NodeOverride, dungeon_id: dungeon.id, node_id: room.id)
+    assert node_override.threat_bias == 6
+    assert node_override.anomaly_tag == "volatile"
+
+    link_state = Repo.get_by!(Dungeons.LinkState, dungeon_id: dungeon.id, link_id: link_a.id)
+    assert link_state.status == :blocked
+
+    assert Repo.aggregate(Request, :count, :id) == 1
+    assert Repo.one!(Request).kind == :dungeon_tick
   end
 
   defp character_fixture(realm, location, handle, name) do

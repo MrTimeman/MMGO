@@ -5,6 +5,14 @@ default: dev
 dev:
     mix phx.server
 
+# Start the local map demo and print the suggested route
+demo:
+    @echo "MMGO local map demo"
+    @echo "Open http://localhost:4000/play"
+    @echo "Suggested route: Capital City -> Ash Crossing -> The Tower"
+    @echo "Use the in-app 'Reset demo to start' button to return to Capital City."
+    mix phx.server
+
 # Start dev server with interactive Elixir shell
 iex:
     iex -S mix phx.server
@@ -12,6 +20,11 @@ iex:
 # Full project setup (deps, DB, assets)
 setup:
     mix setup
+
+# Reset DB, reseed the map graph, and get ready for the local demo
+demo-setup:
+    mix ecto.reset
+    @echo "Demo world reseeded. Start it with: just demo"
 
 # Run the test suite
 test *args:

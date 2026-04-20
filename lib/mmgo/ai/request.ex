@@ -7,7 +7,7 @@ defmodule MMGO.AI.Request do
   alias MMGO.Combat.{Combat, Turn}
   alias MMGO.Spells.Spell
 
-  @kinds [:spell_compile, :turn_narration]
+  @kinds [:spell_compile, :turn_narration, :combat_orchestrator, :dungeon_tick]
   @statuses [:succeeded, :failed]
 
   @primary_key {:id, :binary_id, autogenerate: true}

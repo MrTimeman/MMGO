@@ -10,6 +10,9 @@ defmodule MMGO.NPCShops do
   alias MMGO.Repo
   alias MMGO.Worlds.Location
 
+  @shop_tax_bps 800
+  @tuition_tax_bps 1_000
+
   def list_shops_for_location(location_id) when is_binary(location_id) do
     Repo.all(
       from shop in Shop,
@@ -61,7 +64,7 @@ defmodule MMGO.NPCShops do
       treasury = Economy.treasury_account_for_realm(character.realm_id)
 
       {:ok, economy_result} =
-        Economy.transfer(character_account, treasury, total_price, %{
+        Economy.taxed_transfer(character_account, treasury, total_price, @shop_tax_bps, %{
           entry_type: "purchase",
           source: "npc_shop_buy",
           shop_id: shop.id,
@@ -151,7 +154,7 @@ defmodule MMGO.NPCShops do
       {:ok, character_account} = Economy.ensure_character_account(character)
       treasury = Economy.treasury_account_for_realm(character.realm_id)
 
-      Economy.transfer(character_account, treasury, amount, %{
+      Economy.taxed_transfer(character_account, treasury, amount, @tuition_tax_bps, %{
         entry_type: "purchase",
         source: "academy_tuition",
         character_id: character.id

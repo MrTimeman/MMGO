@@ -7,6 +7,7 @@ defmodule MMGO.PVP do
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Economy
   alias MMGO.PVP.Duel
+  alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
 
@@ -227,6 +228,8 @@ defmodule MMGO.PVP do
           _other -> refund_duel!(duel)
         end
 
+      award_duel_xp!(duel)
+
       duel
       |> Duel.changeset(%{
         status: :resolved,
@@ -350,6 +353,39 @@ defmodule MMGO.PVP do
       })
 
     %{duel | winner_character_id: nil}
+  end
+
+  defp award_duel_xp!(%Duel{} = duel) do
+    challenger = Repo.get!(Character, duel.challenger_character_id)
+    opponent = Repo.get!(Character, duel.opponent_character_id)
+    base_xp = max(div(duel.pot_amount, 2), 12)
+    winner_bonus = max(div(base_xp, 2), 4)
+    now = DateTime.utc_now()
+
+    challenger_amount =
+      if duel.winner_character_id == challenger.id, do: base_xp + winner_bonus, else: base_xp
+
+    opponent_amount =
+      if duel.winner_character_id == opponent.id, do: base_xp + winner_bonus, else: base_xp
+
+    {:ok, _challenger_result} =
+      Progression.grant_xp(Repo, challenger, challenger_amount, %{
+        "source" => "duel_resolution",
+        "duel_id" => duel.id,
+        "combat_id" => duel.combat_id,
+        "granted_at" => now,
+        "result" =>
+          if(duel.winner_character_id == challenger.id, do: "winner", else: "participant")
+      })
+
+    {:ok, _opponent_result} =
+      Progression.grant_xp(Repo, opponent, opponent_amount, %{
+        "source" => "duel_resolution",
+        "duel_id" => duel.id,
+        "combat_id" => duel.combat_id,
+        "granted_at" => now,
+        "result" => if(duel.winner_character_id == opponent.id, do: "winner", else: "participant")
+      })
   end
 
   defp insufficient_funds?(%Character{} = character, amount) do

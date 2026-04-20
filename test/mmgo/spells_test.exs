@@ -38,6 +38,7 @@ defmodule MMGO.SpellsTest do
     assert spell.creator_character_id == character.id
     assert Enum.map(spell.effects, & &1.state) == ["impact", "burning"]
     assert spell.failure_profile.difficulty == 20
+    assert Repo.get!(Character, character.id).xp > 0
   end
 
   defp account_fixture(handle) do

@@ -4,6 +4,7 @@ defmodule MMGO.AcademiaTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Academia
   alias MMGO.Academia.{CompleteProjectWorker, Professor, Project, Publication}
+  alias MMGO.Inventory
   alias MMGO.Repo
   alias MMGO.Worlds
 
@@ -92,6 +93,29 @@ defmodule MMGO.AcademiaTest do
 
     assert :ok = CompleteProjectWorker.perform(%Oban.Job{args: %{"project_id" => project.id}})
     assert Repo.get!(Project, project.id).status == :completed
+  end
+
+  test "advisors can issue recommendation letters to advisees", %{
+    scholar: scholar,
+    outsider: outsider
+  } do
+    {:ok, %{project: thesis_project}} =
+      Academia.start_project(scholar, :thesis, "Tower Thesis", duration_game_days: 1)
+
+    {:ok, _result} = Academia.complete_project_by_id(thesis_project.id, force: true)
+    {:ok, _defense} = Academia.run_thesis_defense(thesis_project.id)
+    {:ok, _professor} = Academia.appoint_professor(scholar)
+    {:ok, _advisor} = Academia.set_advisor(outsider, scholar)
+
+    assert {:ok, letter_item} =
+             Academia.write_recommendation_letter(scholar, outsider, reason: "probation override")
+
+    assert letter_item.item_template_id
+
+    assert Enum.any?(
+             Inventory.list_inventory_for_character(outsider.id),
+             &(&1.metadata["reason"] == "probation override")
+           )
   end
 
   defp character_fixture(realm, location, handle, name) do

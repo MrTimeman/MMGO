@@ -474,8 +474,7 @@ defmodule MMGO.Clubs do
   defp already_attended?(event_id, character_id) do
     Repo.exists?(
       from attendance in EventAttendance,
-        where:
-          attendance.event_id == ^event_id and attendance.character_id == ^character_id
+        where: attendance.event_id == ^event_id and attendance.character_id == ^character_id
     )
   end
 end

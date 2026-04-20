@@ -68,6 +68,29 @@ defmodule MMGO.Combat.EngineTest do
            )
   end
 
+  test "burning environment tags tick both sides at turn start" do
+    spell = spell_fixture()
+    combat = %{combat_fixture() | environment_tags: ["burning"]}
+    turn = %Turn{number: 1, status: :locked}
+    participants = participants_fixture()
+
+    actions = [
+      %Action{
+        participant_id: "p1",
+        action_type: :cast_spell,
+        spell: spell,
+        spell_id: spell.id,
+        target_side: "defenders"
+      }
+    ]
+
+    resolution = Engine.resolve_turn(combat, turn, participants, actions, orchestrate: false)
+
+    assert Enum.any?(resolution.events, &(&1.event_type == "environment_tick"))
+    assert resolution.combat_attrs.sides["attackers"]["shared_hp"] < 100
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] < 100
+  end
+
   defp combat_fixture do
     %Combat{
       id: "combat-1",

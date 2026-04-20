@@ -38,6 +38,8 @@ defmodule MMGO.GrimoiresTest do
              })
 
     assert {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+    [entry] = Grimoires.get_grimoire!(grimoire.id).entries
+    assert %DateTime{} = entry.inscribed_at
 
     assert {:ok, %{activate_grimoire: active_grimoire}} =
              Grimoires.activate_grimoire(character, Grimoires.get_grimoire!(grimoire.id))
@@ -72,6 +74,28 @@ defmodule MMGO.GrimoiresTest do
              Grimoires.inscribe_spell(Grimoires.get_grimoire!(grimoire.id), second_spell)
 
     assert %{status: ["sealed grimoires cannot be modified"]} = errors_on(changeset)
+  end
+
+  test "draft grimoires cannot be selected for combat", %{realm: realm, character: character} do
+    stranger = character_fixture(realm, "draft-stranger", "Draft Stranger")
+
+    {:ok, draft_grimoire} =
+      Grimoires.create_grimoire(character, %{name: "Draft Book", capacity: 5, weight: 1})
+
+    assert {:error, :participant, changeset, []} =
+             MMGO.Combat.create_duel(realm, %{
+               participants: [
+                 %{
+                   character_id: character.id,
+                   side: "attackers",
+                   position: 0,
+                   grimoire_id: draft_grimoire.id
+                 },
+                 %{character_id: stranger.id, side: "defenders", position: 0}
+               ]
+             })
+
+    assert %{id: ["selected grimoire must be sealed or active"]} = errors_on(changeset)
   end
 
   test "invalid selected grimoire is rejected during combat setup", %{

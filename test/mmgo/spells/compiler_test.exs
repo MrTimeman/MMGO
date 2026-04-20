@@ -5,6 +5,7 @@ defmodule MMGO.Spells.CompilerTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Repo
   alias MMGO.Spells.Compiler
+  alias MMGO.Spells.Incantation
   alias MMGO.Worlds
 
   defmodule InvalidSpellProvider do
@@ -36,6 +37,42 @@ defmodule MMGO.Spells.CompilerTest do
     end
 
     def narrate_turn(_prompt_payload, _opts), do: {:ok, "unused"}
+    def orchestrate_combat(_prompt_payload, _opts), do: {:ok, %{"picks" => []}}
+    def tick_dungeon(_prompt_payload, _opts), do: {:ok, %{"floor_directives" => []}}
+  end
+
+  defmodule InvalidUtilityProvider do
+    @behaviour MMGO.AI.Provider
+
+    def compile_spell(_prompt_payload, _opts) do
+      {:ok,
+       %{
+         "name" => "Hostile Lantern",
+         "formula" => "Lux Revelio",
+         "school" => "order",
+         "spell_type" => "utility",
+         "targeting" => "enemy",
+         "delivery_form" => "zone",
+         "effects" => [
+           %{
+             "applies_to" => "environment",
+             "state" => "revealed",
+             "intensity" => 1,
+             "duration" => 1
+           }
+         ],
+         "failure_profile" => %{
+           "difficulty" => 10,
+           "base_success_rate" => 80,
+           "partial_success_rate" => 10,
+           "backlash_damage" => 0
+         }
+       }}
+    end
+
+    def narrate_turn(_prompt_payload, _opts), do: {:ok, "unused"}
+    def orchestrate_combat(_prompt_payload, _opts), do: {:ok, %{"picks" => []}}
+    def tick_dungeon(_prompt_payload, _opts), do: {:ok, %{"floor_directives" => []}}
   end
 
   setup do
@@ -96,6 +133,31 @@ defmodule MMGO.Spells.CompilerTest do
 
     assert %{formula: ["must contain only alphabetic words and hyphens"]} = errors_on(changeset)
     assert Repo.aggregate(Request, :count, :id) == 0
+  end
+
+  test "compile_and_store/3 rejects utility spells that target enemies", %{character: character} do
+    assert {:error, changeset} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Lux Revelio",
+                 formula: "Lux Revelio",
+                 school: "order"
+               },
+               provider: InvalidUtilityProvider,
+               model: "invalid-utility-model"
+             )
+
+    assert %{targeting: ["utility spells must target self or zone"]} = errors_on(changeset)
+    assert Repo.aggregate(Request, :count, :id) == 1
+  end
+
+  test "incantation analysis corrects near-miss words and preserves slot labels" do
+    assert {:ok, analysis} = Incantation.analyze("Ictuss Sphaera Magns")
+    assert analysis.normalized_formula == "Ictus Sphaera Magnus"
+    assert Enum.map(analysis.words, & &1.slot_label) == ["Actio", "Forma", "Vis"]
+    assert Enum.at(analysis.words, 0).corrected?
+    assert Enum.at(analysis.words, 2).corrected?
   end
 
   defp character_fixture(realm, handle, name) do

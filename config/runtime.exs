@@ -43,7 +43,10 @@ config :mmgo, MMGO.AI,
   models: %{
     spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
     turn_narration:
-      System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration]
+      System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration],
+    combat_orchestrator:
+      System.get_env("GEMINI_ORCHESTRATOR_MODEL") || ai_config[:models][:combat_orchestrator],
+    dungeon_tick: System.get_env("GEMINI_DUNGEON_TICK_MODEL") || ai_config[:models][:dungeon_tick]
   },
   prompt_versions: ai_config[:prompt_versions]
 

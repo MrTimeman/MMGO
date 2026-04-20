@@ -190,6 +190,89 @@ defmodule MMGO.AlchemyTest do
     assert updated_brew_job.status == :completed
   end
 
+  test "brew/5 matches ingredient requirements by qualities, not only exact template ids", %{
+    alchemist: alchemist,
+    workspace: workspace,
+    flask_template: flask_template
+  } do
+    {:ok, ember_moss} =
+      Inventory.create_item_template(%{
+        code: "ember_moss_test",
+        name: "Ember Moss",
+        item_type: :ingredient,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 0,
+        qualities: ["fire_catalyst", "volatile"],
+        actions: []
+      })
+
+    {:ok, magma_shard} =
+      Inventory.create_item_template(%{
+        code: "magma_shard_test",
+        name: "Magma Shard",
+        item_type: :ingredient,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 0,
+        qualities: ["fire_catalyst", "corrosive"],
+        actions: []
+      })
+
+    {:ok, _ember_stack} = Inventory.grant_item(alchemist, ember_moss, %{quantity: 1})
+    {:ok, _magma_stack} = Inventory.grant_item(alchemist, magma_shard, %{quantity: 1})
+
+    {:ok, quality_recipe} =
+      Alchemy.create_recipe(%{
+        code: "caustic_fire_test",
+        name: "Caustic Fire",
+        result_item_template_id: flask_template.id,
+        brew_time_game_days: 1,
+        difficulty: 4,
+        required_tool_codes: ["cauldron"],
+        result_quantity: 1,
+        requirements: [
+          %{qualities: ["fire_catalyst"], quantity: 1},
+          %{qualities: ["corrosive"], quantity: 1}
+        ]
+      })
+
+    assert {:ok, %{brew_job: brew_job}} = Alchemy.brew(alchemist, workspace, quality_recipe, 1)
+
+    consumed = brew_job.metadata["consumed_ingredients"]
+    assert Enum.any?(consumed, &(&1["qualities"] == ["fire_catalyst"]))
+    assert Enum.any?(consumed, &(&1["qualities"] == ["corrosive"]))
+
+    refute Repo.get_by(Inventory.InventoryItem,
+             character_id: alchemist.id,
+             item_template_id: magma_shard.id
+           )
+  end
+
+  test "brew/5 rejects quality-based recipes when no matching ingredient qualities are present",
+       %{
+         alchemist: alchemist,
+         workspace: workspace,
+         flask_template: flask_template
+       } do
+    {:ok, quality_recipe} =
+      Alchemy.create_recipe(%{
+        code: "luminous_tonic_test",
+        name: "Luminous Tonic",
+        result_item_template_id: flask_template.id,
+        brew_time_game_days: 1,
+        difficulty: 2,
+        required_tool_codes: ["cauldron"],
+        result_quantity: 1,
+        requirements: [%{qualities: ["luminous"], quantity: 1}]
+      })
+
+    assert {:error, changeset} = Alchemy.brew(alchemist, workspace, quality_recipe, 1)
+    assert %{status: ["missing required ingredients"]} = errors_on(changeset)
+  end
+
   defp character_fixture(realm, location, handle, name) do
     account =
       %Account{}

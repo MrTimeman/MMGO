@@ -64,6 +64,8 @@ defmodule MMGO.OverworldTest do
 
     assert {:ok, %{encounter: resolved_encounter}} = Overworld.respond(encounter, target, :trade)
     assert resolved_encounter.status == :trading
+    assert Repo.get!(Character, initiator.id).xp == 8
+    assert Repo.get!(Character, target.id).xp == 8
   end
 
   test "attack escalates to overworld combat in unsafe zones", %{

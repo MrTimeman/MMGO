@@ -7,6 +7,22 @@ defmodule MMGO.Inventory.ItemTemplate do
 
   @item_types [:weapon, :shield, :potion, :tool, :food, :ingredient]
 
+  @qualities [
+    "fire_catalyst",
+    "binding",
+    "volatile",
+    "restorative",
+    "numbing",
+    "purifying",
+    "toxic",
+    "conductive",
+    "stabilizing",
+    "soporific",
+    "luminous",
+    "corrosive",
+    "arcane"
+  ]
+
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
@@ -14,6 +30,8 @@ defmodule MMGO.Inventory.ItemTemplate do
     field :code, :string
     field :name, :string
     field :item_type, Ecto.Enum, values: @item_types
+    field :description, :string
+    field :qualities, {:array, :string}, default: []
     field :stackable, :boolean, default: false
     field :weight, :integer, default: 1
     field :max_durability, :integer, default: 0
@@ -32,6 +50,8 @@ defmodule MMGO.Inventory.ItemTemplate do
       :code,
       :name,
       :item_type,
+      :description,
+      :qualities,
       :stackable,
       :weight,
       :max_durability,
@@ -46,9 +66,24 @@ defmodule MMGO.Inventory.ItemTemplate do
     |> validate_number(:weight, greater_than: 0)
     |> validate_number(:max_durability, greater_than_or_equal_to: 0)
     |> validate_number(:nutrition_units, greater_than_or_equal_to: 0)
+    |> validate_length(:description, max: 280)
+    |> validate_qualities()
     |> cast_embed(:actions, required: false, with: &ItemAction.changeset/2)
     |> validate_actions()
     |> unique_constraint(:code)
+  end
+
+  def supported_qualities, do: @qualities
+
+  defp validate_qualities(changeset) do
+    qualities = get_field(changeset, :qualities, [])
+    invalid = Enum.reject(qualities, &(&1 in @qualities))
+
+    if invalid == [] do
+      changeset
+    else
+      add_error(changeset, :qualities, "contains unsupported values: #{Enum.join(invalid, ", ")}")
+    end
   end
 
   defp validate_actions(changeset) do

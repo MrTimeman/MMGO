@@ -78,16 +78,20 @@ defmodule MMGO.DungeonCombatIntegrationTest do
   end
 
   test "start_encounter_combat/2 creates a dungeon combat linked to the encounter", %{
-    encounter: encounter
+    encounter: encounter,
+    character: character
   } do
     assert {:ok, %{combat: combat, encounter: updated_encounter}} =
              Dungeons.start_encounter_combat(encounter)
+
+    combat = Combat.get_combat!(combat.id)
 
     assert combat.kind == :dungeon_encounter
     assert updated_encounter.status == :active
     assert updated_encounter.combat_id == combat.id
     assert combat.sides["party"]["shared_hp"] == 100
     assert combat.sides["encounter"]["shared_hp"] >= 25
+    assert Enum.find(combat.participants, &(&1.character_id == character.id)).grimoire_id
   end
 
   test "finished dungeon combat can clear an encounter and generate loot", %{

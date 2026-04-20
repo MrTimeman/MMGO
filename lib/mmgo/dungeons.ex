@@ -1,6 +1,9 @@
 defmodule MMGO.Dungeons do
   import Ecto.Query, warn: false
+  require Logger
 
+  alias MMGO.AI
+  alias MMGO.AI.Prompts.DungeonTickPrompt
   alias MMGO.Actors
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
@@ -34,6 +37,7 @@ defmodule MMGO.Dungeons do
   alias MMGO.Parties
   alias MMGO.Parties.{Expedition, ExpeditionMember}
   alias MMGO.Repo
+  alias MMGO.Spells.Spell
   alias MMGO.Worlds.Realm
 
   def list_dungeons_for_realm(realm_id) when is_binary(realm_id) do
@@ -169,8 +173,16 @@ defmodule MMGO.Dungeons do
         })
         |> Repo.update!()
 
-      node_overrides = refresh_node_overrides!(dungeon.id, updated_state)
-      link_states = refresh_link_states!(dungeon.id, updated_state)
+      floors = list_floors_for_tick(dungeon.id)
+      activity_window = activity_window(dungeon.id, now)
+
+      {updated_state, floor_directives} =
+        apply_dungeon_tick!(dungeon, updated_state, floors, activity_window, opts)
+
+      floor_directive_map = Map.new(floor_directives, &{&1["floor_id"], &1})
+
+      node_overrides = refresh_node_overrides!(dungeon.id, updated_state, floor_directive_map)
+      link_states = refresh_link_states!(dungeon.id, updated_state, floor_directive_map)
       schedule_maintenance!(dungeon.id, updated_state.next_maintenance_at)
 
       %{state: updated_state, node_overrides: node_overrides, link_states: link_states}
@@ -744,6 +756,79 @@ defmodule MMGO.Dungeons do
     |> normalize_transaction_result()
   end
 
+  def cast_utility_spell(%Run{} = run, %Character{} = character, %Spell{} = spell, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
+    Repo.transaction(fn ->
+      run = run.id |> lock_run!() |> preload_run()
+
+      cond do
+        run.status != :active ->
+          Repo.rollback(run_changeset("run is not active"))
+
+        not Parties.eligible_member_for_expedition?(run.expedition_id, character.id) ->
+          Repo.rollback(run_changeset("character is not part of this expedition"))
+
+        spell.spell_type != :utility ->
+          Repo.rollback(run_changeset("spell is not a utility spell"))
+
+        spell.targeting not in [:self, :zone] ->
+          Repo.rollback(run_changeset("utility spells must target self or zone"))
+
+        true ->
+          current_state = ensure_node_state_exists!(run.id, run.current_node_id, now)
+          hidden_nodes = revealable_hidden_nodes(run, spell)
+
+          if utility_reveal_spell?(spell) and hidden_nodes == [] do
+            Repo.rollback(run_changeset("no hidden nodes are available to reveal"))
+          end
+
+          updated_current_state =
+            current_state
+            |> NodeState.changeset(%{
+              last_seen_at: now,
+              metadata: merge_utility_node_metadata(current_state.metadata, spell, now)
+            })
+            |> Repo.update!()
+
+          revealed_states =
+            hidden_nodes
+            |> Enum.take(reveal_budget(spell))
+            |> Enum.map(fn node ->
+              node_state = ensure_node_state_exists!(run.id, node.id, now)
+
+              node_state
+              |> NodeState.changeset(%{
+                status: :visited,
+                last_seen_at: now,
+                metadata:
+                  merge_utility_node_metadata(node_state.metadata, spell, now, %{
+                    "revealed" => true,
+                    "hidden_node_id" => node.id
+                  })
+              })
+              |> Repo.update!()
+            end)
+
+          updated_run =
+            run
+            |> Run.changeset(%{
+              last_progressed_at: now,
+              metadata:
+                merge_utility_run_metadata(run.metadata, character, spell, revealed_states, now)
+            })
+            |> Repo.update!()
+
+          %{
+            run: preload_run(updated_run),
+            current_node_state: updated_current_state,
+            revealed_states: revealed_states
+          }
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
   def extract_via_ascent(%Run{} = run, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
@@ -1140,7 +1225,7 @@ defmodule MMGO.Dungeons do
     end
   end
 
-  defp refresh_node_overrides!(dungeon_id, %State{} = state) do
+  defp refresh_node_overrides!(dungeon_id, %State{} = state, floor_directive_map) do
     nodes =
       Node
       |> join(:inner, [node], floor in assoc(node, :floor))
@@ -1148,20 +1233,44 @@ defmodule MMGO.Dungeons do
       |> Repo.all()
 
     Enum.map(nodes, fn node ->
+      directive =
+        Map.get(floor_directive_map, node.floor_id, default_floor_directive(node.floor_id))
+
       base_status =
         if state.pressure_level >= 60 and node.kind == :rest, do: :depleted, else: :stable
 
       threat_bias =
         if node.kind in [:room, :hazard, :boss],
-          do: min(div(state.pressure_level, 5), 20),
+          do: clamp(min(div(state.pressure_level, 5), 20) + directive["threat_delta"], -100, 100),
           else: 0
 
       resource_bias =
         if node.kind == :rest,
-          do: -min(div(state.pressure_level, 10), 5),
-          else: max(5 - div(state.pressure_level, 20), -5)
+          do:
+            clamp(
+              -min(div(state.pressure_level, 10), 5) + directive["resource_delta"],
+              -100,
+              100
+            ),
+          else:
+            clamp(
+              max(5 - div(state.pressure_level, 20), -5) + directive["resource_delta"],
+              -100,
+              100
+            )
 
-      anomaly_tag = anomaly_tag_for(node, state)
+      anomaly_tag =
+        case directive["anomaly_tag"] do
+          "none" -> anomaly_tag_for(node, state)
+          explicit_tag -> explicit_tag
+        end
+
+      status =
+        case {directive["anomaly_tag"], base_status} do
+          {"depleted", _base_status} -> :depleted
+          {tag, _base_status} when tag in ["volatile", "wrath", "echo", "predator"] -> :volatile
+          {_tag, base_status} -> base_status
+        end
 
       case Repo.get_by(NodeOverride, dungeon_id: dungeon_id, node_id: node.id) do
         nil ->
@@ -1169,36 +1278,60 @@ defmodule MMGO.Dungeons do
           |> NodeOverride.changeset(%{
             dungeon_id: dungeon_id,
             node_id: node.id,
-            status: base_status,
+            status: status,
             threat_bias: threat_bias,
             resource_bias: resource_bias,
             anomaly_tag: anomaly_tag,
-            metadata: %{"cycle_number" => state.cycle_number}
+            metadata: %{
+              "cycle_number" => state.cycle_number,
+              "floor_directive" => directive
+            }
           })
           |> Repo.insert!()
 
         %NodeOverride{} = node_override ->
           node_override
           |> NodeOverride.changeset(%{
-            status: base_status,
+            status: status,
             threat_bias: threat_bias,
             resource_bias: resource_bias,
             anomaly_tag: anomaly_tag,
-            metadata: Map.put(node_override.metadata || %{}, "cycle_number", state.cycle_number)
+            metadata:
+              node_override.metadata
+              |> Kernel.||(%{})
+              |> Map.put("cycle_number", state.cycle_number)
+              |> Map.put("floor_directive", directive)
           })
           |> Repo.update!()
       end
     end)
   end
 
-  defp refresh_link_states!(dungeon_id, %State{} = state) do
-    links = Repo.all(from link in Link, where: link.dungeon_id == ^dungeon_id)
+  defp refresh_link_states!(dungeon_id, %State{} = state, floor_directive_map) do
+    links =
+      Repo.all(
+        from link in Link,
+          where: link.dungeon_id == ^dungeon_id,
+          preload: [:from_node, :to_node]
+      )
 
     Enum.map(links, fn link ->
-      status =
+      base_status =
         if rem(state.cycle_number + link.travel_cost, 4) == 0 and state.pressure_level >= 20,
           do: :blocked,
           else: :active
+
+      floor_shifts =
+        [link.from_node.floor_id, link.to_node.floor_id]
+        |> Enum.map(&Map.get(floor_directive_map, &1, default_floor_directive(&1)))
+        |> Enum.map(& &1["connection_shift"])
+
+      status =
+        cond do
+          Enum.any?(floor_shifts, &(&1 == "block")) -> :blocked
+          Enum.any?(floor_shifts, &(&1 == "open")) -> :active
+          true -> base_status
+        end
 
       case Repo.get_by(LinkState, dungeon_id: dungeon_id, link_id: link.id) do
         nil ->
@@ -1207,7 +1340,10 @@ defmodule MMGO.Dungeons do
             dungeon_id: dungeon_id,
             link_id: link.id,
             status: status,
-            metadata: %{"cycle_number" => state.cycle_number}
+            metadata: %{
+              "cycle_number" => state.cycle_number,
+              "floor_shifts" => floor_shifts
+            }
           })
           |> Repo.insert!()
 
@@ -1215,11 +1351,255 @@ defmodule MMGO.Dungeons do
           link_state
           |> LinkState.changeset(%{
             status: status,
-            metadata: Map.put(link_state.metadata || %{}, "cycle_number", state.cycle_number)
+            metadata:
+              link_state.metadata
+              |> Kernel.||(%{})
+              |> Map.put("cycle_number", state.cycle_number)
+              |> Map.put("floor_shifts", floor_shifts)
           })
           |> Repo.update!()
       end
     end)
+  end
+
+  defp apply_dungeon_tick!(%Dungeon{} = dungeon, %State{} = state, floors, activity_window, opts) do
+    prompt_payload =
+      DungeonTickPrompt.build(%{
+        dungeon: %{
+          id: dungeon.id,
+          name: dungeon.name,
+          status: dungeon.status
+        },
+        state: %{
+          cycle_number: state.cycle_number,
+          pressure_level: state.pressure_level,
+          anomaly_level: state.anomaly_level
+        },
+        floors: Enum.map(floors, &floor_payload/1),
+        activity_window: activity_window
+      })
+
+    ai_opts =
+      Keyword.put_new(opts, :metadata, %{
+        dungeon_id: dungeon.id,
+        cycle_number: state.cycle_number
+      })
+
+    {directives, mode, reason} =
+      case AI.tick_dungeon(prompt_payload, ai_opts) do
+        {:ok, %{directives: %{"floor_directives" => raw_directives, "summary" => summary}}} ->
+          case normalize_floor_directives(raw_directives, floors) do
+            {:ok, directives} ->
+              {directives, "ai", summary}
+
+            {:error, validation_reason} ->
+              emit_dungeon_tick_validation(dungeon.id, state, validation_reason)
+
+              {fallback_floor_directives(floors, state, activity_window), "fallback",
+               "validation_failure"}
+          end
+
+        {:ok, %{directives: directives}} ->
+          emit_dungeon_tick_validation(dungeon.id, state, {:invalid_shape, directives})
+
+          {fallback_floor_directives(floors, state, activity_window), "fallback",
+           "validation_failure"}
+
+        {:error, ai_reason} ->
+          emit_dungeon_tick_fallback(dungeon.id, state, ai_reason)
+
+          {fallback_floor_directives(floors, state, activity_window), "fallback",
+           "provider_failure"}
+      end
+
+    metadata =
+      state.metadata
+      |> Kernel.||(%{})
+      |> Map.put("ai_tick", %{
+        "mode" => mode,
+        "reason" => reason,
+        "activity_window" => activity_window,
+        "floor_directives" => directives
+      })
+
+    updated_state =
+      state
+      |> State.changeset(%{metadata: metadata})
+      |> Repo.update!()
+
+    {updated_state, directives}
+  end
+
+  defp list_floors_for_tick(dungeon_id) do
+    Repo.all(
+      from floor in Floor,
+        where: floor.dungeon_id == ^dungeon_id,
+        order_by: [asc: floor.number],
+        preload: [:nodes]
+    )
+  end
+
+  defp floor_payload(%Floor{} = floor) do
+    %{
+      "id" => floor.id,
+      "number" => floor.number,
+      "name" => floor.name,
+      "node_count" => length(floor.nodes || []),
+      "resource_saturation" => floor_resource_saturation(floor)
+    }
+  end
+
+  defp floor_resource_saturation(%Floor{} = floor) do
+    nodes = floor.nodes || []
+
+    if nodes == [] do
+      0
+    else
+      nodes
+      |> Enum.map(& &1.threat_level)
+      |> Enum.sum()
+      |> Kernel.div(length(nodes))
+    end
+  end
+
+  defp activity_window(dungeon_id, now) do
+    cutoff = DateTime.add(now, -3_600, :second)
+
+    %{
+      "recent_moves" => recent_move_count(dungeon_id, cutoff),
+      "recent_combats" => recent_combat_count(dungeon_id, cutoff),
+      "recent_extractions" => recent_extraction_count(dungeon_id, cutoff)
+    }
+  end
+
+  defp recent_move_count(dungeon_id, cutoff) do
+    Repo.aggregate(
+      from(node_state in NodeState,
+        join: run in Run,
+        on: run.id == node_state.run_id,
+        where: run.dungeon_id == ^dungeon_id and node_state.last_seen_at >= ^cutoff
+      ),
+      :count,
+      :id
+    )
+  end
+
+  defp recent_combat_count(dungeon_id, cutoff) do
+    Repo.aggregate(
+      from(encounter in Encounter,
+        join: run in Run,
+        on: run.id == encounter.run_id,
+        where: run.dungeon_id == ^dungeon_id and encounter.updated_at >= ^cutoff
+      ),
+      :count,
+      :id
+    )
+  end
+
+  defp recent_extraction_count(dungeon_id, cutoff) do
+    Repo.aggregate(
+      from(extraction in Extraction,
+        join: run in Run,
+        on: run.id == extraction.run_id,
+        where: run.dungeon_id == ^dungeon_id and extraction.updated_at >= ^cutoff
+      ),
+      :count,
+      :id
+    )
+  end
+
+  defp normalize_floor_directives(raw_directives, floors) when is_list(raw_directives) do
+    floor_ids = MapSet.new(floors, & &1.id)
+
+    directives =
+      Enum.map(raw_directives, fn directive ->
+        %{
+          "floor_id" => directive["floor_id"],
+          "threat_delta" => directive["threat_delta"],
+          "resource_delta" => directive["resource_delta"],
+          "connection_shift" => directive["connection_shift"],
+          "anomaly_tag" => directive["anomaly_tag"]
+        }
+      end)
+
+    if Enum.all?(directives, &valid_floor_directive?(&1, floor_ids)) do
+      {:ok,
+       Enum.map(directives, fn directive ->
+         directive
+         |> Map.update!("threat_delta", &clamp(&1, -5, 5))
+         |> Map.update!("resource_delta", &clamp(&1, -5, 5))
+       end)}
+    else
+      {:error, :invalid_floor_directives}
+    end
+  end
+
+  defp normalize_floor_directives(_raw_directives, _floors),
+    do: {:error, :invalid_floor_directives}
+
+  defp valid_floor_directive?(directive, floor_ids) do
+    is_binary(directive["floor_id"]) and
+      MapSet.member?(floor_ids, directive["floor_id"]) and
+      is_integer(directive["threat_delta"]) and
+      is_integer(directive["resource_delta"]) and
+      directive["connection_shift"] in ["stabilize", "block", "open"] and
+      directive["anomaly_tag"] in ["none", "volatile", "wrath", "depleted", "echo", "predator"]
+  end
+
+  defp fallback_floor_directives(floors, state, activity_window) do
+    pressure_signal = state.pressure_level + Map.get(activity_window, "recent_moves", 0)
+
+    Enum.map(floors, fn floor ->
+      %{
+        "floor_id" => floor.id,
+        "threat_delta" => clamp(div(pressure_signal + floor.number * 5, 25), -5, 5),
+        "resource_delta" => clamp(-div(state.pressure_level, 25), -5, 5),
+        "connection_shift" =>
+          if(state.pressure_level >= 50 and floor.number >= 2, do: "block", else: "stabilize"),
+        "anomaly_tag" => fallback_anomaly_tag(floor, state)
+      }
+    end)
+  end
+
+  defp fallback_anomaly_tag(%Floor{number: number}, %State{anomaly_level: anomaly_level})
+       when anomaly_level >= 60 and number >= 2,
+       do: "volatile"
+
+  defp fallback_anomaly_tag(_floor, _state), do: "none"
+
+  defp default_floor_directive(floor_id) do
+    %{
+      "floor_id" => floor_id,
+      "threat_delta" => 0,
+      "resource_delta" => 0,
+      "connection_shift" => "stabilize",
+      "anomaly_tag" => "none"
+    }
+  end
+
+  defp emit_dungeon_tick_validation(dungeon_id, state, reason) do
+    metadata = %{
+      dungeon_id: dungeon_id,
+      cycle_number: state.cycle_number,
+      reason: inspect(reason)
+    }
+
+    :telemetry.execute([:mmgo, :dungeon, :tick, :validation_failure], %{count: 1}, metadata)
+    Logger.warning("dungeon tick validation failed for #{dungeon_id}: #{inspect(reason)}")
+  end
+
+  defp emit_dungeon_tick_fallback(dungeon_id, state, reason) do
+    metadata = %{
+      dungeon_id: dungeon_id,
+      cycle_number: state.cycle_number,
+      reason: inspect(reason)
+    }
+
+    :telemetry.execute([:mmgo, :dungeon, :tick, :fallback], %{count: 1}, metadata)
+
+    Logger.warning(
+      "dungeon tick fell back to deterministic directives for #{dungeon_id}: #{inspect(reason)}"
+    )
   end
 
   defp anomaly_tag_for(%Node{kind: :boss}, %State{anomaly_level: level}) when level >= 40,
@@ -1394,6 +1774,82 @@ defmodule MMGO.Dungeons do
         }
       end)
     end)
+  end
+
+  defp revealable_hidden_nodes(%Run{} = run, %Spell{} = spell) do
+    if utility_reveal_spell?(spell) do
+      Node
+      |> where([node], node.floor_id == ^run.current_floor_id and node.id != ^run.current_node_id)
+      |> order_by([node], asc: node.inserted_at)
+      |> Repo.all()
+      |> Enum.filter(&hidden_node?/1)
+    else
+      []
+    end
+  end
+
+  defp utility_reveal_spell?(%Spell{} = spell) do
+    Enum.any?(spell.effects, &(&1.state == "revealed"))
+  end
+
+  defp reveal_budget(%Spell{} = spell) do
+    spell.effects
+    |> Enum.filter(&(&1.state == "revealed"))
+    |> Enum.map(&max(&1.intensity, 1))
+    |> Enum.max(fn -> 0 end)
+  end
+
+  defp hidden_node?(%Node{} = node) do
+    metadata = node.metadata || %{}
+    value = metadata["hidden"] || metadata[:hidden]
+    value in [true, "true", 1, "1"]
+  end
+
+  defp merge_utility_node_metadata(metadata, %Spell{} = spell, now, extra \\ %{}) do
+    metadata = stringify_keys(metadata || %{})
+    environment_states = metadata["environment_states"] || []
+    applied_at = DateTime.to_iso8601(now)
+
+    utility_states =
+      spell.effects
+      |> Enum.map(fn effect ->
+        %{
+          "state" => effect.state,
+          "intensity" => effect.intensity,
+          "spell_id" => spell.id,
+          "applied_at" => applied_at
+        }
+      end)
+
+    metadata
+    |> Map.put(
+      "environment_states",
+      (environment_states ++ utility_states)
+      |> Enum.uniq_by(&{&1["state"], &1["spell_id"]})
+    )
+    |> Map.merge(extra)
+    |> Map.put("last_utility_spell_id", spell.id)
+    |> Map.put("last_utility_spell_name", spell.name)
+    |> Map.put("last_utility_applied_at", applied_at)
+  end
+
+  defp merge_utility_run_metadata(
+         metadata,
+         %Character{} = character,
+         %Spell{} = spell,
+         revealed_states,
+         now
+       ) do
+    metadata = stringify_keys(metadata || %{})
+
+    Map.put(metadata, "last_utility_spell", %{
+      "spell_id" => spell.id,
+      "spell_name" => spell.name,
+      "character_id" => character.id,
+      "character_name" => character.name,
+      "revealed_node_ids" => Enum.map(revealed_states, & &1.node_id),
+      "cast_at" => DateTime.to_iso8601(now)
+    })
   end
 
   defp encounter_spawn_name(%EncounterSpawn{} = spawn, 0), do: spawn.actor_template.name
@@ -1752,4 +2208,8 @@ defmodule MMGO.Dungeons do
     |> Changeset.change()
     |> Changeset.add_error(:status, message)
   end
+
+  defp clamp(value, min, _max) when value < min, do: min
+  defp clamp(value, _min, max) when value > max, do: max
+  defp clamp(value, _min, _max), do: value
 end

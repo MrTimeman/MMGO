@@ -4,7 +4,7 @@ defmodule MMGO.Spells.InteractionRule do
   import Ecto.Changeset
 
   @trigger_types [:environment_tag, :target_state, :spell_tag]
-  @outcomes [:negate, :amplify, :replace_environment, :apply_bonus_state]
+  @outcomes [:negate, :amplify, :replace_environment, :apply_bonus_state, :spread, :transform]
 
   embedded_schema do
     field :trigger_type, Ecto.Enum, values: @trigger_types
@@ -22,6 +22,7 @@ defmodule MMGO.Spells.InteractionRule do
     |> validate_length(:trigger, min: 1, max: 80)
     |> validate_length(:replacement_tags, max: 8)
     |> validate_bonus_state()
+    |> validate_replacement_tags()
   end
 
   defp validate_bonus_state(changeset) do
@@ -32,6 +33,16 @@ defmodule MMGO.Spells.InteractionRule do
         |> validate_inclusion(:state, MMGO.Spells.Spell.effect_states())
 
       _ ->
+        changeset
+    end
+  end
+
+  defp validate_replacement_tags(changeset) do
+    case get_field(changeset, :outcome) do
+      outcome when outcome in [:replace_environment, :spread, :transform] ->
+        validate_required(changeset, [:replacement_tags])
+
+      _other ->
         changeset
     end
   end

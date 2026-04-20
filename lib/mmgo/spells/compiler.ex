@@ -48,11 +48,12 @@ defmodule MMGO.Spells.Compiler do
         "base_spell_id"
       ])
 
-    with {:ok, normalized_formula} <- normalize_formula(request),
+    with {:ok, formula_analysis} <- normalize_formula(request),
          {:ok, normalized_school} <- normalize_school(request) do
       {:ok,
        request
-       |> Map.put("formula", normalized_formula)
+       |> Map.put("formula", formula_analysis.normalized_formula)
+       |> Map.put("incantation_analysis", formula_analysis)
        |> Map.put("school", normalized_school)}
     end
   end
@@ -78,9 +79,9 @@ defmodule MMGO.Spells.Compiler do
         {:error, compiler_request_changeset(:formula, "can't be blank")}
 
       formula ->
-        case Incantation.normalize(formula) do
-          {:ok, normalized_formula} ->
-            {:ok, normalized_formula}
+        case Incantation.analyze(formula) do
+          {:ok, formula_analysis} ->
+            {:ok, formula_analysis}
 
           {:error, :empty_formula} ->
             {:error, compiler_request_changeset(:formula, "can't be blank")}

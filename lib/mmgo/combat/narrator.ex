@@ -32,7 +32,8 @@ defmodule MMGO.Combat.Narrator do
           status: combat.status,
           turn_number: combat.turn_number,
           environment_tags: combat.environment_tags,
-          sides: combat.sides
+          sides: combat.sides,
+          metadata: combat.metadata || %{}
         },
         turn: %{
           id: turn.id,
@@ -45,8 +46,21 @@ defmodule MMGO.Combat.Narrator do
     ai_opts = Keyword.put_new(opts, :metadata, %{combat_id: combat.id, combat_turn_id: turn.id})
 
     with {:ok, %{narration: narration}} <- AI.narrate_turn(prompt_payload, ai_opts),
+         narration <- validate_narration(narration, turn),
          {:ok, updated_turn} <- Turn.changeset(turn, %{narration: narration}) |> Repo.update() do
       {:ok, updated_turn}
     end
+  end
+
+  defp validate_narration(narration, %Turn{} = turn) when is_binary(narration) do
+    if String.match?(narration, ~r/[А-Яа-яЁё]/u) do
+      narration
+    else
+      turn.narration || "Ход #{turn.number} завершён."
+    end
+  end
+
+  defp validate_narration(_narration, %Turn{} = turn) do
+    turn.narration || "Ход #{turn.number} завершён."
   end
 end

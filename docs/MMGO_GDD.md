@@ -14,6 +14,7 @@ March 2026
   - [2.1 Schools of Magic](#21-schools-of-magic)
   - [2.2 Spell Creation](#22-spell-creation)
   - [2.3 AI Spell Resolution](#23-ai-spell-resolution)
+  - [2.4 Passive & Utility Spells](#24-passive--utility-spells)
 - [3. Combat](#3-combat)
   - [3.1 Combat Modes](#31-combat-modes)
   - [3.2 Core Rules](#32-core-rules)
@@ -230,6 +231,34 @@ Every sufficiently powerful spell leaves a mark on the environment. The AI speci
 - **transform** — the environment effect changes type (e.g., fire on ice → flood)
 
 The environment state persists across turns. Each turn, the engine applies ongoing environment effects (e.g., burning ground deals DoT to everyone in the zone) before resolving new spells.
+
+## 2.4 Passive & Utility Spells
+
+Every spell has a **spell type**: Active (default), Passive, or Utility.
+
+### 2.4.1 Active Spells
+
+The existing model — cast per-turn in combat, consumes fatigue, resolves through the AI compiler. No change.
+
+### 2.4.2 Passive Spells
+
+Passive spells are persistent auras a caster toggles on and off. They are not cast per-turn.
+
+- **Mana reservation** — while active, a passive reserves a fixed portion of the caster's maximum mana pool. This reduces the pool available for active spells for the entire fight. A caster running two passives with 30-mana reservations each has 60 fewer max mana until they toggle one off.
+- **Always-on effects** — passive effects use the same `SpellEffect` structure as active spells, but only apply to `:caster` or `:environment`. They cannot be aimed at enemies.
+- **Toggling** — costs one combat action. Cannot be cast as a free action.
+- **Silenced** — the silenced state prevents toggling a passive on or off, but does not deactivate one that is already running.
+
+Examples: a ward that continuously applies `shielded` at low intensity to the caster; a burning aura that applies `burning` to any enemy entering the zone each turn.
+
+### 2.4.3 Utility Spells
+
+Utility spells are cast **outside of combat**. They affect dungeon state, provide information, or alter the environment. They use the same incantation and AI compiler system as active spells.
+
+- **Non-combat states** — utility effects map to world-interaction states not valid in combat: `revealed` (uncovers hidden paths and invisible entities), `warded` (alarm or repulsion on a zone), `illuminated` (lights a zone, removes darkness penalties), `detected` (reveals creature/trap/magic presence in range), `transmuted` (alters material or quality of an object or zone).
+- **Failure and fatigue still apply** — casting outside combat still tires the caster and can fail.
+- **Persistence** — utility effects persist in the dungeon environment across turns.
+- **Targeting** — only `:self` and `:zone` are valid for utility spells.
 
 # 3. Combat
 
@@ -513,13 +542,47 @@ A grimoire is a physical item — a book that holds a subset of spells from your
 
 # 8. Alchemy & Workshops
 
-- Fixed set of ingredients and tools with predefined effects
+Alchemy produces potions, food, and consumables from raw ingredients. It requires a dedicated workshop at your base.
 
-- Effects change depending on ingredient combinations
+## 8.1 Ingredient Qualities
 
-- Requires a dedicated workshop at your base
+Every ingredient carries a short description and a set of **qualities** — a bounded vocabulary that describes its alchemical properties. Qualities are the building block of recipe design: a recipe works because its required ingredients provide the right combination of qualities, not because it hardcodes specific items. This lets future recipe variants, ingredient substitutions, and emergent combinations work naturally.
 
-*Alchemy details are covered under Academy tracks (section 9.3.2). The crafting system will be expanded in a future revision.*
+| Quality | Alchemical Role |
+|---|---|
+| `fire_catalyst` | Amplifies fire-school effects |
+| `binding` | Extends effect durations |
+| `volatile` | Increases intensity, raises variance and failure risk |
+| `restorative` | Contributes to healing and regenerating effects |
+| `numbing` | Suppresses active negative states |
+| `purifying` | Cleanses debuffs and magical contamination |
+| `toxic` | Applies damage-over-time effects |
+| `conductive` | Channels and amplifies magical energy |
+| `stabilizing` | Reduces failure rates and variance |
+| `soporific` | Induces staggered or incapacitated states |
+| `luminous` | Illumination, revelation, and detection |
+| `corrosive` | Degrades shielded state and armor durability |
+| `arcane` | School-neutral magical amplifier |
+
+## 8.2 Base Ingredients
+
+The world ships with a foundational set of 15 ingredients covering the full quality spectrum. These are the most commonly found and traded materials — available from NPC vendors, overworld scavenging, and early dungeon levels.
+
+**Fire:** Ember Moss (`fire_catalyst`, `volatile`), Magma Shard (`fire_catalyst`, `corrosive`), Searing Petal (`fire_catalyst`, `stabilizing`)
+
+**Restoration:** Moonleaf (`restorative`, `purifying`), Healer's Root (`restorative`, `binding`), Dewdrop Fungus (`restorative`, `stabilizing`)
+
+**Structure:** Ironwood Bark (`binding`, `stabilizing`), Spider Silk Extract (`binding`, `conductive`)
+
+**Arcane/Utility:** Glowstone Dust (`luminous`, `conductive`), Witchwood Ash (`arcane`, `volatile`), Nullweave Fiber (`purifying`, `stabilizing`)
+
+**Offensive:** Viper Venom (`toxic`, `volatile`), Thornwood Extract (`corrosive`, `binding`), Blacksalt (`toxic`, `numbing`)
+
+**Control:** Dream Poppy (`soporific`, `numbing`)
+
+## 8.3 Recipe System
+
+Effects change depending on ingredient combinations. Recipes specify required ingredients and produce a result item. Quality of the result scales with the alchemist's skill and term grade. Details covered under Academy tracks (section 9.3.2).
 
 # 9. Academy
 

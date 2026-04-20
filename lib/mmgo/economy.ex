@@ -206,19 +206,33 @@ defmodule MMGO.Economy do
           |> EconomyAccount.changeset(%{current_balance: payer_account.current_balance - amount})
           |> Repo.update!()
 
-        updated_receiver =
-          receiver_account
-          |> EconomyAccount.changeset(%{
-            current_balance: receiver_account.current_balance + net_amount
-          })
-          |> Repo.update!()
+        {updated_receiver, updated_treasury} =
+          if receiver_account.id == treasury_account.id do
+            updated_account =
+              receiver_account
+              |> EconomyAccount.changeset(%{
+                current_balance: receiver_account.current_balance + net_amount + tax_amount
+              })
+              |> Repo.update!()
 
-        updated_treasury =
-          treasury_account
-          |> EconomyAccount.changeset(%{
-            current_balance: treasury_account.current_balance + tax_amount
-          })
-          |> Repo.update!()
+            {updated_account, updated_account}
+          else
+            updated_receiver =
+              receiver_account
+              |> EconomyAccount.changeset(%{
+                current_balance: receiver_account.current_balance + net_amount
+              })
+              |> Repo.update!()
+
+            updated_treasury =
+              treasury_account
+              |> EconomyAccount.changeset(%{
+                current_balance: treasury_account.current_balance + tax_amount
+              })
+              |> Repo.update!()
+
+            {updated_receiver, updated_treasury}
+          end
 
         %{
           ledger_entries: ledger_entries,

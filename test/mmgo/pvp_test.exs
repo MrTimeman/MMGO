@@ -97,6 +97,8 @@ defmodule MMGO.PVPTest do
     assert Economy.get_account!(opponent_account.id).current_balance == 80
     assert Economy.get_account!(treasury.id).current_balance == 802
     assert escrow.current_balance == 0
+    assert Repo.get!(Character, challenger.id).xp == 30
+    assert Repo.get!(Character, opponent.id).xp == 20
   end
 
   test "cancel_duel/2 refunds active duel escrow", %{

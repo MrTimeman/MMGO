@@ -218,92 +218,165 @@ defmodule MMGO.Alchemy do
         Repo.rollback(workspace_changeset("workshop lacks required alchemy tools"))
 
       true ->
-        validate_ingredient_availability!(character.id, recipe, quantity)
+        ensure_ingredient_plan!(character.id, recipe, quantity)
     end
   end
 
-  defp validate_ingredient_availability!(character_id, %Recipe{} = recipe, quantity) do
-    Enum.each(recipe.requirements, fn requirement ->
-      total_available =
-        InventoryItem
-        |> where(
-          [item],
-          item.character_id == ^character_id and
-            item.item_template_id == ^requirement.item_template_id and
-            item.quantity - item.reserved_quantity > 0
-        )
-        |> Repo.all()
-        |> Enum.reduce(0, fn item, total -> total + Inventory.available_quantity(item) end)
-
-      if total_available < requirement.quantity * quantity do
-        Repo.rollback(brew_job_changeset("missing required ingredients"))
-      end
-    end)
+  defp ensure_ingredient_plan!(character_id, %Recipe{} = recipe, quantity) do
+    case ingredient_consumption_plan(character_id, recipe, quantity) do
+      {:ok, _plan} -> :ok
+      {:error, message} -> Repo.rollback(brew_job_changeset(message))
+    end
   end
 
   defp consume_ingredients!(character_id, %Recipe{} = recipe, quantity) do
-    Enum.map(recipe.requirements, fn requirement ->
-      quantity_needed = requirement.quantity * quantity
+    {:ok, plan} = ingredient_consumption_plan(character_id, recipe, quantity)
 
-      {remaining, consumed_items} =
-        InventoryItem
-        |> where(
-          [item],
-          item.character_id == ^character_id and
-            item.item_template_id == ^requirement.item_template_id and
-            item.quantity - item.reserved_quantity > 0
-        )
-        |> order_by([item], asc: item.inserted_at)
-        |> lock("FOR UPDATE")
-        |> Repo.all()
-        |> Enum.reduce_while({quantity_needed, []}, fn item, {remaining_needed, consumed_items} ->
-          if remaining_needed <= 0 do
-            {:halt, {remaining_needed, consumed_items}}
-          else
+    item_ids =
+      plan
+      |> Enum.flat_map(fn requirement_plan ->
+        Enum.map(requirement_plan.consumed_items, & &1.item_id)
+      end)
+      |> Enum.uniq()
+
+    locked_items =
+      InventoryItem
+      |> where([item], item.id in ^item_ids)
+      |> order_by([item], asc: item.inserted_at)
+      |> lock("FOR UPDATE")
+      |> Repo.all()
+      |> Repo.preload(:item_template)
+      |> Map.new(&{&1.id, &1})
+
+    {consumed_requirements, _locked_items} =
+      Enum.map_reduce(plan, locked_items, fn requirement_plan, locked_acc ->
+        {consumed_items, updated_locked_acc} =
+          Enum.map_reduce(requirement_plan.consumed_items, locked_acc, fn consumed, item_acc ->
+            item = Map.fetch!(item_acc, consumed.item_id)
             available = Inventory.available_quantity(item)
-            taken = min(available, remaining_needed)
-            updated_quantity = item.quantity - taken
 
-            if updated_quantity == 0 do
-              Repo.delete!(item)
-            else
-              item
-              |> InventoryItem.changeset(%{
-                quantity: updated_quantity,
-                reserved_quantity: item.reserved_quantity
-              })
-              |> Repo.update!()
+            if available < consumed.quantity do
+              Repo.rollback(brew_job_changeset("ingredient consumption failed"))
             end
 
-            {:cont,
-             {
-               remaining_needed - taken,
-               [
-                 %{
-                   "inventory_item_id" => item.id,
-                   "quantity" => taken,
-                   "item_template_id" => requirement.item_template_id
-                 }
-                 | consumed_items
-               ]
-             }}
-          end
-        end)
+            updated_quantity = item.quantity - consumed.quantity
 
-      if remaining > 0 do
-        Repo.rollback(brew_job_changeset("ingredient consumption failed"))
-      end
+            updated_item =
+              if updated_quantity == 0 do
+                Repo.delete!(item)
+                %{item | quantity: 0}
+              else
+                item
+                |> InventoryItem.changeset(%{
+                  quantity: updated_quantity,
+                  reserved_quantity: item.reserved_quantity
+                })
+                |> Repo.update!()
+              end
 
-      %{
-        "item_template_id" => requirement.item_template_id,
-        "quantity" => quantity_needed,
-        "consumed_items" => Enum.reverse(consumed_items)
-      }
-    end)
+            consumed_payload = %{
+              "inventory_item_id" => item.id,
+              "quantity" => consumed.quantity,
+              "item_template_id" => item.item_template_id,
+              "item_template_code" => item.item_template.code
+            }
+
+            {consumed_payload, Map.put(item_acc, consumed.item_id, updated_item)}
+          end)
+
+        requirement_payload = %{
+          "item_template_id" => requirement_plan.item_template_id,
+          "qualities" => requirement_plan.qualities,
+          "quantity" => requirement_plan.quantity_needed,
+          "consumed_items" => consumed_items
+        }
+
+        {requirement_payload, updated_locked_acc}
+      end)
+
+    consumed_requirements
   end
 
   defp brew_xp(%Recipe{} = recipe, quantity) do
     max(quantity * (recipe.difficulty * 2), quantity * 5)
+  end
+
+  defp ingredient_consumption_plan(character_id, %Recipe{} = recipe, quantity) do
+    inventory_items =
+      InventoryItem
+      |> where(
+        [item],
+        item.character_id == ^character_id and item.quantity - item.reserved_quantity > 0
+      )
+      |> order_by([item], asc: item.inserted_at)
+      |> Repo.all()
+      |> Repo.preload(:item_template)
+
+    working =
+      Enum.map(inventory_items, fn item ->
+        %{
+          item_id: item.id,
+          item_template_id: item.item_template_id,
+          item_template: item.item_template,
+          available_quantity: Inventory.available_quantity(item)
+        }
+      end)
+
+    Enum.reduce_while(recipe.requirements, {:ok, [], working}, fn requirement,
+                                                                  {:ok, plans, pool} ->
+      quantity_needed = requirement.quantity * quantity
+
+      {remaining, consumed_items, updated_pool} =
+        Enum.reduce(pool, {quantity_needed, [], []}, fn item,
+                                                        {remaining_qty, consumed, acc_pool} ->
+          matches? = requirement_match?(requirement, item)
+
+          cond do
+            remaining_qty <= 0 or not matches? or item.available_quantity <= 0 ->
+              {remaining_qty, consumed, [item | acc_pool]}
+
+            true ->
+              taken = min(item.available_quantity, remaining_qty)
+
+              updated_item = %{item | available_quantity: item.available_quantity - taken}
+
+              {
+                remaining_qty - taken,
+                [%{item_id: item.item_id, quantity: taken} | consumed],
+                [updated_item | acc_pool]
+              }
+          end
+        end)
+
+      if remaining > 0 do
+        {:halt, {:error, "missing required ingredients"}}
+      else
+        requirement_plan = %{
+          item_template_id: requirement.item_template_id,
+          qualities: requirement.qualities || [],
+          quantity_needed: quantity_needed,
+          consumed_items: Enum.reverse(consumed_items)
+        }
+
+        {:cont, {:ok, [requirement_plan | plans], Enum.reverse(updated_pool)}}
+      end
+    end)
+    |> case do
+      {:ok, plans, _pool} -> {:ok, Enum.reverse(plans)}
+      {:error, _message} = error -> error
+    end
+  end
+
+  defp requirement_match?(requirement, item) do
+    matches_template? =
+      is_nil(requirement.item_template_id) or
+        requirement.item_template_id == item.item_template_id
+
+    required_qualities = requirement.qualities || []
+    template_qualities = item.item_template.qualities || []
+    matches_qualities? = required_qualities -- template_qualities == []
+
+    matches_template? and matches_qualities?
   end
 
   defp lock_character!(character_id) do

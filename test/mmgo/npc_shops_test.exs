@@ -103,12 +103,13 @@ defmodule MMGO.NPCShopsTest do
     {:ok, buyer_account} = Economy.ensure_character_account(buyer)
     treasury = Economy.treasury_account_for_realm(realm.id)
 
-    assert {:ok, %{economy: _economy, item_result: item_result}} =
+    assert {:ok, %{economy: economy, item_result: item_result}} =
              NPCShops.buy(buyer, sword_offer, 1)
 
     assert item_result.item_template_id == sword_template.id
     assert Economy.get_account!(buyer_account.id).current_balance == 70
     assert Economy.get_account!(treasury.id).current_balance == 930
+    assert Enum.sort(Enum.map(economy.ledger_entries, & &1.entry_type)) == [:tax, :transfer]
   end
 
   test "sell/4 pays characters from the treasury and consumes inventory", %{
@@ -141,9 +142,10 @@ defmodule MMGO.NPCShopsTest do
     {:ok, buyer_account} = Economy.ensure_character_account(buyer)
 
     assert {:ok, _donation} = NPCShops.donate_to_charity(buyer, 20)
-    assert {:ok, _tuition} = NPCShops.pay_tuition(buyer, 10)
+    assert {:ok, tuition} = NPCShops.pay_tuition(buyer, 10)
 
     assert Economy.get_account!(buyer_account.id).current_balance == 120
+    assert Enum.sort(Enum.map(tuition.ledger_entries, & &1.entry_type)) == [:tax, :transfer]
   end
 
   defp character_fixture(realm, location, handle, name) do

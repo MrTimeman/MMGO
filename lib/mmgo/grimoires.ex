@@ -57,7 +57,7 @@ defmodule MMGO.Grimoires do
          :ok <- validate_duplicate_spell(grimoire, spell) do
       slot_index = attrs["slot_index"] || next_slot_index(grimoire)
 
-      %GrimoireEntry{}
+      %GrimoireEntry{inscribed_at: DateTime.utc_now()}
       |> GrimoireEntry.changeset(%{
         grimoire_id: grimoire.id,
         spell_id: spell.id,
@@ -94,8 +94,14 @@ defmodule MMGO.Grimoires do
   def resolve_selected_grimoire(character_id, grimoire_id)
       when is_binary(character_id) and is_binary(grimoire_id) do
     case Repo.get_by(Grimoire, id: grimoire_id, owner_character_id: character_id) do
-      %Grimoire{} = grimoire -> {:ok, grimoire}
-      nil -> {:error, selected_grimoire_changeset()}
+      %Grimoire{status: :draft} ->
+        {:error, selected_grimoire_changeset("selected grimoire must be sealed or active")}
+
+      %Grimoire{} = grimoire ->
+        {:ok, grimoire}
+
+      nil ->
+        {:error, selected_grimoire_changeset()}
     end
   end
 
@@ -197,10 +203,10 @@ defmodule MMGO.Grimoires do
     |> Changeset.add_error(:entries, "grimoire must contain at least one spell before activation")
   end
 
-  defp selected_grimoire_changeset do
+  defp selected_grimoire_changeset(message \\ "selected grimoire is invalid for this character") do
     %Grimoire{}
     |> Changeset.change()
-    |> Changeset.add_error(:id, "selected grimoire is invalid for this character")
+    |> Changeset.add_error(:id, message)
   end
 
   defp stringify_keys(map) when is_map(map) do

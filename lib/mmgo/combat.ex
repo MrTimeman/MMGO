@@ -1,9 +1,10 @@
 defmodule MMGO.Combat do
   import Ecto.Query, warn: false
+  require Logger
 
   alias MMGO.Actors.ActorTemplate
   alias Ecto.Multi
-  alias MMGO.Combat.{Action, Combat, Engine, Event, Participant, Turn}
+  alias MMGO.Combat.{Action, Combat, Engine, Event, Narrator, Participant, Turn}
   alias MMGO.Grimoires
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Repo
@@ -110,7 +111,7 @@ defmodule MMGO.Combat do
     end
   end
 
-  def resolve_turn(%Combat{} = combat) do
+  def resolve_turn(%Combat{} = combat, opts \\ []) do
     runtime_combat = get_combat!(combat.id)
 
     with {:ok, turn} <- fetch_turn(runtime_combat, runtime_combat.turn_number) do
@@ -125,54 +126,97 @@ defmodule MMGO.Combat do
           inventory_item: :item_template
         ])
 
-      resolution = Engine.resolve_turn(runtime_combat, turn, runtime_combat.participants, actions)
+      resolution =
+        Engine.resolve_turn(
+          runtime_combat,
+          turn,
+          runtime_combat.participants,
+          actions,
+          Keyword.put_new(opts, :orchestrate, true)
+        )
 
-      Repo.transaction(fn ->
-        Enum.each(resolution.inventory_updates, fn {inventory_item_id, attrs} ->
-          inventory_item = Repo.get!(InventoryItem, inventory_item_id)
-
-          inventory_item
-          |> InventoryItem.changeset(attrs)
-          |> Repo.update!()
-        end)
-
-        Enum.each(runtime_combat.participants, fn participant ->
-          attrs = Map.fetch!(resolution.participant_updates, participant.id)
-
-          participant
-          |> Participant.changeset(attrs)
-          |> Repo.update!()
-        end)
-
-        turn
-        |> Turn.changeset(resolution.turn_attrs)
-        |> Repo.update!()
-
-        Enum.each(resolution.events, fn event ->
-          %Event{}
-          |> Event.changeset(Map.merge(event, %{combat_id: combat.id, combat_turn_id: turn.id}))
-          |> Repo.insert!()
-        end)
-
-        updated_combat =
-          runtime_combat
-          |> Combat.changeset(resolution.combat_attrs)
-          |> Repo.update!()
-
-        if resolution.create_next_turn? do
-          %Turn{}
-          |> Turn.changeset(%{
-            combat_id: combat.id,
-            number: updated_combat.turn_number,
-            status: :open
-          })
-          |> Repo.insert!()
-        end
-
-        updated_combat
-      end)
+      runtime_combat
+      |> persist_resolution(turn, resolution)
+      |> maybe_narrate_turn(turn.number, opts)
     end
   end
+
+  defp persist_resolution(runtime_combat, turn, resolution) do
+    Repo.transaction(fn ->
+      Enum.each(resolution.inventory_updates, fn {inventory_item_id, attrs} ->
+        inventory_item = Repo.get!(InventoryItem, inventory_item_id)
+
+        inventory_item
+        |> InventoryItem.changeset(attrs)
+        |> Repo.update!()
+      end)
+
+      Enum.each(runtime_combat.participants, fn participant ->
+        attrs = Map.fetch!(resolution.participant_updates, participant.id)
+
+        participant
+        |> Participant.changeset(attrs)
+        |> Repo.update!()
+      end)
+
+      turn
+      |> Turn.changeset(resolution.turn_attrs)
+      |> Repo.update!()
+
+      Enum.each(resolution.events, fn event ->
+        %Event{}
+        |> Event.changeset(
+          Map.merge(event, %{combat_id: runtime_combat.id, combat_turn_id: turn.id})
+        )
+        |> Repo.insert!()
+      end)
+
+      updated_combat =
+        runtime_combat
+        |> Combat.changeset(resolution.combat_attrs)
+        |> Repo.update!()
+
+      if resolution.create_next_turn? do
+        %Turn{}
+        |> Turn.changeset(%{
+          combat_id: runtime_combat.id,
+          number: updated_combat.turn_number,
+          status: :open
+        })
+        |> Repo.insert!()
+      end
+
+      updated_combat
+    end)
+  end
+
+  defp maybe_narrate_turn({:ok, %Combat{} = updated_combat}, turn_number, opts) do
+    if Keyword.get(opts, :auto_narrate?, true) do
+      case Narrator.narrate_turn(updated_combat.id, turn_number, opts) do
+        {:ok, _turn} ->
+          {:ok, updated_combat}
+
+        {:error, reason} ->
+          metadata = %{
+            combat_id: updated_combat.id,
+            turn_number: turn_number,
+            reason: inspect(reason)
+          }
+
+          :telemetry.execute([:mmgo, :combat, :narrator, :fallback], %{count: 1}, metadata)
+
+          Logger.warning(
+            "combat narrator fell back to default narration for combat #{updated_combat.id} turn #{turn_number}: #{inspect(reason)}"
+          )
+
+          {:ok, updated_combat}
+      end
+    else
+      {:ok, updated_combat}
+    end
+  end
+
+  defp maybe_narrate_turn(other, _turn_number, _opts), do: other
 
   defp fetch_open_turn(%Combat{} = combat) do
     case Repo.get_by(Turn, combat_id: combat.id, number: combat.turn_number) do
@@ -259,6 +303,7 @@ defmodule MMGO.Combat do
     attrs
     |> Map.put_new(:display_name, character.name)
     |> Map.put_new(:combat_level, character.level)
+    |> put_default_mana_metadata(character.level)
   end
 
   defp participant_defaults(attrs, _character_id, actor_template_id)
@@ -268,6 +313,7 @@ defmodule MMGO.Combat do
     attrs
     |> Map.put_new(:display_name, actor_template.name)
     |> Map.put_new(:combat_level, actor_template.combat_level)
+    |> put_default_mana_metadata(actor_template.combat_level)
   end
 
   defp participant_defaults(attrs, _character_id, _actor_template_id), do: attrs
@@ -306,4 +352,20 @@ defmodule MMGO.Combat do
 
   defp stringify_keys(list) when is_list(list), do: Enum.map(list, &stringify_keys/1)
   defp stringify_keys(value), do: value
+
+  defp put_default_mana_metadata(attrs, combat_level) do
+    metadata = attrs[:metadata] || attrs["metadata"] || %{}
+    base_max_mana = max(combat_level * 10, 50)
+
+    metadata =
+      metadata
+      |> stringify_keys()
+      |> Map.put_new("mana", %{
+        "base_max_mana" => base_max_mana,
+        "reserved_mana" => 0,
+        "max_mana" => base_max_mana
+      })
+
+    Map.put(attrs, :metadata, metadata)
+  end
 end

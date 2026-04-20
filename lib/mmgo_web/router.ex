@@ -25,7 +25,7 @@ defmodule MMGOWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/play", PlayController, :show
+    live "/play", PlayLive
 
     live "/academy/bulletin-board", BulletinBoardLive
     live "/academy/study-desk", StudyDeskLive
@@ -52,6 +52,7 @@ defmodule MMGOWeb.Router do
 
     get "/state", PlayApiController, :state
     post "/journeys", PlayApiController, :create_journey
+    post "/utility-spells", PlayApiController, :cast_utility_spell
     post "/demo/reset", PlayDemoController, :reset
   end
 
