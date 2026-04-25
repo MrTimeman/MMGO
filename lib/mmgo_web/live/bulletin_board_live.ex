@@ -4,6 +4,14 @@ defmodule MMGOWeb.BulletinBoardLive do
   alias MMGO.Academy
   alias MMGO.Clubs
 
+  @tabs ~w(court schedule clubs ranks)
+  @buildings [
+    %{key: "wizardry", name: "Факультет Чародейства", sub: "Две школы на выбор", glyph: "✦"},
+    %{key: "alchemy", name: "Факультет Алхимии", sub: "Варка, травы, перегонка", glyph: "⚗"},
+    %{key: "mastery", name: "Факультет Мастерства", sub: "Оружие, доспех, ловушки", glyph: "⚒"},
+    %{key: "academia", name: "Коллегия Исследований", sub: "Аспирантура и диссертации", glyph: "☉"},
+  ]
+
   @impl true
   def mount(_params, _session, socket) do
     character = socket.assigns[:current_character]
@@ -11,7 +19,8 @@ defmodule MMGOWeb.BulletinBoardLive do
 
     {:ok,
      socket
-     |> assign(:page_title, "Bulletin Board")
+     |> assign(:page_title, "Академия")
+     |> assign(:tab, "court")
      |> assign(:realm_id, realm_id)
      |> assign(:courses, load_courses(realm_id))
      |> assign(:upcoming_events, load_events(realm_id))
@@ -19,83 +28,164 @@ defmodule MMGOWeb.BulletinBoardLive do
   end
 
   @impl true
+  def handle_event("switch_tab", %{"tab" => tab}, socket) when tab in @tabs do
+    {:noreply, assign(socket, :tab, tab)}
+  end
+
+  @impl true
   def render(assigns) do
+    assigns = assign(assigns, :buildings, @buildings)
+
     ~H"""
-    <div class="bulletin-board">
-      <h1>Academy Bulletin Board</h1>
+    <div class="ac-shell">
+      <header class="ac-topbar">
+        <.link navigate={~p"/play"} class="ac-topbar__back" aria-label="На карту">‹</.link>
+        <div class="ac-topbar__crest">✦</div>
+        <div class="ac-topbar__title">
+          <p class="ac-topbar__kicker">Ministry of Magic</p>
+          <p class="ac-topbar__name">Академия</p>
+        </div>
+        <.link navigate={~p"/academy/study-desk"} class="inkbtn" style="font-size:0.72rem;padding:0.4rem 0.8rem;">
+          Мой стол →
+        </.link>
+      </header>
 
-      <section class="bb-section">
-        <h2>Courses This Term</h2>
-        <table class="bb-table">
-          <thead>
-            <tr>
-              <th>Course</th>
-              <th>Track</th>
-              <th>Professor</th>
-              <th>Source</th>
-            </tr>
-          </thead>
-          <tbody>
-            <%= for course <- @courses do %>
-              <tr>
-                <td>{course.title}</td>
-                <td>{course.track || "—"}</td>
-                <td>{course.npc_professor_code || "Player"}</td>
-                <td>{course.source}</td>
-              </tr>
-            <% end %>
-            <%= if @courses == [] do %>
-              <tr>
-                <td colspan="4">No courses available this term.</td>
-              </tr>
-            <% end %>
-          </tbody>
-        </table>
-      </section>
+      <nav class="ac-tabs">
+        <button class={"ac-tab #{if @tab == "court", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="court">Двор</button>
+        <button class={"ac-tab #{if @tab == "schedule", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="schedule">Расписание</button>
+        <button class={"ac-tab #{if @tab == "clubs", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="clubs">Клубы</button>
+        <button class={"ac-tab #{if @tab == "ranks", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="ranks">Рейтинг</button>
+      </nav>
 
-      <section class="bb-section">
-        <h2>Upcoming Club Events</h2>
-        <ul class="bb-list">
-          <%= for event <- @upcoming_events do %>
-            <li>
-              <strong>{event.club && event.club.name}</strong>
-              — {event.kind} @ {Calendar.strftime(event.scheduled_at, "%Y-%m-%d %H:%M UTC")}
-              <.link navigate={~p"/academy/club-events/#{event.id}"}>Join</.link>
-            </li>
-          <% end %>
-          <%= if @upcoming_events == [] do %>
-            <li>No upcoming events.</li>
-          <% end %>
-        </ul>
-      </section>
-
-      <section class="bb-section">
-        <h2>Cohort Leaderboard</h2>
-        <ol class="bb-list">
-          <%= for {enrollment, gpa, rank} <- @leaderboard do %>
-            <li>
-              #{rank} — character <code>{enrollment.character_id}</code> — GPA {gpa || "—"}
-            </li>
-          <% end %>
-          <%= if @leaderboard == [] do %>
-            <li>No rankings yet.</li>
-          <% end %>
-        </ol>
-      </section>
-
-      <div class="bb-nav">
-        <.link navigate={~p"/academy/study-desk"}>My Study Desk</.link>
+      <div class="ac-body">
+        <%= case @tab do %>
+          <% "court" -> %>
+            <.court buildings={@buildings} />
+          <% "schedule" -> %>
+            <.schedule courses={@courses} />
+          <% "clubs" -> %>
+            <.clubs events={@upcoming_events} />
+          <% "ranks" -> %>
+            <.ranks leaderboard={@leaderboard} />
+        <% end %>
       </div>
     </div>
     """
   end
 
-  defp load_courses(nil), do: []
+  attr :buildings, :list, required: true
 
+  defp court(assigns) do
+    ~H"""
+    <div>
+      <div class="ac-ornament">Факультеты</div>
+      <%= for b <- @buildings do %>
+        <button class="ac-building" type="button">
+          <div class="ac-building__icon">{b.glyph}</div>
+          <div class="ac-building__text">
+            <div class="ac-building__name">{b.name}</div>
+            <div class="ac-building__sub">{b.sub}</div>
+          </div>
+          <div class="ac-building__chevron">›</div>
+        </button>
+      <% end %>
+    </div>
+    """
+  end
+
+  attr :courses, :list, required: true
+
+  defp schedule(assigns) do
+    ~H"""
+    <div>
+      <div class="ac-ornament">Курсы семестра</div>
+      <%= if @courses == [] do %>
+        <div class="ac-empty">Курсов в этом семестре пока нет.</div>
+      <% else %>
+        <div class="ac-schedule">
+          <%= for {course, i} <- Enum.with_index(@courses) do %>
+            <div class={"ac-schedule__row #{if rem(i, 2) == 0, do: "", else: ""}"}>
+              <span class="ac-schedule__day">—</span>
+              <span class="ac-schedule__slot">{roman(i + 1)}</span>
+              <div>
+                <div class="ac-schedule__subj">{course.title}</div>
+                <div class="ac-schedule__meta">
+                  {course.track || "—"} · {course.npc_professor_code || "Игрок"}
+                </div>
+              </div>
+              <span class="ac-chip">{course.source}</span>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  attr :events, :list, required: true
+
+  defp clubs(assigns) do
+    ~H"""
+    <div>
+      <div class="ac-ornament">Объявления</div>
+      <%= if @events == [] do %>
+        <div class="ac-corkboard">
+          <div class="ac-notice" style="grid-column: span 2;">
+            <div class="ac-notice__pin"></div>
+            <div class="ac-notice__name" style="text-align:center; margin-top:0.5rem;">Пусто</div>
+            <div class="ac-notice__note" style="text-align:center;">Мероприятий пока нет</div>
+          </div>
+        </div>
+      <% else %>
+        <div class="ac-corkboard">
+          <%= for event <- @events do %>
+            <div class="ac-notice">
+              <div class="ac-notice__pin"></div>
+              <div class="ac-notice__name">{event.club && event.club.name}</div>
+              <div class="ac-notice__meta">{event.kind}</div>
+              <div class="ac-notice__note">
+                {Calendar.strftime(event.scheduled_at, "%d.%m %H:%M")}
+              </div>
+              <div style="margin-top:0.4rem;">
+                <.link navigate={~p"/academy/club-events/#{event.id}"} class="inkbtn" style="font-size:0.68rem;padding:0.28rem 0.6rem;">
+                  Участвовать
+                </.link>
+              </div>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  attr :leaderboard, :list, required: true
+
+  defp ranks(assigns) do
+    ~H"""
+    <div>
+      <div class="ac-ornament">Когорта</div>
+      <%= if @leaderboard == [] do %>
+        <div class="ac-empty">Рейтинга пока нет.</div>
+      <% else %>
+        <div class="ac-schedule">
+          <%= for {_enrollment, gpa, rank} <- @leaderboard do %>
+            <div class="ac-rank-row">
+              <span class="ac-rank-row__num">#{rank}</span>
+              <span class="ac-rank-row__name">Персонаж</span>
+              <span class="ac-rank-row__gpa">GPA {format_gpa(gpa)}</span>
+            </div>
+          <% end %>
+        </div>
+      <% end %>
+    </div>
+    """
+  end
+
+  defp load_courses(nil), do: []
   defp load_courses(realm_id), do: Academy.list_courses_for_realm(realm_id)
 
   defp load_events(nil), do: []
-
   defp load_events(realm_id), do: Clubs.list_upcoming_events_for_realm(realm_id)
 
   defp load_leaderboard(nil), do: []
@@ -120,5 +210,12 @@ defmodule MMGOWeb.BulletinBoardLive do
     |> Enum.sort_by(fn {_, gpa} -> -(gpa || 0.0) end)
     |> Enum.with_index(1)
     |> Enum.map(fn {{enrollment, gpa}, rank} -> {enrollment, gpa, rank} end)
+  end
+
+  defp format_gpa(nil), do: "—"
+  defp format_gpa(gpa), do: :erlang.float_to_binary(gpa, decimals: 2)
+
+  defp roman(n) do
+    ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"] |> Enum.at(n - 1, to_string(n))
   end
 end
