@@ -20,7 +20,7 @@ defmodule MMGO.Play do
   @browser_character_name "Альтаир Вейн"
   @starter_ration_code "play_map_ration"
   @starter_ration_quantity 24
-  @map_image_url "/images/demo-map.png"
+  @map_image_url "/images/mmgo2-map.png"
   @default_map_width 2_000
   @default_map_height 2_000
   @poll_interval_ms 10_000
@@ -90,6 +90,7 @@ defmodule MMGO.Play do
          active_journey: journey_payload(active_journey, now),
          available_routes:
            Enum.map(available_routes, &available_route_payload(&1, current_character)),
+         time: game_time(now),
          map: %{
            width: map_width(locations),
            height: map_height(locations),
@@ -285,6 +286,9 @@ defmodule MMGO.Play do
     cond do
       is_binary(realm.entry_location_id) ->
         Repo.get(Location, realm.entry_location_id)
+
+      location = Worlds.get_location_by_slug(realm.id, "capital") ->
+        location
 
       location = Worlds.get_location_by_slug(realm.id, "capital-city") ->
         location
@@ -591,12 +595,12 @@ defmodule MMGO.Play do
   end
 
   defp demo_route_hint(%Realm{} = realm) do
-    ash_crossing = Worlds.get_location_by_slug(realm.id, "ash-crossing")
-    tower = Worlds.get_location_by_slug(realm.id, "the-tower")
+    tower = Worlds.get_location_by_slug(realm.id, "tower")
+    lake_village = Worlds.get_location_by_slug(realm.id, "lake-village")
 
     cond do
-      ash_crossing && tower -> "Capital City → Ash Crossing → The Tower"
-      tower -> "Capital City → The Tower"
+      tower && lake_village -> "Столица → Малые Воды → Хутор"
+      tower -> "Столица → Башня"
       true -> "Start from the entry city and follow any reachable road."
     end
   end
@@ -652,6 +656,20 @@ defmodule MMGO.Play do
           {:error, utility_changeset(:spell_id, "spell is not inscribed in the active grimoire")}
         end
     end
+  end
+
+  defp game_time(%DateTime{} = now) do
+    game_day_seconds = Clock.game_days_to_real_seconds(1)
+    unix = DateTime.to_unix(now)
+    total_game_days = div(unix, game_day_seconds)
+    elapsed_in_day = rem(unix, game_day_seconds)
+    day_phase = if elapsed_in_day * 2 < game_day_seconds, do: "day", else: "night"
+
+    %{
+      day_phase: day_phase,
+      game_day: rem(total_game_days, 365) + 1,
+      game_year: div(total_game_days, 365) + 1
+    }
   end
 
   defp route_changeset(message) do

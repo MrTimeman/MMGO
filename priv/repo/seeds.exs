@@ -73,116 +73,175 @@ canonical_realm =
 
 {:ok, _treasury_account} = Economy.ensure_treasury_account(canonical_realm, 1_000_000_000)
 
-capital_city =
-  ensure_location.(canonical_realm, %{
-    slug: "capital-city",
-    name: "Capital City",
-    kind: :city,
-    x: 1159,
-    y: 872,
-    safe_zone: true
-  })
-
-amber_harbor =
-  ensure_location.(canonical_realm, %{
-    slug: "amber-harbor",
-    name: "Amber Harbor",
-    kind: :city,
-    x: 1136,
-    y: 640,
-    safe_zone: true
-  })
-
-ash_crossing =
-  ensure_location.(canonical_realm, %{
-    slug: "ash-crossing",
-    name: "Ash Crossing",
-    kind: :wilderness,
-    x: 1422,
-    y: 753,
-    safe_zone: false
-  })
-
-watchpoint =
-  ensure_location.(canonical_realm, %{
-    slug: "watchpoint",
-    name: "Watchpoint",
-    kind: :wilderness,
-    x: 1163,
-    y: 1193,
-    safe_zone: false
-  })
-
+# MMGO-2 world — coordinates are % × 2000 matching mmgo2-map.png
 tower =
   ensure_location.(canonical_realm, %{
-    slug: "the-tower",
-    name: "The Tower",
+    slug: "tower",
+    name: "Башня",
     kind: :tower,
-    x: 1760,
-    y: 448,
+    x: 890,
+    y: 420,
     safe_zone: false
+  })
+
+capital =
+  ensure_location.(canonical_realm, %{
+    slug: "capital",
+    name: "Столица",
+    kind: :city,
+    x: 920,
+    y: 930,
+    safe_zone: true
+  })
+
+east_town =
+  ensure_location.(canonical_realm, %{
+    slug: "east-town",
+    name: "Верхний Предел",
+    kind: :city,
+    x: 1540,
+    y: 510,
+    safe_zone: true
+  })
+
+kamen =
+  ensure_location.(canonical_realm, %{
+    slug: "kamen",
+    name: "Камни",
+    kind: :ruin,
+    x: 1760,
+    y: 740,
+    safe_zone: false
+  })
+
+lake_village =
+  ensure_location.(canonical_realm, %{
+    slug: "lake-village",
+    name: "Малые Воды",
+    kind: :village,
+    x: 1110,
+    y: 1220,
+    safe_zone: true
+  })
+
+windmill =
+  ensure_location.(canonical_realm, %{
+    slug: "windmill",
+    name: "Мельница",
+    kind: :village,
+    x: 1390,
+    y: 990,
+    safe_zone: true
+  })
+
+east_farms =
+  ensure_location.(canonical_realm, %{
+    slug: "east-farms",
+    name: "Жёлтые Поля",
+    kind: :village,
+    x: 1670,
+    y: 1100,
+    safe_zone: true
+  })
+
+hermitage =
+  ensure_location.(canonical_realm, %{
+    slug: "hermitage",
+    name: "Скит",
+    kind: :ruin,
+    x: 430,
+    y: 810,
+    safe_zone: false
+  })
+
+farmstead =
+  ensure_location.(canonical_realm, %{
+    slug: "farmstead",
+    name: "Хутор",
+    kind: :base,
+    x: 960,
+    y: 1780,
+    safe_zone: true
   })
 
 ensure_route.(canonical_realm, %{
-  name: "Capital Road to the Tower",
-  origin_location_id: capital_city.id,
+  name: "Дорога к Башне",
+  origin_location_id: capital.id,
   destination_location_id: tower.id,
-  travel_days: 10,
+  travel_days: 8,
   risk_level: 35,
   bidirectional: true
 })
 
 ensure_route.(canonical_realm, %{
-  name: "Merchant Wake",
-  origin_location_id: capital_city.id,
-  destination_location_id: amber_harbor.id,
+  name: "Путь к Малым Водам",
+  origin_location_id: capital.id,
+  destination_location_id: lake_village.id,
+  travel_days: 4,
+  risk_level: 10,
+  bidirectional: true
+})
+
+ensure_route.(canonical_realm, %{
+  name: "Тропа к Хутору",
+  origin_location_id: lake_village.id,
+  destination_location_id: farmstead.id,
+  travel_days: 4,
+  risk_level: 5,
+  bidirectional: true
+})
+
+ensure_route.(canonical_realm, %{
+  name: "Восточный тракт",
+  origin_location_id: capital.id,
+  destination_location_id: east_town.id,
+  travel_days: 5,
+  risk_level: 15,
+  bidirectional: true
+})
+
+ensure_route.(canonical_realm, %{
+  name: "Горная дорога",
+  origin_location_id: east_town.id,
+  destination_location_id: kamen.id,
+  travel_days: 3,
+  risk_level: 30,
+  bidirectional: true
+})
+
+ensure_route.(canonical_realm, %{
+  name: "Мельничный путь",
+  origin_location_id: capital.id,
+  destination_location_id: windmill.id,
   travel_days: 3,
   risk_level: 8,
   bidirectional: true
 })
 
 ensure_route.(canonical_realm, %{
-  name: "Ash Road",
-  origin_location_id: capital_city.id,
-  destination_location_id: ash_crossing.id,
-  travel_days: 4,
-  risk_level: 18,
+  name: "Полевая дорога",
+  origin_location_id: windmill.id,
+  destination_location_id: east_farms.id,
+  travel_days: 3,
+  risk_level: 10,
   bidirectional: true
 })
 
 ensure_route.(canonical_realm, %{
-  name: "Harbor Trace",
-  origin_location_id: amber_harbor.id,
-  destination_location_id: ash_crossing.id,
+  name: "Озёрная тропа",
+  origin_location_id: lake_village.id,
+  destination_location_id: windmill.id,
+  travel_days: 3,
+  risk_level: 12,
+  bidirectional: true
+})
+
+ensure_route.(canonical_realm, %{
+  name: "Культовый путь",
+  origin_location_id: tower.id,
+  destination_location_id: hermitage.id,
   travel_days: 5,
-  risk_level: 24,
-  bidirectional: true
-})
-
-ensure_route.(canonical_realm, %{
-  name: "Watchers' Spur",
-  origin_location_id: ash_crossing.id,
-  destination_location_id: watchpoint.id,
-  travel_days: 4,
-  risk_level: 46,
-  bidirectional: true
-})
-
-ensure_route.(canonical_realm, %{
-  name: "Pilgrim Stair",
-  origin_location_id: ash_crossing.id,
-  destination_location_id: tower.id,
-  travel_days: 7,
-  risk_level: 52,
-  bidirectional: true
-})
-
-ensure_route.(canonical_realm, %{
-  name: "High Watch Road",
-  origin_location_id: watchpoint.id,
-  destination_location_id: tower.id,
-  travel_days: 5,
-  risk_level: 68,
+  risk_level: 55,
   bidirectional: true
 })
 
