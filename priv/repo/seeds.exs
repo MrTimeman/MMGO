@@ -108,7 +108,7 @@ kamen =
   ensure_location.(canonical_realm, %{
     slug: "kamen",
     name: "Камни",
-    kind: :ruin,
+    kind: :wilderness,
     x: 1760,
     y: 740,
     safe_zone: false
@@ -118,7 +118,7 @@ lake_village =
   ensure_location.(canonical_realm, %{
     slug: "lake-village",
     name: "Малые Воды",
-    kind: :village,
+    kind: :wilderness,
     x: 1110,
     y: 1220,
     safe_zone: true
@@ -128,7 +128,7 @@ windmill =
   ensure_location.(canonical_realm, %{
     slug: "windmill",
     name: "Мельница",
-    kind: :village,
+    kind: :wilderness,
     x: 1390,
     y: 990,
     safe_zone: true
@@ -138,7 +138,7 @@ east_farms =
   ensure_location.(canonical_realm, %{
     slug: "east-farms",
     name: "Жёлтые Поля",
-    kind: :village,
+    kind: :wilderness,
     x: 1670,
     y: 1100,
     safe_zone: true
@@ -148,7 +148,7 @@ hermitage =
   ensure_location.(canonical_realm, %{
     slug: "hermitage",
     name: "Скит",
-    kind: :ruin,
+    kind: :wilderness,
     x: 430,
     y: 810,
     safe_zone: false
