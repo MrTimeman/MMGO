@@ -334,6 +334,17 @@
   background: #c8a44a;
 }
 
+.mmgo-action-notice {
+  margin: 0 0 .5rem;
+  padding: .4rem .6rem;
+  border-radius: .4rem;
+  background: rgba(0, 0, 0, .07);
+  color: #7a5c38;
+  font-size: .78rem;
+  font-style: italic;
+  text-align: center;
+}
+
 .mmgo-map-speed-btn {
   width: 100%;
   margin-top: .6rem;

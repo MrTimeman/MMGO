@@ -26,11 +26,8 @@ defmodule MMGOWeb.Layouts do
     ~H"""
     <%= case @variant do %>
       <% :game -> %>
-        <div class="min-h-screen bg-[var(--color-bg)] text-[var(--color-text)]">
-          <main class="min-h-screen">
-            {render_slot(@inner_block)}
-          </main>
-
+        <div class="h-[100dvh] overflow-hidden bg-[var(--color-bg)] text-[var(--color-text)]">
+          {render_slot(@inner_block)}
           <.flash_group flash={@flash} id="game-flash-group" />
         </div>
       <% :marketing -> %>

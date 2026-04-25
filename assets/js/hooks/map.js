@@ -75,7 +75,7 @@ const KIND_ACTIONS = {
     { key: "library", title: "Библиотека Башни", note: "старые записи" },
   ],
   city: [
-    { key: "academy", title: "В Академию", note: "учебные залы" },
+    { key: "academy", title: "В Академию", note: "учебные залы", href: "/academy/bulletin-board" },
     { key: "market", title: "На рынок", note: "лавки и торговцы" },
     { key: "tavern", title: "В таверну", note: "новости и наём" },
   ],
@@ -260,8 +260,14 @@ export const MapHook = {
 
     this.onPointerUp = event => {
       if (!this.drag || this.drag.pointerId !== event.pointerId) return
+      const dx = event.clientX - this.drag.startX
+      const dy = event.clientY - this.drag.startY
+      const wasTap = Math.hypot(dx, dy) < 6
       this.drag = null
       this.viewport.classList.remove("is-dragging")
+      if (wasTap && this.infoPanel.classList.contains("is-visible")) {
+        this.closePanel()
+      }
     }
 
     window.addEventListener("pointermove", this.onPointerMove)
@@ -695,7 +701,18 @@ export const MapHook = {
         dom("span", "mmgo-location-action__title", { text: action.title }),
         dom("span", "mmgo-location-action__note", { text: action.note || "" })
       )
-      button.addEventListener("click", () => this.showToast(action.title))
+      button.addEventListener("click", () => {
+        if (action.href) {
+          window.location.href = action.href
+        } else {
+          let notice = container.querySelector(".mmgo-action-notice")
+          if (!notice) {
+            notice = dom("p", "mmgo-action-notice")
+            container.prepend(notice)
+          }
+          notice.textContent = `${action.title} — пока недоступно`
+        }
+      })
       container.append(button)
     })
     const close = dom("button", "mmgo-location-action", { type: "button", text: "Обратно к карте" })
