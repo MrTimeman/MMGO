@@ -156,6 +156,24 @@ defmodule MMGO.Play do
     {:error, utility_changeset(:spell_id, "spell_id is required")}
   end
 
+  def fast_arrive(%Character{} = character) do
+    case Travel.active_journey(character.id) do
+      nil ->
+        {:error, :no_active_journey}
+
+      %Journey{} = journey ->
+        case Travel.complete_journey_by_id(journey.id, force: true) do
+          {:ok, _result} ->
+            character.id
+            |> get_character()
+            |> then(&{:ok, &1})
+
+          {:error, reason} ->
+            {:error, reason}
+        end
+    end
+  end
+
   def reset_demo(%Character{} = character, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 

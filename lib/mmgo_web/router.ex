@@ -54,6 +54,7 @@ defmodule MMGOWeb.Router do
     post "/journeys", PlayApiController, :create_journey
     post "/utility-spells", PlayApiController, :cast_utility_spell
     post "/demo/reset", PlayDemoController, :reset
+    post "/demo/arrive", PlayApiController, :fast_arrive
   end
 
   # Enable LiveDashboard in development

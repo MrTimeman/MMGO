@@ -51,7 +51,6 @@
 }
 
 .mmgo-map-image,
-.mmgo-map-routes,
 .mmgo-map-highlight,
 .mmgo-map-markers,
 .mmgo-map-ambient {
@@ -87,99 +86,49 @@
     linear-gradient(180deg, rgba(8, 10, 28, .18), rgba(2, 3, 10, .62));
 }
 
-.mmgo-map-header {
+.mmgo-map-recenter-fab {
   position: absolute;
   z-index: 20;
-  top: 0;
-  left: 0;
-  right: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: .75rem;
-  padding: 1rem;
-  background: linear-gradient(180deg, rgba(13, 10, 7, .84), rgba(13, 10, 7, 0));
-  pointer-events: none;
-}
-
-.mmgo-map-header > * {
-  pointer-events: auto;
-}
-
-.mmgo-map-kicker {
-  font-family: var(--font-display);
-  font-size: .68rem;
-  letter-spacing: .2em;
-  text-transform: uppercase;
-  color: #c8a44a;
-}
-
-.mmgo-map-header h2 {
-  margin-top: .25rem;
-  font-family: var(--font-display);
-  font-size: 2rem;
-  line-height: .96;
-  color: #f1dfb8;
-  text-shadow: 0 2px 18px rgba(0, 0, 0, .55);
-}
-
-.mmgo-map-controls {
-  display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: .35rem;
-  max-width: 8.5rem;
-}
-
-.mmgo-map-control {
-  min-width: 2.05rem;
-  height: 2.05rem;
-  border: 1px solid rgba(200, 164, 74, .28);
-  border-radius: .55rem;
-  background: rgba(26, 18, 11, .82);
-  color: #e8d5b0;
-  font-family: var(--font-display);
-  font-size: .88rem;
-  cursor: pointer;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, .28);
-  transition: transform 160ms ease, border-color 160ms ease, color 160ms ease, background 160ms ease;
-}
-
-.mmgo-map-control:hover {
-  transform: translateY(-1px);
-  border-color: rgba(232, 196, 106, .72);
+  right: 1rem;
+  bottom: 1rem;
+  width: 3rem;
+  height: 3rem;
+  border: 1px solid rgba(200, 164, 74, .38);
+  border-radius: 999px;
+  background: rgba(26, 18, 11, .88);
   color: #e8c46a;
-  background: rgba(46, 36, 24, .9);
+  font-size: 1.25rem;
+  cursor: pointer;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, .45);
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-.mmgo-map-control--wide {
-  min-width: 4.6rem;
-  font-size: .72rem;
+.mmgo-map-recenter-fab:hover {
+  transform: scale(1.08);
+  border-color: rgba(232, 196, 106, .72);
+  background: rgba(46, 36, 24, .95);
 }
 
-.mmgo-map-road,
-.mmgo-map-route {
+.mmgo-route-glow,
+.mmgo-route-dashes {
   fill: none;
   stroke-linecap: round;
   stroke-linejoin: round;
 }
 
-.mmgo-map-road {
-  stroke: rgba(62, 36, 16, .34);
-  stroke-width: .28;
-  stroke-dasharray: .55 .8;
+.mmgo-route-glow {
+  stroke: rgba(232, 196, 106, .45);
+  stroke-width: 6;
+  filter: blur(3px);
 }
 
-.mmgo-map-road--cult {
-  stroke: rgba(110, 35, 80, .45);
-  stroke-dasharray: .35 1.05;
-}
-
-.mmgo-map-route {
-  stroke: #c8a44a;
-  stroke-width: .58;
-  stroke-dasharray: 1.2 .75;
-  filter: drop-shadow(0 0 2px rgba(232, 196, 106, .75));
+.mmgo-route-dashes {
+  stroke: #e8c46a;
+  stroke-width: 2.5;
+  stroke-dasharray: 8 6;
   animation: mmgo-route-flow 1.1s linear infinite;
 }
 
@@ -226,12 +175,16 @@
   background: radial-gradient(circle at 35% 28%, #8e93d7, #3e456f);
 }
 
-.mmgo-map-marker--ruin .mmgo-map-marker__pin {
+.mmgo-map-marker--wilderness .mmgo-map-marker__pin {
   background: radial-gradient(circle at 35% 28%, #9b958f, #49433f);
 }
 
-.mmgo-map-marker--camp .mmgo-map-marker__pin {
+.mmgo-map-marker--base .mmgo-map-marker__pin {
   background: radial-gradient(circle at 35% 28%, #67a35c, #2c5b31);
+}
+
+.mmgo-map-marker--dungeon_entrance .mmgo-map-marker__pin {
+  background: radial-gradient(circle at 35% 28%, #7e4a8a, #391a3f);
 }
 
 .mmgo-map-marker__label {
@@ -381,6 +334,25 @@
   background: #c8a44a;
 }
 
+.mmgo-map-speed-btn {
+  width: 100%;
+  margin-top: .6rem;
+  border: 1px solid rgba(200, 164, 74, .45);
+  border-radius: .55rem;
+  padding: .65rem .9rem;
+  background: rgba(46, 36, 24, .8);
+  color: #e8c46a;
+  font-size: .85rem;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease, border-color 150ms ease;
+}
+
+.mmgo-map-speed-btn:hover {
+  transform: translateY(-1px);
+  background: rgba(62, 48, 28, .9);
+  border-color: rgba(232, 196, 106, .7);
+}
+
 .mmgo-location-hero {
   height: 6.2rem;
   display: flex;
@@ -519,7 +491,7 @@
 
 @keyframes mmgo-route-flow {
   to {
-    stroke-dashoffset: -1.95;
+    stroke-dashoffset: -28;
   }
 }
 

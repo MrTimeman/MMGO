@@ -48,6 +48,7 @@ defmodule MMGOWeb.PlayLive do
       data-map-src={~p"/images/mmgo2-map.png"}
       data-state-path={~p"/api/play/state"}
       data-journeys-path={~p"/api/play/journeys"}
+      data-fast-arrive-path={~p"/api/play/demo/arrive"}
     >
     </div>
     """

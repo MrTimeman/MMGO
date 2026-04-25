@@ -77,6 +77,29 @@ defmodule MMGOWeb.PlayApiController do
     })
   end
 
+  def fast_arrive(conn, _params) do
+    with {:ok, conn, character} <- PlaySession.fetch_current_character(conn),
+         {:ok, arrived_character} <- Play.fast_arrive(character),
+         {:ok, state} <- Play.map_state(arrived_character) do
+      json(conn, %{ok: true, state: state})
+    else
+      {:error, :no_active_journey} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{ok: false, error: "no active journey"})
+
+      {:error, %Ecto.Changeset{} = changeset} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{ok: false, error: "validation_failed", details: format_changeset(changeset)})
+
+      {:error, reason} ->
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{ok: false, error: to_string(reason)})
+    end
+  end
+
   defp format_changeset(changeset) do
     Ecto.Changeset.traverse_errors(changeset, fn {message, opts} ->
       Enum.reduce(opts, message, fn {key, value}, acc ->

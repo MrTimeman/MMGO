@@ -1,5 +1,6 @@
-// MMGO-2 road paths — percentage coords matching mmgo2-map.png (2000×2000 source)
-// Each path traces the actual road artwork between two location slugs.
+// MMGO-2 road paths — percentage coords matching mmgo2-map.png (2000×2000 source).
+// Roads are already painted on the bitmap; these control points are used only for
+// the route-highlight glow and player travel animation.
 const ROAD_PATHS = [
   { a: "capital", b: "tower", pts: [[46.0, 46.5], [46.5, 40], [46.8, 32], [45.2, 25], [44.5, 21.0]] },
   { a: "capital", b: "lake-village", pts: [[46.0, 46.5], [48, 51], [51, 56], [55.5, 61.0]] },
@@ -12,7 +13,7 @@ const ROAD_PATHS = [
   { a: "tower", b: "hermitage", pts: [[44.5, 21.0], [38, 27], [32, 32], [26, 37], [21.5, 40.5]], dashed: true },
 ]
 
-// Rich display content keyed by location slug
+// Rich display content keyed by backend location slug
 const SLUG_DISPLAY = {
   tower: {
     icon: "♜", typeLabel: "Башня", subtitle: "Единственное место, где работает магия",
@@ -67,7 +68,6 @@ const SLUG_DISPLAY = {
   },
 }
 
-// Actions per location kind (shown in location event panel)
 const KIND_ACTIONS = {
   tower: [
     { key: "party", title: "Собрать / найти отряд", note: "перед входом" },
@@ -79,22 +79,10 @@ const KIND_ACTIONS = {
     { key: "market", title: "На рынок", note: "лавки и торговцы" },
     { key: "tavern", title: "В таверну", note: "новости и наём" },
   ],
-  village: [
-    { key: "rest", title: "Отдохнуть", note: "восстановить усталость" },
-    { key: "trade", title: "Осмотреть рынок", note: "товары" },
-  ],
-  ruin: [
-    { key: "inspect", title: "Осмотреть место", note: "следы прошлого" },
-    { key: "camp", title: "Разбить лагерь", note: "опасно после заката" },
-  ],
   base: [
     { key: "base", title: "Войти в дом", note: "личные комнаты", accent: true },
     { key: "forge", title: "В мастерскую", note: "крафт и ремонт" },
     { key: "garden", title: "Огород и запасы", note: "провиант" },
-  ],
-  camp: [
-    { key: "base", title: "Войти в дом", note: "личные комнаты", accent: true },
-    { key: "forge", title: "В мастерскую", note: "крафт и ремонт" },
   ],
   wilderness: [
     { key: "gather", title: "Добыча ресурсов", note: "обыскать округу" },
@@ -104,28 +92,20 @@ const KIND_ACTIONS = {
 
 const ROMAN = ["I", "II", "III", "IV", "V", "VI", "VII", "VIII", "IX", "X"]
 const romanize = n => ROMAN[n - 1] || String(n)
-
-const riskLabel = level => {
-  if (level >= 60) return "высокий риск"
-  if (level >= 30) return "средний риск"
-  return "низкий риск"
-}
-
-const csrfToken = () =>
-  document.querySelector("meta[name='csrf-token']")?.getAttribute("content") || ""
-
-const clamp = (value, min, max) => Math.max(min, Math.min(max, value))
+const riskLabel = level => (level >= 60 ? "высокий риск" : level >= 30 ? "средний риск" : "низкий риск")
+const csrfToken = () => document.querySelector("meta[name='csrf-token']")?.getAttribute("content") || ""
+const clamp = (v, lo, hi) => Math.max(lo, Math.min(hi, v))
 
 const dom = (tag, className, attrs = {}) => {
-  const node = document.createElement(tag)
-  if (className) node.className = className
-  Object.entries(attrs).forEach(([key, value]) => {
-    if (key === "text") node.textContent = value
-    else if (key === "html") node.innerHTML = value
-    else if (key === "style") Object.assign(node.style, value)
-    else node.setAttribute(key, value)
+  const el = document.createElement(tag)
+  if (className) el.className = className
+  Object.entries(attrs).forEach(([k, v]) => {
+    if (k === "text") el.textContent = v
+    else if (k === "html") el.innerHTML = v
+    else if (k === "style") Object.assign(el.style, v)
+    else el.setAttribute(k, v)
   })
-  return node
+  return el
 }
 
 const svgPath = pts => {
@@ -144,9 +124,9 @@ const samplePath = (pts, t) => {
   const lengths = []
   let total = 0
   for (let i = 0; i < pts.length - 1; i++) {
-    const length = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
-    lengths.push(length)
-    total += length
+    const len = Math.hypot(pts[i + 1][0] - pts[i][0], pts[i + 1][1] - pts[i][1])
+    lengths.push(len)
+    total += len
   }
   let travelled = 0
   const target = t * total
@@ -164,13 +144,14 @@ const samplePath = (pts, t) => {
   return { x: last[0], y: last[1] }
 }
 
-const findRoadPath = (slugA, slugB) =>
-  ROAD_PATHS.find(r => (r.a === slugA && r.b === slugB) || (r.a === slugB && r.b === slugA)) || null
+const findRoadPath = (a, b) =>
+  ROAD_PATHS.find(r => (r.a === a && r.b === b) || (r.a === b && r.b === a)) || null
 
 export const MapHook = {
   mounted() {
     this.statePath = this.el.dataset.statePath
     this.journeysPath = this.el.dataset.journeysPath
+    this.fastArrivePath = this.el.dataset.fastArrivePath
 
     this.state = null
     this.locations = []
@@ -215,10 +196,7 @@ export const MapHook = {
       alt: "",
       draggable: "false",
     })
-    this.routeLayer = dom("svg", "mmgo-map-routes", {
-      viewBox: "0 0 100 100",
-      preserveAspectRatio: "none",
-    })
+    // Highlight-only SVG — roads come from the bitmap, not SVG
     this.highlightLayer = dom("svg", "mmgo-map-highlight", {
       viewBox: "0 0 100 100",
       preserveAspectRatio: "none",
@@ -227,66 +205,26 @@ export const MapHook = {
     this.ambientLayer = dom("div", "mmgo-map-ambient")
     this.player = dom("div", "mmgo-map-player", { text: "◆" })
 
-    this.stage.append(
-      this.image,
-      this.routeLayer,
-      this.highlightLayer,
-      this.markerLayer,
-      this.player,
-      this.ambientLayer
-    )
+    this.stage.append(this.image, this.highlightLayer, this.markerLayer, this.player, this.ambientLayer)
     this.viewport.append(this.stage)
 
-    this.header = dom("div", "mmgo-map-header")
-    this.header.append(
-      dom("div", null, {
-        html: `<p class="mmgo-map-kicker">Карта княжества</p><h2>Дорога в Морвель</h2>`,
-      }),
-      this.headerControls()
-    )
+    // Single floating recenter FAB — replaces the desktop control bar
+    this.recenterFab = dom("button", "mmgo-map-recenter-fab", {
+      type: "button",
+      "aria-label": "Центр на игроке",
+      text: "◎",
+    })
+    this.recenterFab.addEventListener("click", () => {
+      if (this.currentLocationId) this.centerOn(this.currentLocationId, { scale: 1.18 })
+    })
 
     this.infoPanel = dom("aside", "mmgo-map-info", { id: "map-location-drawer" })
     this.toast = dom("div", "mmgo-map-toast")
 
-    this.el.append(this.viewport, this.header, this.infoPanel, this.toast)
-    this.drawRoads()
-  },
-
-  headerControls() {
-    const controls = dom("div", "mmgo-map-controls")
-    this.zoomOutButton = dom("button", "mmgo-map-control", {
-      id: "map-zoom-out",
-      type: "button",
-      text: "−",
-      "aria-label": "Отдалить карту",
-    })
-    this.zoomInButton = dom("button", "mmgo-map-control", {
-      id: "map-zoom-in",
-      type: "button",
-      text: "+",
-      "aria-label": "Приблизить карту",
-    })
-    this.recenterButton = dom("button", "mmgo-map-control", {
-      id: "map-recenter",
-      type: "button",
-      text: "◎",
-      "aria-label": "Вернуть карту к персонажу",
-    })
-    this.nightIndicator = dom("span", "mmgo-map-control mmgo-map-control--wide mmgo-map-control--indicator", {
-      text: "☀ День",
-      "aria-live": "polite",
-    })
-    controls.append(this.zoomOutButton, this.zoomInButton, this.recenterButton, this.nightIndicator)
-    return controls
+    this.el.append(this.viewport, this.recenterFab, this.infoPanel, this.toast)
   },
 
   bindControls() {
-    this.zoomInButton.addEventListener("click", () => this.zoomBy(0.18))
-    this.zoomOutButton.addEventListener("click", () => this.zoomBy(-0.18))
-    this.recenterButton.addEventListener("click", () => {
-      if (this.currentLocationId) this.centerOn(this.currentLocationId, { scale: 1.18 })
-    })
-
     this.viewport.addEventListener(
       "wheel",
       event => {
@@ -296,9 +234,10 @@ export const MapHook = {
       { passive: false }
     )
 
+    // Drag to pan
     this.viewport.addEventListener("pointerdown", event => {
       if (event.button !== 0) return
-      if (event.target.closest(".mmgo-map-marker, .mmgo-map-info, .mmgo-map-controls")) return
+      if (event.target.closest(".mmgo-map-marker, .mmgo-map-info, .mmgo-map-recenter-fab")) return
       this.viewport.setPointerCapture(event.pointerId)
       this.drag = {
         pointerId: event.pointerId,
@@ -327,6 +266,32 @@ export const MapHook = {
 
     window.addEventListener("pointermove", this.onPointerMove)
     window.addEventListener("pointerup", this.onPointerUp)
+
+    // Pinch-to-zoom (touch)
+    let pinchDist0 = null
+    let pinchScale0 = 1
+    this.viewport.addEventListener("touchstart", e => {
+      if (e.touches.length === 2) {
+        pinchDist0 = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        )
+        pinchScale0 = this.scale
+      }
+    }, { passive: true })
+    this.viewport.addEventListener("touchmove", e => {
+      if (e.touches.length === 2 && pinchDist0) {
+        const dist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        )
+        this.scale = clamp(pinchScale0 * (dist / pinchDist0), 0.92, 1.95)
+        this.applyTransform()
+      }
+    }, { passive: true })
+    this.viewport.addEventListener("touchend", e => {
+      if (e.touches.length < 2) pinchDist0 = null
+    }, { passive: true })
   },
 
   async fetchState(silent = false) {
@@ -350,7 +315,6 @@ export const MapHook = {
     if (!state) return
 
     const { width, height } = state.map
-
     this.locations = state.map.locations.map(loc => ({
       ...loc,
       xPct: (loc.x / width) * 100,
@@ -358,7 +322,6 @@ export const MapHook = {
     }))
     this.locById = Object.fromEntries(this.locations.map(l => [l.id, l]))
     this.slugById = Object.fromEntries(this.locations.map(l => [l.id, l.slug]))
-
     this.currentLocationId = state.current_location?.id || null
 
     this.applyDayPhase(state.time?.day_phase || "day")
@@ -388,16 +351,6 @@ export const MapHook = {
     this.schedulePoll(state)
   },
 
-  drawRoads() {
-    this.routeLayer.innerHTML = ""
-    ROAD_PATHS.forEach(road => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
-      path.setAttribute("d", svgPath(road.pts))
-      path.setAttribute("class", road.dashed ? "mmgo-map-road mmgo-map-road--cult" : "mmgo-map-road")
-      this.routeLayer.append(path)
-    })
-  },
-
   drawMarkers() {
     this.markerLayer.innerHTML = ""
     this.locations.forEach((loc, index) => {
@@ -408,7 +361,14 @@ export const MapHook = {
 
       const marker = dom(
         "button",
-        `mmgo-map-marker mmgo-map-marker--${loc.kind}${isCurrent ? " is-current" : ""}${isSelected ? " is-selected" : ""}`,
+        [
+          "mmgo-map-marker",
+          `mmgo-map-marker--${loc.kind}`,
+          isCurrent ? "is-current" : "",
+          isSelected ? "is-selected" : "",
+        ]
+          .filter(Boolean)
+          .join(" "),
         {
           id: `map-location-${loc.id}`,
           type: "button",
@@ -463,32 +423,38 @@ export const MapHook = {
     const targetSlug = this.slugById[targetId]
     if (!currentSlug || !targetSlug) return
 
-    const roads = this.findVisualRoute(currentSlug, targetSlug)
-    roads.forEach(edge => {
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path")
-      path.setAttribute("d", svgPath(this.roadPtsForEdge(edge)))
-      path.setAttribute("class", "mmgo-map-route")
-      this.highlightLayer.append(path)
-    })
+    const edges = this.findVisualRoute(currentSlug, targetSlug)
+    if (!edges.length) return
+
+    const d = edges.map(edge => svgPath(this.roadPtsForEdge(edge))).join(" ")
+
+    // Zip-style: soft amber glow + animated dashed overlay
+    const glow = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    glow.setAttribute("d", d)
+    glow.setAttribute("class", "mmgo-route-glow")
+
+    const dashes = document.createElementNS("http://www.w3.org/2000/svg", "path")
+    dashes.setAttribute("d", d)
+    dashes.setAttribute("class", "mmgo-route-dashes")
+
+    this.highlightLayer.append(glow, dashes)
   },
 
   findVisualRoute(fromSlug, toSlug) {
-    const adjacency = {}
+    const adj = {}
     ROAD_PATHS.forEach(road => {
-      adjacency[road.a] = adjacency[road.a] || []
-      adjacency[road.b] = adjacency[road.b] || []
-      adjacency[road.a].push({ to: road.b, road })
-      adjacency[road.b].push({ to: road.a, road })
+      ;(adj[road.a] = adj[road.a] || []).push({ to: road.b, road })
+      ;(adj[road.b] = adj[road.b] || []).push({ to: road.a, road })
     })
     const queue = [{ id: fromSlug, roads: [] }]
     const seen = new Set([fromSlug])
     while (queue.length) {
-      const current = queue.shift()
-      if (current.id === toSlug) return current.roads
-      ;(adjacency[current.id] || []).forEach(next => {
+      const cur = queue.shift()
+      if (cur.id === toSlug) return cur.roads
+      ;(adj[cur.id] || []).forEach(next => {
         if (seen.has(next.to)) return
         seen.add(next.to)
-        queue.push({ id: next.to, roads: [...current.roads, { road: next.road, from: current.id, to: next.to }] })
+        queue.push({ id: next.to, roads: [...cur.roads, { road: next.road, from: cur.id, to: next.to }] })
       })
     }
     return []
@@ -523,9 +489,7 @@ export const MapHook = {
       )
     } else {
       this.infoPanel.append(
-        dom("p", "mmgo-map-info__body", {
-          text: "Нет прямого маршрута отсюда. Сначала доберитесь ближе.",
-        })
+        dom("p", "mmgo-map-info__body", { text: "Нет прямого маршрута отсюда." })
       )
     }
 
@@ -537,10 +501,7 @@ export const MapHook = {
     this.pendingTravel = true
 
     const btn = this.infoPanel.querySelector("#map-start-travel")
-    if (btn) {
-      btn.disabled = true
-      btn.textContent = "Прокладываем..."
-    }
+    if (btn) { btn.disabled = true; btn.textContent = "Прокладываем..." }
 
     try {
       const res = await fetch(this.journeysPath, {
@@ -562,10 +523,7 @@ export const MapHook = {
     } catch (err) {
       this.pendingTravel = false
       this.showToast(err.message || "Не удалось начать переход.")
-      if (btn) {
-        btn.disabled = false
-        btn.textContent = "Отправиться →"
-      }
+      if (btn) { btn.disabled = false; btn.textContent = "Отправиться →" }
     }
   },
 
@@ -578,7 +536,34 @@ export const MapHook = {
       </div>
       <p class="mmgo-map-info__body">${j.remaining_game_days} игр. дн. осталось</p>
       <div class="mmgo-map-progress"><span style="width:${j.percent_complete}%"></span></div>
+      <button type="button" class="mmgo-map-speed-btn" id="map-speed-btn">⚡ Прибыть (тест)</button>
     `
+    this.infoPanel.querySelector("#map-speed-btn")?.addEventListener("click", () => this.fastArrive())
+  },
+
+  async fastArrive() {
+    if (!this.fastArrivePath) return
+    const btn = this.infoPanel.querySelector("#map-speed-btn")
+    if (btn) { btn.disabled = true; btn.textContent = "Прибываем..." }
+    try {
+      const res = await fetch(this.fastArrivePath, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "x-csrf-token": csrfToken(),
+        },
+        body: "{}",
+      })
+      const payload = await res.json()
+      if (!res.ok || !payload.ok) throw new Error(payload.error || "ошибка")
+      this.state = payload.state
+      this.syncFromState()
+    } catch (err) {
+      this.showToast(err.message || "Ошибка ускорения.")
+      if (btn) { btn.disabled = false; btn.textContent = "⚡ Прибыть (тест)" }
+    }
   },
 
   startTravelLoop(state) {
@@ -601,8 +586,7 @@ export const MapHook = {
     if (this.animFrame) window.cancelAnimationFrame(this.animFrame)
 
     const tick = () => {
-      const now = Date.now()
-      const t = clamp((now - startedMs) / (arrivalMs - startedMs), 0, 1)
+      const t = clamp((Date.now() - startedMs) / (arrivalMs - startedMs), 0, 1)
 
       if (routePts) {
         const pos = samplePath(routePts, t)
@@ -657,9 +641,6 @@ export const MapHook = {
     if (this.isNight === isNight) return
     this.isNight = isNight
     this.el.classList.toggle("is-night", isNight)
-    if (this.nightIndicator) {
-      this.nightIndicator.textContent = isNight ? "☾ Ночь" : "☀ День"
-    }
   },
 
   updateTimePill(timeState) {
