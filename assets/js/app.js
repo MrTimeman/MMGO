@@ -17,6 +17,13 @@
 // If you have dependencies that try to import CSS, esbuild will generate a separate `app.css` file.
 // To load it, simply add a second `<link>` to your `root.html.heex` file.
 
+// Yandex Browser blocker
+if (/YaBrowser/i.test(navigator.userAgent)) {
+  document.addEventListener("DOMContentLoaded", () => {
+    document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1a2e;color:#fff;font-size:2rem;font-family:sans-serif;text-align:center;padding:2rem;">Ахахахахха яндекс браузер лол)))</div>`
+  })
+}
+
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
@@ -27,6 +34,28 @@ import topbar from "../vendor/topbar"
 import {Hooks} from "./hooks"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
+const bindTelegramSession = () => {
+  const initData = window.Telegram?.WebApp?.initData
+  if (!initData || window.sessionStorage.getItem("mmgo:telegram-session-bound") === initData) return
+
+  fetch("/api/play/telegram-session", {
+    method: "POST",
+    credentials: "same-origin",
+    headers: {
+      accept: "application/json",
+      "content-type": "application/json",
+      "x-csrf-token": csrfToken,
+    },
+    body: JSON.stringify({init_data: initData}),
+  })
+    .then(response => response.ok ? response.json() : Promise.reject(response))
+    .then(payload => {
+      if (payload.ok) window.sessionStorage.setItem("mmgo:telegram-session-bound", initData)
+    })
+    .catch(() => {})
+}
+
+bindTelegramSession()
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
