@@ -1,6 +1,7 @@
 defmodule MMGOWeb.PlaySession do
   import Plug.Conn
 
+  alias MMGO.Accounts.Character
   alias MMGO.Play
 
   @session_key :play_character_id
@@ -15,6 +16,12 @@ defmodule MMGOWeb.PlaySession do
 
       _other ->
         create_browser_character(conn)
+    end
+  end
+
+  def bind_character(conn, %Character{} = character) do
+    with {:ok, character} <- Play.prepare_character(character) do
+      {:ok, put_session(conn, @session_key, character.id), character}
     end
   end
 

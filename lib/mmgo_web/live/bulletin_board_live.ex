@@ -9,7 +9,12 @@ defmodule MMGOWeb.BulletinBoardLive do
     %{key: "wizardry", name: "Факультет Чародейства", sub: "Две школы на выбор", glyph: "✦"},
     %{key: "alchemy", name: "Факультет Алхимии", sub: "Варка, травы, перегонка", glyph: "⚗"},
     %{key: "mastery", name: "Факультет Мастерства", sub: "Оружие, доспех, ловушки", glyph: "⚒"},
-    %{key: "academia", name: "Коллегия Исследований", sub: "Аспирантура и диссертации", glyph: "☉"},
+    %{
+      key: "academia",
+      name: "Коллегия Исследований",
+      sub: "Аспирантура и диссертации",
+      glyph: "☉"
+    }
   ]
 
   @impl true
@@ -45,16 +50,44 @@ defmodule MMGOWeb.BulletinBoardLive do
           <p class="ac-topbar__kicker">Ministry of Magic</p>
           <p class="ac-topbar__name">Академия</p>
         </div>
-        <.link navigate={~p"/academy/study-desk"} class="inkbtn" style="font-size:0.72rem;padding:0.4rem 0.8rem;">
+        <.link
+          navigate={~p"/academy/study-desk"}
+          class="inkbtn"
+          style="font-size:0.72rem;padding:0.4rem 0.8rem;"
+        >
           Мой стол →
         </.link>
       </header>
 
       <nav class="ac-tabs">
-        <button class={"ac-tab #{if @tab == "court", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="court">Двор</button>
-        <button class={"ac-tab #{if @tab == "schedule", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="schedule">Расписание</button>
-        <button class={"ac-tab #{if @tab == "clubs", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="clubs">Клубы</button>
-        <button class={"ac-tab #{if @tab == "ranks", do: "is-active"}"} phx-click="switch_tab" phx-value-tab="ranks">Рейтинг</button>
+        <button
+          class={"ac-tab #{if @tab == "court", do: "is-active"}"}
+          phx-click="switch_tab"
+          phx-value-tab="court"
+        >
+          Двор
+        </button>
+        <button
+          class={"ac-tab #{if @tab == "schedule", do: "is-active"}"}
+          phx-click="switch_tab"
+          phx-value-tab="schedule"
+        >
+          Расписание
+        </button>
+        <button
+          class={"ac-tab #{if @tab == "clubs", do: "is-active"}"}
+          phx-click="switch_tab"
+          phx-value-tab="clubs"
+        >
+          Клубы
+        </button>
+        <button
+          class={"ac-tab #{if @tab == "ranks", do: "is-active"}"}
+          phx-click="switch_tab"
+          phx-value-tab="ranks"
+        >
+          Рейтинг
+        </button>
       </nav>
 
       <div class="ac-body">
@@ -147,7 +180,11 @@ defmodule MMGOWeb.BulletinBoardLive do
                 {Calendar.strftime(event.scheduled_at, "%d.%m %H:%M")}
               </div>
               <div style="margin-top:0.4rem;">
-                <.link navigate={~p"/academy/club-events/#{event.id}"} class="inkbtn" style="font-size:0.68rem;padding:0.28rem 0.6rem;">
+                <.link
+                  navigate={~p"/academy/club-events/#{event.id}"}
+                  class="inkbtn"
+                  style="font-size:0.68rem;padding:0.28rem 0.6rem;"
+                >
                   Участвовать
                 </.link>
               </div>

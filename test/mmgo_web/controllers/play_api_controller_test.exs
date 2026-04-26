@@ -198,6 +198,177 @@ defmodule MMGOWeb.PlayApiControllerTest do
            ]
   end
 
+  test "state exposes multi-hop route plans and hides organization-only roads", %{
+    conn: conn,
+    realm: realm,
+    city: city,
+    tower: tower,
+    ration_template: ration_template
+  } do
+    {:ok, hamlet} =
+      Worlds.create_location(realm, %{
+        slug: "quiet-hamlet",
+        name: "Quiet Hamlet",
+        kind: :wilderness,
+        x: 500,
+        y: 520
+      })
+
+    {:ok, leg_two} =
+      Worlds.create_route(realm, %{
+        name: "Hill Path",
+        origin_location_id: tower.id,
+        destination_location_id: hamlet.id,
+        travel_days: 4,
+        risk_level: 20,
+        bidirectional: true
+      })
+
+    {:ok, _org_route} =
+      Worlds.create_route(realm, %{
+        name: "Hidden Floo",
+        origin_location_id: city.id,
+        destination_location_id: hamlet.id,
+        travel_days: 1,
+        risk_level: 0,
+        bidirectional: true,
+        metadata: %{
+          "visibility" => "organization",
+          "organization_id" => Ecto.UUID.generate()
+        }
+      })
+
+    character = character_fixture(realm, city, "planner", "Planner")
+    {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 20})
+
+    conn =
+      conn
+      |> init_test_session(%{play_character_id: character.id})
+      |> get(~p"/api/play/state")
+
+    plan =
+      conn
+      |> json_response(200)
+      |> get_in(["state", "route_plans"])
+      |> Enum.find(&(&1["destination_location_id"] == hamlet.id))
+
+    assert plan["segment_count"] == 2
+    assert List.last(plan["route_ids"]) == leg_two.id
+    assert plan["travel_days"] == 14
+  end
+
+  test "journey plan endpoint starts the first segment with queued route metadata", %{
+    conn: conn,
+    realm: realm,
+    city: city,
+    route: first_route,
+    tower: tower,
+    ration_template: ration_template
+  } do
+    {:ok, hamlet} =
+      Worlds.create_location(realm, %{
+        slug: "route-plan-hamlet",
+        name: "Route Plan Hamlet",
+        kind: :wilderness,
+        x: 600,
+        y: 700
+      })
+
+    {:ok, second_route} =
+      Worlds.create_route(realm, %{
+        name: "Second Leg",
+        origin_location_id: tower.id,
+        destination_location_id: hamlet.id,
+        travel_days: 3,
+        risk_level: 10,
+        bidirectional: true
+      })
+
+    character = character_fixture(realm, city, "queue", "Queue")
+    {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 20})
+
+    conn =
+      conn
+      |> init_test_session(%{play_character_id: character.id})
+      |> put_json_csrf_header()
+      |> put_req_header("content-type", "application/json")
+      |> post(
+        ~p"/api/play/journey-plans",
+        Jason.encode!(%{route_ids: [first_route.id, second_route.id]})
+      )
+
+    payload = json_response(conn, 200)
+    journey = Travel.active_journey(character.id)
+
+    assert payload["ok"] == true
+    assert get_in(payload, ["state", "active_journey", "route_id"]) == first_route.id
+    assert get_in(journey.metadata, ["route_plan", "remaining_route_ids"]) == [second_route.id]
+  end
+
+  test "telegram session validates init data and binds the returned character", %{conn: conn} do
+    previous = Application.get_env(:mmgo, :telegram, [])
+    Application.put_env(:mmgo, :telegram, Keyword.put(previous, :bot_token, "test-token"))
+
+    on_exit(fn -> Application.put_env(:mmgo, :telegram, previous) end)
+
+    init_data =
+      signed_init_data("test-token", %{
+        "auth_date" => "1777000000",
+        "query_id" => "AAE",
+        "user" =>
+          Jason.encode!(%{
+            id: 77_001,
+            username: "tele_mage",
+            first_name: "Tele",
+            last_name: "Mage",
+            language_code: "en"
+          })
+      })
+
+    conn =
+      conn
+      |> put_json_csrf_header()
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/api/play/telegram-session", Jason.encode!(%{init_data: init_data}))
+
+    payload = json_response(conn, 200)
+
+    assert payload["ok"] == true
+    assert get_session(conn, :play_character_id) == payload["character"]["id"]
+  end
+
+  test "telegram session rejects invalid hashes", %{conn: conn} do
+    previous = Application.get_env(:mmgo, :telegram, [])
+    Application.put_env(:mmgo, :telegram, Keyword.put(previous, :bot_token, "test-token"))
+
+    on_exit(fn -> Application.put_env(:mmgo, :telegram, previous) end)
+
+    init_data = "user=#{URI.encode_www_form(Jason.encode!(%{id: 77_002}))}&hash=bad"
+
+    conn =
+      conn
+      |> put_json_csrf_header()
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/api/play/telegram-session", Jason.encode!(%{init_data: init_data}))
+
+    assert %{"ok" => false, "error" => "invalid_hash"} = json_response(conn, 401)
+  end
+
+  test "telegram session reports missing bot token", %{conn: conn} do
+    previous = Application.get_env(:mmgo, :telegram, [])
+    Application.put_env(:mmgo, :telegram, Keyword.delete(previous, :bot_token))
+
+    on_exit(fn -> Application.put_env(:mmgo, :telegram, previous) end)
+
+    conn =
+      conn
+      |> put_json_csrf_header()
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/api/play/telegram-session", Jason.encode!(%{init_data: "user=%7B%7D&hash=bad"}))
+
+    assert %{"ok" => false, "error" => "telegram_bot_token_missing"} = json_response(conn, 503)
+  end
+
   test "demo reset returns the session character to the entry city and clears travel", %{
     conn: conn,
     realm: realm,
@@ -329,5 +500,19 @@ defmodule MMGOWeb.PlayApiControllerTest do
 
   defp put_json_csrf_header(conn) do
     put_req_header(conn, "x-csrf-token", Phoenix.Controller.get_csrf_token())
+  end
+
+  defp signed_init_data(token, params) do
+    data_check_string =
+      params
+      |> Enum.sort_by(fn {key, _value} -> key end)
+      |> Enum.map_join("\n", fn {key, value} -> "#{key}=#{value}" end)
+
+    secret = :crypto.mac(:hmac, :sha256, "WebAppData", token)
+    hash = :crypto.mac(:hmac, :sha256, secret, data_check_string) |> Base.encode16(case: :lower)
+
+    params
+    |> Map.put("hash", hash)
+    |> URI.encode_query()
   end
 end

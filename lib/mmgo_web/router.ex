@@ -26,6 +26,14 @@ defmodule MMGOWeb.Router do
 
     get "/", PageController, :home
     live "/play", PlayLive
+    live "/base", BaseLive
+    live "/academy", AcademyLive
+    live "/spells", SpellListLive
+    live "/spellbook", SpellListLive
+    live "/spells/new", SpellNewLive
+    live "/grimoires", GrimoireLive
+    live "/combat/:id", CombatLive
+    live "/operator/map", OperatorMapLive
 
     live "/academy/bulletin-board", BulletinBoardLive
     live "/academy/study-desk", StudyDeskLive
@@ -52,9 +60,18 @@ defmodule MMGOWeb.Router do
 
     get "/state", PlayApiController, :state
     post "/journeys", PlayApiController, :create_journey
+    post "/journey-plans", PlayApiController, :create_journey_plan
+    post "/telegram-session", PlayApiController, :telegram_session
     post "/utility-spells", PlayApiController, :cast_utility_spell
     post "/demo/reset", PlayDemoController, :reset
     post "/demo/arrive", PlayApiController, :fast_arrive
+  end
+
+  scope "/api/operator/map", MMGOWeb do
+    pipe_through :browser_api
+
+    post "/locations", OperatorMapApiController, :create_location
+    post "/routes", OperatorMapApiController, :create_route
   end
 
   # Enable LiveDashboard in development

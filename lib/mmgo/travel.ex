@@ -26,6 +26,7 @@ defmodule MMGO.Travel do
 
   def start_journey(%Character{} = character, %Route{} = route, opts \\ []) do
     started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
+    metadata = Keyword.get(opts, :metadata, %{})
 
     Repo.transaction(fn ->
       character = lock_character!(character.id)
@@ -65,7 +66,8 @@ defmodule MMGO.Travel do
           carried_weight: plan.current_weight,
           carry_capacity: plan.carry_capacity,
           started_at: started_at,
-          arrival_at: arrival_at
+          arrival_at: arrival_at,
+          metadata: metadata
         })
         |> Repo.insert!()
 

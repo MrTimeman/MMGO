@@ -7,6 +7,7 @@ defmodule MMGO.Play do
   alias MMGO.Inventory
   alias MMGO.Inventory.ItemTemplate
   alias MMGO.Grimoires
+  alias MMGO.Organizations
   alias MMGO.Parties
   alias MMGO.Repo
   alias MMGO.Spells.Spell
@@ -56,6 +57,22 @@ defmodule MMGO.Play do
     |> normalize_transaction_result()
   end
 
+  def prepare_character(%Character{} = character) do
+    Repo.transaction(fn ->
+      character = lock_character!(character.id)
+      realm = Worlds.get_realm!(character.realm_id)
+      entry_location = entry_location_for_realm(realm) || Repo.rollback(:entry_location_not_found)
+
+      character = ensure_character_location!(character, entry_location)
+      _ = ensure_starter_supplies!(character)
+
+      character.id
+      |> get_character()
+      |> then(&{:ok, &1})
+    end)
+    |> normalize_transaction_result()
+  end
+
   def map_state(%Character{} = character, opts \\ []) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
 
@@ -90,6 +107,7 @@ defmodule MMGO.Play do
          active_journey: journey_payload(active_journey, now),
          available_routes:
            Enum.map(available_routes, &available_route_payload(&1, current_character)),
+         route_plans: route_plans_payload(current_character, routes, locations),
          time: game_time(now),
          map: %{
            width: map_width(locations),
@@ -121,15 +139,53 @@ defmodule MMGO.Play do
   def start_journey(%Character{} = character, route_id, opts)
       when is_binary(route_id) and byte_size(route_id) > 0 do
     started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
+    metadata = Keyword.get(opts, :metadata, %{})
 
     case Repo.get(Route, route_id) do
-      %Route{} = route -> Travel.start_journey(character, route, started_at: started_at)
-      nil -> {:error, route_changeset("route could not be found")}
+      %Route{} = route ->
+        Travel.start_journey(character, route, started_at: started_at, metadata: metadata)
+
+      nil ->
+        {:error, route_changeset("route could not be found")}
     end
   end
 
   def start_journey(%Character{}, _route_id, _opts) do
     {:error, route_changeset("route_id is required")}
+  end
+
+  def journey_plan(%Character{} = character, route_ids) when is_list(route_ids) do
+    character = get_character(character.id) || character
+
+    with {:ok, segments} <- validate_route_chain(character, route_ids) do
+      {:ok, journey_plan_payload(character, segments)}
+    end
+  end
+
+  def start_journey_plan(character, route_ids, opts \\ [])
+
+  def start_journey_plan(%Character{} = character, route_ids, opts)
+      when is_list(route_ids) do
+    character = get_character(character.id) || character
+
+    with {:ok, segments} <- validate_route_chain(character, route_ids),
+         [{first_route, _from_id, _to_id} | rest] <- segments do
+      metadata = %{
+        "route_plan" => %{
+          "route_ids" => route_ids,
+          "remaining_route_ids" => Enum.map(rest, fn {route, _from, _to} -> route.id end)
+        }
+      }
+
+      start_journey(character, first_route.id, Keyword.put(opts, :metadata, metadata))
+    else
+      [] -> {:error, route_changeset("route_ids is required")}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def start_journey_plan(%Character{}, _route_ids, _opts) do
+    {:error, route_changeset("route_ids must be a list")}
   end
 
   def cast_utility_spell(character, spell_id, opts \\ [])
@@ -335,7 +391,7 @@ defmodule MMGO.Play do
         else
           case Travel.complete_journey_by_id(journey.id, now: now, force: true) do
             {:ok, %{character: updated_character}} ->
-              {:ok, %{character: get_character(updated_character.id), active_journey: nil}}
+              maybe_start_next_planned_segment(updated_character, journey, now)
 
             {:error, _changeset} ->
               {:ok, %{character: character, active_journey: journey}}
@@ -474,7 +530,8 @@ defmodule MMGO.Play do
       destination_location_id: route.destination_location_id,
       travel_days: route.travel_days,
       risk_level: route.risk_level,
-      bidirectional: route.bidirectional
+      bidirectional: route.bidirectional,
+      metadata: route.metadata || %{}
     }
   end
 
@@ -482,6 +539,7 @@ defmodule MMGO.Play do
 
   defp available_routes(%Character{} = character, routes, location_index) do
     routes
+    |> Enum.filter(&route_accessible?(&1, character))
     |> Enum.reduce([], fn route, acc ->
       case route_destination(route, character.current_location_id, location_index) do
         nil -> acc
@@ -489,6 +547,27 @@ defmodule MMGO.Play do
       end
     end)
     |> Enum.reverse()
+  end
+
+  defp route_plans_payload(%Character{} = character, routes, locations) do
+    if is_nil(character.current_location_id) do
+      []
+    else
+      routes = Enum.filter(routes, &route_accessible?(&1, character))
+      location_index = Map.new(locations, &{&1.id, &1})
+
+      locations
+      |> Enum.reject(&(&1.id == character.current_location_id))
+      |> Enum.flat_map(fn destination ->
+        case shortest_path(character.current_location_id, destination.id, routes) do
+          [] ->
+            []
+
+          segments ->
+            [journey_plan_payload(character, segments, location_index)]
+        end
+      end)
+    end
   end
 
   defp available_route_payload(
@@ -509,6 +588,192 @@ defmodule MMGO.Play do
       encumbrance_penalty_days: plan.encumbrance_penalty_days,
       risk_level: route.risk_level
     }
+  end
+
+  defp journey_plan_payload(%Character{} = character, segments, location_index \\ nil) do
+    location_index =
+      location_index ||
+        segments
+        |> Enum.flat_map(fn {%Route{} = route, from_id, to_id} ->
+          [
+            {from_id, route.origin_location},
+            {to_id, route.destination_location}
+          ]
+        end)
+        |> Map.new()
+
+    total_days =
+      Enum.reduce(segments, 0, fn {route, _from, _to}, acc -> acc + route.travel_days end)
+
+    plan = Survival.travel_plan(character, total_days)
+    risk = Enum.reduce(segments, 0, fn {route, _from, _to}, acc -> max(acc, route.risk_level) end)
+    destination_id = segments |> List.last() |> elem(2)
+    destination = Map.get(location_index, destination_id)
+
+    %{
+      route_ids: Enum.map(segments, fn {route, _from, _to} -> route.id end),
+      destination_location_id: destination_id,
+      destination_name: destination && destination.name,
+      segment_count: length(segments),
+      travel_days: total_days,
+      total_game_days: plan.total_game_days,
+      required_food_units: plan.required_food_units,
+      encumbrance_penalty_days: plan.encumbrance_penalty_days,
+      risk_level: risk,
+      segments:
+        Enum.map(segments, fn {route, from_id, to_id} ->
+          %{
+            route_id: route.id,
+            route_name: route.name,
+            from_location_id: from_id,
+            from_name: Map.get(location_index, from_id) && Map.get(location_index, from_id).name,
+            to_location_id: to_id,
+            to_name: Map.get(location_index, to_id) && Map.get(location_index, to_id).name,
+            travel_days: route.travel_days,
+            risk_level: route.risk_level
+          }
+        end)
+    }
+  end
+
+  defp validate_route_chain(%Character{current_location_id: nil}, _route_ids) do
+    {:error, route_changeset("character must be placed at a location before travelling")}
+  end
+
+  defp validate_route_chain(%Character{} = character, route_ids) do
+    routes =
+      Route
+      |> where([route], route.id in ^route_ids)
+      |> preload([:origin_location, :destination_location])
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    Enum.reduce_while(route_ids, {:ok, [], character.current_location_id}, fn route_id,
+                                                                              {:ok, acc, from_id} ->
+      case Map.get(routes, route_id) do
+        nil ->
+          {:halt, {:error, route_changeset("route could not be found")}}
+
+        %Route{} = route ->
+          cond do
+            not route_accessible?(route, character) ->
+              {:halt, {:error, route_changeset("route is not available to this character")}}
+
+            route.origin_location_id == from_id ->
+              {:cont,
+               {:ok, acc ++ [{route, from_id, route.destination_location_id}],
+                route.destination_location_id}}
+
+            route.bidirectional and route.destination_location_id == from_id ->
+              {:cont,
+               {:ok, acc ++ [{route, from_id, route.origin_location_id}],
+                route.origin_location_id}}
+
+            true ->
+              {:halt, {:error, route_changeset("route chain is disconnected")}}
+          end
+      end
+    end)
+    |> case do
+      {:ok, [], _location_id} -> {:error, route_changeset("route_ids is required")}
+      {:ok, segments, _location_id} -> {:ok, segments}
+      {:error, changeset} -> {:error, changeset}
+    end
+  end
+
+  defp shortest_path(from_id, to_id, routes) do
+    queue = [{from_id, [], 0}]
+    best = %{from_id => 0}
+    shortest_path(queue, best, to_id, routes)
+  end
+
+  defp shortest_path([], _best, _to_id, _routes), do: []
+
+  defp shortest_path([{location_id, segments, cost} | queue], best, to_id, routes) do
+    if location_id == to_id do
+      segments
+    else
+      {queue, best} =
+        routes
+        |> Enum.flat_map(&route_edges(&1, location_id))
+        |> Enum.reduce({queue, best}, fn {route, next_id}, {queue, best} ->
+          next_cost = cost + route.travel_days
+
+          if next_cost < Map.get(best, next_id, 1_000_000) do
+            {
+              queue ++ [{next_id, segments ++ [{route, location_id, next_id}], next_cost}],
+              Map.put(best, next_id, next_cost)
+            }
+          else
+            {queue, best}
+          end
+        end)
+
+      queue
+      |> Enum.sort_by(fn {_id, _segments, cost} -> cost end)
+      |> shortest_path(best, to_id, routes)
+    end
+  end
+
+  defp route_edges(%Route{} = route, location_id) do
+    cond do
+      route.origin_location_id == location_id ->
+        [{route, route.destination_location_id}]
+
+      route.bidirectional and route.destination_location_id == location_id ->
+        [{route, route.origin_location_id}]
+
+      true ->
+        []
+    end
+  end
+
+  defp route_accessible?(%Route{} = route, %Character{} = character) do
+    metadata = route.metadata || %{}
+
+    case metadata["visibility"] || metadata[:visibility] || "public" do
+      "organization" ->
+        organization_id = metadata["organization_id"] || metadata[:organization_id]
+
+        organization_id in Enum.map(
+          Organizations.list_organizations_for_character(character.id),
+          & &1.id
+        )
+
+      _other ->
+        true
+    end
+  end
+
+  defp maybe_start_next_planned_segment(
+         %Character{} = updated_character,
+         %Journey{} = completed,
+         now
+       ) do
+    remaining = get_in(completed.metadata || %{}, ["route_plan", "remaining_route_ids"]) || []
+
+    case remaining do
+      [next_route_id | rest] ->
+        metadata = %{"route_plan" => %{"remaining_route_ids" => rest}}
+
+        case start_journey(get_character(updated_character.id), next_route_id,
+               started_at: now,
+               metadata: metadata
+             ) do
+          {:ok, %{journey: journey}} ->
+            {:ok,
+             %{
+               character: get_character(updated_character.id),
+               active_journey: Repo.preload(journey, [:from_location, :to_location, :route])
+             }}
+
+          {:error, _reason} ->
+            {:ok, %{character: get_character(updated_character.id), active_journey: nil}}
+        end
+
+      _ ->
+        {:ok, %{character: get_character(updated_character.id), active_journey: nil}}
+    end
   end
 
   defp route_destination(%Route{} = route, current_location_id, location_index)

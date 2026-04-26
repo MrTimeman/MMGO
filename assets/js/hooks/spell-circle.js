@@ -1,6 +1,6 @@
 // SpellCircleHook — 8 orbital slot buttons around a runic circle.
 // Slots are editable text inputs (human-written words).
-// All 7 required slots filled → circle charges (cyan glow, rune rings animate).
+// All 7 required slots filled → circle charges (gold glow, rune rings animate).
 
 const NS = 'http://www.w3.org/2000/svg'
 
@@ -48,7 +48,7 @@ function buildRingsSVG(charged) {
   })
   svg.appendChild(defs)
 
-  const lc = charged ? 'rgba(0,212,255,0.35)' : 'rgba(0,212,255,0.07)'
+  const lc = charged ? 'rgba(200,164,74,0.35)' : 'rgba(200,164,74,0.07)'
   const lw = charged ? '1' : '0.6'
   for (const [x1,y1,x2,y2] of [[170,25,170,315],[25,170,315,170],[55,55,285,285],[285,55,55,285]]) {
     svg.appendChild(svgEl('line', { x1, y1, x2, y2, stroke: lc, 'stroke-width': lw }))
@@ -58,7 +58,7 @@ function buildRingsSVG(charged) {
     svg.appendChild(svgEl('circle', {
       cx: 170, cy: 170, r,
       fill: 'none',
-      stroke: charged ? 'rgba(0,212,255,0.28)' : 'rgba(0,212,255,0.06)',
+      stroke: charged ? 'rgba(200,164,74,0.28)' : 'rgba(200,164,74,0.06)',
       'stroke-width': '0.8',
     }))
 
@@ -72,8 +72,8 @@ function buildRingsSVG(charged) {
 
   svg.appendChild(svgEl('circle', {
     cx: 170, cy: 170, r: 44,
-    fill: charged ? 'rgba(0,212,255,0.05)' : 'rgba(8,10,22,0.95)',
-    stroke: charged ? 'rgba(0,212,255,0.65)' : 'rgba(0,212,255,0.14)',
+    fill: charged ? 'rgba(200,164,74,0.12)' : 'rgba(246,236,214,0.92)',
+    stroke: charged ? 'rgba(200,164,74,0.65)' : 'rgba(200,164,74,0.14)',
     'stroke-width': charged ? '1.5' : '0.8',
   }))
 

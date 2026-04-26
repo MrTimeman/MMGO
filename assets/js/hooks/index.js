@@ -9,6 +9,7 @@ import { WantedBoardHook }    from './wanted-board'
 import { GuildHallHook }      from './guild-hall'
 import { SpellCircleHook }    from './spell-circle'
 import { GrimoireShelfHook }  from './grimoire-shelf'
+import { OperatorMapEditorHook } from './operator-map-editor'
 import { PlayHubHook }        from '../play-hub'
 
 export const Hooks = {
@@ -23,5 +24,6 @@ export const Hooks = {
   GuildHall:      GuildHallHook,
   SpellCircle:    SpellCircleHook,
   GrimoireShelf:  GrimoireShelfHook,
+  OperatorMapEditor: OperatorMapEditorHook,
   PlayHub:        PlayHubHook,
 }

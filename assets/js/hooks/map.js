@@ -71,18 +71,20 @@ const SLUG_DISPLAY = {
 const KIND_ACTIONS = {
   tower: [
     { key: "party", title: "Собрать / найти отряд", note: "перед входом" },
-    { key: "dungeon", title: "Войти в подземелье", note: "готовьтесь тщательно", accent: true },
-    { key: "library", title: "Библиотека Башни", note: "старые записи" },
+    { key: "dungeon", title: "Войти в подземелье", note: "готовьтесь тщательно", href: "/combat/demo", accent: true },
+    { key: "spells", title: "Сотворить заклинание", note: "здесь работает магия", href: "/spells/new" },
+    { key: "grimoires", title: "Гримуары", note: "подготовить заклинания", href: "/grimoires" },
+    { key: "library", title: "Библиотека Башни", note: "старые записи", href: "/spells" },
   ],
   city: [
-    { key: "academy", title: "В Академию", note: "учебные залы", href: "/academy/bulletin-board" },
-    { key: "market", title: "На рынок", note: "лавки и торговцы" },
+    { key: "academy", title: "В Академию", note: "учебные залы", href: "/academy" },
+    { key: "market", title: "На рынок", note: "лавки и торговцы", href: "/base" },
     { key: "tavern", title: "В таверну", note: "новости и наём" },
   ],
   base: [
-    { key: "base", title: "Войти в дом", note: "личные комнаты", accent: true },
-    { key: "forge", title: "В мастерскую", note: "крафт и ремонт" },
-    { key: "garden", title: "Огород и запасы", note: "провиант" },
+    { key: "base", title: "Войти в дом", note: "личные комнаты", href: "/base", accent: true },
+    { key: "forge", title: "В мастерскую", note: "крафт и ремонт", href: "/base" },
+    { key: "garden", title: "Огород и запасы", note: "провиант", href: "/base" },
   ],
   wilderness: [
     { key: "gather", title: "Добыча ресурсов", note: "обыскать округу" },
@@ -151,6 +153,7 @@ export const MapHook = {
   mounted() {
     this.statePath = this.el.dataset.statePath
     this.journeysPath = this.el.dataset.journeysPath
+    this.journeyPlansPath = this.el.dataset.journeyPlansPath
     this.fastArrivePath = this.el.dataset.fastArrivePath
 
     this.state = null
@@ -414,22 +417,24 @@ export const MapHook = {
 
     this.selectedLocationId = id
     this.drawMarkers()
-    this.drawHighlight(id)
+    const plan = this.state?.route_plans?.find(p => p.destination_location_id === id)
+    this.drawHighlight(id, plan)
     this.centerOn(id)
 
     const route = this.state?.available_routes?.find(r => r.destination_location_id === id)
-    this.showTravelPanel(loc, route)
+    this.showTravelPanel(loc, route, plan)
   },
 
-  drawHighlight(targetId) {
+  drawHighlight(targetId, plan = null) {
     this.highlightLayer.innerHTML = ""
     if (!targetId || !this.currentLocationId) return
 
-    const currentSlug = this.slugById[this.currentLocationId]
-    const targetSlug = this.slugById[targetId]
-    if (!currentSlug || !targetSlug) return
-
-    const edges = this.findVisualRoute(currentSlug, targetSlug)
+    const edges = plan?.segments?.length
+      ? plan.segments.map(segment => ({
+          from: this.slugById[segment.from_location_id],
+          to: this.slugById[segment.to_location_id],
+        })).map(edge => ({...edge, road: findRoadPath(edge.from, edge.to)})).filter(edge => edge.road)
+      : this.findVisualRoute(this.slugById[this.currentLocationId], this.slugById[targetId])
     if (!edges.length) return
 
     const d = edges.map(edge => svgPath(this.roadPtsForEdge(edge))).join(" ")
@@ -470,7 +475,7 @@ export const MapHook = {
     return edge.from === edge.road.a ? edge.road.pts : [...edge.road.pts].reverse()
   },
 
-  showTravelPanel(loc, route) {
+  showTravelPanel(loc, route, plan = null) {
     const display = SLUG_DISPLAY[loc.slug] || {}
     this.infoPanel.className = "mmgo-map-info mmgo-map-info--travel is-visible"
     this.infoPanel.innerHTML = ""
@@ -480,16 +485,24 @@ export const MapHook = {
     })
     this.infoPanel.append(head)
 
-    if (route) {
-      const meta = `${route.total_game_days} игр. дн. · ${route.required_food_units} паёк · ${riskLabel(route.risk_level)}`
+    if (plan || route) {
+      const travel = plan || route
+      const meta = `${travel.total_game_days} игр. дн. · ${travel.required_food_units} паёк · ${riskLabel(travel.risk_level)}`
+      const routeText = plan && plan.segment_count > 1
+        ? `${plan.segment_count} перехода: ${plan.segments.map(s => s.to_name).join(" → ")}`
+        : "Прямой переход"
       const travelButton = dom("button", "mmgo-map-primary-action", {
         id: "map-start-travel",
         type: "button",
-        text: "Отправиться →",
+        text: plan && plan.segment_count > 1 ? "Начать маршрут →" : "Отправиться →",
       })
-      travelButton.addEventListener("click", () => this.startJourney(route.id))
+      travelButton.addEventListener("click", () => {
+        if (plan && plan.segment_count > 1) this.startJourneyPlan(plan.route_ids)
+        else this.startJourney(route.id)
+      })
       this.infoPanel.append(
         dom("p", "mmgo-map-info__body", { text: loc.description || "" }),
+        dom("div", "mmgo-map-info__route", { text: routeText }),
         dom("div", "mmgo-map-info__meta", { text: meta }),
         travelButton
       )
@@ -500,6 +513,37 @@ export const MapHook = {
     }
 
     this.infoPanel.querySelector(".mmgo-map-close")?.addEventListener("click", () => this.closePanel())
+  },
+
+  async startJourneyPlan(routeIds) {
+    if (!routeIds?.length || this.pendingTravel || !this.journeyPlansPath) return
+    this.pendingTravel = true
+
+    const btn = this.infoPanel.querySelector("#map-start-travel")
+    if (btn) { btn.disabled = true; btn.textContent = "Прокладываем..." }
+
+    try {
+      const res = await fetch(this.journeyPlansPath, {
+        method: "POST",
+        credentials: "same-origin",
+        headers: {
+          accept: "application/json",
+          "content-type": "application/json",
+          "x-csrf-token": csrfToken(),
+        },
+        body: JSON.stringify({ route_ids: routeIds }),
+      })
+      const payload = await res.json()
+      if (!res.ok || !payload.ok) throw new Error(payload.error || "ошибка")
+      this.state = payload.state
+      this.pendingTravel = false
+      this.selectedLocationId = null
+      this.syncFromState()
+    } catch (err) {
+      this.pendingTravel = false
+      this.showToast(err.message || "Не удалось начать маршрут.")
+      if (btn) { btn.disabled = false; btn.textContent = "Начать маршрут →" }
+    }
   },
 
   async startJourney(routeId) {
@@ -665,8 +709,16 @@ export const MapHook = {
     const display = SLUG_DISPLAY[loc.slug] || {}
     const actions = KIND_ACTIONS[loc.kind] || KIND_ACTIONS.wilderness
 
-    this.infoPanel.className = `mmgo-map-info mmgo-map-info--event mmgo-map-info--${loc.kind} is-visible`
+    this.infoPanel.className = `mmgo-map-event-screen mmgo-map-event-screen--${loc.kind} is-visible`
     this.infoPanel.innerHTML = ""
+
+    const closeTop = dom("button", "mmgo-event-close", {
+      id: "map-event-close",
+      type: "button",
+      text: "×",
+      "aria-label": "Вернуться к карте",
+    })
+    closeTop.addEventListener("click", () => this.closePanel())
 
     const hero = dom("div", "mmgo-location-hero", { text: display.hero || loc.name })
     const titleBlock = dom("div", "mmgo-location-title", {
@@ -686,7 +738,7 @@ export const MapHook = {
       textBlock.append(p)
     })
 
-    this.infoPanel.append(hero, titleBlock, textBlock, this.locationActions(actions))
+    this.infoPanel.append(closeTop, hero, titleBlock, textBlock, this.locationActions(actions))
   },
 
   locationActions(actions) {
