@@ -19,9 +19,14 @@
 
 // Yandex Browser blocker
 if (/YaBrowser/i.test(navigator.userAgent)) {
-  document.addEventListener("DOMContentLoaded", () => {
+  const blockYandex = () => {
     document.body.innerHTML = `<div style="display:flex;align-items:center;justify-content:center;height:100vh;background:#1a1a2e;color:#fff;font-size:2rem;font-family:sans-serif;text-align:center;padding:2rem;">Ахахахахха яндекс браузер лол)))</div>`
-  })
+  }
+  if (document.readyState === "loading") {
+    document.addEventListener("DOMContentLoaded", blockYandex)
+  } else {
+    blockYandex()
+  }
 }
 
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
