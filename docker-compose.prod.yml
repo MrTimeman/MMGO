@@ -1,0 +1,48 @@
+services:
+  postgres:
+    image: postgres:16
+    container_name: mmgo-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: mmgo_prod
+    ports:
+      - "127.0.0.1:5432:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  app:
+    build: .
+    container_name: mmgo-app
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      PHX_SERVER: "true"
+      PORT: "4000"
+      SECRET_KEY_BASE: "${SECRET_KEY_BASE}"
+      DATABASE_URL: "ecto://postgres:postgres@postgres:5432/mmgo_prod"
+      MMGO_DB_HOST: postgres
+      MMGO_DB_NAME: mmgo_prod
+      MMGO_DB_USER: postgres
+      MMGO_DB_PASSWORD: postgres
+      DEEPSEEK_API_KEY: "${DEEPSEEK_API_KEY}"
+      GEMINI_API_KEY: "${GEMINI_API_KEY}"
+      TELEGRAM_BOT_TOKEN: "${TELEGRAM_BOT_TOKEN}"
+    ports:
+      - "4000:4000"
+
+volumes:
+  pgdata:
+
+networks:
+  default:
+    name: mmgo_default
+    external: true

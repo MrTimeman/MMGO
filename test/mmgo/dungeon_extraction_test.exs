@@ -2,7 +2,6 @@ defmodule MMGO.DungeonExtractionTest do
   use MMGO.DataCase, async: true
 
   alias MMGO.Accounts.{Account, Character}
-  alias MMGO.Academy.Specialization
   alias MMGO.Dungeons
   alias MMGO.Grimoires
   alias MMGO.Inventory
@@ -80,19 +79,6 @@ defmodule MMGO.DungeonExtractionTest do
       })
 
     {:ok, _items} = Inventory.grant_item(character, herb_template, %{quantity: 3})
-
-    %Specialization{}
-    |> Specialization.changeset(%{
-      character_id: character.id,
-      realm_id: character.realm_id,
-      track: :wizardry,
-      status: :active,
-      primary_school: :fire,
-      secondary_school: :air,
-      started_at: DateTime.utc_now(),
-      metadata: %{}
-    })
-    |> Repo.insert!()
 
     {:ok, %{party: party}} = Parties.create_party(character, %{name: "Delvers"})
     {:ok, %{expedition: expedition}} = Parties.start_expedition(party)

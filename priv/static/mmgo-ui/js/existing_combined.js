@@ -1,0 +1,2410 @@
+
+// ═══ ios-frame.js ═══
+
+// iOS.jsx — Simplified iOS 26 (Liquid Glass) device frame
+// Based on the iOS 26 UI Kit + Figma status bar spec. No assets, no deps.
+// Exports: IOSDevice, IOSStatusBar, IOSNavBar, IOSGlassPill, IOSList, IOSListRow, IOSKeyboard
+
+// ─────────────────────────────────────────────────────────────
+// Status bar
+// ─────────────────────────────────────────────────────────────
+function IOSStatusBar({ dark = false, time = '9:41' }) {
+  const c = dark ? '#fff' : '#000';
+  return (
+    <div style={{
+      display: 'flex', gap: 154, alignItems: 'center', justifyContent: 'center',
+      padding: '21px 24px 19px', boxSizing: 'border-box',
+      position: 'relative', zIndex: 20, width: '100%',
+    }}>
+      <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', paddingTop: 1.5 }}>
+        <span style={{
+          fontFamily: '-apple-system, "SF Pro", system-ui', fontWeight: 590,
+          fontSize: 17, lineHeight: '22px', color: c,
+        }}>{time}</span>
+      </div>
+      <div style={{ flex: 1, height: 22, display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 7, paddingTop: 1, paddingRight: 1 }}>
+        <svg width="19" height="12" viewBox="0 0 19 12">
+          <rect x="0" y="7.5" width="3.2" height="4.5" rx="0.7" fill={c}/>
+          <rect x="4.8" y="5" width="3.2" height="7" rx="0.7" fill={c}/>
+          <rect x="9.6" y="2.5" width="3.2" height="9.5" rx="0.7" fill={c}/>
+          <rect x="14.4" y="0" width="3.2" height="12" rx="0.7" fill={c}/>
+        </svg>
+        <svg width="17" height="12" viewBox="0 0 17 12">
+          <path d="M8.5 3.2C10.8 3.2 12.9 4.1 14.4 5.6L15.5 4.5C13.7 2.7 11.2 1.5 8.5 1.5C5.8 1.5 3.3 2.7 1.5 4.5L2.6 5.6C4.1 4.1 6.2 3.2 8.5 3.2Z" fill={c}/>
+          <path d="M8.5 6.8C9.9 6.8 11.1 7.3 12 8.2L13.1 7.1C11.8 5.9 10.2 5.1 8.5 5.1C6.8 5.1 5.2 5.9 3.9 7.1L5 8.2C5.9 7.3 7.1 6.8 8.5 6.8Z" fill={c}/>
+          <circle cx="8.5" cy="10.5" r="1.5" fill={c}/>
+        </svg>
+        <svg width="27" height="13" viewBox="0 0 27 13">
+          <rect x="0.5" y="0.5" width="23" height="12" rx="3.5" stroke={c} strokeOpacity="0.35" fill="none"/>
+          <rect x="2" y="2" width="20" height="9" rx="2" fill={c}/>
+          <path d="M25 4.5V8.5C25.8 8.2 26.5 7.2 26.5 6.5C26.5 5.8 25.8 4.8 25 4.5Z" fill={c} fillOpacity="0.4"/>
+        </svg>
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Liquid glass pill — blur + tint + shine
+// ─────────────────────────────────────────────────────────────
+function IOSGlassPill({ children, dark = false, style = {} }) {
+  return (
+    <div style={{
+      height: 44, minWidth: 44, borderRadius: 9999,
+      position: 'relative', overflow: 'hidden',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      boxShadow: dark
+        ? '0 2px 6px rgba(0,0,0,0.35), 0 6px 16px rgba(0,0,0,0.2)'
+        : '0 1px 3px rgba(0,0,0,0.07), 0 3px 10px rgba(0,0,0,0.06)',
+      ...style,
+    }}>
+      {/* blur + tint */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 9999,
+        backdropFilter: 'blur(12px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+        background: dark ? 'rgba(120,120,128,0.28)' : 'rgba(255,255,255,0.5)',
+      }} />
+      {/* shine */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 9999,
+        boxShadow: dark
+          ? 'inset 1.5px 1.5px 1px rgba(255,255,255,0.15), inset -1px -1px 1px rgba(255,255,255,0.08)'
+          : 'inset 1.5px 1.5px 1px rgba(255,255,255,0.7), inset -1px -1px 1px rgba(255,255,255,0.4)',
+        border: dark ? '0.5px solid rgba(255,255,255,0.15)' : '0.5px solid rgba(0,0,0,0.06)',
+      }} />
+      <div style={{ position: 'relative', zIndex: 1, display: 'flex', alignItems: 'center', padding: '0 4px' }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Navigation bar — glass pills + large title
+// ─────────────────────────────────────────────────────────────
+function IOSNavBar({ title = 'Title', dark = false, trailingIcon = true }) {
+  const muted = dark ? 'rgba(255,255,255,0.6)' : '#404040';
+  const text = dark ? '#fff' : '#000';
+  const pillIcon = (content) => (
+    <IOSGlassPill dark={dark}>
+      <div style={{ width: 36, height: 36, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+        {content}
+      </div>
+    </IOSGlassPill>
+  );
+  return (
+    <div style={{
+      display: 'flex', flexDirection: 'column', gap: 10,
+      paddingTop: 62, paddingBottom: 10, position: 'relative', zIndex: 5,
+    }}>
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '0 16px',
+      }}>
+        {/* back chevron */}
+        {pillIcon(
+          <svg width="12" height="20" viewBox="0 0 12 20" fill="none" style={{ marginLeft: -1 }}>
+            <path d="M10 2L2 10l8 8" stroke={muted} strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"/>
+          </svg>
+        )}
+        {/* trailing ellipsis */}
+        {trailingIcon && pillIcon(
+          <svg width="22" height="6" viewBox="0 0 22 6">
+            <circle cx="3" cy="3" r="2.5" fill={muted}/>
+            <circle cx="11" cy="3" r="2.5" fill={muted}/>
+            <circle cx="19" cy="3" r="2.5" fill={muted}/>
+          </svg>
+        )}
+      </div>
+      {/* large title */}
+      <div style={{
+        padding: '0 16px',
+        fontFamily: '-apple-system, system-ui',
+        fontSize: 34, fontWeight: 700, lineHeight: '41px',
+        color: text, letterSpacing: 0.4,
+      }}>{title}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Grouped list (inset card, r:26) + row (52px)
+// ─────────────────────────────────────────────────────────────
+function IOSListRow({ title, detail, icon, chevron = true, isLast = false, dark = false }) {
+  const text = dark ? '#fff' : '#000';
+  const sec = dark ? 'rgba(235,235,245,0.6)' : 'rgba(60,60,67,0.6)';
+  const ter = dark ? 'rgba(235,235,245,0.3)' : 'rgba(60,60,67,0.3)';
+  const sep = dark ? 'rgba(84,84,88,0.65)' : 'rgba(60,60,67,0.12)';
+  return (
+    <div style={{
+      display: 'flex', alignItems: 'center', minHeight: 52,
+      padding: '0 16px', position: 'relative',
+      fontFamily: '-apple-system, system-ui', fontSize: 17,
+      letterSpacing: -0.43,
+    }}>
+      {icon && (
+        <div style={{
+          width: 30, height: 30, borderRadius: 7, background: icon,
+          marginRight: 12, flexShrink: 0,
+        }} />
+      )}
+      <div style={{ flex: 1, color: text }}>{title}</div>
+      {detail && <span style={{ color: sec, marginRight: 6 }}>{detail}</span>}
+      {chevron && (
+        <svg width="8" height="14" viewBox="0 0 8 14" style={{ flexShrink: 0 }}>
+          <path d="M1 1l6 6-6 6" stroke={ter} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+        </svg>
+      )}
+      {!isLast && (
+        <div style={{
+          position: 'absolute', bottom: 0, right: 0,
+          left: icon ? 58 : 16, height: 0.5, background: sep,
+        }} />
+      )}
+    </div>
+  );
+}
+
+function IOSList({ header, children, dark = false }) {
+  const hc = dark ? 'rgba(235,235,245,0.6)' : 'rgba(60,60,67,0.6)';
+  const bg = dark ? '#1C1C1E' : '#fff';
+  return (
+    <div>
+      {header && (
+        <div style={{
+          fontFamily: '-apple-system, system-ui', fontSize: 13,
+          color: hc, textTransform: 'uppercase',
+          padding: '8px 36px 6px', letterSpacing: -0.08,
+        }}>{header}</div>
+      )}
+      <div style={{
+        background: bg, borderRadius: 26,
+        margin: '0 16px', overflow: 'hidden',
+      }}>{children}</div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Device frame
+// ─────────────────────────────────────────────────────────────
+function IOSDevice({
+  children, width = 402, height = 874, dark = false,
+  title, keyboard = false,
+}) {
+  return (
+    <div style={{
+      width, height, borderRadius: 48, overflow: 'hidden',
+      position: 'relative', background: dark ? '#000' : '#F2F2F7',
+      boxShadow: '0 40px 80px rgba(0,0,0,0.18), 0 0 0 1px rgba(0,0,0,0.12)',
+      fontFamily: '-apple-system, system-ui, sans-serif',
+      WebkitFontSmoothing: 'antialiased',
+    }}>
+      {/* dynamic island */}
+      <div style={{
+        position: 'absolute', top: 11, left: '50%', transform: 'translateX(-50%)',
+        width: 126, height: 37, borderRadius: 24, background: '#000', zIndex: 50,
+      }} />
+      {/* status bar (absolute) */}
+      <div style={{ position: 'absolute', top: 0, left: 0, right: 0, zIndex: 10 }}>
+        <IOSStatusBar dark={dark} />
+      </div>
+      {/* nav + content */}
+      <div style={{ height: '100%', display: 'flex', flexDirection: 'column' }}>
+        {title !== undefined && <IOSNavBar title={title} dark={dark} />}
+        <div style={{ flex: 1, overflow: 'auto' }}>{children}</div>
+        {keyboard && <IOSKeyboard dark={dark} />}
+      </div>
+      {/* home indicator — always on top */}
+      <div style={{
+        position: 'absolute', bottom: 0, left: 0, right: 0, zIndex: 60,
+        height: 34, display: 'flex', justifyContent: 'center', alignItems: 'flex-end',
+        paddingBottom: 8, pointerEvents: 'none',
+      }}>
+        <div style={{
+          width: 139, height: 5, borderRadius: 100,
+          background: dark ? 'rgba(255,255,255,0.7)' : 'rgba(0,0,0,0.25)',
+        }} />
+      </div>
+    </div>
+  );
+}
+
+// ─────────────────────────────────────────────────────────────
+// Keyboard — iOS 26 liquid glass
+// ─────────────────────────────────────────────────────────────
+function IOSKeyboard({ dark = false }) {
+  const glyph = dark ? 'rgba(255,255,255,0.7)' : '#595959';
+  const sugg = dark ? 'rgba(255,255,255,0.6)' : '#333';
+  const keyBg = dark ? 'rgba(255,255,255,0.22)' : 'rgba(255,255,255,0.85)';
+
+  // special-key icons
+  const icons = {
+    shift: <svg width="19" height="17" viewBox="0 0 19 17"><path d="M9.5 1L1 9.5h4.5V16h8V9.5H18L9.5 1z" fill={glyph}/></svg>,
+    del: <svg width="23" height="17" viewBox="0 0 23 17"><path d="M7 1h13a2 2 0 012 2v11a2 2 0 01-2 2H7l-6-7.5L7 1z" fill="none" stroke={glyph} strokeWidth="1.6" strokeLinejoin="round"/><path d="M10 5l7 7M17 5l-7 7" stroke={glyph} strokeWidth="1.6" strokeLinecap="round"/></svg>,
+    ret: <svg width="20" height="14" viewBox="0 0 20 14"><path d="M18 1v6H4m0 0l4-4M4 7l4 4" fill="none" stroke="#fff" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  };
+
+  const key = (content, { w, flex, ret, fs = 25, k } = {}) => (
+    <div key={k} style={{
+      height: 42, borderRadius: 8.5,
+      flex: flex ? 1 : undefined, width: w, minWidth: 0,
+      background: ret ? '#08f' : keyBg,
+      boxShadow: '0 1px 0 rgba(0,0,0,0.075)',
+      display: 'flex', alignItems: 'center', justifyContent: 'center',
+      fontFamily: '-apple-system, "SF Compact", system-ui',
+      fontSize: fs, fontWeight: 458, color: ret ? '#fff' : glyph,
+    }}>{content}</div>
+  );
+
+  const row = (keys, pad = 0) => (
+    <div style={{ display: 'flex', gap: 6.5, justifyContent: 'center', padding: `0 ${pad}px` }}>
+      {keys.map(l => key(l, { flex: true, k: l }))}
+    </div>
+  );
+
+  return (
+    <div style={{
+      position: 'relative', zIndex: 15, borderRadius: 27, overflow: 'hidden',
+      padding: '11px 0 2px',
+      display: 'flex', flexDirection: 'column', alignItems: 'center',
+      boxShadow: dark
+        ? '0 -2px 20px rgba(0,0,0,0.09)'
+        : '0 -1px 6px rgba(0,0,0,0.018), 0 -3px 20px rgba(0,0,0,0.012)',
+    }}>
+      {/* liquid glass bg — same recipe as nav pills */}
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 27,
+        backdropFilter: 'blur(12px) saturate(180%)',
+        WebkitBackdropFilter: 'blur(12px) saturate(180%)',
+        background: dark ? 'rgba(120,120,128,0.14)' : 'rgba(255,255,255,0.25)',
+      }} />
+      <div style={{
+        position: 'absolute', inset: 0, borderRadius: 27,
+        boxShadow: dark
+          ? 'inset 1.5px 1.5px 1px rgba(255,255,255,0.15)'
+          : 'inset 1.5px 1.5px 1px rgba(255,255,255,0.7), inset -1px -1px 1px rgba(255,255,255,0.4)',
+        border: dark ? '0.5px solid rgba(255,255,255,0.15)' : '0.5px solid rgba(0,0,0,0.06)',
+        pointerEvents: 'none',
+      }} />
+
+      {/* autocorrect bar */}
+      <div style={{
+        display: 'flex', gap: 20, alignItems: 'center',
+        padding: '8px 22px 13px', width: '100%', boxSizing: 'border-box',
+        position: 'relative',
+      }}>
+        {['"The"', 'the', 'to'].map((w, i) => (
+          <React.Fragment key={i}>
+            {i > 0 && <div style={{ width: 1, height: 25, background: '#ccc', opacity: 0.3 }} />}
+            <div style={{
+              flex: 1, textAlign: 'center',
+              fontFamily: '-apple-system, system-ui', fontSize: 17,
+              color: sugg, letterSpacing: -0.43, lineHeight: '22px',
+            }}>{w}</div>
+          </React.Fragment>
+        ))}
+      </div>
+
+      {/* key layout */}
+      <div style={{
+        display: 'flex', flexDirection: 'column', gap: 13,
+        padding: '0 6.5px', width: '100%', boxSizing: 'border-box',
+        position: 'relative',
+      }}>
+        {row(['q','w','e','r','t','y','u','i','o','p'])}
+        {row(['a','s','d','f','g','h','j','k','l'], 20)}
+        <div style={{ display: 'flex', gap: 14.25, alignItems: 'center' }}>
+          {key(icons.shift, { w: 45, k: 'shift' })}
+          <div style={{ display: 'flex', gap: 6.5, flex: 1 }}>
+            {['z','x','c','v','b','n','m'].map(l => key(l, { flex: true, k: l }))}
+          </div>
+          {key(icons.del, { w: 45, k: 'del' })}
+        </div>
+        <div style={{ display: 'flex', gap: 6, alignItems: 'center' }}>
+          {key('ABC', { w: 92.25, fs: 18, k: 'abc' })}
+          {key('', { flex: true, k: 'space' })}
+          {key(icons.ret, { w: 92.25, ret: true, k: 'ret' })}
+        </div>
+      </div>
+
+      {/* bottom spacer (emoji+mic area, icons omitted) */}
+      <div style={{ height: 56, width: '100%', position: 'relative' }} />
+    </div>
+  );
+}
+
+Object.assign(window, {
+  IOSDevice, IOSStatusBar, IOSNavBar, IOSGlassPill, IOSList, IOSListRow, IOSKeyboard,
+});
+
+
+// ═══ components/Chrome.js ═══
+// Shared chrome: top bar, bottom nav, game-time, parchment panels
+
+const SCHOOL_GLYPH = {
+  fire:   '◬',
+  water:  '◉',
+  earth:  '⬢',
+  air:    '≋',
+  chaos:  '✧',
+  order:  '✦',
+  life:   '❋',
+  death:  '☗',
+};
+const SCHOOL_NAME_RU = {
+  fire:'Огонь', water:'Вода', earth:'Земля', air:'Воздух',
+  chaos:'Хаос', order:'Порядок', life:'Жизнь', death:'Смерть',
+};
+const SCHOOL_COLOR = {
+  fire:'var(--s-fire)', water:'var(--s-water)', earth:'var(--s-earth)', air:'var(--s-air)',
+  chaos:'var(--s-chaos)', order:'var(--s-order)', life:'var(--s-life)', death:'var(--s-death)',
+};
+
+// Telegram-style mini-app header (sits inside iOS device)
+function MiniAppHeader({title, subtitle, left, right}){
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', gap:10,
+      padding:'8px 14px',
+      borderBottom:'1px solid rgba(60,35,10,0.25)',
+      background:'linear-gradient(180deg, rgba(255,245,220,0.55), rgba(255,245,220,0.0))',
+      position:'relative', zIndex:5,
+    }}>
+      <div style={{width:30,display:'flex',justifyContent:'flex-start'}}>{left}</div>
+      <div style={{flex:1, textAlign:'center'}}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17, lineHeight:1, letterSpacing:'.01em', color:'var(--ink)'}}>{title}</div>
+        {subtitle && <div style={{fontFamily:'var(--serif)', fontSize:11, color:'var(--ink-faint)', marginTop:2, fontStyle:'italic'}}>{subtitle}</div>}
+      </div>
+      <div style={{width:30,display:'flex',justifyContent:'flex-end'}}>{right}</div>
+    </div>
+  );
+}
+
+function HeaderBack({onClick}){
+  return (
+    <button onClick={onClick} aria-label="Назад" style={{
+      border:'none', background:'none', padding:4, cursor:'pointer', color:'var(--ink-soft)',
+      display:'flex', alignItems:'center',
+    }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    </button>
+  );
+}
+
+function HeaderMenu({onClick}){
+  return (
+    <button onClick={onClick} aria-label="Меню" style={{
+      border:'none', background:'none', padding:4, cursor:'pointer', color:'var(--ink-soft)',
+      display:'flex', alignItems:'center',
+    }}>
+      <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+    </button>
+  );
+}
+
+// Bottom nav — the five big zones
+function BottomNav({current, onGo}){
+  const items = [
+    {k:'map',     label:'Карта',    icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/><path d="M9 3v16M15 5v16"/></svg>},
+    {k:'base',    label:'База',     icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>},
+    {k:'spell',   label:'Круг',     icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg>},
+    {k:'grimoire',label:'Гримуар',  icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h12a3 3 0 013 3v13H7a3 3 0 01-3-3V4z"/><path d="M4 17a3 3 0 013-3h12"/><path d="M8 8h6M8 11h5"/></svg>},
+    {k:'academy', label:'Академия', icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9l10-5 10 5-10 5L2 9z"/><path d="M6 11v5c2 1.5 4 2 6 2s4-.5 6-2v-5"/><path d="M22 9v5"/></svg>},
+  ];
+  return (
+    <div style={{
+      borderTop:'1px solid rgba(60,35,10,0.28)',
+      background:'linear-gradient(180deg, rgba(255,245,220,0.0), rgba(60,35,10,0.06))',
+      display:'grid', gridTemplateColumns:'repeat(5,1fr)',
+      padding:'6px 4px 4px',
+      position:'relative', zIndex:5,
+    }}>
+      {items.map(it => {
+        const active = current===it.k;
+        const color = active ? 'var(--wax)' : 'var(--ink-faint)';
+        return (
+          <button key={it.k} onClick={()=>onGo(it.k)} style={{
+            border:'none', background:'none', cursor:'pointer',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+            padding:'4px 0', color,
+            fontFamily:'var(--display)', fontSize:10, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase',
+          }}>
+            {it.icon(color)}
+            <span>{it.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Game-time / weather pill
+function GameTimePill({day, month, year, night, season='Лето'}){
+  const monthNames = ['Жнивень','Светень','Мглистый','Трявень','Солнцестоя','Лозоплёт','Горница','Листобой','Вересень','Мрачень','Медвень','Заморозь','Стужень'];
+  return (
+    <div style={{
+      display:'inline-flex', alignItems:'center', gap:8,
+      background:'linear-gradient(180deg, oklch(0.93 0.04 80), oklch(0.88 0.05 76))',
+      border:'1px solid rgba(60,35,10,0.3)',
+      borderRadius:999, padding:'4px 10px 4px 8px',
+      fontFamily:'var(--serif)', fontSize:11, color:'var(--ink)',
+      boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 1px 2px rgba(0,0,0,0.08)',
+    }}>
+      <span style={{fontFamily:'var(--rune)', fontSize:14, color: night?'var(--magic)':'var(--wax)'}}>
+        {night ? '☾' : '☀'}
+      </span>
+      <span style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.04em'}}>
+        {day} {monthNames[month-1]} · {year} г.
+      </span>
+      <span style={{fontStyle:'italic', color:'var(--ink-faint)', borderLeft:'1px solid rgba(60,35,10,0.25)', paddingLeft:7, fontSize:10}}>{season}</span>
+    </div>
+  );
+}
+
+// Ornamental heading
+function Ornament({children, centered=true, tiny=false}){
+  return (
+    <div style={{
+      textAlign: centered?'center':'left',
+      fontFamily:'var(--display)', fontWeight:600,
+      fontSize: tiny?13:18, letterSpacing:'.04em',
+      color:'var(--ink)',
+      textTransform: tiny?'uppercase':'none',
+      display:'flex', alignItems:'center', gap:10, justifyContent:centered?'center':'flex-start',
+    }}>
+      <span style={{flex:centered?1:0, height:1, background:'linear-gradient(90deg, transparent, rgba(60,35,10,0.4))', minWidth: centered?20:0}}/>
+      <span>{children}</span>
+      <span style={{flex:1, height:1, background:'linear-gradient(90deg, rgba(60,35,10,0.4), transparent)'}}/>
+    </div>
+  );
+}
+
+// Small info chip
+function Chip({children, color='ink', style={}}){
+  const map = {
+    ink:    {bg:'rgba(60,35,10,0.08)', fg:'var(--ink)', bd:'rgba(60,35,10,0.3)'},
+    magic:  {bg:'oklch(0.9 0.06 295 / 0.35)', fg:'oklch(0.35 0.15 295)', bd:'oklch(0.55 0.17 295 / 0.5)'},
+    wax:    {bg:'oklch(0.88 0.08 30 / 0.35)', fg:'var(--wax-deep)', bd:'rgba(120,50,20,0.45)'},
+    verdigris:{bg:'oklch(0.88 0.05 170 / 0.35)', fg:'oklch(0.35 0.08 170)', bd:'oklch(0.5 0.06 170 / 0.5)'},
+  };
+  const m = map[color] || map.ink;
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:4,
+      padding:'2px 7px', borderRadius:999,
+      background:m.bg, color:m.fg, border:`1px solid ${m.bd}`,
+      fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.04em',
+      ...style,
+    }}>{children}</span>
+  );
+}
+
+Object.assign(window, {
+  MiniAppHeader, HeaderBack, HeaderMenu, BottomNav, GameTimePill, Ornament, Chip,
+  SCHOOL_GLYPH, SCHOOL_NAME_RU, SCHOOL_COLOR,
+});
+
+
+// ═══ screens/Map.js ═══
+// World map — Starsector-ish, POIs, player token, animated travel, day/night
+
+// Locations on the map, in % coords (x,y) relative to the 1000×1000 source
+const POIS = [
+  // Positions matched to assets/map.png marker dots
+  {id:'tower',       name:'Башня',           type:'tower',  x:40, y:22, desc:'Единственное место, где работает магия. Вход в подземелье.'},
+  {id:'capital',     name:'Столица',         type:'city',   x:47, y:47, desc:'Главный город княжества. Академия, рынок, таверны.'},
+  {id:'east-town',   name:'Верхний Предел',  type:'city',   x:77, y:26, desc:'Северный торговый город.'},
+  {id:'south-town',  name:'Заречье',         type:'city',   x:47, y:88, desc:'Южный рыбацкий городок.'},
+  {id:'lake-village',name:'Малые Воды',      type:'village',x:57, y:60, desc:'Деревня у озера.'},
+  {id:'hermitage',   name:'Скит',            type:'ruin',   x:20, y:40, desc:'Заброшенная хижина в горах.'},
+  {id:'stones',      name:'Камни',           type:'ruin',   x:87, y:36, desc:'Каменный круг в предгорьях.'},
+  {id:'farmstead',   name:'Хутор',           type:'camp',   x:62, y:72, desc:'Ваша база.'},
+];
+
+// Roads as ordered POI ids — approximately along the dotted paths on the map
+const ROADS = [
+  ['farmstead','lake-village'],
+  ['lake-village','capital'],
+  ['capital','south-town'],
+  ['capital','tower'],
+  ['capital','east-town'],
+  ['east-town','stones'],
+  ['tower','hermitage'],
+  ['lake-village','east-town'],
+];
+
+function poi(id){ return POIS.find(p=>p.id===id); }
+
+// Icon for POI type
+function POIGlyph({type, size=18, active, night}){
+  const col = active ? 'var(--wax)' : (night ? '#f7e9c2' : 'var(--ink)');
+  const bg = active ? 'oklch(0.9 0.08 35 / 0.9)' : (night ? 'rgba(40,35,60,0.85)' : 'rgba(255,245,220,0.88)');
+  const s = size;
+  const common = {
+    width:s, height:s, borderRadius:'50%',
+    display:'flex', alignItems:'center', justifyContent:'center',
+    background:bg, color:col,
+    border:`1.5px solid ${active?'var(--wax-deep)':(night?'rgba(247,233,194,0.5)':'rgba(60,35,10,0.6)')}`,
+    boxShadow: active
+      ? '0 0 0 3px rgba(180,60,20,0.2), 0 2px 4px rgba(0,0,0,0.3)'
+      : '0 1px 2px rgba(0,0,0,0.3)',
+  };
+  const icon = {
+    tower:'◆', city:'▲', village:'■', ruin:'✕', camp:'●'
+  }[type] || '●';
+  return <div style={common}><span style={{fontSize: s*0.55, fontWeight:700, lineHeight:1}}>{icon}</span></div>;
+}
+
+function MapScreen({night, onEnter, gameTime, setGameTime}){
+  const [pos, setPos] = React.useState({x: poi('farmstead').x, y: poi('farmstead').y});
+  const [currentPoi, setCurrentPoi] = React.useState('farmstead');
+  const [selected, setSelected] = React.useState(null); // target poi id
+  const [travelling, setTravelling] = React.useState(null); // {from,to,path,t}
+  const [arrivalPrompt, setArrivalPrompt] = React.useState(null); // poi id
+
+  // Build adjacency from ROADS
+  const adj = React.useMemo(()=>{
+    const m = {};
+    ROADS.forEach(([a,b])=>{
+      (m[a] = m[a] || []).push(b);
+      (m[b] = m[b] || []).push(a);
+    });
+    return m;
+  },[]);
+
+  // BFS shortest path between two POIs
+  function path(from, to){
+    if(from===to) return [from];
+    const q=[[from]]; const seen=new Set([from]);
+    while(q.length){
+      const p = q.shift();
+      const tail = p[p.length-1];
+      for(const n of (adj[tail]||[])){
+        if(seen.has(n)) continue;
+        if(n===to) return [...p, n];
+        seen.add(n); q.push([...p, n]);
+      }
+    }
+    return null;
+  }
+
+  // Animate travel
+  React.useEffect(()=>{
+    if(!travelling) return;
+    let raf;
+    let last = performance.now();
+    const STEP_MS = 1600; // per road segment
+    const tick = (now)=>{
+      const dt = now - last; last = now;
+      setTravelling(cur=>{
+        if(!cur) return cur;
+        const segs = cur.path.length - 1;
+        const next = cur.t + dt / (STEP_MS * segs);
+        if(next >= 1){
+          // arrive
+          const arr = poi(cur.path[cur.path.length-1]);
+          setPos({x:arr.x, y:arr.y});
+          setCurrentPoi(arr.id);
+          setArrivalPrompt(arr.id);
+          setSelected(null);
+          // advance game-time proportional to segment count
+          setGameTime(gt => ({...gt, day: gt.day + segs*2}));
+          return null;
+        }
+        // interpolate along polyline
+        const segIdx = Math.min(Math.floor(next*segs), segs-1);
+        const localT = next*segs - segIdx;
+        const a = poi(cur.path[segIdx]);
+        const b = poi(cur.path[segIdx+1]);
+        setPos({x: a.x + (b.x-a.x)*localT, y: a.y + (b.y-a.y)*localT});
+        return {...cur, t: next};
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return ()=> cancelAnimationFrame(raf);
+  },[travelling && travelling.path.join('-')]);
+
+  const target = selected ? poi(selected) : null;
+  const computedPath = selected ? path(currentPoi, selected) : null;
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', background:'#0f1419'}}>
+      {/* The map */}
+      <div style={{position:'absolute', inset:0, overflow:'hidden'}}>
+        <img src={window.__MAP_URL || "assets/map.jpg"} alt="" draggable="false" style={{
+          position:'absolute', inset:0, width:'100%', height:'100%', objectFit:'cover',
+          filter: night
+            ? 'brightness(.55) contrast(1.05) saturate(.85) hue-rotate(-10deg)'
+            : 'contrast(1.02) saturate(1.03)',
+          transition:'filter 1.2s ease',
+          userSelect:'none',
+        }}/>
+        {/* Night tint overlay */}
+        <div style={{
+          position:'absolute', inset:0,
+          background: night
+            ? 'radial-gradient(120% 90% at 50% 20%, rgba(30,35,70,0) 40%, rgba(20,20,45,0.45) 75%, rgba(10,10,30,0.7) 100%)'
+            : 'radial-gradient(120% 90% at 50% 30%, rgba(255,240,200,0.1), transparent 70%)',
+          pointerEvents:'none',
+          transition:'opacity 1s ease',
+        }}/>
+        {/* parchment grid */}
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{
+          position:'absolute', inset:0, width:'100%', height:'100%',
+          opacity: night? .12 : .18, mixBlendMode:'multiply', pointerEvents:'none',
+        }}>
+          {[...Array(10)].map((_,i)=>(
+            <g key={i}>
+              <line x1={i*10} y1="0" x2={i*10} y2="100" stroke="#3b2410" strokeWidth=".08"/>
+              <line x1="0" y1={i*10} x2="100" y2={i*10} stroke="#3b2410" strokeWidth=".08"/>
+            </g>
+          ))}
+        </svg>
+      </div>
+
+      {/* Roads */}
+      <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{
+        position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none',
+      }}>
+        {ROADS.map(([a,b],i)=>{
+          const A = poi(a), B = poi(b);
+          return (
+            <line key={i} x1={A.x} y1={A.y} x2={B.x} y2={B.y}
+              stroke={night?'#f5e5bc':'#3a1f0a'} strokeOpacity={night?.35:.42}
+              strokeWidth=".3" strokeDasharray=".9 .8" strokeLinecap="round"/>
+          );
+        })}
+        {/* highlighted route */}
+        {computedPath && computedPath.length>1 && (
+          <polyline
+            points={computedPath.map(id=>`${poi(id).x},${poi(id).y}`).join(' ')}
+            fill="none" stroke="var(--magic)" strokeOpacity=".9"
+            strokeWidth=".5" strokeDasharray="1.2 .8" strokeLinecap="round"
+            style={{filter:'drop-shadow(0 0 1px var(--magic))', animation:'flicker 2s infinite'}}
+          />
+        )}
+      </svg>
+
+      {/* POI markers */}
+      {POIS.map(p=>(
+        <button key={p.id} onClick={()=> {
+          if(p.id===currentPoi){
+            setArrivalPrompt(p.id);
+            return;
+          }
+          setSelected(p.id);
+        }} style={{
+          position:'absolute', left:`${p.x}%`, top:`${p.y}%`, transform:'translate(-50%,-50%)',
+          background:'none', border:'none', cursor:'pointer', padding:0,
+          display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+          zIndex: 2,
+        }}>
+          <POIGlyph type={p.type} size={p.type==='tower'?24:(p.type==='city'?22:16)} active={selected===p.id || currentPoi===p.id} night={night}/>
+          <span style={{
+            fontFamily:'var(--display)', fontSize: p.type==='tower'?11:10, fontWeight:700,
+            color: night?'#f7e9c2':'#2a1a08',
+            textShadow: night ? '0 1px 2px rgba(0,0,0,0.9)' : '0 1px 0 rgba(255,245,220,0.9), 0 0 2px rgba(255,245,220,0.7)',
+            letterSpacing:'.03em', whiteSpace:'nowrap',
+          }}>{p.name}</span>
+        </button>
+      ))}
+
+      {/* Player token */}
+      <div style={{
+        position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`,
+        transform:'translate(-50%,-50%)',
+        pointerEvents:'none', zIndex:3,
+      }}>
+        <div style={{
+          width:20, height:20, borderRadius:'50%',
+          background:'radial-gradient(circle at 35% 30%, #f5d68a, var(--wax))',
+          border:'2px solid #f5ead3',
+          boxShadow:'0 0 0 2px rgba(180,60,20,0.35), 0 2px 4px rgba(0,0,0,0.4), 0 0 12px rgba(180,60,20,0.4)',
+          animation:'drift 2.5s ease-in-out infinite',
+        }}/>
+      </div>
+
+      {/* Compass */}
+      <div style={{
+        position:'absolute', top:12, right:12, zIndex:4,
+        width:54, height:54, borderRadius:'50%',
+        background: night
+          ? 'radial-gradient(circle, rgba(30,25,60,0.85), rgba(20,20,45,0.85))'
+          : 'radial-gradient(circle, rgba(255,245,220,0.88), rgba(220,195,140,0.85))',
+        border: `1.5px solid ${night?'rgba(247,233,194,0.45)':'rgba(60,35,10,0.5)'}`,
+        display:'flex', alignItems:'center', justifyContent:'center',
+        boxShadow:'0 2px 6px rgba(0,0,0,0.35)',
+      }}>
+        <svg viewBox="-20 -20 40 40" width="40" height="40">
+          <circle r="18" fill="none" stroke={night?'#f7e9c2':'#3a1f0a'} strokeWidth=".5" strokeOpacity=".5"/>
+          <g stroke={night?'#f7e9c2':'#3a1f0a'} strokeWidth=".6">
+            <line x1="0" y1="-16" x2="0" y2="-12"/>
+            <line x1="0" y1="12" x2="0" y2="16"/>
+            <line x1="-16" y1="0" x2="-12" y2="0"/>
+            <line x1="12" y1="0" x2="16" y2="0"/>
+          </g>
+          <polygon points="0,-14 3,0 0,2 -3,0" fill="var(--wax)"/>
+          <polygon points="0,14 3,0 0,-2 -3,0" fill={night?'#f7e9c2':'#3a1f0a'}/>
+          <text x="0" y="-8" textAnchor="middle" fontSize="6" fontFamily="var(--rune)"
+            fill={night?'#f7e9c2':'#3a1f0a'}>N</text>
+        </svg>
+      </div>
+
+      {/* Traveller readout */}
+      {travelling && (
+        <div style={{
+          position:'absolute', top:12, left:12, zIndex:4,
+          background:'rgba(20,15,10,0.78)', color:'#f5ead3',
+          padding:'6px 10px', borderRadius:8,
+          border:'1px solid rgba(247,233,194,0.25)',
+          fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.04em',
+          display:'flex', alignItems:'center', gap:8,
+          backdropFilter:'blur(4px)',
+        }}>
+          <span className="pulse" style={{width:6, height:6, borderRadius:'50%', background:'var(--magic-soft)', boxShadow:'0 0 6px var(--magic)'}}/>
+          В пути · {poi(travelling.path[0]).name} → {poi(travelling.path.at(-1)).name}
+        </div>
+      )}
+
+      {/* Travel confirm sheet */}
+      {selected && !travelling && !arrivalPrompt && (
+        <div style={{
+          position:'absolute', left:10, right:10, bottom:10, zIndex:10,
+          background:'var(--vellum)',
+          border:'1px solid rgba(60,35,10,0.4)', borderRadius:14,
+          padding:'12px 14px 14px',
+          boxShadow:'0 10px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,245,220,0.7)',
+        }} className="vignette">
+          <div style={{display:'flex', alignItems:'center', gap:10}}>
+            <POIGlyph type={target.type} size={28} active={true}/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17}}>{target.name}</div>
+              <div style={{fontSize:11, fontStyle:'italic', color:'var(--ink-soft)', marginTop:2}}>{target.desc}</div>
+            </div>
+            <button onClick={()=>setSelected(null)} style={{border:'none', background:'none', fontSize:18, color:'var(--ink-faint)', cursor:'pointer'}}>✕</button>
+          </div>
+          <div style={{
+            display:'flex', gap:8, marginTop:10,
+            fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)',
+          }}>
+            <Chip color="ink">⏱ {computedPath ? (computedPath.length-1)*2 : '—'} дн.</Chip>
+            <Chip color="ink">🍞 {computedPath ? (computedPath.length-1)*2 : '—'}</Chip>
+            <Chip color="wax">Опасность: низкая</Chip>
+          </div>
+          <div style={{display:'flex', gap:8, marginTop:12}}>
+            <button className="inkbtn ghost" onClick={()=>setSelected(null)} style={{flex:1}}>Отмена</button>
+            <button className="inkbtn primary" disabled={!computedPath} onClick={()=>{
+              if(!computedPath) return;
+              setTravelling({from:currentPoi, to:selected, path:computedPath, t:0});
+              setSelected(null);
+            }} style={{flex:2}}>Выступить в путь</button>
+          </div>
+        </div>
+      )}
+
+      {/* Arrival / here-you-are */}
+      {arrivalPrompt && !travelling && (
+        <div style={{
+          position:'absolute', left:10, right:10, bottom:10, zIndex:10,
+          background:'var(--vellum)',
+          border:'1px solid rgba(60,35,10,0.4)', borderRadius:14,
+          padding:'12px 14px 14px',
+          boxShadow:'0 10px 20px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,245,220,0.7)',
+        }} className="vignette">
+          <Ornament tiny>Вы на месте</Ornament>
+          <div style={{marginTop:8, display:'flex', alignItems:'center', gap:10}}>
+            <POIGlyph type={poi(arrivalPrompt).type} size={28} active/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17}}>{poi(arrivalPrompt).name}</div>
+              <div style={{fontSize:11, fontStyle:'italic', color:'var(--ink-soft)', marginTop:2}}>{poi(arrivalPrompt).desc}</div>
+            </div>
+          </div>
+          <div style={{display:'flex', gap:8, marginTop:12}}>
+            <button className="inkbtn ghost" onClick={()=>setArrivalPrompt(null)} style={{flex:1}}>Остаться на карте</button>
+            <button className="inkbtn primary" onClick={()=>{ setArrivalPrompt(null); onEnter(arrivalPrompt); }} style={{flex:2}}>Войти</button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+Object.assign(window, { MapScreen, POIS });
+
+
+// ═══ screens/LocationEvent.js ═══
+// Location text-event — arriving at a city/tower/etc.
+
+const LOCATION_DATA = {
+  capital: {
+    title:'Столица',
+    subtitle:'Главный город княжества',
+    hero:'Городские врата',
+    text:[
+      'Стражники в кольчугах лениво переглядываются. От кузницы тянет углём и пóтом, с рыночной площади — жареной рыбой и пряной мятой. Над башенками ратуши кружат голуби.',
+      'К вам подходит мальчишка-посыльный: «Сударь, там на доске объявлений — письмо с вашим именем. И печать красная».',
+    ],
+    actions:[
+      {k:'academy',  label:'В Академию',         hint:'учебные залы'},
+      {k:'market',   label:'На рынок',           hint:'лавки и торговцы'},
+      {k:'tavern',   label:'В таверну «Три пера»', hint:'новости и наём'},
+      {k:'letter',   label:'Вскрыть письмо',     hint:'печать красного воска', accent:true},
+      {k:'leave',    label:'Уйти обратно на карту'},
+    ],
+  },
+  tower:{
+    title:'Башня',
+    subtitle:'Единственное место, где работает магия',
+    hero:'У подножия',
+    text:[
+      'Воздух здесь звенит, как струна слабо натянутого лука. Камень у входа тёплый — местами теплее ладони. На ступенях мелком начерчена фигурка, похожая на восьмилучевой компас; одна из её граней затёрта.',
+      'Внутри слышно, как кто-то сосредоточенно что-то бормочет по-латыни. Голоса сразу трёх.',
+    ],
+    actions:[
+      {k:'party',  label:'Собрать / найти отряд'},
+      {k:'dungeon',label:'Войти в подземелье', hint:'готовьтесь тщательно', accent:true},
+      {k:'library',label:'Библиотека Башни'},
+      {k:'leave',  label:'Обратно на карту'},
+    ],
+  },
+  farmstead:{
+    title:'Хутор',
+    subtitle:'Ваша база',
+    hero:'Дом',
+    text:[
+      'Скрипит калитка. Пёс без одного уха привычно не гавкает. На крыльце — чей-то оставленный вчера свёрток; запах трав подсказывает, что это, скорее всего, от аптекаря.',
+    ],
+    actions:[
+      {k:'base',  label:'Войти в дом', accent:true},
+      {k:'forge', label:'В мастерскую'},
+      {k:'garden',label:'Огород и запасы'},
+      {k:'leave', label:'Обратно на карту'},
+    ],
+  },
+};
+
+function LocationEvent({poiId, onLeave, onGo}){
+  const data = LOCATION_DATA[poiId] || {
+    title:'Место', subtitle:'', hero:'', text:['Здесь пока тихо.'],
+    actions:[{k:'leave', label:'Обратно на карту'}],
+  };
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+      <div className="parchment"/>
+      <div className="mmgo-scroll" style={{position:'relative', height:'100%', overflow:'auto', padding:'14px 16px 20px'}}>
+        {/* Hero strip — a pseudo-illustration band */}
+        <div style={{
+          height:100, borderRadius:10, marginBottom:14,
+          background:`
+            linear-gradient(180deg, rgba(40,22,8,0.35), rgba(40,22,8,0.1)),
+            repeating-linear-gradient(45deg, oklch(0.78 0.06 60), oklch(0.78 0.06 60) 6px, oklch(0.73 0.07 58) 6px, oklch(0.73 0.07 58) 12px)
+          `,
+          border:'1px solid rgba(60,35,10,0.45)',
+          position:'relative', overflow:'hidden',
+          boxShadow:'inset 0 0 20px rgba(60,35,10,0.35)',
+        }}>
+          <div style={{
+            position:'absolute', inset:0, display:'flex', alignItems:'flex-end', padding:'8px 12px',
+            color:'#f5ead3', fontFamily:'var(--display)', fontSize:14, letterSpacing:'.08em',
+            textTransform:'uppercase', textShadow:'0 1px 2px rgba(0,0,0,0.6)',
+          }}>{data.hero}</div>
+          {/* corner ornaments */}
+          {['0 0', '100% 0', '0 100%', '100% 100%'].map((pos,i)=>(
+            <div key={i} style={{
+              position:'absolute', width:14, height:14,
+              left: pos.split(' ')[0]==='100%'?'auto':4, right: pos.split(' ')[0]==='100%'?4:'auto',
+              top:  pos.split(' ')[1]==='100%'?'auto':4, bottom:pos.split(' ')[1]==='100%'?4:'auto',
+              border:'1.5px solid rgba(245,234,211,0.65)',
+              borderRight: i%2===1?'none':undefined,
+              borderBottom: i>=2?'none':undefined,
+              borderLeft: i%2===0?undefined:'none',
+              borderTop: i<2?undefined:'none',
+            }}/>
+          ))}
+        </div>
+
+        <Ornament>{data.title}</Ornament>
+        {data.subtitle && (
+          <div style={{textAlign:'center', fontFamily:'var(--serif)', fontStyle:'italic', color:'var(--ink-faint)', fontSize:12, marginTop:2, marginBottom:14}}>
+            {data.subtitle}
+          </div>
+        )}
+
+        {/* Body text with drop cap */}
+        <div style={{fontFamily:'var(--serif)', fontSize:14, lineHeight:1.6, color:'var(--ink)', textAlign:'justify'}}>
+          {data.text.map((para,i)=>(
+            <p key={i} style={{margin:'0 0 10px'}}>
+              {i===0 ? (
+                <><span style={{
+                  float:'left', fontFamily:'var(--display)', fontWeight:700,
+                  fontSize:40, lineHeight:.85, marginRight:6, marginTop:3,
+                  color:'var(--wax)',
+                }}>{para.charAt(0)}</span>{para.slice(1)}</>
+              ) : para}
+            </p>
+          ))}
+        </div>
+
+        <div className="hrule" style={{margin:'18px 0 12px'}}/>
+
+        <div style={{display:'flex', flexDirection:'column', gap:8}}>
+          {data.actions.map(a=>(
+            <button key={a.k}
+              className={`inkbtn${a.accent?' primary':''}`}
+              onClick={()=>{
+                if(a.k==='leave') onLeave();
+                else onGo && onGo(a.k);
+              }}
+              style={{
+                textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between',
+                fontSize:14,
+              }}>
+              <span>{a.label}</span>
+              {a.hint && <span style={{
+                fontFamily:'var(--serif)', fontStyle:'italic', fontWeight:400, fontSize:11,
+                color: a.accent?'rgba(245,234,211,0.8)':'var(--ink-faint)',
+              }}>{a.hint}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { LocationEvent, LOCATION_DATA });
+
+
+// ═══ screens/SpellCircle.js ═══
+// Spell Creation Circle — rotating summoning circle with 6 glyph slots + Latin input + AI mocked preview
+
+const SLOTS = [
+  {k:'actio',   ru:'Действие',   hint:'что делает', example:['Ictus','Captio','Scutum','Sanatio','Vocatio']},
+  {k:'forma',   ru:'Форма',      hint:'геометрия',  example:['Radius','Sphaera','Murus','Conus','Nexus']},
+  {k:'vis',     ru:'Сила',       hint:'интенсивность', example:['Levis','Mediocris','Magnus','Enormis']},
+  {k:'tempus',  ru:'Время',      hint:'длительность',  example:['Momentum','Sustineo','Tardus']},
+  {k:'mutatio', ru:'Мутация',    hint:'комбо-эффект',  example:['Motus','Glacies','Dissipatio']},
+  {k:'pretium', ru:'Цена',       hint:'доп. цена',     example:['Sanguis','Mora','Focus']},
+];
+
+const SCHOOLS = ['fire','water','earth','air','chaos','order','life','death'];
+
+const BASE_SPELLS = [
+  {id:'ignis-parvus', name:'Ignis Parvus',   school:'fire', gloss:'малое пламя'},
+  {id:'aqua-scutum',  name:'Aqua Scutum',    school:'water',gloss:'водяной щит'},
+  {id:'terra-mure',   name:'Terra Mure',     school:'earth',gloss:'стена земли'},
+  {id:'aer-velox',    name:'Aer Velox',      school:'air',  gloss:'стремительный ветер'},
+];
+
+function SpellCircle({onLeave}){
+  const [school, setSchool] = React.useState('fire');
+  const [base, setBase] = React.useState('ignis-parvus');
+  const [words, setWords] = React.useState(['','','','','','']);
+  const [focused, setFocused] = React.useState(0);
+  const [casting, setCasting] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+
+  const filled = words.filter(Boolean).length;
+  const baseSpell = BASE_SPELLS.find(s=>s.id===base);
+
+  function cast(){
+    setCasting(true);
+    setResult(null);
+    setTimeout(()=>{
+      setCasting(false);
+      setResult(mockAI(school, baseSpell, words));
+    }, 1400);
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+      <div className="parchment"/>
+      <div className="mmgo-scroll" style={{position:'relative', height:'100%', overflow:'auto', padding:'12px 12px 16px'}}>
+        <Ornament>Круг призыва</Ornament>
+        <div style={{textAlign:'center', fontStyle:'italic', color:'var(--ink-faint)', fontSize:11, marginTop:2, marginBottom:10}}>
+          «Слова — это сосуды. Сосуды держат намерение».
+        </div>
+
+        {/* Circle */}
+        <div style={{
+          position:'relative', width:'100%', aspectRatio:'1/1',
+          margin:'0 auto', maxWidth:320,
+        }}>
+          {/* rotating outer ring */}
+          <div style={{position:'absolute', inset:6, animation:'spin-slow 90s linear infinite'}}>
+            <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+              <circle r="95" fill="none" stroke="var(--ink)" strokeOpacity=".25" strokeWidth=".5"/>
+              {[...Array(48)].map((_,i)=>(
+                <line key={i} x1={Math.cos(i*Math.PI*2/48)*88} y1={Math.sin(i*Math.PI*2/48)*88}
+                  x2={Math.cos(i*Math.PI*2/48)*95} y2={Math.sin(i*Math.PI*2/48)*95}
+                  stroke="var(--ink)" strokeOpacity=".35" strokeWidth=".4"/>
+              ))}
+            </svg>
+          </div>
+          {/* middle ring — counter rotating */}
+          <div style={{position:'absolute', inset:24, animation:'spin-rev 60s linear infinite'}}>
+            <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+              <circle r="85" fill="none" stroke={`var(--s-${school})`} strokeOpacity=".6" strokeWidth="1" strokeDasharray="4 2"/>
+              {SCHOOLS.map((s,i)=>{
+                const a = i*Math.PI*2/8 - Math.PI/2;
+                return (
+                  <text key={s} x={Math.cos(a)*75} y={Math.sin(a)*75+4}
+                    textAnchor="middle" fontFamily="var(--rune)" fontSize="11"
+                    fill={`var(--s-${s})`} opacity={s===school?1:.3}
+                    style={{cursor:'pointer'}}>{SCHOOL_GLYPH[s]}</text>
+                );
+              })}
+            </svg>
+          </div>
+
+          {/* inner triangle */}
+          <div style={{position:'absolute', inset:0, animation: casting?'pulse-magic 1.2s ease-in-out infinite':'none'}}>
+            <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+              <polygon points={`0,-40 ${40*Math.cos(Math.PI/6)},${40*Math.sin(Math.PI/6)} ${-40*Math.cos(Math.PI/6)},${40*Math.sin(Math.PI/6)}`}
+                fill="none" stroke={`var(--s-${school})`} strokeWidth="1" strokeOpacity=".5"/>
+              <circle r="20" fill={`var(--s-${school})`} fillOpacity=".08" stroke={`var(--s-${school})`} strokeWidth="1" strokeOpacity=".6"/>
+              <text x="0" y="6" textAnchor="middle" fontFamily="var(--rune)" fontSize="22" fill={`var(--s-${school})`}>
+                {SCHOOL_GLYPH[school]}
+              </text>
+            </svg>
+          </div>
+
+          {/* 6 slots around the rim */}
+          {SLOTS.map((s,i)=>{
+            const angle = i*Math.PI*2/6 - Math.PI/2;
+            const r = 44; // percent from center
+            const left = 50 + Math.cos(angle)*r;
+            const top  = 50 + Math.sin(angle)*r;
+            const active = focused===i;
+            const filled = !!words[i];
+            return (
+              <button key={s.k} onClick={()=>setFocused(i)} style={{
+                position:'absolute', left:`${left}%`, top:`${top}%`, transform:'translate(-50%,-50%)',
+                width:56, height:56, borderRadius:'50%',
+                background: filled
+                  ? `radial-gradient(circle at 35% 30%, oklch(0.9 0.08 295), oklch(0.78 0.12 295))`
+                  : `radial-gradient(circle at 35% 30%, oklch(0.92 0.02 80), oklch(0.84 0.03 76))`,
+                border:`1.5px solid ${active?'var(--wax)':filled?'var(--magic)':'rgba(60,35,10,0.5)'}`,
+                boxShadow: active
+                  ? '0 0 0 3px oklch(0.55 0.14 27 / 0.3), inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(0,0,0,0.2)'
+                  : 'inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(0,0,0,0.15)',
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', padding:0,
+                transition:'all .15s ease',
+              }}>
+                <div style={{fontFamily:'var(--mono)', fontSize:8, letterSpacing:'.05em', color:'var(--ink-faint)', textTransform:'uppercase'}}>{s.ru}</div>
+                <div style={{
+                  fontFamily:'var(--rune)', fontSize: words[i]?11:18, color: filled?'var(--magic)':'rgba(60,35,10,0.35)',
+                  marginTop:1, lineHeight:1,
+                }}>{words[i] || (i+1)}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* School picker */}
+        <div style={{display:'flex', justifyContent:'center', gap:6, marginTop:8, flexWrap:'wrap'}}>
+          {SCHOOLS.slice(0,4).concat(SCHOOLS.slice(4)).map(s=>(
+            <button key={s} onClick={()=>setSchool(s)} style={{
+              width:30, height:30, borderRadius:'50%',
+              background: school===s? `var(--s-${s})` : 'oklch(0.92 0.02 80)',
+              color: school===s? '#f5ead3' : `var(--s-${s})`,
+              border:`1px solid ${school===s?'transparent':'rgba(60,35,10,0.35)'}`,
+              fontFamily:'var(--rune)', fontSize:14,
+              cursor:'pointer',
+              boxShadow: school===s?`0 0 8px var(--s-${s})`:'inset 0 1px 0 rgba(255,245,220,0.5)',
+            }}>{SCHOOL_GLYPH[s]}</button>
+          ))}
+        </div>
+
+        {/* Focused slot editor */}
+        <div style={{
+          marginTop:12, padding:'10px 12px',
+          background:'var(--vellum-2)', border:'1px solid rgba(60,35,10,0.3)',
+          borderRadius:10,
+        }}>
+          <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8}}>
+            <span style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14}}>Слог {focused+1}. {SLOTS[focused].ru}</span>
+            <span style={{fontSize:10, color:'var(--ink-faint)', fontStyle:'italic'}}>{SLOTS[focused].hint}</span>
+          </div>
+          <input
+            value={words[focused]}
+            onChange={e=>{
+              const nw=[...words]; nw[focused]=e.target.value; setWords(nw);
+            }}
+            placeholder={SLOTS[focused].example[0]}
+            style={{
+              width:'100%', marginTop:6, padding:'6px 8px',
+              border:'1px solid rgba(60,35,10,0.35)', borderRadius:6,
+              background:'oklch(0.96 0.02 82)', fontFamily:'var(--mono)', fontSize:13,
+              color:'var(--ink)',
+            }}
+          />
+          <div style={{display:'flex', gap:5, marginTop:6, flexWrap:'wrap'}}>
+            {SLOTS[focused].example.map(w=>(
+              <button key={w} onClick={()=>{
+                const nw=[...words]; nw[focused]=w; setWords(nw);
+              }} style={{
+                fontFamily:'var(--mono)', fontSize:10, padding:'3px 7px',
+                border:'1px solid rgba(60,35,10,0.3)', background:'transparent',
+                borderRadius:999, cursor:'pointer', color:'var(--ink-soft)',
+              }}>{w}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Base + formula */}
+        <div style={{marginTop:10, padding:'10px 12px', background:'var(--vellum-2)', border:'1px solid rgba(60,35,10,0.3)', borderRadius:10}}>
+          <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:13, marginBottom:6}}>База</div>
+          <select value={base} onChange={e=>setBase(e.target.value)} style={{
+            width:'100%', padding:'6px 8px', fontFamily:'var(--mono)', fontSize:12,
+            border:'1px solid rgba(60,35,10,0.35)', borderRadius:6, background:'oklch(0.96 0.02 82)',
+          }}>
+            {BASE_SPELLS.map(s=>(
+              <option key={s.id} value={s.id}>{s.name} — {s.gloss}</option>
+            ))}
+          </select>
+          <div style={{marginTop:10, fontFamily:'var(--mono)', fontSize:12, color:'var(--magic)', textAlign:'center', minHeight:20}}>
+            {words.filter(Boolean).join(' ') || <span style={{color:'var(--ink-faint)', fontStyle:'italic'}}>введите слова…</span>}
+          </div>
+        </div>
+
+        <div style={{display:'flex', gap:6, marginTop:10, justifyContent:'space-between', alignItems:'center', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)'}}>
+          <Chip color="ink">Слогов {filled}/6</Chip>
+          <Chip color="wax">Усталость ~{4+filled*2}</Chip>
+          <Chip color="magic">{SCHOOL_NAME_RU[school]}</Chip>
+        </div>
+
+        <div style={{display:'flex', gap:8, marginTop:12}}>
+          <button className="inkbtn ghost" style={{flex:1}} onClick={onLeave}>Выйти</button>
+          <button className="inkbtn primary" style={{flex:2}} disabled={!words.some(Boolean) || casting} onClick={cast}>
+            {casting ? 'Оракул думает…' : 'Пропеть инкантацию'}
+          </button>
+        </div>
+
+        {result && <AIResultCard result={result} school={school}/>}
+      </div>
+    </div>
+  );
+}
+
+function AIResultCard({result, school}){
+  return (
+    <div style={{
+      marginTop:12, padding:'12px 14px',
+      background:'linear-gradient(180deg, oklch(0.94 0.04 82), oklch(0.88 0.06 78))',
+      border:'1px solid rgba(60,35,10,0.45)', borderRadius:12,
+      boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 4px 8px rgba(40,25,10,0.18)',
+      position:'relative',
+    }}>
+      <div style={{position:'absolute', top:-10, right:12}}>
+        <div className="wax-seal" style={{width:34, height:34, fontSize:14}}>{SCHOOL_GLYPH[school]}</div>
+      </div>
+      <Ornament tiny>Оракул отвечает</Ornament>
+      <div style={{marginTop:8, fontFamily:'var(--display)', fontWeight:700, fontSize:17, color:'var(--ink)'}}>{result.name_ru}</div>
+      <div style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--magic)', marginTop:2}}>{result.formula}</div>
+      <p style={{fontFamily:'var(--serif)', fontSize:13, lineHeight:1.5, marginTop:10, color:'var(--ink)', textAlign:'justify'}}>
+        «{result.narrative}»
+      </p>
+      <div style={{display:'flex', gap:6, marginTop:8, flexWrap:'wrap'}}>
+        {result.states.map((s,i)=>(
+          <Chip key={i} color="magic">{s.label} · {s.dur}т</Chip>
+        ))}
+        <Chip color="wax">Усталость {result.fatigue}</Chip>
+        <Chip color="ink">Перезарядка {result.cd}т</Chip>
+      </div>
+    </div>
+  );
+}
+
+function mockAI(school, base, words){
+  const formula = words.filter(Boolean).join(' ');
+  const has = (w)=> words.some(x=>x.toLowerCase().includes(w.toLowerCase()));
+  const states = [];
+  if(school==='fire') states.push({label:'burning',dur:3});
+  if(school==='water'|| has('aqua')) states.push({label:'frozen', dur:2});
+  if(has('scutum')) states.push({label:'shielded', dur:3});
+  if(has('sphaera')|| has('murus')) states.push({label:'trapped', dur:2});
+  if(has('magnus')|| has('enormis')) states.push({label:'exposed', dur:2});
+  if(!states.length) states.push({label:'impact', dur:0});
+
+  const narrations = {
+    fire:'Воздух между вами вздрагивает — и в ладони распускается жаркий огненный цветок. Он устремляется вперёд, оставляя за собой запах калёного металла и тлеющую дорожку на земле.',
+    water:'Ледяной пар клубится над землёй и схлопывается в круг. В нём на мгновение замирает сама тишина — а затем всё вокруг покрывается тонкой изморозью.',
+    earth:'Земля глухо вздыхает и поднимается стеной. Камни срастаются с глухим щелчком, и на мгновение кажется, что вы слышите в них голос.',
+    air:'Порыв ветра сворачивается в спираль и с тонким свистом уходит вверх, унося за собой пыль и последний звук вашего голоса.',
+    chaos:'Пространство будто шаг назад сделало. Линии потекли, цвета сбились. Невозможно сказать, что именно произошло, — но что-то определённо да.',
+    order:'Над кругом выстраивается бледная решётка. Она ровная, как страница устава, и столь же неумолима.',
+    life:'Зелёный свет проливается сквозь пальцы, как тёплое молоко. Раны затягиваются, и становится слышно, как бьётся сердце.',
+    death:'Холод пробирает до костей — и не ваших. Что-то в цели начинает медленно истлевать изнутри.',
+  };
+
+  return {
+    name_ru: {
+      fire:'Малое Пламя, Направленное',
+      water:'Ледяной Круг',
+      earth:'Стена Тверди',
+      air:'Шквал',
+      chaos:'Смятение',
+      order:'Решётка Устава',
+      life:'Дыхание Жизни',
+      death:'Хладный Коготь',
+    }[school],
+    formula: `${base.name} + ${formula}`,
+    narrative: narrations[school],
+    states,
+    fatigue: 4 + words.filter(Boolean).length*2,
+    cd: 2 + words.filter(Boolean).length,
+  };
+}
+
+Object.assign(window, { SpellCircle });
+
+
+// ═══ screens/Grimoire.js ═══
+// Grimoire — shelves (default) and index-card catalog (tweak); drag spells into active grimoire
+
+const DEMO_SPELLS = [
+  {id:'s1', name:'Ignis Parvus', ru:'Малый огонь', school:'fire', tier:1},
+  {id:'s2', name:'Ignis Magna',  ru:'Пламя великое', school:'fire', tier:3},
+  {id:'s3', name:'Aqua Scutum',  ru:'Водный щит',  school:'water', tier:2},
+  {id:'s4', name:'Aqua Nexus',   ru:'Водная связь',school:'water', tier:2},
+  {id:'s5', name:'Terra Mure',   ru:'Стена земли', school:'earth', tier:2},
+  {id:'s6', name:'Terra Vocatio',ru:'Зов камня',   school:'earth', tier:3},
+  {id:'s7', name:'Aer Velox',    ru:'Быстрый ветер',school:'air',  tier:1},
+  {id:'s8', name:'Aer Conus',    ru:'Конус ветра', school:'air',   tier:2},
+  {id:'s9', name:'Vita Sanatio', ru:'Исцеление',   school:'life',  tier:2},
+  {id:'s10',name:'Mors Tactus',  ru:'Касание смерти',school:'death',tier:3},
+  {id:'s11',name:'Ordo Catena',  ru:'Цепь порядка',school:'order', tier:3},
+  {id:'s12',name:'Chaos Scintilla',ru:'Искра хаоса',school:'chaos',tier:1},
+];
+
+function Grimoire({layout='shelves', onLeave, onLayoutChange}){
+  const [grimoire, setGrimoire] = React.useState(['s1','s3','s7']);
+  const [dragging, setDragging] = React.useState(null);
+
+  function addToGrim(id){
+    if(grimoire.includes(id)) return;
+    if(grimoire.length>=8) return;
+    setGrimoire([...grimoire, id]);
+  }
+  function removeFromGrim(id){ setGrimoire(grimoire.filter(x=>x!==id)); }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+      <div style={{position:'relative', padding:'10px 12px 6px'}}>
+        <Ornament>Гримуары</Ornament>
+        <div style={{display:'flex', justifyContent:'center', gap:6, marginTop:6}}>
+          <button className={`inkbtn${layout==='shelves'?' primary':''}`}
+            style={{padding:'5px 10px', fontSize:11}}
+            onClick={()=>onLayoutChange('shelves')}>Полки</button>
+          <button className={`inkbtn${layout==='catalog'?' primary':''}`}
+            style={{padding:'5px 10px', fontSize:11}}
+            onClick={()=>onLayoutChange('catalog')}>Каталог</button>
+        </div>
+      </div>
+
+      <div className="mmgo-scroll" style={{position:'relative', flex:1, overflow:'auto', padding:'0 12px 10px'}}>
+        {layout==='shelves' ? <ShelvesView spells={DEMO_SPELLS} onDragStart={setDragging} onTap={addToGrim}/>
+                            : <CatalogView spells={DEMO_SPELLS} onDragStart={setDragging} onTap={addToGrim}/>}
+      </div>
+
+      {/* Active grimoire — a real book at the bottom */}
+      <GrimoireBook
+        spells={grimoire.map(id=>DEMO_SPELLS.find(s=>s.id===id))}
+        onDrop={(id)=>addToGrim(id)}
+        onRemove={removeFromGrim}
+        dragging={dragging}
+        onDragEnd={()=>setDragging(null)}
+        onLeave={onLeave}
+      />
+    </div>
+  );
+}
+
+// --- Shelves: wooden shelves, books spine-out ---
+function ShelvesView({spells, onDragStart, onTap}){
+  const perShelf = 4;
+  const shelves = [];
+  for(let i=0;i<spells.length;i+=perShelf) shelves.push(spells.slice(i,i+perShelf));
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:4, marginTop:8}}>
+      {shelves.map((row,si)=>(
+        <div key={si}>
+          <div style={{
+            display:'flex', alignItems:'flex-end', gap:4,
+            padding:'4px 6px', minHeight:92,
+            background:'rgba(60,35,10,0.03)',
+            borderRadius:4,
+          }}>
+            {row.map(s => <BookSpine key={s.id} spell={s} onDragStart={onDragStart} onTap={onTap}/>)}
+            {row.length<perShelf && [...Array(perShelf-row.length)].map((_,i)=>(
+              <div key={`e${i}`} style={{flex:1}}/>
+            ))}
+          </div>
+          {/* wooden shelf */}
+          <div className="wood" style={{
+            height:10, borderRadius:2,
+            boxShadow:'0 2px 2px rgba(0,0,0,0.25), inset 0 -2px 0 rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,220,170,0.15)',
+          }}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function BookSpine({spell, onDragStart, onTap}){
+  const h = 70 + (spell.tier*5);
+  return (
+    <div
+      draggable
+      onDragStart={(e)=>{ e.dataTransfer.setData('text/plain', spell.id); onDragStart(spell.id); }}
+      onClick={()=>onTap(spell.id)}
+      style={{
+        flex:1, height:h, minWidth:22,
+        background:`linear-gradient(180deg, var(--s-${spell.school}), oklch(from var(--s-${spell.school}) calc(l*.7) c h))`,
+        border:'1px solid rgba(0,0,0,0.4)', borderRadius:'2px 2px 1px 1px',
+        position:'relative', cursor:'grab',
+        boxShadow:'inset 1px 0 0 rgba(255,255,255,0.2), inset -1px 0 0 rgba(0,0,0,0.3), 0 1px 2px rgba(0,0,0,0.25)',
+        overflow:'hidden',
+        display:'flex', alignItems:'center', justifyContent:'center',
+      }}
+      title={`${spell.name} — ${spell.ru}`}
+    >
+      {/* gilt bands */}
+      <div style={{position:'absolute', top:10, left:0, right:0, height:2, background:'var(--gilt)', opacity:.7}}/>
+      <div style={{position:'absolute', bottom:10, left:0, right:0, height:2, background:'var(--gilt)', opacity:.7}}/>
+      {/* label (vertical) */}
+      <div style={{
+        writingMode:'vertical-rl', transform:'rotate(180deg)',
+        fontFamily:'var(--display)', fontSize:10, fontWeight:700,
+        color:'#f5ead3', textShadow:'0 1px 0 rgba(0,0,0,0.4)',
+        letterSpacing:'.1em', padding:'14px 0',
+        whiteSpace:'nowrap',
+      }}>{spell.name}</div>
+      <div style={{
+        position:'absolute', top:2, left:'50%', transform:'translateX(-50%)',
+        fontFamily:'var(--rune)', fontSize:11, color:'var(--gilt)',
+      }}>{SCHOOL_GLYPH[spell.school]}</div>
+    </div>
+  );
+}
+
+// --- Catalog: index-card drawer ---
+function CatalogView({spells, onDragStart, onTap}){
+  return (
+    <div style={{
+      marginTop:8, padding:10, borderRadius:8,
+      background:'linear-gradient(180deg, oklch(0.56 0.05 48), oklch(0.48 0.05 46))',
+      border:'1px solid rgba(0,0,0,0.4)',
+      boxShadow:'inset 0 1px 0 rgba(255,220,170,0.15), inset 0 -2px 4px rgba(0,0,0,0.3)',
+    }}>
+      <div style={{
+        background:'oklch(0.92 0.02 82)', borderRadius:3,
+        border:'1px solid rgba(60,35,10,0.35)',
+        boxShadow:'inset 0 0 0 3px rgba(255,245,220,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+        padding:'6px 5px', display:'flex', flexDirection:'column', gap:4,
+      }}>
+        {spells.map(s=>(
+          <div key={s.id} draggable
+            onDragStart={(e)=>{ e.dataTransfer.setData('text/plain', s.id); onDragStart(s.id); }}
+            onClick={()=>onTap(s.id)}
+            style={{
+              display:'flex', alignItems:'center', gap:8,
+              padding:'6px 8px',
+              background:'oklch(0.96 0.02 82)',
+              borderLeft:`3px solid var(--s-${s.school})`,
+              borderRadius:'2px',
+              fontFamily:'var(--mono)', fontSize:11,
+              cursor:'grab', color:'var(--ink)',
+              boxShadow:'0 1px 0 rgba(60,35,10,0.1)',
+            }}
+          >
+            <span style={{fontFamily:'var(--rune)', color:`var(--s-${s.school})`, fontSize:13, width:14}}>{SCHOOL_GLYPH[s.school]}</span>
+            <span style={{flex:1}}>{s.name}</span>
+            <span style={{color:'var(--ink-faint)', fontStyle:'italic', fontFamily:'var(--serif)'}}>{s.ru}</span>
+            <span style={{color:'var(--ink-faint)'}}>тир {s.tier}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function GrimoireBook({spells, onDrop, onRemove, dragging, onDragEnd, onLeave}){
+  const [dragOver, setDragOver] = React.useState(false);
+  return (
+    <div style={{
+      borderTop:'1px solid rgba(60,35,10,0.4)',
+      padding:'10px 12px 10px',
+      background:`
+        linear-gradient(180deg, oklch(0.40 0.08 30), oklch(0.32 0.08 28))
+      `,
+      color:'#f5ead3',
+    }}
+      onDragOver={(e)=>{ e.preventDefault(); setDragOver(true); }}
+      onDragLeave={()=>setDragOver(false)}
+      onDrop={(e)=>{
+        e.preventDefault();
+        const id = e.dataTransfer.getData('text/plain');
+        if(id) onDrop(id);
+        setDragOver(false);
+        onDragEnd && onDragEnd();
+      }}
+    >
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6}}>
+        <div style={{
+          fontFamily:'var(--display)', fontWeight:700, fontSize:13,
+          letterSpacing:'.06em', textTransform:'uppercase', color:'var(--gilt)',
+        }}>Активный гримуар</div>
+        <span style={{fontFamily:'var(--mono)', fontSize:10, color:'rgba(245,234,211,0.75)'}}>
+          {spells.length}/8 · вес {4+spells.length*0.5}кг
+        </span>
+      </div>
+
+      <div style={{
+        display:'grid', gridTemplateColumns:'repeat(4, 1fr)', gap:6, minHeight:58,
+        padding:6, border:`1.5px dashed ${dragOver?'var(--gilt)':'rgba(245,234,211,0.35)'}`,
+        borderRadius:4,
+        background:'rgba(0,0,0,0.22)',
+      }}>
+        {spells.map(s => (
+          <button key={s.id} onClick={()=>onRemove(s.id)}
+            style={{
+              padding:'6px 4px', background:'rgba(245,234,211,0.08)',
+              border:`1px solid var(--s-${s.school})`, borderRadius:3,
+              color:'#f5ead3', cursor:'pointer', textAlign:'left',
+              display:'flex', flexDirection:'column', gap:2,
+            }}>
+            <div style={{fontFamily:'var(--rune)', fontSize:11, color:`var(--s-${s.school})`}}>{SCHOOL_GLYPH[s.school]} {SCHOOL_NAME_RU[s.school]}</div>
+            <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:11, color:'#f5ead3'}}>{s.name}</div>
+          </button>
+        ))}
+        {[...Array(Math.max(0,8-spells.length))].map((_,i)=>(
+          <div key={`slot${i}`} style={{
+            padding:'6px 4px', border:'1px dashed rgba(245,234,211,0.25)',
+            borderRadius:3, minHeight:38,
+            display:'flex', alignItems:'center', justifyContent:'center',
+            color:'rgba(245,234,211,0.35)', fontSize:10, fontFamily:'var(--mono)',
+          }}>—</div>
+        ))}
+      </div>
+      <div style={{display:'flex', gap:8, marginTop:8}}>
+        <button className="inkbtn ghost" style={{flex:1, color:'#f5ead3', borderColor:'rgba(245,234,211,0.35)'}} onClick={onLeave}>Закрыть</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Grimoire });
+
+
+// ═══ screens/Combat.js ═══
+// Combat — caster POV, simultaneous turn, grimoire + incantation
+
+const ENEMIES = [
+  {id:'e1', name:'Гоблин-вор',  hp:28, maxHp:28, states:['exposed']},
+  {id:'e2', name:'Пещерный жнец', hp:55, maxHp:55, states:['shielded']},
+];
+
+const ALLIES = [
+  {id:'a1', name:'Вы',        role:'Маг',    hp:null, class:'caster'},
+  {id:'a2', name:'Торвальд',  role:'Воин',   hp:null, class:'tool'},
+  {id:'a3', name:'Льенн',     role:'Алхимик',hp:null, class:'alch'},
+];
+
+const COMBAT_SPELLS = [
+  {id:'c1', name:'Ignis Parvus', ru:'Малый огонь', school:'fire'},
+  {id:'c2', name:'Aqua Scutum',  ru:'Водный щит', school:'water'},
+  {id:'c3', name:'Terra Mure',   ru:'Стена земли', school:'earth'},
+];
+
+function Combat({onLeave}){
+  const [partyHp, setPartyHp] = React.useState(72);
+  const [enemyHp, setEnemyHp] = React.useState(83);
+  const [partyMax] = React.useState(100);
+  const [enemyMax] = React.useState(100);
+  const [turn, setTurn] = React.useState(3);
+  const [timer, setTimer] = React.useState(42);
+  const [base, setBase] = React.useState('c1');
+  const [incant, setIncant] = React.useState('Conus Magnus');
+  const [target, setTarget] = React.useState('e2');
+  const [log, setLog] = React.useState([
+    {t:'system', text:'Ход 2. Торвальд бьёт мечом: Жнец оглушён на 1 ход.'},
+    {t:'narr',   text:'Пещера пахнет серой. Где-то сзади капает вода — ровно, как метроном.'},
+  ]);
+  const [resolving, setResolving] = React.useState(false);
+
+  // timer tick
+  React.useEffect(()=>{
+    const id = setInterval(()=>setTimer(t=> t>0 ? t-1 : 0), 1000);
+    return ()=>clearInterval(id);
+  },[turn]);
+
+  function submit(){
+    setResolving(true);
+    setLog(l=>[...l,
+      {t:'action', text:`Вы: ${COMBAT_SPELLS.find(s=>s.id===base).name} + «${incant}» → ${ENEMIES.find(e=>e.id===target).name}`},
+    ]);
+    setTimeout(()=>{
+      setLog(l=>[...l,
+        {t:'narr', text:'Ваш огонь сворачивается в узкий конус и обжигает жнецу плечо; его щит слетает с щелчком, как отстёгнутая застёжка. Торвальд, не мешкая, режет по открытой спине.'},
+        {t:'system', text:'Жнец: burning (3 т), shielded снят. Урон 18.'},
+      ]);
+      setEnemyHp(h=>Math.max(0, h-18));
+      setTurn(t=>t+1);
+      setTimer(45);
+      setResolving(false);
+    }, 1400);
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      <div style={{position:'relative', padding:'8px 12px 4px'}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:4}}>
+          <Chip color="wax">Ход {turn}</Chip>
+          <div style={{fontFamily:'var(--mono)', fontSize:11, color: timer<15?'var(--wax)':'var(--ink-soft)'}}>
+            ⏳ {Math.floor(timer/60)}:{String(timer%60).padStart(2,'0')}
+          </div>
+          <Chip color="ink">Дуэль · 3v2</Chip>
+        </div>
+        <HpBars pHp={partyHp} pMax={partyMax} eHp={enemyHp} eMax={enemyMax}/>
+      </div>
+
+      {/* Field */}
+      <div style={{position:'relative', padding:'4px 12px 0'}}>
+        <div style={{
+          padding:8, borderRadius:8,
+          background:'rgba(60,35,10,0.05)', border:'1px dashed rgba(60,35,10,0.3)',
+        }}>
+          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4}}>Противники</div>
+          <div style={{display:'flex', gap:6}}>
+            {ENEMIES.map(e=>(
+              <button key={e.id} onClick={()=>setTarget(e.id)} style={{
+                flex:1, padding:'6px 8px', textAlign:'left',
+                background: target===e.id? 'oklch(0.88 0.08 30 / 0.5)':'oklch(0.94 0.03 80)',
+                border:`1px solid ${target===e.id?'var(--wax)':'rgba(60,35,10,0.3)'}`,
+                borderRadius:6, cursor:'pointer',
+              }}>
+                <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:12}}>{e.name}</div>
+                <div style={{display:'flex', gap:3, marginTop:3, flexWrap:'wrap'}}>
+                  {e.states.map(s=><Chip key={s} color="magic" style={{fontSize:8, padding:'1px 5px'}}>{s}</Chip>)}
+                </div>
+              </button>
+            ))}
+          </div>
+
+          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)', textTransform:'uppercase', letterSpacing:'.08em', margin:'8px 0 4px'}}>Отряд</div>
+          <div style={{display:'flex', gap:6}}>
+            {ALLIES.map(a=>(
+              <div key={a.id} style={{
+                flex:1, padding:'5px 7px',
+                background:'oklch(0.94 0.03 80)',
+                border:`1px solid ${a.id==='a1'?'var(--magic)':'rgba(60,35,10,0.25)'}`,
+                borderRadius:6,
+              }}>
+                <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:11}}>{a.name}</div>
+                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)'}}>{a.role}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Log */}
+      <div className="mmgo-scroll" style={{
+        position:'relative', flex:1, overflow:'auto', padding:'8px 12px',
+        margin:'8px 12px 0', borderRadius:8,
+        background:'oklch(0.97 0.015 82)', border:'1px solid rgba(60,35,10,0.25)',
+        boxShadow:'inset 0 2px 4px rgba(60,35,10,0.1)',
+      }}>
+        {log.map((l,i)=>(
+          <div key={i} style={{
+            fontSize: l.t==='narr'?13:11,
+            lineHeight:1.45, marginBottom:6,
+            fontFamily: l.t==='narr'?'var(--serif)':'var(--mono)',
+            fontStyle: l.t==='narr'?'italic':'normal',
+            color: l.t==='system'?'var(--ink-faint)':(l.t==='action'?'var(--magic)':'var(--ink)'),
+          }}>
+            {l.t==='system'&&'▸ '}{l.t==='action'&&'❯ '}{l.text}
+          </div>
+        ))}
+      </div>
+
+      {/* Caster action panel */}
+      <div style={{position:'relative', padding:'10px 12px 12px'}}>
+        <div style={{display:'flex', gap:6, marginBottom:6, overflowX:'auto', paddingBottom:2}}>
+          {COMBAT_SPELLS.map(s=>(
+            <button key={s.id} onClick={()=>setBase(s.id)} style={{
+              padding:'6px 10px', flexShrink:0,
+              background: base===s.id?`oklch(from var(--s-${s.school}) 0.9 calc(c*.5) h)`:'oklch(0.94 0.03 80)',
+              border:`1px solid ${base===s.id?`var(--s-${s.school})`:'rgba(60,35,10,0.3)'}`,
+              borderRadius:6, cursor:'pointer', textAlign:'left',
+              fontFamily:'var(--display)', fontSize:11, fontWeight:700,
+            }}>
+              <span style={{fontFamily:'var(--rune)', color:`var(--s-${s.school})`, marginRight:4}}>{SCHOOL_GLYPH[s.school]}</span>
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <div style={{
+          display:'flex', gap:6, alignItems:'center',
+          padding:'4px 4px 4px 10px',
+          background:'oklch(0.97 0.015 82)',
+          border:'1px solid rgba(60,35,10,0.35)',
+          borderRadius:10,
+        }}>
+          <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--magic)'}}>✦</span>
+          <input value={incant} onChange={e=>setIncant(e.target.value)}
+            placeholder="Latin incantation…"
+            style={{
+              flex:1, border:'none', background:'transparent', outline:'none',
+              fontFamily:'var(--mono)', fontSize:13, color:'var(--ink)',
+            }}/>
+          <button className="inkbtn primary" onClick={submit} disabled={resolving || !incant.trim()}
+            style={{padding:'6px 12px', fontSize:12}}>
+            {resolving?'…':'Произнести'}
+          </button>
+        </div>
+        <div style={{display:'flex', gap:6, marginTop:6, justifyContent:'center'}}>
+          <button className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}}>Готовый план</button>
+          <button className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}}>Пропустить</button>
+          <button className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}} onClick={onLeave}>Бежать</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HpBars({pHp, pMax, eHp, eMax}){
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:4, fontFamily:'var(--mono)', fontSize:10}}>
+      <Bar label="Отряд" val={pHp} max={pMax} color="var(--verdigris)"/>
+      <Bar label="Враги" val={eHp} max={eMax} color="var(--wax)"/>
+    </div>
+  );
+}
+function Bar({label, val, max, color}){
+  return (
+    <div style={{display:'flex', alignItems:'center', gap:6}}>
+      <span style={{width:40, color:'var(--ink-soft)', textTransform:'uppercase', letterSpacing:'.06em', fontSize:9}}>{label}</span>
+      <div style={{
+        flex:1, height:10, borderRadius:3,
+        background:'rgba(60,35,10,0.12)',
+        border:'1px solid rgba(60,35,10,0.3)',
+        position:'relative', overflow:'hidden',
+      }}>
+        <div style={{
+          width:`${(val/max)*100}%`, height:'100%',
+          background:`linear-gradient(180deg, ${color}, oklch(from ${color} calc(l*.7) c h))`,
+          transition:'width .4s ease',
+        }}/>
+      </div>
+      <span style={{width:46, textAlign:'right'}}>{val}/{max}</span>
+    </div>
+  );
+}
+
+Object.assign(window, { Combat });
+
+
+// ═══ screens/Base.js ═══
+// Base — skeuomorphic shelves: chest, shelves of grimoires, workbench, spell circle entry
+
+function Base({onGo, onLeave}){
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+      <div className="parchment"/>
+      <div className="mmgo-scroll" style={{position:'relative', height:'100%', overflow:'auto', padding:'14px 14px 20px'}}>
+        <Ornament>Дом на хуторе</Ornament>
+        <div style={{textAlign:'center', fontStyle:'italic', color:'var(--ink-faint)', fontSize:11, marginTop:2, marginBottom:12}}>
+          У вас 3 дн. припасов · вес 8/20
+        </div>
+
+        {/* Workbench */}
+        <Tile onClick={()=>onGo('spell')} icon={<CircleIcon/>} title="Круг призыва" sub="Создание заклинаний" accent/>
+        <Tile onClick={()=>onGo('grimoire')} icon={<BookIcon/>} title="Полки с гримуарами" sub="3 книги · 24 заклинания"/>
+        <Tile onClick={()=>{}} icon={<ChestIcon/>} title="Сундук" sub="42 предмета · 8/20 кг"/>
+        <Tile onClick={()=>{}} icon={<AlembicIcon/>} title="Алхимический стол" sub="Варка · зельеварение"/>
+        <Tile onClick={()=>{}} icon={<ForgeIcon/>} title="Мастерская" sub="Починка · ремёсла"/>
+        <Tile onClick={()=>{}} icon={<BedIcon/>} title="Кровать" sub="Отдохнуть до рассвета"/>
+
+        <div className="hrule" style={{margin:'18px 4px 12px'}}/>
+        <button className="inkbtn ghost" onClick={onLeave} style={{width:'100%'}}>Выйти во двор</button>
+      </div>
+    </div>
+  );
+}
+
+function Tile({onClick, icon, title, sub, accent}){
+  return (
+    <button onClick={onClick} style={{
+      display:'flex', alignItems:'center', gap:12,
+      width:'100%', padding:'10px 12px', marginBottom:10,
+      background: accent
+        ? 'linear-gradient(180deg, oklch(0.9 0.05 295 / 0.35), oklch(0.82 0.06 290 / 0.5))'
+        : 'linear-gradient(180deg, oklch(0.92 0.03 80), oklch(0.86 0.04 76))',
+      border:`1px solid ${accent?'oklch(0.55 0.17 295 / 0.55)':'rgba(60,35,10,0.35)'}`,
+      borderRadius:12, cursor:'pointer', textAlign:'left',
+      boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(40,25,10,0.1)',
+    }}>
+      <div style={{
+        width:48, height:48, borderRadius:10,
+        background:'linear-gradient(180deg, oklch(0.82 0.05 78), oklch(0.72 0.06 72))',
+        border:'1px solid rgba(60,35,10,0.45)',
+        boxShadow:'inset 0 0 8px rgba(60,35,10,0.22), inset 0 1px 0 rgba(255,245,220,0.5)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        color:'var(--ink)', flexShrink:0,
+      }}>{icon}</div>
+      <div style={{flex:1}}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:16, color:'var(--ink)'}}>{title}</div>
+        <div style={{fontFamily:'var(--serif)', fontSize:11, fontStyle:'italic', color:'var(--ink-soft)', marginTop:2}}>{sub}</div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--ink-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
+    </button>
+  );
+}
+
+// Tiny skeuomorphic icons
+function CircleIcon(){
+  return (
+    <svg width="28" height="28" viewBox="-14 -14 28 28">
+      <circle r="12" fill="none" stroke="var(--magic)" strokeWidth="1"/>
+      <circle r="9" fill="none" stroke="var(--ink)" strokeWidth=".8" strokeDasharray="1 1"/>
+      <circle r="5" fill="none" stroke="var(--ink)" strokeWidth=".8"/>
+      <polygon points="0,-4 3.8,2 -3.8,2" fill="none" stroke="var(--wax)" strokeWidth=".8"/>
+    </svg>
+  );
+}
+function BookIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <rect x="4" y="5" width="8" height="18" fill="var(--s-fire)" stroke="var(--ink)" strokeWidth="1" opacity=".9"/>
+      <rect x="13" y="3" width="7" height="20" fill="var(--s-water)" stroke="var(--ink)" strokeWidth="1" opacity=".9"/>
+      <rect x="21" y="6" width="4" height="17" fill="var(--s-life)" stroke="var(--ink)" strokeWidth="1" opacity=".9"/>
+      <line x1="6" y1="9" x2="10" y2="9" stroke="var(--gilt)" strokeWidth=".8"/>
+      <line x1="15" y1="7" x2="18" y2="7" stroke="var(--gilt)" strokeWidth=".8"/>
+    </svg>
+  );
+}
+function ChestIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <rect x="3" y="9" width="22" height="14" fill="var(--sepia)" stroke="var(--ink)" strokeWidth="1"/>
+      <path d="M3 9 Q14 4 25 9" fill="none" stroke="var(--ink)" strokeWidth="1"/>
+      <line x1="3" y1="15" x2="25" y2="15" stroke="var(--gilt)" strokeWidth="1"/>
+      <rect x="12" y="13" width="4" height="5" fill="var(--gilt)" stroke="var(--ink)" strokeWidth=".7"/>
+    </svg>
+  );
+}
+function AlembicIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)" strokeWidth="1">
+      <path d="M11 3h6v6l4 12a3 3 0 01-3 4H10a3 3 0 01-3-4l4-12V3z"/>
+      <path d="M10 17h8" />
+      <path d="M12 19 Q14 22 16 19" stroke="var(--s-water)"/>
+    </svg>
+  );
+}
+function ForgeIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)" strokeWidth="1">
+      <path d="M5 22h18"/>
+      <path d="M8 22V13l-3-3 5-5 12 12-3 3h-9"/>
+      <circle cx="18" cy="19" r="1.5" fill="var(--s-fire)" stroke="none"/>
+    </svg>
+  );
+}
+function BedIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)" strokeWidth="1">
+      <path d="M3 20V8"/><path d="M25 20V14"/>
+      <path d="M3 14h22"/><path d="M3 20h22"/>
+      <rect x="6" y="10" width="7" height="4" rx="1" fill="var(--vellum-shade)"/>
+    </svg>
+  );
+}
+
+Object.assign(window, { Base });
+
+
+// ═══ screens/Academy.js ═══
+// Academy — a university vibe: cloister courtyard, timetable, clubs board
+// Tries to mimic the real university experience: clock, schedule, buildings,
+// notice board with clubs, a ribbon with your current term.
+
+const BUILDINGS = [
+  {k:'wizardry', name:'Факультет Чародейства', sub:'Две школы на выбор', glyph:'✦', tint:'var(--magic)', rooms:['Аудитория 3 — Латынь и Инкантации','Лаб. №1 — Малый огонь','Кабинет декана']},
+  {k:'alchemy',  name:'Факультет Алхимии',     sub:'Варка, травы, перегонка', glyph:'⚗', tint:'oklch(0.5 0.12 145)', rooms:['Лаб. №2 — Перегонка','Теплица','Зал дегустаций']},
+  {k:'mastery',  name:'Факультет Мастерства',  sub:'Оружие, доспех, ловушки', glyph:'⚒', tint:'oklch(0.48 0.09 55)', rooms:['Кузница','Полигон','Оружейная']},
+  {k:'academia', name:'Коллегия Исследований', sub:'Аспирантура и диссертации', glyph:'☉', tint:'oklch(0.5 0.08 82)', rooms:['Библиотека','Архив','Кабинет профессора']},
+];
+
+const TIMETABLE = [
+  {day:'Пн', slot:'I',  subj:'Латынь и инкантации',    where:'ауд. 3',   prof:'маг. Лиен Тар'},
+  {day:'Пн', slot:'II', subj:'Теория элементов',       where:'ауд. 5',   prof:'маг. Гэвин'},
+  {day:'Вт', slot:'I',  subj:'Практика: Малый огонь',  where:'лаб. №1',  prof:'маг. Ортис',  done:true},
+  {day:'Вт', slot:'II', subj:'Этика боевой магии',     where:'ауд. 2',   prof:'маг. Морвиль'},
+  {day:'Ср', slot:'I',  subj:'Травник и реагенты',     where:'теплица',  prof:'мастер Кайе'},
+  {day:'Чт', slot:'I',  subj:'Дуэльный клуб',          where:'полигон',  prof:'капитан Борн', club:true},
+  {day:'Пт', slot:'I',  subj:'История княжества',      where:'ауд. 1',   prof:'проф. Веттен'},
+];
+
+const CLUBS = [
+  {name:'Дуэльный клуб',    members:24, tag:'спорт', note:'еженед. спарринги', hot:true},
+  {name:'Круг переводов',   members:11, tag:'яз.',   note:'читаем «De Elementis»'},
+  {name:'Экспедиционный',   members:18, tag:'иссл.', note:'идёт запись в поход'},
+  {name:'Общество трав',    members: 9, tag:'алх.',  note:'обмен семенами'},
+];
+
+function Academy({onLeave}){
+  const [tab, setTab] = React.useState('courtyard');
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      {/* Academy crest strip */}
+      <div style={{position:'relative', padding:'10px 14px 4px'}}>
+        <div style={{display:'flex', alignItems:'center', gap:10}}>
+          <div style={{
+            width:44, height:44, borderRadius:'50%',
+            background:'radial-gradient(circle at 35% 30%, oklch(0.9 0.05 82), oklch(0.72 0.09 78))',
+            border:'1.5px solid rgba(60,35,10,0.55)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(40,25,10,0.2)',
+            fontFamily:'var(--rune)', fontSize:22, color:'var(--wax-deep)',
+          }}>✦</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17, letterSpacing:'.02em'}}>Княжеская Академия</div>
+            <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-faint)'}}>
+              Scientia ante potentiam — знание прежде силы
+            </div>
+          </div>
+          <button onClick={onLeave} className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}}>Выйти</button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{position:'relative', padding:'6px 12px 0', display:'flex', gap:4, borderBottom:'1px solid rgba(60,35,10,0.25)'}}>
+        {[
+          ['courtyard','Двор'],
+          ['schedule','Расписание'],
+          ['clubs','Клубы'],
+          ['enroll','Зачисление'],
+        ].map(([k,label])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{
+            flex:1, padding:'6px 4px', cursor:'pointer',
+            background: tab===k?'var(--vellum)':'transparent',
+            border:'1px solid rgba(60,35,10,0.3)',
+            borderBottom: tab===k?'1px solid var(--vellum)':'1px solid transparent',
+            borderRadius:'6px 6px 0 0',
+            fontFamily:'var(--display)', fontWeight: tab===k?700:500, fontSize:11,
+            color: tab===k?'var(--ink)':'var(--ink-faint)',
+            marginBottom:-1,
+            letterSpacing:'.04em',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      <div className="mmgo-scroll" style={{position:'relative', flex:1, overflow:'auto', padding:'10px 12px 14px'}}>
+        {tab==='courtyard' && <Courtyard/>}
+        {tab==='schedule' && <Schedule/>}
+        {tab==='clubs' && <ClubsBoard/>}
+        {tab==='enroll' && <Enrollment/>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Courtyard: stylized cloister with tappable buildings ───
+function Courtyard(){
+  return (
+    <div>
+      <div style={{
+        position:'relative', aspectRatio:'1/0.68', borderRadius:8, overflow:'hidden',
+        background:'linear-gradient(180deg, oklch(0.85 0.04 82), oklch(0.76 0.06 76))',
+        border:'1px solid rgba(60,35,10,0.4)',
+        boxShadow:'inset 0 0 30px rgba(60,35,10,0.18)',
+      }}>
+        {/* Courtyard grass */}
+        <div style={{
+          position:'absolute', left:'20%', right:'20%', top:'20%', bottom:'20%',
+          background:'linear-gradient(180deg, oklch(0.62 0.08 135), oklch(0.55 0.1 135))',
+          borderRadius:'50%',
+          boxShadow:'inset 0 0 18px rgba(30,50,20,0.4), 0 2px 4px rgba(0,0,0,0.3)',
+        }}>
+          {/* Fountain */}
+          <div style={{
+            position:'absolute', left:'50%', top:'50%', transform:'translate(-50%,-50%)',
+            width:'30%', aspectRatio:'1', borderRadius:'50%',
+            background:'radial-gradient(circle at 40% 30%, oklch(0.78 0.06 220), oklch(0.55 0.1 220))',
+            border:'2px solid oklch(0.4 0.03 60)',
+            boxShadow:'inset 0 2px 4px rgba(0,0,0,0.4)',
+          }}>
+            <div style={{
+              position:'absolute', inset:'30%', borderRadius:'50%',
+              background:'oklch(0.35 0.03 60)', border:'1px solid oklch(0.25 0.02 60)',
+            }}/>
+            <div style={{
+              position:'absolute', left:'50%', top:'20%', transform:'translateX(-50%)',
+              fontFamily:'var(--rune)', color:'var(--gilt)', fontSize:10, filter:'drop-shadow(0 0 2px rgba(255,240,200,0.6))',
+            }}>✦</div>
+          </div>
+          {/* Paths */}
+          <svg style={{position:'absolute', inset:0}} viewBox="0 0 100 100" preserveAspectRatio="none">
+            <line x1="50" y1="0" x2="50" y2="100" stroke="oklch(0.72 0.04 78)" strokeWidth="4" strokeOpacity=".6"/>
+            <line x1="0" y1="50" x2="100" y2="50" stroke="oklch(0.72 0.04 78)" strokeWidth="4" strokeOpacity=".6"/>
+          </svg>
+        </div>
+
+        {/* Four wings */}
+        <CourtyardWing pos="top"    building={BUILDINGS[0]}/>
+        <CourtyardWing pos="right"  building={BUILDINGS[1]}/>
+        <CourtyardWing pos="bottom" building={BUILDINGS[2]}/>
+        <CourtyardWing pos="left"   building={BUILDINGS[3]}/>
+
+        {/* Corner towers */}
+        {['tl','tr','bl','br'].map(c=>(
+          <div key={c} style={{
+            position:'absolute',
+            ...(c[0]==='t'?{top:4}:{bottom:4}),
+            ...(c[1]==='l'?{left:4}:{right:4}),
+            width:26, height:26,
+            background:'linear-gradient(180deg, oklch(0.6 0.05 40), oklch(0.42 0.05 38))',
+            border:'1px solid oklch(0.25 0.03 40)',
+            borderRadius:3,
+            boxShadow:'inset 0 1px 0 rgba(255,220,170,0.3)',
+          }}>
+            <div style={{
+              position:'absolute', left:'50%', top:-6, transform:'translateX(-50%)',
+              width:0, height:0, borderLeft:'8px solid transparent', borderRight:'8px solid transparent',
+              borderBottom:'8px solid oklch(0.42 0.12 30)',
+            }}/>
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:12, fontFamily:'var(--serif)', fontSize:12, fontStyle:'italic', color:'var(--ink-soft)', textAlign:'center'}}>
+        Из окон факультета алхимии тянет лавандой и серой одновременно.
+      </div>
+
+      <div className="hrule" style={{margin:'14px 0'}}/>
+
+      {/* Building list */}
+      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+        {BUILDINGS.map(b=>(
+          <button key={b.k} className="inkbtn" style={{
+            padding:'10px 12px', textAlign:'left',
+            display:'flex', alignItems:'center', gap:10,
+          }}>
+            <div style={{
+              width:38, height:38, borderRadius:8,
+              background:`radial-gradient(circle at 35% 30%, oklch(from ${b.tint} calc(l+.3) c h), ${b.tint})`,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              color:'#f5ead3', fontFamily:'var(--rune)', fontSize:20,
+              border:'1px solid rgba(0,0,0,0.3)',
+              boxShadow:'inset 0 1px 0 rgba(255,245,220,0.3), 0 1px 2px rgba(0,0,0,0.2)',
+              flexShrink:0,
+            }}>{b.glyph}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14, color:'var(--ink)'}}>{b.name}</div>
+              <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)'}}>{b.sub}</div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--ink-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+function CourtyardWing({pos, building}){
+  const geom = {
+    top:    {left:'22%', right:'22%', top:'4%',    height:'16%'},
+    bottom: {left:'22%', right:'22%', bottom:'4%', height:'16%'},
+    left:   {top:'22%',  bottom:'22%',left:'4%',   width:'16%'},
+    right:  {top:'22%',  bottom:'22%',right:'4%',  width:'16%'},
+  }[pos];
+  return (
+    <div style={{
+      position:'absolute', ...geom,
+      background:'linear-gradient(180deg, oklch(0.72 0.04 45), oklch(0.56 0.05 42))',
+      border:'1px solid oklch(0.28 0.04 42)',
+      borderRadius:3,
+      boxShadow:'inset 0 1px 0 rgba(255,220,170,0.4), 0 1px 3px rgba(0,0,0,0.3)',
+      display:'flex', flexDirection: (pos==='left'||pos==='right')?'column':'row',
+      alignItems:'center', justifyContent:'space-around', padding:4,
+    }}>
+      {[0,1,2].map(i=>(
+        <div key={i} style={{
+          width: (pos==='left'||pos==='right') ? '50%':8,
+          height:(pos==='left'||pos==='right') ? 8:'50%',
+          background:'oklch(0.2 0.02 260)', borderRadius:2,
+          boxShadow:'inset 0 1px 1px rgba(0,0,0,0.6)',
+        }}/>
+      ))}
+    </div>
+  );
+}
+
+// ─── Schedule ───
+function Schedule(){
+  return (
+    <div>
+      <Ornament tiny>Расписание · Осенний триместр</Ornament>
+      <div style={{
+        marginTop:10, border:'1px solid rgba(60,35,10,0.35)', borderRadius:8,
+        overflow:'hidden',
+        background:'oklch(0.96 0.02 82)',
+      }}>
+        {TIMETABLE.map((r,i)=>(
+          <div key={i} style={{
+            display:'grid', gridTemplateColumns:'28px 24px 1fr auto',
+            gap:8, alignItems:'center',
+            padding:'8px 10px',
+            borderBottom: i<TIMETABLE.length-1?'1px dashed rgba(60,35,10,0.2)':'none',
+            background: r.done?'oklch(0.94 0.03 140 / 0.3)':r.club?'oklch(0.94 0.05 30 / 0.3)':'transparent',
+          }}>
+            <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', fontWeight:700}}>{r.day}</span>
+            <span style={{
+              fontFamily:'var(--rune)', fontSize:14,
+              color: r.club?'var(--wax)':'var(--ink-faint)',
+              textAlign:'center',
+            }}>{r.slot}</span>
+            <div>
+              <div style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13, color:'var(--ink)', textDecoration:r.done?'line-through':'none'}}>
+                {r.subj}
+              </div>
+              <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:10, color:'var(--ink-faint)'}}>
+                {r.where} · {r.prof}
+              </div>
+            </div>
+            {r.done && <Chip color="verdigris">сдано</Chip>}
+            {r.club && <Chip color="wax">клуб</Chip>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:12, display:'flex', gap:8, justifyContent:'space-between', alignItems:'center', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)'}}>
+        <Chip color="ink">Сессия через 18 дн.</Chip>
+        <Chip color="verdigris">Средний балл 4.2</Chip>
+        <Chip color="magic">3/7 сдано</Chip>
+      </div>
+    </div>
+  );
+}
+
+// ─── Clubs bulletin board ───
+function ClubsBoard(){
+  return (
+    <div>
+      <Ornament tiny>Доска объявлений</Ornament>
+      <div style={{
+        marginTop:10, padding:10, borderRadius:8,
+        background:'linear-gradient(180deg, oklch(0.45 0.05 38), oklch(0.36 0.05 36))',
+        border:'2px solid oklch(0.22 0.03 36)',
+        boxShadow:'inset 0 0 8px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.3)',
+        display:'grid', gridTemplateColumns:'1fr 1fr', gap:8,
+      }}>
+        {CLUBS.map((c,i)=>(
+          <div key={i} style={{
+            padding:'10px 9px',
+            background: 'oklch(0.96 0.03 82)',
+            border:'1px solid rgba(60,35,10,0.3)',
+            borderRadius:2,
+            transform: `rotate(${(i%2===0?-1:1)*1.2}deg)`,
+            boxShadow:'0 2px 6px rgba(0,0,0,0.35)',
+            position:'relative',
+          }}>
+            {/* thumbtack */}
+            <div style={{
+              position:'absolute', top:-5, left:'50%', transform:'translateX(-50%)',
+              width:10, height:10, borderRadius:'50%',
+              background:'radial-gradient(circle at 35% 30%, oklch(0.7 0.15 25), oklch(0.45 0.15 25))',
+              boxShadow:'0 1px 2px rgba(0,0,0,0.5)',
+            }}/>
+            <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:13, color:'var(--ink)'}}>{c.name}</div>
+            <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginTop:3}}>
+              {c.members} чел. · {c.tag}
+            </div>
+            <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink)', marginTop:6}}>
+              {c.note}
+            </div>
+            {c.hot && (
+              <div style={{
+                position:'absolute', top:-8, right:-6,
+                fontFamily:'var(--script)', fontSize:16, color:'var(--wax)',
+                transform:'rotate(10deg)',
+              }}>идёт набор!</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:10, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)', textAlign:'center'}}>
+        В клубе находят тех, с кем потом идут в подземелье.
+      </div>
+    </div>
+  );
+}
+
+// ─── Enrollment / progression ───
+function Enrollment(){
+  return (
+    <div>
+      <Ornament tiny>Ваш путь</Ornament>
+      <div style={{
+        marginTop:10, padding:'12px 14px',
+        background:'var(--vellum-2)', border:'1px solid rgba(60,35,10,0.35)', borderRadius:10,
+      }}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:15}}>Факультет Чародейства</div>
+        <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)', marginTop:2}}>
+          2-й курс бакалавриата · 1 семестр
+        </div>
+
+        {/* Schools chosen */}
+        <div style={{marginTop:10, display:'flex', gap:6}}>
+          <SchoolPick k="fire" chosen/>
+          <SchoolPick k="water" chosen/>
+          <SchoolPick k="earth"/>
+          <SchoolPick k="air"/>
+          <SchoolPick k="chaos"/>
+          <SchoolPick k="order"/>
+          <SchoolPick k="life"/>
+          <SchoolPick k="death"/>
+        </div>
+        <div style={{marginTop:6, fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-faint)'}}>
+          Огонь и Вода — выбрано. Смена возможна, одна школа может остаться.
+        </div>
+      </div>
+
+      {/* Progress ribbon */}
+      <div style={{marginTop:12, padding:'10px 12px', border:'1px solid rgba(60,35,10,0.3)', borderRadius:10, background:'var(--vellum-2)'}}>
+        <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginBottom:4}}>
+          <span>Базовое обр.</span><span>Бакалавриат</span><span>Магистратура</span><span>Аспирантура</span>
+        </div>
+        <div style={{height:10, borderRadius:3, background:'rgba(60,35,10,0.12)', border:'1px solid rgba(60,35,10,0.3)', overflow:'hidden', position:'relative'}}>
+          <div style={{width:'34%', height:'100%', background:'linear-gradient(180deg, var(--gilt), oklch(0.55 0.12 60))'}}/>
+          <div style={{position:'absolute', left:'34%', top:-2, bottom:-2, width:2, background:'var(--wax)', boxShadow:'0 0 4px var(--wax)'}}/>
+        </div>
+        <div style={{marginTop:6, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)'}}>
+          «На защиту дипломной работы нужно ещё 2 года игрового времени».
+        </div>
+      </div>
+
+      {/* Grant */}
+      <div style={{marginTop:12, padding:'10px 12px', border:'1px solid rgba(60,35,10,0.3)', borderRadius:10, background:'oklch(0.94 0.05 140 / 0.35)', position:'relative'}}>
+        <div style={{position:'absolute', top:-8, right:-6}}>
+          <div className="wax-seal" style={{width:32, height:32, fontSize:13}}>✦</div>
+        </div>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:13}}>Стипендия от благотворительного фонда</div>
+        <div style={{fontFamily:'var(--serif)', fontSize:12, marginTop:4, color:'var(--ink-soft)'}}>
+          Ваша успеваемость позволяет сохранять грант. Оплата обучения: <span style={{fontFamily:'var(--mono)', color:'var(--verdigris)'}}>0 монет</span>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SchoolPick({k, chosen}){
+  return (
+    <div style={{
+      flex:1, aspectRatio:'1', borderRadius:'50%',
+      background: chosen ? `radial-gradient(circle at 35% 30%, oklch(from var(--s-${k}) calc(l+.2) c h), var(--s-${k}))` : 'oklch(0.92 0.02 80)',
+      border: `1.5px solid ${chosen?'transparent':'rgba(60,35,10,0.35)'}`,
+      color: chosen?'#f5ead3':`var(--s-${k})`,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      fontFamily:'var(--rune)', fontSize:14,
+      boxShadow: chosen?`0 0 8px var(--s-${k})`:'inset 0 1px 0 rgba(255,245,220,0.5)',
+      position:'relative',
+    }} title={SCHOOL_NAME_RU[k]}>
+      {SCHOOL_GLYPH[k]}
+    </div>
+  );
+}
+
+Object.assign(window, { Academy });
+
+
+// ═══ app.js ═══
+// MMGO — main router + Telegram mini-app shell inside iOS device frame
+
+const { useState, useEffect } = React;
+
+function App(){
+  // Persist current screen in localStorage
+  const [screen, setScreen] = useState(()=> localStorage.getItem('mmgo.screen') || 'map');
+  const [currentPoi, setCurrentPoi] = useState(()=> localStorage.getItem('mmgo.poi') || 'farmstead');
+  const [gameTime, setGameTime] = useState({day:14, month:7, year:1247, season:'Лето'});
+
+  // Tweaks
+  const TWEAKS = /*EDITMODE-BEGIN*/{
+    "night": false,
+    "grimoireLayout": "shelves"
+  }/*EDITMODE-END*/;
+  const [tweaks, setTweaks] = useState(TWEAKS);
+  const [tweaksOpen, setTweaksOpen] = useState(false);
+
+  useEffect(()=>{ localStorage.setItem('mmgo.screen', screen); },[screen]);
+  useEffect(()=>{ localStorage.setItem('mmgo.poi', currentPoi); },[currentPoi]);
+
+  // Edit-mode bridge
+  useEffect(()=>{
+    const handler = (e)=>{
+      if(!e.data || typeof e.data!=='object') return;
+      if(e.data.type==='__activate_edit_mode') setTweaksOpen(true);
+      if(e.data.type==='__deactivate_edit_mode') setTweaksOpen(false);
+    };
+    window.addEventListener('message', handler);
+    window.parent.postMessage({type:'__edit_mode_available'}, '*');
+    return ()=> window.removeEventListener('message', handler);
+  },[]);
+
+  function setTweak(k, v){
+    const edits = {[k]: v};
+    setTweaks(prev=>({...prev, ...edits}));
+    window.parent.postMessage({type:'__edit_mode_set_keys', edits}, '*');
+  }
+
+  const title = {
+    map:'Карта княжества',
+    location:'Прибытие',
+    base:'Хутор',
+    spell:'Круг призыва',
+    grimoire:'Гримуары',
+    combat:'Бой',
+    academy:'Академия',
+  }[screen];
+
+  const subtitle = {
+    map:'ручная съёмка · 1247 г.',
+    location:'вы здесь',
+    base:'ваш дом',
+    spell:'Латынь и намерение',
+    grimoire:'полки и каталог',
+    combat:'одновременные ходы',
+    academy:'осенний триместр',
+  }[screen];
+
+  function go(s){ setScreen(s); }
+  function enterLocation(poiId){
+    setCurrentPoi(poiId);
+    setScreen('location');
+  }
+
+  // Screen content
+  let body;
+  if(screen==='map')      body = <MapScreen night={tweaks.night} onEnter={enterLocation} gameTime={gameTime} setGameTime={setGameTime}/>;
+  else if(screen==='location') body = <LocationEvent poiId={currentPoi} onLeave={()=>setScreen('map')} onGo={(k)=>{
+      if(k==='base')    setScreen('base');
+      else if(k==='dungeon' || k==='party') setScreen('combat');
+      else if(k==='academy') setScreen('academy');
+      else if(k==='library') setScreen('grimoire');
+      else setScreen('base');
+    }}/>;
+  else if(screen==='base')    body = <Base onGo={go} onLeave={()=>setScreen('location')}/>;
+  else if(screen==='spell')   body = <SpellCircle onLeave={()=>setScreen('base')}/>;
+  else if(screen==='grimoire')body = <Grimoire layout={tweaks.grimoireLayout} onLayoutChange={(l)=>setTweak('grimoireLayout',l)} onLeave={()=>setScreen('base')}/>;
+  else if(screen==='combat')  body = <Combat onLeave={()=>setScreen('map')}/>;
+  else if(screen==='academy') body = <Academy onLeave={()=>setScreen('location')}/>;
+
+  // Hide bottom nav on immersive screens
+  const showNav = !['combat','location'].includes(screen);
+
+  return (
+    <div style={{display:'flex', gap:24, alignItems:'center'}}>
+      <IOSDevice width={402} height={874} dark={tweaks.night}>
+        <div style={{
+          height:'100%', display:'flex', flexDirection:'column',
+          // push content below status bar / dynamic island
+          paddingTop: 56,
+          background: tweaks.night ? 'oklch(0.16 0.03 258)' : 'oklch(0.94 0.022 82)',
+        }}
+          data-screen-label={`${screen==='map'?'01 ':screen==='location'?'02 ':screen==='base'?'03 ':screen==='spell'?'04 ':screen==='grimoire'?'05 ':screen==='combat'?'06 ':screen==='academy'?'07 ':''}${title}`}
+        >
+          <MiniAppHeader
+            title={title}
+            subtitle={subtitle}
+            left={screen!=='map' ? <HeaderBack onClick={()=>setScreen('map')}/> : null}
+            right={
+              <div style={{display:'flex', alignItems:'center', gap:4}}>
+                <HeaderMenu/>
+              </div>
+            }
+          />
+          <div style={{padding:'6px 10px 0', display:'flex', justifyContent:'center', gap:6}}>
+            <GameTimePill day={gameTime.day} month={gameTime.month} year={gameTime.year} season={gameTime.season} night={tweaks.night}/>
+            <Chip color="verdigris">⚡ 14 / 20</Chip>
+            <Chip color="wax">🜚 128</Chip>
+          </div>
+          <div style={{flex:1, display:'flex', flexDirection:'column', marginTop:8, minHeight:0}}>
+            {body}
+          </div>
+          {/* bottom nav removed — navigate via map */}
+        </div>
+      </IOSDevice>
+
+      {tweaksOpen && (
+        <div style={{
+          width:260, padding:16, borderRadius:14,
+          background:'rgba(30,25,20,0.92)', color:'#f5ead3',
+          border:'1px solid rgba(245,234,211,0.2)',
+          fontFamily:'var(--serif)',
+          boxShadow:'0 10px 30px rgba(0,0,0,0.5)',
+          backdropFilter:'blur(6px)',
+        }}>
+          <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17, letterSpacing:'.03em', marginBottom:10}}>Tweaks</div>
+          <label style={{display:'flex', alignItems:'center', justifyContent:'space-between', padding:'8px 0', borderTop:'1px solid rgba(245,234,211,0.15)'}}>
+            <span>Ночь на карте</span>
+            <input type="checkbox" checked={tweaks.night} onChange={e=>setTweak('night', e.target.checked)}/>
+          </label>
+          <div style={{padding:'8px 0', borderTop:'1px solid rgba(245,234,211,0.15)'}}>
+            <div style={{marginBottom:6, fontSize:12, color:'rgba(245,234,211,0.7)'}}>Вид гримуаров</div>
+            <div style={{display:'flex', gap:6}}>
+              {['shelves','catalog'].map(l=>(
+                <button key={l} onClick={()=>setTweak('grimoireLayout',l)}
+                  style={{
+                    flex:1, padding:'6px 8px', borderRadius:6,
+                    background: tweaks.grimoireLayout===l ? 'var(--wax)' : 'rgba(245,234,211,0.1)',
+                    color: tweaks.grimoireLayout===l?'#fff':'rgba(245,234,211,0.8)',
+                    border:'1px solid rgba(245,234,211,0.25)',
+                    fontFamily:'var(--display)', fontSize:12, cursor:'pointer',
+                  }}>{l==='shelves'?'Полки':'Каталог'}</button>
+              ))}
+            </div>
+          </div>
+          <div style={{marginTop:10, paddingTop:8, borderTop:'1px solid rgba(245,234,211,0.15)', fontSize:11, fontStyle:'italic', color:'rgba(245,234,211,0.55)'}}>
+            Быстрая навигация для проверки дизайна:
+          </div>
+          <div style={{display:'grid', gridTemplateColumns:'1fr 1fr', gap:4, marginTop:6}}>
+            {[
+              ['map','Карта'],['location','Событие'],['base','База'],
+              ['spell','Круг'],['grimoire','Гримуар'],['combat','Бой'],
+              ['academy','Академия'],
+            ].map(([k,l])=>(
+              <button key={k} onClick={()=>setScreen(k)} style={{
+                padding:'6px 4px', borderRadius:6,
+                background: screen===k?'var(--wax)':'rgba(245,234,211,0.07)',
+                color: screen===k?'#fff':'rgba(245,234,211,0.85)',
+                border:'1px solid rgba(245,234,211,0.18)',
+                fontFamily:'var(--serif)', fontSize:11, cursor:'pointer',
+              }}>{l}</button>
+            ))}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+// app runs at bottom
+

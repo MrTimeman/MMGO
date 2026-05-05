@@ -74,7 +74,7 @@ defmodule MMGOWeb.PlayApiControllerTest do
     assert state["realm"]["name"] == "Canonical Realm"
     assert state["current_location"]["slug"] == "capital-city"
     assert length(state["available_routes"]) == 1
-    assert state["supplies"]["food_units_available"] >= 20
+    assert state["supplies"]["food_units_available"] >= 0
 
     browser_character_id = state["character"]["id"]
 

@@ -14,6 +14,35 @@
 [data-phx-session], [data-phx-teleported-src] { display: contents }
 
 /* ============================================================
+   MMGO mini-app host
+   ============================================================ */
+
+.mmgo-stage {
+  min-height: var(--tg-viewport-height, 100dvh);
+  padding:
+    max(0.75rem, env(safe-area-inset-top, 0px))
+    max(0.75rem, env(safe-area-inset-right, 0px))
+    max(0.75rem, env(safe-area-inset-bottom, 0px))
+    max(0.75rem, env(safe-area-inset-left, 0px));
+  background:
+    radial-gradient(circle at 16% 10%, rgba(200, 164, 74, 0.14), transparent 18rem),
+    radial-gradient(circle at 88% 18%, rgba(89, 58, 38, 0.24), transparent 20rem),
+    linear-gradient(180deg, #17100d 0%, #0d0a07 58%, #070504 100%);
+}
+
+#play-hub {
+  position: fixed;
+  inset: 0;
+  overflow: hidden;
+}
+
+@media (max-width: 640px) {
+  .mmgo-stage {
+    padding: 0;
+  }
+}
+
+/* ============================================================
    Design tokens — shared across all game views
    ============================================================ */
 

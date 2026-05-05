@@ -74,7 +74,9 @@ defmodule MMGO.AI.Providers.Gemini do
 
       case Req.post(url,
              json: body,
-             headers: [{"x-goog-api-key", api_key}]
+             headers: [{"x-goog-api-key", api_key}],
+             receive_timeout: 60_000,
+             connect_options: [timeout: 15_000]
            ) do
         {:ok, %Req.Response{status: status, body: response_body}} when status in 200..299 ->
           {:ok, decode_body(response_body)}
@@ -85,6 +87,8 @@ defmodule MMGO.AI.Providers.Gemini do
         {:error, reason} ->
           {:error, reason}
       end
+    else
+      {:error, _reason} = error -> error
     end
   end
 

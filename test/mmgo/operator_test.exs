@@ -2,12 +2,10 @@ defmodule MMGO.OperatorTest do
   use MMGO.DataCase, async: true
 
   alias MMGO.Accounts.{Account, Character}
-  alias MMGO.Academy
   alias MMGO.Inventory
   alias MMGO.Operator
   alias MMGO.Operator.AuditEvent
   alias MMGO.Repo
-  alias MMGO.Scavenging
   alias MMGO.Travel
   alias MMGO.Worlds
 
@@ -59,21 +57,9 @@ defmodule MMGO.OperatorTest do
 
     character = character_fixture(realm, city, "operator", "Operator")
     journey_character = character_fixture(realm, city, "journey-operator", "Journey Operator")
-    academy_character = character_fixture(realm, city, "academy-operator", "Academy Operator")
-
-    scavenger_character =
-      character_fixture(realm, tower, "scavenger-operator", "Scavenger Operator")
 
     {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 5})
-
-    {:ok, _journey_rations} =
-      Inventory.grant_item(journey_character, ration_template, %{quantity: 5})
-
-    {:ok, _academy_rations} =
-      Inventory.grant_item(academy_character, ration_template, %{quantity: 5})
-
-    {:ok, _scavenger_rations} =
-      Inventory.grant_item(scavenger_character, ration_template, %{quantity: 5})
+    {:ok, _journey_rations} = Inventory.grant_item(journey_character, ration_template, %{quantity: 5})
 
     %{
       realm: realm,
@@ -81,53 +67,29 @@ defmodule MMGO.OperatorTest do
       tower: tower,
       route: route,
       character: character,
-      journey_character: journey_character,
-      academy_character: academy_character,
-      scavenger_character: scavenger_character
+      journey_character: journey_character
     }
   end
 
   test "system_report/0 and realm_report/1 summarize world state", %{realm: realm} do
     report = Operator.system_report()
     assert report.realms == 1
-    assert report.characters == 4
+    assert report.characters == 2
     assert report.locations == 2
     assert report.routes == 1
 
     assert {:ok, realm_report} = Operator.realm_report(realm.slug)
     assert realm_report.realm.slug == "canonical"
-    assert realm_report.characters == 4
+    assert realm_report.characters == 2
     assert realm_report.locations == 2
   end
 
-  test "maintenance_sweep/1 completes due work and records an audit event", %{
+  test "maintenance_sweep/1 completes due journeys and records an audit event", %{
     journey_character: journey_character,
-    academy_character: academy_character,
-    scavenger_character: scavenger_character,
-    route: route,
-    tower: tower
+    route: route
   } do
     {:ok, %{journey: journey}} =
       Travel.start_journey(journey_character, route, started_at: ~U[2026-03-27 12:00:00Z])
-
-    {:ok, %{enrollment: enrollment}} =
-      Academy.begin_basic_education(academy_character,
-        started_at: ~U[2026-03-27 12:00:00Z],
-        duration_game_days: 1
-      )
-
-    {:ok, resource_cache} =
-      Scavenging.ensure_resource_cache(tower, %{
-        resource_code: "arcane_debris",
-        quantity_total: 1,
-        quantity_remaining: 1,
-        respawn_game_days: 7
-      })
-
-    {:ok, %{attempt: attempt}} =
-      Scavenging.start_attempt(scavenger_character, resource_cache, 1,
-        started_at: ~U[2026-03-27 12:00:00Z]
-      )
 
     now = ~U[2026-03-27 12:27:42Z]
 
@@ -135,14 +97,10 @@ defmodule MMGO.OperatorTest do
              Operator.maintenance_sweep(now: now, actor_handle: "operator")
 
     assert summary.completed_journeys == 1
-    assert summary.completed_enrollments == 1
-    assert summary.completed_attempts == 1
     assert audit_event.action == "maintenance_sweep"
     assert Repo.aggregate(AuditEvent, :count, :id) == 1
 
     assert Travel.get_journey!(journey.id).status == :arrived
-    assert Repo.get!(Academy.Enrollment, enrollment.id).status == :completed
-    assert Repo.get!(Scavenging.Attempt, attempt.id).status == :completed
   end
 
   defp character_fixture(realm, location, handle, name) do

@@ -1,0 +1,4161 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>MMGO</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Vollkorn:ital,wght@0,400;0,600;1,400&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+<script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+<script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+<style>
+/* ── Reset ── */
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body {
+  height: 100%;
+  background: oklch(0.18 0.04 50);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 24px;
+  font-family: var(--serif);
+  -webkit-font-smoothing: antialiased;
+  text-rendering: optimizeLegibility;
+  overflow: hidden;
+}
+
+/* ── Design tokens ── */
+:root {
+  /* Fonts */
+  --display: 'Cinzel', 'Palatino Linotype', Georgia, serif;
+  --serif:   'Vollkorn', 'Palatino Linotype', Georgia, serif;
+  --rune:    'IM Fell English', 'Palatino Linotype', serif;
+  --mono:    'Courier Prime', 'Courier New', monospace;
+  --script:  'IM Fell English', cursive;
+
+  /* Ink / text */
+  --ink:        oklch(0.22 0.04 50);
+  --ink-soft:   oklch(0.42 0.05 52);
+  --ink-faint:  oklch(0.58 0.05 55);
+
+  /* Wax — warm red accent */
+  --wax:       oklch(0.52 0.17 27);
+  --wax-deep:  oklch(0.38 0.14 28);
+
+  /* Gilt — gold */
+  --gilt:      oklch(0.72 0.10 62);
+
+  /* Magic — purple/violet */
+  --magic:     oklch(0.50 0.18 295);
+  --magic-soft:oklch(0.70 0.12 295);
+
+  /* Verdigris — green */
+  --verdigris: oklch(0.48 0.10 165);
+
+  /* Parchment surfaces */
+  --vellum:        oklch(0.945 0.030 80);
+  --vellum-2:      oklch(0.905 0.038 78);
+  --vellum-shade:  oklch(0.860 0.042 75);
+  --sepia:         oklch(0.52 0.08 56);
+
+  /* School colours */
+  --s-fire:   oklch(0.58 0.19 35);
+  --s-water:  oklch(0.52 0.15 248);
+  --s-earth:  oklch(0.48 0.13 128);
+  --s-air:    oklch(0.72 0.10 222);
+  --s-chaos:  oklch(0.50 0.18 305);
+  --s-order:  oklch(0.65 0.07 242);
+  --s-life:   oklch(0.54 0.14 148);
+  --s-death:  oklch(0.35 0.12 318);
+}
+
+/* ── Parchment texture overlay ── */
+.parchment {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  background-image:
+    url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+  mix-blend-mode: multiply;
+}
+
+/* ── Scrollable areas ── */
+.mmgo-scroll {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(60,35,10,0.25) transparent;
+}
+.mmgo-scroll::-webkit-scrollbar { width: 4px; }
+.mmgo-scroll::-webkit-scrollbar-thumb {
+  background: rgba(60,35,10,0.22);
+  border-radius: 2px;
+}
+
+/* ── Ink buttons ── */
+.inkbtn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: 9px 18px;
+  border-radius: 8px;
+  border: 1px solid rgba(60,35,10,0.45);
+  background: linear-gradient(180deg, var(--vellum), var(--vellum-2));
+  color: var(--ink);
+  font-family: var(--display);
+  font-weight: 600;
+  font-size: 13px;
+  letter-spacing: 0.03em;
+  cursor: pointer;
+  box-shadow:
+    inset 0 1px 0 rgba(255,245,220,0.65),
+    0 2px 4px rgba(40,25,10,0.12);
+  transition: background 0.15s, box-shadow 0.15s;
+  -webkit-font-smoothing: antialiased;
+}
+.inkbtn:hover:not(:disabled) {
+  background: linear-gradient(180deg, var(--vellum-shade), oklch(0.86 0.04 76));
+  box-shadow: inset 0 1px 0 rgba(255,245,220,0.5), 0 1px 2px rgba(40,25,10,0.18);
+}
+.inkbtn:disabled { opacity: 0.45; cursor: default; }
+
+.inkbtn.primary {
+  background: linear-gradient(180deg, var(--wax), var(--wax-deep));
+  border-color: rgba(80,20,5,0.5);
+  color: #f5ead3;
+  box-shadow:
+    inset 0 1px 0 rgba(255,220,180,0.3),
+    0 2px 6px rgba(120,30,10,0.35);
+}
+.inkbtn.primary:hover:not(:disabled) {
+  background: linear-gradient(180deg, oklch(0.56 0.17 27), var(--wax));
+}
+
+.inkbtn.ghost {
+  background: transparent;
+  border-color: rgba(60,35,10,0.35);
+  color: var(--ink-soft);
+  box-shadow: none;
+}
+.inkbtn.ghost:hover:not(:disabled) {
+  background: rgba(60,35,10,0.06);
+}
+
+/* ── Wood shelf texture ── */
+.wood {
+  background: linear-gradient(180deg,
+    oklch(0.52 0.09 48) 0%,
+    oklch(0.44 0.10 46) 35%,
+    oklch(0.40 0.10 44) 60%,
+    oklch(0.36 0.09 44) 100%);
+}
+
+/* ── Wax seal ── */
+.wax-seal {
+  width: 42px; height: 42px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%,
+    oklch(0.65 0.18 27), var(--wax) 45%, var(--wax-deep));
+  border: 1.5px solid oklch(0.30 0.10 27);
+  display: flex; align-items: center; justify-content: center;
+  color: #f5ead3;
+  font-family: var(--rune);
+  box-shadow:
+    0 2px 6px rgba(80,20,5,0.45),
+    inset 0 1px 0 rgba(255,200,160,0.3);
+}
+
+/* ── Horizontal rule ── */
+.hrule {
+  height: 1px;
+  background: linear-gradient(90deg,
+    transparent 0%, rgba(60,35,10,0.35) 20%,
+    rgba(60,35,10,0.35) 80%, transparent 100%);
+  position: relative;
+}
+.hrule::after {
+  content: '✦';
+  position: absolute; left: 50%; top: 50%;
+  transform: translate(-50%, -50%);
+  background: var(--vellum);
+  padding: 0 8px;
+  font-family: var(--rune);
+  font-size: 12px;
+  color: var(--gilt);
+  line-height: 1;
+}
+
+/* ── Vignette card ── */
+.vignette {
+  box-shadow:
+    0 10px 20px rgba(0,0,0,0.4),
+    inset 0 1px 0 rgba(255,245,220,0.7),
+    inset 0 0 30px rgba(60,35,10,0.08);
+}
+
+/* ── Animations ── */
+@keyframes spin-slow {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+@keyframes spin-rev {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+@keyframes drift {
+  0%, 100% { transform: translate(-50%,-50%) translateY(0px); }
+  50%       { transform: translate(-50%,-50%) translateY(-3px); }
+}
+@keyframes flicker {
+  0%, 100% { stroke-opacity: 0.9; }
+  50%       { stroke-opacity: 0.4; }
+}
+@keyframes pulse-magic {
+  0%, 100% { opacity: 1; transform: scale(1); }
+  50%       { opacity: 0.6; transform: scale(0.97); }
+}
+@keyframes pulse {
+  0%, 100% { opacity: 1; }
+  50%       { opacity: 0.4; }
+}
+
+/* ── Input reset ── */
+input, select, textarea, button {
+  font-family: var(--serif);
+}
+input:focus, select:focus, textarea:focus { outline: none; }
+
+/* ── Vibes Enhanced: atmospheric effects ── */
+.vibes-particles {
+  position: fixed; inset: 0; pointer-events: none; z-index: 1000;
+  overflow: hidden;
+}
+.vibes-particle {
+  position: absolute; border-radius: 50%;
+  background: rgba(200,180,140,0.35);
+  animation: vibes-drift linear infinite;
+  will-change: transform, opacity;
+}
+@keyframes vibes-drift {
+  0%   { transform: translateY(105vh) translateX(0) scale(0.5); opacity: 0; }
+  5%   { opacity: 0.5; }
+  10%  { transform: translateY(90vh) translateX(5px) scale(1); opacity: 0.5; }
+  90%  { opacity: 0.25; }
+  100% { transform: translateY(-10vh) translateX(30px) scale(0.3); opacity: 0; }
+}
+.vibes-vignette {
+  position: fixed; inset: 0; pointer-events: none; z-index: 999;
+  box-shadow: inset 0 0 100px rgba(20,10,5,0.45), inset 0 0 30px rgba(15,8,3,0.3);
+}
+.vibes-frame {
+  position: fixed; inset: 0; pointer-events: none; z-index: 998;
+  border: 6px solid oklch(0.28 0.05 42);
+  box-shadow:
+    inset 0 0 0 1.5px oklch(0.42 0.07 48),
+    inset 0 0 25px rgba(0,0,0,0.25);
+}
+.vibes-corner {
+  position: fixed; width: 24px; height: 24px; z-index: 998;
+  pointer-events: none;
+  border-color: var(--gilt);
+  border-style: solid;
+  opacity: 0.7;
+}
+.vibes-corner-tl { top: 6px; left: 6px; border-width: 2px 0 0 2px; }
+.vibes-corner-tr { top: 6px; right: 6px; border-width: 2px 2px 0 0; }
+.vibes-corner-bl { bottom: 6px; left: 6px; border-width: 0 0 2px 2px; }
+.vibes-corner-br { bottom: 6px; right: 6px; border-width: 0 2px 2px 0; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script>
+  // Point map screen at the right asset
+  window.__MAP_URL = '/images/demo-map.png';
+
+  // ═══ Backend API bridge ═══
+  window.__API = {
+    statePath: '/api/play/state',
+    journeysPath: '/api/play/journeys',
+    utilitySpellsPath: '/api/play/utility-spells',
+    demoResetPath: '/api/play/demo/reset',
+    admin: {
+      locationsPath: '/api/play/admin/locations',
+      routesPath: '/api/play/admin/routes',
+    },
+  };
+  window.__CSRF_TOKEN = document.querySelector("meta[name='csrf-token']")?.getAttribute("content") || "";
+  window.__GAME_STATE = null;
+  window.__VIBES_ENHANCED = false;
+
+  // Convert backend state to prototype-compatible POIS / ROAD_PATHS
+  function backendToPOIS(state) {
+    if (!state || !state.map) return null;
+    const locations = state.map.locations || [];
+    const mapW = state.map.width || 2000;
+    const mapH = state.map.height || 2000;
+    const typeMap = { city: 'city', tower: 'tower', base: 'camp', wilderness: 'village', dungeon_entrance: 'tower' };
+    const pois = locations.map(loc => ({
+      id: loc.id,
+      name: loc.name,
+      type: typeMap[loc.kind] || 'village',
+      x: (loc.x / mapW) * 100,
+      y: (loc.y / mapH) * 100,
+      desc: loc.safe_zone ? 'Безопасная зона' : 'Дикая местность',
+      kind: loc.kind,
+      current: loc.current,
+    }));
+    return pois;
+  }
+
+  function backendToRoads(state, pois) {
+    if (!state || !state.map || !pois) return { paths: [], adj: {} };
+    const poiMap = {};
+    pois.forEach(p => { poiMap[p.id] = p; });
+    const routes = state.map.routes || [];
+    const paths = [];
+    const adj = {};
+    routes.forEach(r => {
+      const a = poiMap[r.origin_location_id];
+      const b = poiMap[r.destination_location_id];
+      if (!a || !b) return;
+      const key = r.name || `${a.id}-${b.id}`;
+      paths.push({ a: a.id, b: b.id, pts: [[a.x, a.y], [b.x, b.y]], key, route_id: r.id, travel_days: r.travel_days, risk_level: r.risk_level });
+      (adj[a.id] = adj[a.id] || []).push({ to: b.id, road: { a: a.id, b: b.id, pts: [[a.x, a.y], [b.x, b.y]], key, route_id: r.id, travel_days: r.travel_days, risk_level: r.risk_level } });
+      (adj[b.id] = adj[b.id] || []).push({ to: a.id, road: { a: b.id, b: a.id, pts: [[b.x, b.y], [a.x, a.y]], key, route_id: r.id, travel_days: r.travel_days, risk_level: r.risk_level } });
+    });
+    return { paths, adj };
+  }
+</script>
+
+<script type="text/babel">
+
+// ═══ ios-frame.js ═══
+// Frame — minimal sized container that auto-scales to fit the viewport.
+// Keeps the IOSDevice export name so call sites don't change.
+
+function IOSDevice({ children, width = 402, height = 874, dark = false }) {
+  const [scale, setScale] = React.useState(1);
+
+  React.useEffect(()=>{
+    function fit(){
+      // leave a little margin and room for the side Tweaks panel
+      const margin = 40;
+      const sideW = 280; // tweaks panel + gap, when shown
+      const availW = window.innerWidth - margin - sideW;
+      const availH = window.innerHeight - margin;
+      const s = Math.min(1, availW / width, availH / height);
+      setScale(s);
+    }
+    fit();
+    window.addEventListener('resize', fit);
+    return ()=> window.removeEventListener('resize', fit);
+  }, [width, height]);
+
+  return (
+    <div style={{
+      width: width * scale, height: height * scale,
+      flexShrink: 0,
+    }}>
+      <div style={{
+        width, height,
+        transform: `scale(${scale})`,
+        transformOrigin: 'top left',
+        borderRadius: 18,
+        overflow: 'hidden',
+        position: 'relative',
+        background: dark ? 'oklch(0.16 0.03 258)' : 'oklch(0.94 0.022 82)',
+        boxShadow:
+          '0 30px 60px rgba(0,0,0,0.45), 0 8px 16px rgba(0,0,0,0.25)',
+        isolation: 'isolate',
+      }}>
+        {children}
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { IOSDevice });
+
+
+// ═══ components/Chrome.js ═══
+// Shared chrome: top bar, bottom nav, game-time, parchment panels
+
+const SCHOOL_GLYPH = {
+  fire:   '◬',
+  water:  '◉',
+  earth:  '⬢',
+  air:    '≋',
+  chaos:  '✧',
+  order:  '✦',
+  life:   '❋',
+  death:  '☗',
+};
+const SCHOOL_NAME_RU = {
+  fire:'Огонь', water:'Вода', earth:'Земля', air:'Воздух',
+  chaos:'Хаос', order:'Порядок', life:'Жизнь', death:'Смерть',
+};
+const SCHOOL_COLOR = {
+  fire:'var(--s-fire)', water:'var(--s-water)', earth:'var(--s-earth)', air:'var(--s-air)',
+  chaos:'var(--s-chaos)', order:'var(--s-order)', life:'var(--s-life)', death:'var(--s-death)',
+};
+
+// Telegram-style mini-app header (sits inside iOS device)
+function MiniAppHeader({title, subtitle, left, right}){
+  return (
+    <div style={{
+      display:'flex', alignItems:'center', gap:10,
+      padding:'8px 14px',
+      borderBottom:'1px solid rgba(60,35,10,0.25)',
+      background:'linear-gradient(180deg, rgba(255,245,220,0.55), rgba(255,245,220,0.0))',
+      position:'relative', zIndex:5,
+    }}>
+      <div style={{width:30,display:'flex',justifyContent:'flex-start'}}>{left}</div>
+      <div style={{flex:1, textAlign:'center'}}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17, lineHeight:1, letterSpacing:'.01em', color:'var(--ink)'}}>{title}</div>
+        {subtitle && <div style={{fontFamily:'var(--serif)', fontSize:11, color:'var(--ink-faint)', marginTop:2, fontStyle:'italic'}}>{subtitle}</div>}
+      </div>
+      <div style={{width:30,display:'flex',justifyContent:'flex-end'}}>{right}</div>
+    </div>
+  );
+}
+
+function HeaderBack({onClick}){
+  return (
+    <button onClick={onClick} aria-label="Назад" style={{
+      border:'none', background:'none', padding:4, cursor:'pointer', color:'var(--ink-soft)',
+      display:'flex', alignItems:'center',
+    }}>
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none"><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>
+    </button>
+  );
+}
+
+function HeaderMenu({onClick}){
+  return (
+    <button onClick={onClick} aria-label="Меню" style={{
+      border:'none', background:'none', padding:4, cursor:'pointer', color:'var(--ink-soft)',
+      display:'flex', alignItems:'center',
+    }}>
+      <svg width="20" height="20" viewBox="0 0 24 24"><circle cx="5" cy="12" r="1.6" fill="currentColor"/><circle cx="12" cy="12" r="1.6" fill="currentColor"/><circle cx="19" cy="12" r="1.6" fill="currentColor"/></svg>
+    </button>
+  );
+}
+
+// Bottom nav — the five big zones
+function BottomNav({current, onGo}){
+  const items = [
+    {k:'map',     label:'Карта',    icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M9 3L3 5v16l6-2 6 2 6-2V3l-6 2-6-2z"/><path d="M9 3v16M15 5v16"/></svg>},
+    {k:'base',    label:'База',     icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M3 11l9-8 9 8"/><path d="M5 10v10h14V10"/><path d="M9 20v-6h6v6"/></svg>},
+    {k:'spell',   label:'Круг',     icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3v18M5.6 5.6l12.8 12.8M18.4 5.6L5.6 18.4"/></svg>},
+    {k:'grimoire',label:'Гримуар',  icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M4 4h12a3 3 0 013 3v13H7a3 3 0 01-3-3V4z"/><path d="M4 17a3 3 0 013-3h12"/><path d="M8 8h6M8 11h5"/></svg>},
+    {k:'academy', label:'Академия', icon: (a)=> <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke={a} strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"><path d="M2 9l10-5 10 5-10 5L2 9z"/><path d="M6 11v5c2 1.5 4 2 6 2s4-.5 6-2v-5"/><path d="M22 9v5"/></svg>},
+  ];
+  return (
+    <div style={{
+      borderTop:'1px solid rgba(60,35,10,0.28)',
+      background:'linear-gradient(180deg, rgba(255,245,220,0.0), rgba(60,35,10,0.06))',
+      display:'grid', gridTemplateColumns:'repeat(5,1fr)',
+      padding:'6px 4px 4px',
+      position:'relative', zIndex:5,
+    }}>
+      {items.map(it => {
+        const active = current===it.k;
+        const color = active ? 'var(--wax)' : 'var(--ink-faint)';
+        return (
+          <button key={it.k} onClick={()=>onGo(it.k)} style={{
+            border:'none', background:'none', cursor:'pointer',
+            display:'flex', flexDirection:'column', alignItems:'center', gap:3,
+            padding:'4px 0', color,
+            fontFamily:'var(--display)', fontSize:10, fontWeight:600, letterSpacing:'.04em', textTransform:'uppercase',
+          }}>
+            {it.icon(color)}
+            <span>{it.label}</span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+// Game-time / weather pill
+function GameTimePill({day, month, year, night, season='Лето'}){
+  const monthNames = ['Жнивень','Светень','Мглистый','Трявень','Солнцестоя','Лозоплёт','Горница','Листобой','Вересень','Мрачень','Медвень','Заморозь','Стужень'];
+  return (
+    <div style={{
+      display:'inline-flex', alignItems:'center', gap:8,
+      background:'linear-gradient(180deg, oklch(0.93 0.04 80), oklch(0.88 0.05 76))',
+      border:'1px solid rgba(60,35,10,0.3)',
+      borderRadius:999, padding:'4px 10px 4px 8px',
+      fontFamily:'var(--serif)', fontSize:11, color:'var(--ink)',
+      boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 1px 2px rgba(0,0,0,0.08)',
+    }}>
+      <span style={{fontFamily:'var(--rune)', fontSize:14, color: night?'var(--magic)':'var(--wax)'}}>
+        {night ? '☾' : '☀'}
+      </span>
+      <span style={{fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.04em'}}>
+        {day} {monthNames[month-1]} · {year} г.
+      </span>
+      <span style={{fontStyle:'italic', color:'var(--ink-faint)', borderLeft:'1px solid rgba(60,35,10,0.25)', paddingLeft:7, fontSize:10}}>{season}</span>
+    </div>
+  );
+}
+
+// Ornamental heading
+function Ornament({children, centered=true, tiny=false}){
+  return (
+    <div style={{
+      textAlign: centered?'center':'left',
+      fontFamily:'var(--display)', fontWeight:600,
+      fontSize: tiny?13:18, letterSpacing:'.04em',
+      color:'var(--ink)',
+      textTransform: tiny?'uppercase':'none',
+      display:'flex', alignItems:'center', gap:10, justifyContent:centered?'center':'flex-start',
+    }}>
+      <span style={{flex:centered?1:0, height:1, background:'linear-gradient(90deg, transparent, rgba(60,35,10,0.4))', minWidth: centered?20:0}}/>
+      <span>{children}</span>
+      <span style={{flex:1, height:1, background:'linear-gradient(90deg, rgba(60,35,10,0.4), transparent)'}}/>
+    </div>
+  );
+}
+
+// Small info chip
+function Chip({children, color='ink', style={}}){
+  const map = {
+    ink:    {bg:'rgba(60,35,10,0.08)', fg:'var(--ink)', bd:'rgba(60,35,10,0.3)'},
+    magic:  {bg:'oklch(0.9 0.06 295 / 0.35)', fg:'oklch(0.35 0.15 295)', bd:'oklch(0.55 0.17 295 / 0.5)'},
+    wax:    {bg:'oklch(0.88 0.08 30 / 0.35)', fg:'var(--wax-deep)', bd:'rgba(120,50,20,0.45)'},
+    verdigris:{bg:'oklch(0.88 0.05 170 / 0.35)', fg:'oklch(0.35 0.08 170)', bd:'oklch(0.5 0.06 170 / 0.5)'},
+  };
+  const m = map[color] || map.ink;
+  return (
+    <span style={{
+      display:'inline-flex', alignItems:'center', gap:4,
+      padding:'2px 7px', borderRadius:999,
+      background:m.bg, color:m.fg, border:`1px solid ${m.bd}`,
+      fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.04em',
+      ...style,
+    }}>{children}</span>
+  );
+}
+
+Object.assign(window, {
+  MiniAppHeader, HeaderBack, HeaderMenu, BottomNav, GameTimePill, Ornament, Chip,
+  SCHOOL_GLYPH, SCHOOL_NAME_RU, SCHOOL_COLOR,
+});
+
+
+// ═══ screens/Map.js ═══
+// World map — POIs, player token, animated travel, day/night
+
+// Coordinates are % relative to the 2000×2000 source map.png
+const POIS = [
+  {id:'tower',       name:'Башня',          type:'tower',  x:44.5, y:21.0, desc:'Единственное место, где работает магия. Вход в подземелье.'},
+  {id:'capital',     name:'Столица',        type:'city',   x:46.0, y:46.5, desc:'Столичный город княжества. Академия, рынок, таверны.'},
+  {id:'east-town',   name:'Верхний Предел', type:'city',   x:77.0, y:25.5, desc:'Северный торговый город на границе.'},
+  {id:'kamen',       name:'Камни',          type:'ruin',   x:88.0, y:37.0, desc:'Каменный круг в предгорьях.'},
+  {id:'lake-village',name:'Малые Воды',     type:'village',x:55.5, y:61.0, desc:'Деревня у озера.'},
+  {id:'windmill',    name:'Мельница',       type:'village',x:69.5, y:49.5, desc:'Мельница и хутор мельника.'},
+  {id:'east-farms',  name:'Жёлтые Поля',    type:'village',x:83.5, y:55.0, desc:'Житница княжества — сельскохозяйственные артели.'},
+  {id:'hermitage',   name:'Скит',           type:'ruin',   x:21.5, y:40.5, desc:'Заброшенная хижина в горах.'},
+  {id:'farmstead',   name:'Хутор',          type:'camp',   x:48.0, y:89.0, desc:'Ваша база — маленький хутор на юге.'},
+];
+
+// Roads trace the actual dotted paths on map.png. Each is a list of control points
+// for a catmull-rom-ish curve: [ [x,y], [x,y], ... ] — these bend where the real road bends.
+const ROAD_PATHS = [
+  { a:'capital',     b:'tower',        pts:[[46.0,46.5],[46.5,40],[46.8,32],[45.2,25],[44.5,21.0]] },
+  { a:'capital',     b:'lake-village', pts:[[46.0,46.5],[48,51],[51,56],[55.5,61.0]] },
+  { a:'lake-village',b:'farmstead',    pts:[[55.5,61.0],[53,71],[50,80],[48.0,89.0]] },
+  { a:'capital',     b:'east-town',    pts:[[46.0,46.5],[52,42],[60,36],[68,30],[77.0,25.5]] },
+  { a:'east-town',   b:'kamen',        pts:[[77.0,25.5],[81,30],[85,34],[88.0,37.0]] },
+  { a:'capital',     b:'windmill',     pts:[[46.0,46.5],[55,47],[62,48.5],[69.5,49.5]] },
+  { a:'windmill',    b:'east-farms',   pts:[[69.5,49.5],[75,51],[79,53],[83.5,55.0]] },
+  { a:'lake-village',b:'windmill',     pts:[[55.5,61.0],[61,56],[65,53],[69.5,49.5]] },
+  { a:'tower',       b:'hermitage',    pts:[[44.5,21.0],[38,27],[32,32],[26,37],[21.5,40.5]], dashed:'cult' }, // cult dashed route
+];
+
+function poi(id){ return POIS.find(p=>p.id===id); }
+
+// Build a smooth SVG path from points using quadratic midpoints
+function smoothPath(pts){
+  if(pts.length<2) return '';
+  let d = `M ${pts[0][0]} ${pts[0][1]}`;
+  for(let i=1;i<pts.length-1;i++){
+    const xc = (pts[i][0] + pts[i+1][0])/2;
+    const yc = (pts[i][1] + pts[i+1][1])/2;
+    d += ` Q ${pts[i][0]} ${pts[i][1]} ${xc} ${yc}`;
+  }
+  d += ` T ${pts[pts.length-1][0]} ${pts[pts.length-1][1]}`;
+  return d;
+}
+
+// Sample a point along a polyline at t ∈ [0,1]
+function samplePath(pts, t){
+  if(pts.length<2) return {x:pts[0][0], y:pts[0][1]};
+  // total length
+  let lens=[]; let total=0;
+  for(let i=0;i<pts.length-1;i++){
+    const dx=pts[i+1][0]-pts[i][0], dy=pts[i+1][1]-pts[i][1];
+    const L=Math.hypot(dx,dy); lens.push(L); total+=L;
+  }
+  const target = t*total;
+  let acc=0;
+  for(let i=0;i<lens.length;i++){
+    if(acc+lens[i]>=target){
+      const localT = (target-acc)/lens[i];
+      return {
+        x: pts[i][0]+(pts[i+1][0]-pts[i][0])*localT,
+        y: pts[i][1]+(pts[i+1][1]-pts[i][1])*localT,
+      };
+    }
+    acc+=lens[i];
+  }
+  return {x:pts[pts.length-1][0], y:pts[pts.length-1][1]};
+}
+
+// Icon for POI type — more map-sticker feel (pin + glyph)
+function POIGlyph({type, size=20, active, night}){
+  const s = size;
+  const colors = {
+    tower:  {bg:'oklch(0.55 0.14 28)',  ring:'oklch(0.35 0.12 28)'},
+    city:   {bg:'oklch(0.50 0.08 260)', ring:'oklch(0.25 0.06 260)'},
+    village:{bg:'oklch(0.68 0.12 62)',  ring:'oklch(0.40 0.08 60)'},
+    ruin:   {bg:'oklch(0.55 0.02 280)', ring:'oklch(0.30 0.02 280)'},
+    camp:   {bg:'oklch(0.48 0.13 135)', ring:'oklch(0.30 0.10 135)'},
+  };
+  const c = colors[type] || colors.camp;
+  const icon = {tower:'♜', city:'♛', village:'⌂', ruin:'◘', camp:'▲'}[type] || '●';
+  return (
+    <div style={{
+      width:s, height:s, borderRadius:'50%',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      background:`radial-gradient(circle at 35% 30%, oklch(from ${c.bg} calc(l+.15) c h), ${c.bg})`,
+      color:'#f5ead3',
+      border:`2px solid ${active?'var(--wax)':c.ring}`,
+      boxShadow: active
+        ? '0 0 0 3px rgba(180,60,20,0.35), 0 3px 6px rgba(0,0,0,0.5)'
+        : '0 2px 4px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,245,220,0.35)',
+      transform: active?'scale(1.15)':'scale(1)',
+      transition:'transform .15s ease',
+    }}>
+      <span style={{fontSize: s*0.55, fontWeight:700, lineHeight:1, filter:'drop-shadow(0 1px 0 rgba(0,0,0,0.3))'}}>{icon}</span>
+    </div>
+  );
+}
+
+function MapScreen({night, onEnter, gameTime, setGameTime, backendState, backendPois, backendRoads, backendJourneysPath, refreshBackend}){
+  // Use backend data when available, fall back to mock data
+  const useBackend = !!(backendPois && backendPois.length > 0 && backendRoads);
+  const effectivePois = useBackend ? backendPois : POIS;
+  const effectiveRoads = useBackend ? backendRoads.paths : ROAD_PATHS;
+  const effectiveAdj = useBackend ? backendRoads.adj : null;
+  const effectivePoiFn = useBackend ? (id) => effectivePois.find(p => p.id === id) : poi;
+
+  const startPoiId = useBackend ? (backendState?.current_location?.id || effectivePois[0]?.id) : 'farmstead';
+  const startPos = effectivePoiFn(startPoiId) || {x: 48.0, y: 89.0};
+
+  const [pos, setPos] = React.useState({x: startPos.x, y: startPos.y});
+  const [currentPoi, setCurrentPoi] = React.useState(startPoiId);
+  const [selected, setSelected] = React.useState(null);
+  const [travelling, setTravelling] = React.useState(null);
+  const [arrivalPrompt, setArrivalPrompt] = React.useState(null);
+  const [scrollRef, setScrollRef] = React.useState(null);
+  const [isJourneyPending, setIsJourneyPending] = React.useState(false);
+
+  // Editor mode — enabled only on /play/editor via injected window.__EDITOR_MODE
+  const editMode = !!window.__EDITOR_MODE;
+  const [connectMode, setConnectMode] = React.useState(false);
+  const [connectFirst, setConnectFirst] = React.useState(null);
+  const [editDialog, setEditDialog] = React.useState(null); // {mode:'new'|'edit'|'connect', poiId?, x?, y?, poiA?, poiB?}
+  const dragStateRef = React.useRef({});
+  const [dragState, setDragState] = React.useState(null);
+  const clickStartRef = React.useRef({ x: 0, y: 0 });
+  const dragFlagRef = React.useRef(false);
+
+  // Build adjacency
+  const adj = React.useMemo(()=>{
+    if (effectiveAdj) return effectiveAdj;
+    const m = {};
+    effectiveRoads.forEach(r=>{
+      (m[r.a] = m[r.a] || []).push({to:r.b, road:r});
+      (m[r.b] = m[r.b] || []).push({to:r.a, road:r});
+    });
+    return m;
+  }, [useBackend, effectiveRoads, effectiveAdj]);
+
+  // BFS shortest path (in nodes) between two POIs
+  function findPath(from, to){
+    if(from===to) return {nodes:[from], roads:[]};
+    const q=[{nodes:[from], roads:[]}]; const seen=new Set([from]);
+    while(q.length){
+      const p = q.shift();
+      const tail = p.nodes[p.nodes.length-1];
+      for(const n of (adj[tail]||[])){
+        if(seen.has(n.to)) continue;
+        if(n.to===to) return {nodes:[...p.nodes, n.to], roads:[...p.roads, n.road]};
+        seen.add(n.to); q.push({nodes:[...p.nodes, n.to], roads:[...p.roads, n.road]});
+      }
+    }
+    return null;
+  }
+
+  // Animate travel — glide along stitched road control points
+  React.useEffect(()=>{
+    if(!travelling) return;
+    let raf;
+    let last = performance.now();
+    const STEP_MS = 1800; // per road segment
+    const tick = (now)=>{
+      const dt = now - last; last = now;
+      setTravelling(cur=>{
+        if(!cur) return cur;
+        const segs = cur.roads.length;
+        if(segs===0) return null;
+        const next = cur.t + dt / (STEP_MS * segs);
+        if(next >= 1){
+          const arrId = cur.nodes[cur.nodes.length-1];
+          const arr = effectivePoiFn(arrId);
+          if (!arr) return null;
+          setPos({x:arr.x, y:arr.y});
+          setCurrentPoi(arrId);
+          setArrivalPrompt(arrId);
+          setSelected(null);
+          setGameTime(gt => ({...gt, day: gt.day + segs*2}));
+          return null;
+        }
+        // Which road segment?
+        const segIdx = Math.min(Math.floor(next*segs), segs-1);
+        const localT = next*segs - segIdx;
+        const road = cur.roads[segIdx];
+        // If we're traversing road backwards, flip sampling
+        const forward = road.a === cur.nodes[segIdx];
+        const tt = forward ? localT : (1-localT);
+        const p = samplePath(road.pts, tt);
+        setPos({x:p.x, y:p.y});
+        return {...cur, t: next};
+      });
+      raf = requestAnimationFrame(tick);
+    };
+    raf = requestAnimationFrame(tick);
+    return ()=> cancelAnimationFrame(raf);
+  },[travelling && travelling.nodes.join('-')]);
+
+  // Pan so the player token stays near centre when travelling
+  React.useEffect(()=>{
+    if(!scrollRef) return;
+    // Centre initial pos
+    const box = scrollRef.getBoundingClientRect();
+    const mapW = scrollRef.scrollWidth;
+    const mapH = scrollRef.scrollHeight;
+    const tx = (pos.x/100)*mapW - box.width/2;
+    const ty = (pos.y/100)*mapH - box.height/2;
+    scrollRef.scrollTo({left: Math.max(0,tx), top: Math.max(0,ty), behavior: travelling?'smooth':'instant'});
+  }, [pos.x, pos.y, scrollRef, travelling]);
+
+  const target = selected ? (effectivePoiFn(selected) || null) : null;
+  const computed = selected ? findPath(currentPoi, selected) : null;
+
+  // Highlight path as single smooth SVG path
+  const highlightD = computed ? computed.roads.map(r=>{
+    return smoothPath(r.pts);
+  }).join(' ') : null;
+
+  // Compass angle — direction of travel along first road segment
+  const compassAngle = React.useMemo(() => {
+    if (!travelling?.roads?.length) return 0;
+    const pts = travelling.roads[0].pts;
+    if (pts.length < 2) return 0;
+    const dx = pts[1][0] - pts[0][0];
+    const dy = pts[1][1] - pts[0][1];
+    return Math.atan2(dx, -dy) * (180 / Math.PI);
+  }, [travelling?.roads, travelling?.t]);
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', background:'#1a1410'}}>
+      {/* Scroll container — map is larger than viewport for exploration */}
+      <div ref={setScrollRef} id="map-scroll" style={{
+        position:'absolute', inset:0, overflow:'auto',
+      }} className="mmgo-scroll"
+        onMouseDown={(e) => {
+          clickStartRef.current = { x: e.clientX, y: e.clientY };
+        }}
+        onClick={(e) => {
+          if (!editMode || travelling) return;
+          const dx = e.clientX - clickStartRef.current.x;
+          const dy = e.clientY - clickStartRef.current.y;
+          if (Math.abs(dx) > 4 || Math.abs(dy) > 4) return; // ignore swipes
+          if (e.target.closest('button')) return; // skip POI clicks
+          const img = e.currentTarget.querySelector('img');
+          if (!img) return;
+          const r = img.getBoundingClientRect();
+          const xPct = ((e.clientX - r.left) / r.width) * 100;
+          const yPct = ((e.clientY - r.top) / r.height) * 100;
+          if (xPct < 0 || xPct > 100 || yPct < 0 || yPct > 100) return;
+          setEditDialog({ mode: 'new', x: Math.round(xPct * 100) / 100, y: Math.round(yPct * 100) / 100 });
+        }}
+      >
+        <div style={{
+          position:'relative',
+          width: '200%', height: 0, paddingBottom: '200%',
+        }}>
+          {/* The map itself */}
+          <img src={window.__MAP_URL || "map.png"} alt="" draggable="false" style={{
+            position:'absolute', inset:0, width:'100%', height:'100%',
+            filter: night
+              ? 'brightness(.62) contrast(1.08) saturate(.85) hue-rotate(-8deg)'
+              : 'contrast(1.03) saturate(1.08) brightness(1.02)',
+            transition:'filter 1.2s ease',
+            userSelect:'none',
+          }}/>
+          {/* subtle night gradient */}
+          {night && (
+            <div style={{
+              position:'absolute', inset:0,
+              background:'radial-gradient(120% 90% at 50% 30%, rgba(40,40,80,0) 40%, rgba(25,25,55,0.4) 75%, rgba(15,15,35,0.55) 100%)',
+              pointerEvents:'none',
+            }}/>
+          )}
+
+          {/* Roads layer — highlighted route on top */}
+          <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{
+            position:'absolute', inset:0, width:'100%', height:'100%', pointerEvents:'none',
+          }}>
+            {/* Already-visible dotted paths are on the bitmap, we just glow the chosen one */}
+            {highlightD && (
+              <>
+                <path d={highlightD} fill="none"
+                  stroke="rgba(255,220,120,0.5)" strokeWidth="0.9"
+                  strokeLinecap="round" strokeLinejoin="round"
+                  style={{filter:'drop-shadow(0 0 1.5px rgba(255,220,120,0.6))'}}
+                />
+                <path d={highlightD} fill="none"
+                  stroke="var(--wax)" strokeWidth="0.5"
+                  strokeDasharray="1 .9" strokeLinecap="round" strokeLinejoin="round"
+                  style={{animation:'flicker 2s infinite'}}
+                />
+              </>
+            )}
+          </svg>
+
+          {/* POI markers — positioned absolutely within the 200% canvas */}
+          {effectivePois.map(p=>{
+            const dx = (dragState && dragState[p.id] ? dragState[p.id].dx : 0);
+            const dy = (dragState && dragState[p.id] ? dragState[p.id].dy : 0);
+            const px = p.x + dx;
+            const py = p.y + dy;
+            return (
+            <button key={p.id}
+              onClick={(e) => {
+                e.stopPropagation();
+                if (dragFlagRef.current) { dragFlagRef.current = false; return; }
+                if (editMode) {
+                  if (connectMode && connectFirst && connectFirst !== p.id) {
+                    setEditDialog({ mode: 'connect', poiA: connectFirst, poiB: p.id });
+                    setConnectFirst(null);
+                    return;
+                  }
+                  setEditDialog({ mode: 'edit', poiId: p.id });
+                  return;
+                }
+                if(p.id===currentPoi){ setArrivalPrompt(p.id); return; }
+                setSelected(p.id);
+              }}
+              onMouseDown={(e) => {
+                if (!editMode || travelling) return;
+                e.stopPropagation(); e.preventDefault();
+                const img = document.querySelector('#map-scroll img');
+                if (!img) return;
+                const startX = e.clientX; const startY = e.clientY;
+                const origX = p.x; const origY = p.y;
+                const onMove = (ev) => {
+                  const r = img.getBoundingClientRect();
+                  const ddx = (ev.clientX - startX) / r.width * 100;
+                  const ddy = (ev.clientY - startY) / r.height * 100;
+                  const cur = dragStateRef.current || {};
+                  cur[p.id] = { dx: ddx, dy: ddy };
+                  dragStateRef.current = cur;
+                  setDragState({ ...cur });
+                };
+                const onUp = (ev) => {
+                  window.removeEventListener('mousemove', onMove);
+                  window.removeEventListener('mouseup', onUp);
+                  const r = img.getBoundingClientRect();
+                  const ddx = (ev.clientX - startX) / r.width * 100;
+                  const ddy = (ev.clientY - startY) / r.height * 100;
+                  const nx = origX + ddx;
+                  const ny = origY + ddy;
+                  delete (dragStateRef.current || {})[p.id];
+                  dragStateRef.current = dragStateRef.current || {};
+                  setDragState({ ...dragStateRef.current });
+                  if (Math.abs(ddx) < 0.3 && Math.abs(ddy) < 0.3) return;
+                  dragFlagRef.current = true;
+                  const mapW = (window.__GAME_STATE?.map?.width) || 2000;
+                  const mapH = (window.__GAME_STATE?.map?.height) || 2000;
+                  fetch(`${window.__API.admin.locationsPath}/${p.id}`, {
+                    method: 'PUT', credentials: 'same-origin',
+                    headers: { 'content-type': 'application/json', 'x-csrf-token': window.__CSRF_TOKEN },
+                    body: JSON.stringify({ x: Math.round(nx / 100 * mapW), y: Math.round(ny / 100 * mapH) }),
+                  }).then(r => r.json()).then(payload => {
+                    if (!payload.ok) alert('Ошибка перемещения: ' + (payload.error || 'неизвестная ошибка'));
+                    if (typeof refreshBackend === 'function') refreshBackend();
+                  }).catch(e => { alert('Ошибка сети: ' + e.message); });
+                };
+                window.addEventListener('mousemove', onMove);
+                window.addEventListener('mouseup', onUp, { once: true });
+              }}
+              style={{
+              position:'absolute', left:`${px}%`, top:`${py}%`,
+              transform:'translate(-50%,-100%)',
+              background:'none', border:'none', cursor: editMode ? 'grab' : 'pointer', padding:0,
+              display:'flex', flexDirection:'column', alignItems:'center', gap:2,
+              zIndex: editMode ? 4 : 2,
+              transition: (dragState && dragState[p.id]) ? 'none' : 'left 0.15s ease, top 0.15s ease',
+            }}>
+              <POIGlyph type={p.type}
+                size={p.type==='tower'?30:p.type==='city'?28:p.type==='camp'?24:22}
+                active={selected===p.id || currentPoi===p.id || (connectMode && connectFirst===p.id)}
+                night={night}
+              />
+              <span style={{
+                fontFamily:'var(--display)',
+                fontSize: p.type==='tower'||p.type==='city' ? 11 : 10,
+                fontWeight:700,
+                color: 'oklch(0.22 0.04 40)',
+                background: 'linear-gradient(180deg, oklch(0.94 0.035 82), oklch(0.88 0.055 78))',
+                padding:'2px 8px',
+                borderRadius:3,
+                border:'1px solid oklch(0.48 0.06 50)',
+                letterSpacing:'.04em', whiteSpace:'nowrap',
+                marginTop: 3,
+                boxShadow:'0 2px 3px rgba(0,0,0,0.45), inset 0 1px 0 rgba(255,245,220,0.6)',
+                position:'relative',
+              }}>{p.name}</span>
+            </button>
+          )})}
+
+          {/* Player token */}
+          <div style={{
+            position:'absolute', left:`${pos.x}%`, top:`${pos.y}%`,
+            transform:'translate(-50%,-50%)',
+            pointerEvents:'none', zIndex:3,
+          }}>
+            {/* glow */}
+            <div style={{
+              position:'absolute', inset:-16, borderRadius:'50%',
+              background:'radial-gradient(circle, rgba(255,210,130,0.55), transparent 65%)',
+              animation:'pulse 2.2s ease-in-out infinite',
+            }}/>
+            <div style={{
+              width:22, height:22, borderRadius:'50%',
+              background:'radial-gradient(circle at 35% 30%, #fff5d0, #f5c26a 50%, var(--wax) 90%)',
+              border:'2.5px solid #f5ead3',
+              boxShadow:'0 0 0 2px rgba(180,60,20,0.55), 0 2px 6px rgba(0,0,0,0.5)',
+              animation:'drift 2.5s ease-in-out infinite',
+              position:'relative',
+              display:'flex', alignItems:'center', justifyContent:'center',
+            }}>
+              <span style={{color:'var(--wax-deep)', fontFamily:'var(--rune)', fontSize:11, fontWeight:900, lineHeight:1}}>✦</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Compass — only visible during travel, rotates to face movement direction */}
+      {travelling && (window.__VIBES_ENHANCED
+        ? <OrnateCompass angle={compassAngle}/>
+        : <div style={{
+            position:'absolute', top:10, right:10, zIndex:4,
+            width:52, height:52, borderRadius:'50%',
+            background:'radial-gradient(circle, oklch(0.92 0.04 82 / 0.92), oklch(0.78 0.08 72 / 0.92))',
+            border:'1.5px solid rgba(60,35,10,0.55)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            boxShadow:'0 2px 8px rgba(0,0,0,0.45)',
+            transform: `rotate(${compassAngle}deg)`,
+            transition: 'transform 0.3s ease',
+          }}>
+            <svg viewBox="-20 -20 40 40" width="40" height="40">
+              <circle r="17" fill="none" stroke="#3a1f0a" strokeWidth=".4" strokeOpacity=".5"/>
+              <polygon points="0,-14 2.8,0 0,2 -2.8,0" fill="var(--wax)"/>
+              <polygon points="0,14 2.8,0 0,-2 -2.8,0" fill="#3a1f0a"/>
+              <text x="0" y="-7" textAnchor="middle" fontSize="5.5" fontFamily="var(--rune)" fontWeight="700" fill="#3a1f0a">N</text>
+            </svg>
+          </div>
+      )}
+
+      {/* Editor toolbar — only on /play/editor */}
+      {editMode && !travelling && (
+        <div style={{ position:'absolute', top:10, left:10, zIndex:5, display:'flex', gap:6, alignItems:'center' }}>
+          <a href="/play" style={{
+            padding:'5px 11px',
+            background: 'rgba(20,15,10,0.75)',
+            border: '1px solid rgba(247,233,194,0.3)',
+            borderRadius:8,
+            fontFamily:'var(--display)', fontWeight:600, fontSize:11,
+            color: '#f5ead3', textDecoration:'none',
+            cursor:'pointer',
+            backdropFilter:'blur(4px)',
+          }}>← На карту</a>
+          <button onClick={() => {
+            setConnectMode(!connectMode);
+            setConnectFirst(null);
+            setEditDialog(null);
+          }} style={{
+            padding:'5px 11px',
+            background: connectMode ? 'var(--magic)' : 'rgba(20,15,10,0.75)',
+            border: connectMode ? '1px solid rgba(100,20,150,0.5)' : '1px solid rgba(247,233,194,0.3)',
+            borderRadius:8,
+            fontFamily:'var(--display)', fontWeight:600, fontSize:11,
+            color: '#f5ead3',
+            cursor:'pointer',
+            backdropFilter:'blur(4px)',
+          }}>
+            {connectMode ? 'Режим связи: выберите второй пункт' : 'Соединить пункты'}
+          </button>
+          {connectMode && connectFirst && (
+            <span style={{ color:'#f5ead3', fontFamily:'var(--mono)', fontSize:10, background:'rgba(20,15,10,0.85)', padding:'4px 8px', borderRadius:6, backdropFilter:'blur(4px)' }}>
+              От: {effectivePoiFn(connectFirst)?.name || connectFirst}
+            </span>
+          )}
+        </div>
+      )}
+
+      {/* Traveller readout */}
+      {travelling && (
+        <div style={{
+          position:'absolute', top:10, left:10, zIndex:4,
+          background:'rgba(20,15,10,0.85)', color:'#f5ead3',
+          padding:'6px 10px', borderRadius:8,
+          border:'1px solid rgba(247,233,194,0.3)',
+          fontFamily:'var(--mono)', fontSize:10, letterSpacing:'.04em',
+          display:'flex', alignItems:'center', gap:8,
+          backdropFilter:'blur(4px)',
+        }}>
+          <span style={{width:6, height:6, borderRadius:'50%', background:'var(--magic-soft)',
+            boxShadow:'0 0 6px var(--magic)', animation:'pulse 1s infinite'}}/>
+          В пути · {effectivePoiFn(travelling.nodes[0])?.name || '?'} → {effectivePoiFn(travelling.nodes[travelling.nodes.length-1])?.name || '?'}
+        </div>
+      )}
+
+      {/* Travel confirm sheet */}
+      {selected && target && !travelling && !arrivalPrompt && (
+        <div style={{
+          position:'absolute', left:10, right:10, bottom:10, zIndex:10,
+          background:'var(--vellum)',
+          border:'1px solid rgba(60,35,10,0.45)', borderRadius:14,
+          padding:'12px 14px 14px',
+          boxShadow:'0 10px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,245,220,0.7)',
+        }} className="vignette">
+          <div style={{display:'flex', alignItems:'center', gap:10}}>
+            <POIGlyph type={target.type} size={30} active/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17}}>{target.name}</div>
+              <div style={{fontSize:11, fontStyle:'italic', color:'var(--ink-soft)', marginTop:2}}>{target.desc}</div>
+            </div>
+            <button onClick={()=>setSelected(null)} style={{border:'none', background:'none', fontSize:18, color:'var(--ink-faint)', cursor:'pointer'}}>✕</button>
+          </div>
+          <div style={{
+            display:'flex', gap:8, marginTop:10, flexWrap:'wrap',
+            fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)',
+          }}>
+            <Chip color="ink">⏱ {computed ? computed.roads.length*2 : '—'} дн.</Chip>
+            <Chip color="ink">🍞 {computed ? computed.roads.length*2 : '—'}</Chip>
+            <Chip color="wax">Опасность: низкая</Chip>
+          </div>
+          <div style={{display:'flex', gap:8, marginTop:12}}>
+            <button className="inkbtn ghost" onClick={()=>setSelected(null)} style={{flex:1}}>Отмена</button>
+            <button className="inkbtn primary" disabled={!computed || isJourneyPending} onClick={()=>{
+              if(!computed) return;
+              setIsJourneyPending(true);
+              // Start journey in backend
+              const routeId = computed.roads[0]?.route_id;
+              if (routeId && backendJourneysPath) {
+                fetch(backendJourneysPath, {
+                  method: 'POST',
+                  credentials: 'same-origin',
+                  headers: {
+                    'accept': 'application/json',
+                    'content-type': 'application/json',
+                    'x-csrf-token': window.__CSRF_TOKEN,
+                  },
+                  body: JSON.stringify({ route_id: routeId }),
+                }).then(r => r.json()).then(payload => {
+                  setIsJourneyPending(false);
+                  if (payload.ok) { window.__GAME_STATE = payload.state; }
+                }).catch(() => setIsJourneyPending(false));
+              } else {
+                setIsJourneyPending(false);
+              }
+              setTravelling({nodes:computed.nodes, roads:computed.roads, t:0});
+              setSelected(null);
+            }} style={{flex:2}}>{isJourneyPending ? 'Прокладываем...' : 'Выступить в путь'}</button>
+          </div>
+        </div>
+      )}
+
+      {/* Arrival prompt */}
+      {arrivalPrompt && !travelling && (() => {
+        const arrPoi = effectivePoiFn(arrivalPrompt);
+        if (!arrPoi) return null;
+        return (
+        <div style={{
+          position:'absolute', left:10, right:10, bottom:10, zIndex:10,
+          background:'var(--vellum)',
+          border:'1px solid rgba(60,35,10,0.45)', borderRadius:14,
+          padding:'12px 14px 14px',
+          boxShadow:'0 10px 20px rgba(0,0,0,0.5), inset 0 1px 0 rgba(255,245,220,0.7)',
+        }} className="vignette">
+          <Ornament tiny>Вы на месте</Ornament>
+          <div style={{marginTop:8, display:'flex', alignItems:'center', gap:10}}>
+            <POIGlyph type={arrPoi.type} size={30} active/>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17}}>{arrPoi.name}</div>
+              <div style={{fontSize:11, fontStyle:'italic', color:'var(--ink-soft)', marginTop:2}}>{arrPoi.desc}</div>
+            </div>
+          </div>
+          <div style={{display:'flex', gap:8, marginTop:12}}>
+            <button className="inkbtn ghost" onClick={()=>setArrivalPrompt(null)} style={{flex:1}}>Остаться на карте</button>
+            <button className="inkbtn primary" onClick={()=>{ setArrivalPrompt(null); onEnter(arrivalPrompt); }} style={{flex:2}}>Войти</button>
+          </div>
+        </div>
+        );
+      })()}
+
+      {/* Edit dialog — create/edit POI */}
+      {editDialog && (editDialog.mode === 'new' || editDialog.mode === 'edit') && (() => {
+        const isNew = editDialog.mode === 'new';
+        const poi = isNew ? null : effectivePoiFn(editDialog.poiId);
+        const [form, setForm] = React.useState(isNew ? {
+          name: '', slug: '', kind: 'wilderness', safe_zone: false, tags: '', x: editDialog.x || 50, y: editDialog.y || 50,
+        } : {
+          name: poi?.name || '', slug: poi?.slug || '', kind: poi?.kind || 'wilderness', safe_zone: poi?.safe_zone || false,
+          tags: (poi?.metadata?.tags || []).join(', '), x: poi?.x || 50, y: poi?.y || 50,
+        });
+        const [saving, setSaving] = React.useState(false);
+        const [deleting, setDeleting] = React.useState(false);
+        const doSave = () => {
+          setSaving(true);
+          const mapW = (window.__GAME_STATE?.map?.width) || 2000;
+          const mapH = (window.__GAME_STATE?.map?.height) || 2000;
+          const body = {
+            name: form.name, slug: form.slug || form.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, ''),
+            kind: form.kind, safe_zone: form.safe_zone,
+            x: Math.round(form.x / 100 * mapW), y: Math.round(form.y / 100 * mapH),
+            metadata: { tags: form.tags.split(',').map(t => t.trim()).filter(Boolean) },
+          };
+          const url = isNew ? window.__API.admin.locationsPath : `${window.__API.admin.locationsPath}/${poi.id}`;
+          fetch(url, {
+            method: isNew ? 'POST' : 'PUT', credentials: 'same-origin',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': window.__CSRF_TOKEN },
+            body: JSON.stringify(body),
+          }).then(r => r.json()).then(p => {
+            setSaving(false);
+            if (p.ok) { setEditDialog(null); if (typeof refreshBackend === 'function') refreshBackend(); }
+            else { alert('Ошибка сохранения: ' + (p.error || 'неизвестная ошибка')); }
+          }).catch(e => { setSaving(false); alert('Ошибка сети: ' + e.message); });
+        };
+        const doDelete = () => {
+          if (isNew) { setEditDialog(null); return; }
+          if (!confirm('Удалить пункт «' + poi.name + '»?')) return;
+          setDeleting(true);
+          fetch(`${window.__API.admin.locationsPath}/${poi.id}`, {
+            method: 'DELETE', credentials: 'same-origin',
+            headers: { 'x-csrf-token': window.__CSRF_TOKEN },
+          }).then(r => r.json()).then(p => {
+            setDeleting(false);
+            if (p.ok) { setEditDialog(null); if (typeof refreshBackend === 'function') refreshBackend(); }
+            else { alert('Ошибка удаления: ' + (p.error || 'неизвестная ошибка')); }
+          }).catch(e => { setDeleting(false); alert('Ошибка сети: ' + e.message); });
+        };
+        const ff = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+        return (
+          <div style={{ position:'absolute', inset:0, zIndex:20, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.5)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setEditDialog(null); }}>
+            <div className="vignette" style={{ width:'90%', maxWidth:380, background:'var(--vellum)', borderRadius:14, padding:'14px 16px', border:'1px solid rgba(60,35,10,0.45)', maxHeight:'80%', overflow:'auto' }}>
+              <Ornament tiny>{isNew ? 'Новый пункт' : 'Редактировать пункт'}</Ornament>
+              <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:8, fontFamily:'var(--serif)', fontSize:13 }}>
+                <label style={{display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                  Название
+                  <input value={form.name} onChange={ff('name')} style={inputStyle} placeholder="Название пункта"/>
+                </label>
+                <label style={{display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                  Slug (латиница, через дефис)
+                  <input value={form.slug} onChange={ff('slug')} style={inputStyle} placeholder="my-location"/>
+                </label>
+                <div style={{display:'flex', gap:8}}>
+                  <label style={{flex:1, display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                    Тип
+                    <select value={form.kind} onChange={ff('kind')} style={inputStyle}>
+                      <option value="city">Город</option>
+                      <option value="tower">Башня</option>
+                      <option value="wilderness">Дикая местность</option>
+                      <option value="base">Лагерь</option>
+                      <option value="dungeon_entrance">Вход в подземелье</option>
+                    </select>
+                  </label>
+                  <label style={{display:'flex', alignItems:'center', gap:4, color:'var(--ink-soft)', marginTop:18}}>
+                    <input type="checkbox" checked={form.safe_zone} onChange={ff('safe_zone')}/>
+                    Безопасная зона
+                  </label>
+                </div>
+                <div style={{display:'flex', gap:8}}>
+                  <label style={{flex:1, display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                    X (%)
+                    <input type="number" value={form.x} onChange={ff('x')} style={inputStyle} min="0" max="100" step="0.01"/>
+                  </label>
+                  <label style={{flex:1, display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                    Y (%)
+                    <input type="number" value={form.y} onChange={ff('y')} style={inputStyle} min="0" max="100" step="0.01"/>
+                  </label>
+                </div>
+                <label style={{display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                  Теги (через запятую)
+                  <input value={form.tags} onChange={ff('tags')} style={inputStyle} placeholder="forest, ruins, quest"/>
+                </label>
+              </div>
+              <div style={{display:'flex', gap:8, marginTop:14}}>
+                {!isNew && <button className="inkbtn ghost" onClick={doDelete} disabled={deleting} style={{flex:1, color:'var(--wax)', borderColor:'var(--wax)'}}>{deleting ? 'Удаление...' : 'Удалить'}</button>}
+                <button className="inkbtn ghost" onClick={() => setEditDialog(null)} style={{flex:1}}>Отмена</button>
+                <button className="inkbtn primary" onClick={doSave} disabled={saving} style={{flex:2}}>{saving ? 'Сохранение...' : 'Сохранить'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Connect dialog — create road between two POIs */}
+      {editDialog && editDialog.mode === 'connect' && (() => {
+        const poiA = effectivePoiFn(editDialog.poiA);
+        const poiB = effectivePoiFn(editDialog.poiB);
+        const [form, setForm] = React.useState({ name: `${poiA?.name || ''} → ${poiB?.name || ''}`, travel_days: 2, risk_level: 0, bidirectional: true });
+        const [saving, setSaving] = React.useState(false);
+        const doSave = () => {
+          setSaving(true);
+          fetch(window.__API.admin.routesPath, {
+            method: 'POST', credentials: 'same-origin',
+            headers: { 'content-type': 'application/json', 'x-csrf-token': window.__CSRF_TOKEN },
+            body: JSON.stringify({
+              name: form.name, travel_days: parseInt(form.travel_days) || 2,
+              risk_level: parseInt(form.risk_level) || 0, bidirectional: form.bidirectional,
+              origin_location_id: editDialog.poiA, destination_location_id: editDialog.poiB,
+            }),
+          }).then(r => r.json()).then(p => {
+            setSaving(false);
+            if (p.ok) { setEditDialog(null); if (typeof refreshBackend === 'function') refreshBackend(); }
+            else { alert('Ошибка создания дороги: ' + (p.error || 'неизвестная ошибка')); }
+          }).catch(e => { setSaving(false); alert('Ошибка сети: ' + e.message); });
+        };
+        const ff = (k) => (e) => setForm({ ...form, [k]: e.target.type === 'checkbox' ? e.target.checked : e.target.value });
+        return (
+          <div style={{ position:'absolute', inset:0, zIndex:20, display:'flex', alignItems:'center', justifyContent:'center', background:'rgba(0,0,0,0.5)' }}
+            onClick={(e) => { if (e.target === e.currentTarget) setEditDialog(null); }}>
+            <div className="vignette" style={{ width:'90%', maxWidth:380, background:'var(--vellum)', borderRadius:14, padding:'14px 16px', border:'1px solid rgba(60,35,10,0.45)' }}>
+              <Ornament tiny>Новая дорога</Ornament>
+              <div style={{ marginTop:8, display:'flex', alignItems:'center', gap:8, fontFamily:'var(--serif)', fontSize:13, color:'var(--ink-soft)' }}>
+                <span style={{fontWeight:600, color:'var(--ink)'}}>{poiA?.name || editDialog.poiA}</span>
+                <span>→</span>
+                <span style={{fontWeight:600, color:'var(--ink)'}}>{poiB?.name || editDialog.poiB}</span>
+              </div>
+              <div style={{ marginTop:10, display:'flex', flexDirection:'column', gap:8, fontFamily:'var(--serif)', fontSize:13 }}>
+                <label style={{display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                  Название дороги
+                  <input value={form.name} onChange={ff('name')} style={inputStyle} placeholder="Название дороги"/>
+                </label>
+                <div style={{display:'flex', gap:8}}>
+                  <label style={{flex:1, display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                    Дней пути
+                    <input type="number" value={form.travel_days} onChange={ff('travel_days')} style={inputStyle} min="1" max="100"/>
+                  </label>
+                  <label style={{flex:1, display:'flex', flexDirection:'column', gap:2, color:'var(--ink-soft)'}}>
+                    Опасность (0-100)
+                    <input type="number" value={form.risk_level} onChange={ff('risk_level')} style={inputStyle} min="0" max="100"/>
+                  </label>
+                </div>
+                <label style={{display:'flex', alignItems:'center', gap:4, color:'var(--ink-soft)'}}>
+                  <input type="checkbox" checked={form.bidirectional} onChange={ff('bidirectional')}/>
+                  Двусторонняя
+                </label>
+              </div>
+              <div style={{display:'flex', gap:8, marginTop:14}}>
+                <button className="inkbtn ghost" onClick={() => setEditDialog(null)} style={{flex:1}}>Отмена</button>
+                <button className="inkbtn primary" onClick={doSave} disabled={saving} style={{flex:2}}>{saving ? 'Создание...' : 'Создать дорогу'}</button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+    </div>
+  );
+}
+
+// Shared form input style for editor dialogs
+const inputStyle = {
+  padding:'6px 10px', borderRadius:6, border:'1px solid rgba(60,35,10,0.4)',
+  background:'oklch(0.97 0.02 82)', fontFamily:'var(--serif)', fontSize:13,
+  color:'var(--ink)',
+};
+
+Object.assign(window, { MapScreen, POIS, ROAD_PATHS, poi, inputStyle });
+
+
+// ═══ Vibes components ═══
+
+function VibesParticles({ count = 22 }) {
+  const [particles] = React.useState(() =>
+    Array.from({ length: count }, (_, i) => ({
+      id: i,
+      left: Math.random() * 100 + '%',
+      delay: Math.random() * 20 + 's',
+      duration: 18 + Math.random() * 30 + 's',
+      size: 2 + Math.random() * 4 + 'px',
+      opacity: 0.15 + Math.random() * 0.35,
+    }))
+  );
+  if (!window.__VIBES_ENHANCED) return null;
+  return (
+    <div className="vibes-particles">
+      {particles.map(p => (
+        <div key={p.id} className="vibes-particle" style={{
+          left: p.left, bottom: '-5%',
+          width: p.size, height: p.size,
+          opacity: p.opacity,
+          animationDelay: p.delay,
+          animationDuration: p.duration,
+        }}/>
+      ))}
+    </div>
+  );
+}
+
+function VibesOverlays() {
+  if (!window.__VIBES_ENHANCED) return null;
+  return (
+    <>
+      <div className="vibes-vignette"/>
+      <div className="vibes-frame"/>
+      <div className="vibes-corner vibes-corner-tl"/>
+      <div className="vibes-corner vibes-corner-tr"/>
+      <div className="vibes-corner vibes-corner-bl"/>
+      <div className="vibes-corner vibes-corner-br"/>
+    </>
+  );
+}
+
+function OrnateCompass({ angle }) {
+  if (!window.__VIBES_ENHANCED) return null;
+  return (
+    <div style={{
+      position:'absolute', top:8, right:8, zIndex:4,
+      width:62, height:62, borderRadius:'50%',
+      background: 'radial-gradient(circle at 40% 35%, oklch(0.9 0.05 75 / 0.95), oklch(0.70 0.09 62 / 0.95))',
+      border: '2px solid var(--gilt)',
+      display:'flex', alignItems:'center', justifyContent:'center',
+      boxShadow:'0 0 0 2px rgba(60,35,10,0.35), 0 4px 14px rgba(0,0,0,0.5), inset 0 0 18px rgba(200,170,100,0.12)',
+      transform: `rotate(${angle}deg)`,
+      transition: 'transform 0.3s ease',
+    }}>
+      <svg viewBox="-28 -28 56 56" width="54" height="54">
+        <circle r="26" fill="none" stroke="#5a3a1a" strokeWidth=".5" strokeOpacity=".6"/>
+        <circle r="24" fill="none" stroke="#5a3a1a" strokeWidth=".3" strokeOpacity=".35" strokeDasharray="1.5 1"/>
+        <circle r="22" fill="none" stroke="#5a3a1a" strokeWidth=".2" strokeOpacity=".25"/>
+        <polygon points="0,-24 3.5,0 0,3 -3.5,0" fill="var(--wax)" stroke="#3a1f0a" strokeWidth=".3"/>
+        <polygon points="0,24 3.5,0 0,-3 -3.5,0" fill="#5a3a1a" stroke="#3a1f0a" strokeWidth=".3"/>
+        <polygon points="-24,0 0,3.5 3,0 0,-3.5" fill="#5a3a1a" stroke="#3a1f0a" strokeWidth=".3"/>
+        <polygon points="24,0 0,3.5 -3,0 0,-3.5" fill="#5a3a1a" stroke="#3a1f0a" strokeWidth=".3"/>
+        <text x="0" y="-12" textAnchor="middle" fontSize="7" fontFamily="var(--rune)" fontWeight="700" fill="var(--wax)">N</text>
+        <text x="14" y="3" textAnchor="middle" fontSize="4.5" fontFamily="var(--rune)" fill="#5a3a1a" opacity=".7">E</text>
+        <text x="-14" y="3" textAnchor="middle" fontSize="4.5" fontFamily="var(--rune)" fill="#5a3a1a" opacity=".7">W</text>
+        <text x="0" y="18" textAnchor="middle" fontSize="4.5" fontFamily="var(--rune)" fill="#5a3a1a" opacity=".7">S</text>
+        {[0,1,2,3].map(i => {
+          const a = i * Math.PI/2 + Math.PI/4;
+          const x1 = Math.cos(a)*17, y1 = Math.sin(a)*17;
+          const x2 = Math.cos(a)*22, y2 = Math.sin(a)*22;
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#5a3a1a" strokeWidth=".35" strokeOpacity=".45"/>;
+        })}
+        <circle r="1.8" fill="var(--gilt)"/>
+        <circle r="4" fill="none" stroke="var(--gilt)" strokeWidth=".3" strokeOpacity=".5"/>
+      </svg>
+    </div>
+  );
+}
+
+// ═══ screens/LocationEvent.js ═══
+// Location text-event — arriving at a city/tower/etc.
+
+const LOCATION_DATA = {
+  capital: {
+    title:'Столица',
+    subtitle:'Главный город княжества',
+    hero:'Городские врата',
+    text:[
+      'Стражники в кольчугах лениво переглядываются. От кузницы тянет углём и пóтом, с рыночной площади — жареной рыбой и пряной мятой. Над башенками ратуши кружат голуби.',
+      'К вам подходит мальчишка-посыльный: «Сударь, там на доске объявлений — письмо с вашим именем. И печать красная».',
+    ],
+    actions:[
+      {k:'academy',  label:'В Академию',         hint:'учебные залы'},
+      {k:'market',   label:'На рынок',           hint:'лавки и торговцы'},
+      {k:'tavern',   label:'В таверну «Три пера»', hint:'новости и наём'},
+      {k:'letter',   label:'Вскрыть письмо',     hint:'печать красного воска', accent:true},
+      {k:'leave',    label:'Уйти обратно на карту'},
+    ],
+  },
+  tower:{
+    title:'Башня',
+    subtitle:'Единственное место, где работает магия',
+    hero:'У подножия',
+    text:[
+      'Воздух здесь звенит, как струна слабо натянутого лука. Камень у входа тёплый — местами теплее ладони. На ступенях мелком начерчена фигурка, похожая на восьмилучевой компас; одна из её граней затёрта.',
+      'Внутри слышно, как кто-то сосредоточенно что-то бормочет по-латыни. Голоса сразу трёх.',
+    ],
+    actions:[
+      {k:'party',  label:'Собрать / найти отряд'},
+      {k:'dungeon',label:'Войти в подземелье', hint:'готовьтесь тщательно', accent:true},
+      {k:'library',label:'Библиотека Башни'},
+      {k:'leave',  label:'Обратно на карту'},
+    ],
+  },
+  farmstead:{
+    title:'Хутор',
+    subtitle:'Ваша база',
+    hero:'Дом',
+    text:[
+      'Скрипит калитка. Пёс без одного уха привычно не гавкает. На крыльце — чей-то оставленный вчера свёрток; запах трав подсказывает, что это, скорее всего, от аптекаря.',
+    ],
+    actions:[
+      {k:'base',  label:'Войти в дом', accent:true},
+      {k:'forge', label:'В мастерскую'},
+      {k:'garden',label:'Огород и запасы'},
+      {k:'leave', label:'Обратно на карту'},
+    ],
+  },
+};
+
+function LocationEvent({poiId, onLeave, onGo}){
+  const data = LOCATION_DATA[poiId] || {
+    title:'Место', subtitle:'', hero:'', text:['Здесь пока тихо.'],
+    actions:[{k:'leave', label:'Обратно на карту'}],
+  };
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+      <div className="parchment"/>
+      <div className="mmgo-scroll" style={{position:'relative', height:'100%', overflow:'auto', padding:'14px 16px 20px'}}>
+        {/* Hero strip — a pseudo-illustration band */}
+        <div style={{
+          height:100, borderRadius:10, marginBottom:14,
+          background:`
+            linear-gradient(180deg, rgba(40,22,8,0.35), rgba(40,22,8,0.1)),
+            repeating-linear-gradient(45deg, oklch(0.78 0.06 60), oklch(0.78 0.06 60) 6px, oklch(0.73 0.07 58) 6px, oklch(0.73 0.07 58) 12px)
+          `,
+          border:'1px solid rgba(60,35,10,0.45)',
+          position:'relative', overflow:'hidden',
+          boxShadow:'inset 0 0 20px rgba(60,35,10,0.35)',
+        }}>
+          <div style={{
+            position:'absolute', inset:0, display:'flex', alignItems:'flex-end', padding:'8px 12px',
+            color:'#f5ead3', fontFamily:'var(--display)', fontSize:14, letterSpacing:'.08em',
+            textTransform:'uppercase', textShadow:'0 1px 2px rgba(0,0,0,0.6)',
+          }}>{data.hero}</div>
+          {/* corner ornaments */}
+          {['0 0', '100% 0', '0 100%', '100% 100%'].map((pos,i)=>(
+            <div key={i} style={{
+              position:'absolute', width:14, height:14,
+              left: pos.split(' ')[0]==='100%'?'auto':4, right: pos.split(' ')[0]==='100%'?4:'auto',
+              top:  pos.split(' ')[1]==='100%'?'auto':4, bottom:pos.split(' ')[1]==='100%'?4:'auto',
+              border:'1.5px solid rgba(245,234,211,0.65)',
+              borderRight: i%2===1?'none':undefined,
+              borderBottom: i>=2?'none':undefined,
+              borderLeft: i%2===0?undefined:'none',
+              borderTop: i<2?undefined:'none',
+            }}/>
+          ))}
+        </div>
+
+        <Ornament>{data.title}</Ornament>
+        {data.subtitle && (
+          <div style={{textAlign:'center', fontFamily:'var(--serif)', fontStyle:'italic', color:'var(--ink-faint)', fontSize:12, marginTop:2, marginBottom:14}}>
+            {data.subtitle}
+          </div>
+        )}
+
+        {/* Body text with drop cap */}
+        <div style={{fontFamily:'var(--serif)', fontSize:14, lineHeight:1.6, color:'var(--ink)', textAlign:'justify'}}>
+          {data.text.map((para,i)=>(
+            <p key={i} style={{margin:'0 0 10px'}}>
+              {i===0 ? (
+                <><span style={{
+                  float:'left', fontFamily:'var(--display)', fontWeight:700,
+                  fontSize:40, lineHeight:.85, marginRight:6, marginTop:3,
+                  color:'var(--wax)',
+                }}>{para.charAt(0)}</span>{para.slice(1)}</>
+              ) : para}
+            </p>
+          ))}
+        </div>
+
+        <div className="hrule" style={{margin:'18px 0 12px'}}/>
+
+        <div style={{display:'flex', flexDirection:'column', gap:8}}>
+          {data.actions.map(a=>(
+            <button key={a.k}
+              className={`inkbtn${a.accent?' primary':''}`}
+              onClick={()=>{
+                if(a.k==='leave') onLeave();
+                else onGo && onGo(a.k);
+              }}
+              style={{
+                textAlign:'left', display:'flex', alignItems:'center', justifyContent:'space-between',
+                fontSize:14,
+              }}>
+              <span>{a.label}</span>
+              {a.hint && <span style={{
+                fontFamily:'var(--serif)', fontStyle:'italic', fontWeight:400, fontSize:11,
+                color: a.accent?'rgba(245,234,211,0.8)':'var(--ink-faint)',
+              }}>{a.hint}</span>}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { LocationEvent, LOCATION_DATA });
+
+
+// ═══ screens/SpellCircle.js ═══
+// Spell Creation Circle — rotating summoning circle with 6 glyph slots + Latin input + AI mocked preview
+
+const SLOTS = [
+  {k:'actio',   ru:'Действие',   hint:'что делает', example:['Ictus','Captio','Scutum','Sanatio','Vocatio']},
+  {k:'forma',   ru:'Форма',      hint:'геометрия',  example:['Radius','Sphaera','Murus','Conus','Nexus']},
+  {k:'vis',     ru:'Сила',       hint:'интенсивность', example:['Levis','Mediocris','Magnus','Enormis']},
+  {k:'tempus',  ru:'Время',      hint:'длительность',  example:['Momentum','Sustineo','Tardus']},
+  {k:'mutatio', ru:'Мутация',    hint:'комбо-эффект',  example:['Motus','Glacies','Dissipatio']},
+  {k:'pretium', ru:'Цена',       hint:'доп. цена',     example:['Sanguis','Mora','Focus']},
+];
+
+const SCHOOLS = ['fire','water','earth','air','chaos','order','life','death'];
+
+const BASE_SPELLS = [
+  {id:'ignis-parvus', name:'Ignis Parvus',   school:'fire', gloss:'малое пламя'},
+  {id:'aqua-scutum',  name:'Aqua Scutum',    school:'water',gloss:'водяной щит'},
+  {id:'terra-mure',   name:'Terra Mure',     school:'earth',gloss:'стена земли'},
+  {id:'aer-velox',    name:'Aer Velox',      school:'air',  gloss:'стремительный ветер'},
+];
+
+function SpellCircle({onLeave}){
+  const [school, setSchool] = React.useState('fire');
+  const [base, setBase] = React.useState('ignis-parvus');
+  const [words, setWords] = React.useState(['','','','','','']);
+  const [focused, setFocused] = React.useState(0);
+  const [casting, setCasting] = React.useState(false);
+  const [result, setResult] = React.useState(null);
+
+  const filled = words.filter(Boolean).length;
+  const activation = filled / 6; // 0..1 — drives glow intensity
+  const fullyPrimed = filled >= 3;
+  const baseSpell = BASE_SPELLS.find(s=>s.id===base);
+
+  function cast(){
+    setCasting(true);
+    setResult(null);
+    setTimeout(()=>{
+      setCasting(false);
+      setResult(mockAI(school, baseSpell, words));
+    }, 1400);
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+      <div className="parchment"/>
+      <div className="mmgo-scroll" style={{position:'relative', height:'100%', overflow:'auto', padding:'12px 12px 16px'}}>
+        <Ornament>Круг призыва</Ornament>
+        <div style={{textAlign:'center', fontStyle:'italic', color:'var(--ink-faint)', fontSize:11, marginTop:2, marginBottom:10}}>
+          «Слова — это сосуды. Сосуды держат намерение».
+        </div>
+
+        {/* Circle */}
+        <div style={{
+          position:'relative', width:'100%', aspectRatio:'1/1',
+          margin:'0 auto', maxWidth:320,
+          filter: casting ? `drop-shadow(0 0 14px var(--s-${school}))` : activation>0 ? `drop-shadow(0 0 ${4+activation*10}px var(--s-${school}))` : 'none',
+          transition:'filter .8s ease',
+        }}>
+          {/* activation glow — pulses more as more slots fill */}
+          {activation>0 && (
+            <div style={{
+              position:'absolute', inset:'10%', borderRadius:'50%',
+              background:`radial-gradient(circle, oklch(from var(--s-${school}) 0.7 c h / ${0.06+activation*0.18}) 10%, transparent 65%)`,
+              animation: fullyPrimed?'pulse-magic 2.4s ease-in-out infinite':'none',
+              pointerEvents:'none',
+            }}/>
+          )}
+          {/* rotating outer ring — speeds up with activation */}
+          <div style={{position:'absolute', inset:6, animation:`spin-slow ${Math.max(12, 90 - activation*70)}s linear infinite`}}>
+            <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+              <circle r="95" fill="none" stroke={`var(--s-${school})`} strokeOpacity={0.2+activation*0.3} strokeWidth=".6"/>
+              {[...Array(48)].map((_,i)=>(
+                <line key={i} x1={Math.cos(i*Math.PI*2/48)*88} y1={Math.sin(i*Math.PI*2/48)*88}
+                  x2={Math.cos(i*Math.PI*2/48)*95} y2={Math.sin(i*Math.PI*2/48)*95}
+                  stroke="var(--ink)" strokeOpacity={0.25+activation*0.4} strokeWidth=".4"/>
+              ))}
+            </svg>
+          </div>
+          {/* middle ring — counter rotating */}
+          <div style={{position:'absolute', inset:24, animation:'spin-rev 60s linear infinite'}}>
+            <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+              <circle r="85" fill="none" stroke={`var(--s-${school})`} strokeOpacity=".6" strokeWidth="1" strokeDasharray="4 2"/>
+              {SCHOOLS.map((s,i)=>{
+                const a = i*Math.PI*2/8 - Math.PI/2;
+                return (
+                  <text key={s} x={Math.cos(a)*75} y={Math.sin(a)*75+4}
+                    textAnchor="middle" fontFamily="var(--rune)" fontSize="11"
+                    fill={`var(--s-${s})`} opacity={s===school?1:.3}
+                    style={{cursor:'pointer'}}>{SCHOOL_GLYPH[s]}</text>
+                );
+              })}
+            </svg>
+          </div>
+
+          {/* inner triangle */}
+          <div style={{position:'absolute', inset:0, animation: casting?'pulse-magic 1.2s ease-in-out infinite':'none'}}>
+            <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+              {/* inscribed lines between filled slots */}
+              {(() => {
+                const filledIdx = words.map((w,i)=> w ? i : -1).filter(i=>i>=0);
+                if(filledIdx.length < 2) return null;
+                const slotPos = (i) => {
+                  const a = i*Math.PI*2/6 - Math.PI/2;
+                  return [Math.cos(a)*44, Math.sin(a)*44];
+                };
+                const lines = [];
+                for(let i=0;i<filledIdx.length;i++){
+                  for(let j=i+1;j<filledIdx.length;j++){
+                    const [x1,y1] = slotPos(filledIdx[i]);
+                    const [x2,y2] = slotPos(filledIdx[j]);
+                    lines.push(<line key={`${i}-${j}`} x1={x1} y1={y1} x2={x2} y2={y2}
+                      stroke={`var(--s-${school})`} strokeOpacity=".55" strokeWidth=".5"
+                      strokeLinecap="round"
+                      style={{filter:`drop-shadow(0 0 2px var(--s-${school}))`, animation:'flicker 2.5s infinite'}}/>);
+                  }
+                }
+                return lines;
+              })()}
+              <polygon points={`0,-40 ${40*Math.cos(Math.PI/6)},${40*Math.sin(Math.PI/6)} ${-40*Math.cos(Math.PI/6)},${40*Math.sin(Math.PI/6)}`}
+                fill="none" stroke={`var(--s-${school})`} strokeWidth="1" strokeOpacity={0.3+activation*0.4}/>
+              <circle r="20" fill={`var(--s-${school})`} fillOpacity={0.05+activation*0.15} stroke={`var(--s-${school})`} strokeWidth="1" strokeOpacity={0.4+activation*0.5}/>
+              <text x="0" y="6" textAnchor="middle" fontFamily="var(--rune)" fontSize="22"
+                fill={`var(--s-${school})`}
+                style={{filter: fullyPrimed?`drop-shadow(0 0 3px var(--s-${school}))`:'none'}}
+              >
+                {SCHOOL_GLYPH[school]}
+              </text>
+            </svg>
+          </div>
+
+          {/* 6 slots around the rim */}
+          {SLOTS.map((s,i)=>{
+            const angle = i*Math.PI*2/6 - Math.PI/2;
+            const r = 44; // percent from center
+            const left = 50 + Math.cos(angle)*r;
+            const top  = 50 + Math.sin(angle)*r;
+            const active = focused===i;
+            const filled = !!words[i];
+            return (
+              <button key={s.k} onClick={()=>setFocused(i)} style={{
+                position:'absolute', left:`${left}%`, top:`${top}%`, transform:'translate(-50%,-50%)',
+                width:56, height:56, borderRadius:'50%',
+                background: filled
+                  ? `radial-gradient(circle at 35% 30%, oklch(0.9 0.08 295), oklch(0.78 0.12 295))`
+                  : `radial-gradient(circle at 35% 30%, oklch(0.92 0.02 80), oklch(0.84 0.03 76))`,
+                border:`1.5px solid ${active?'var(--wax)':filled?'var(--magic)':'rgba(60,35,10,0.5)'}`,
+                boxShadow: active
+                  ? '0 0 0 3px oklch(0.55 0.14 27 / 0.3), inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(0,0,0,0.2)'
+                  : 'inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(0,0,0,0.15)',
+                display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+                cursor:'pointer', padding:0,
+                transition:'all .15s ease',
+              }}>
+                <div style={{fontFamily:'var(--mono)', fontSize:8, letterSpacing:'.05em', color:'var(--ink-faint)', textTransform:'uppercase'}}>{s.ru}</div>
+                <div style={{
+                  fontFamily:'var(--rune)', fontSize: words[i]?11:18, color: filled?'var(--magic)':'rgba(60,35,10,0.35)',
+                  marginTop:1, lineHeight:1,
+                }}>{words[i] || (i+1)}</div>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* School picker */}
+        <div style={{display:'flex', justifyContent:'center', gap:6, marginTop:8, flexWrap:'wrap'}}>
+          {SCHOOLS.slice(0,4).concat(SCHOOLS.slice(4)).map(s=>(
+            <button key={s} onClick={()=>setSchool(s)} style={{
+              width:30, height:30, borderRadius:'50%',
+              background: school===s? `var(--s-${s})` : 'oklch(0.92 0.02 80)',
+              color: school===s? '#f5ead3' : `var(--s-${s})`,
+              border:`1px solid ${school===s?'transparent':'rgba(60,35,10,0.35)'}`,
+              fontFamily:'var(--rune)', fontSize:14,
+              cursor:'pointer',
+              boxShadow: school===s?`0 0 8px var(--s-${s})`:'inset 0 1px 0 rgba(255,245,220,0.5)',
+            }}>{SCHOOL_GLYPH[s]}</button>
+          ))}
+        </div>
+
+        {/* Focused slot editor */}
+        <div style={{
+          marginTop:12, padding:'10px 12px',
+          background:'var(--vellum-2)', border:'1px solid rgba(60,35,10,0.3)',
+          borderRadius:10,
+        }}>
+          <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8}}>
+            <span style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14}}>Слог {focused+1}. {SLOTS[focused].ru}</span>
+            <span style={{fontSize:10, color:'var(--ink-faint)', fontStyle:'italic'}}>{SLOTS[focused].hint}</span>
+          </div>
+          <input
+            value={words[focused]}
+            onChange={e=>{
+              const nw=[...words]; nw[focused]=e.target.value; setWords(nw);
+            }}
+            placeholder={SLOTS[focused].example[0]}
+            style={{
+              width:'100%', marginTop:6, padding:'6px 8px',
+              border:'1px solid rgba(60,35,10,0.35)', borderRadius:6,
+              background:'oklch(0.96 0.02 82)', fontFamily:'var(--mono)', fontSize:13,
+              color:'var(--ink)',
+            }}
+          />
+          <div style={{display:'flex', gap:5, marginTop:6, flexWrap:'wrap'}}>
+            {SLOTS[focused].example.map(w=>(
+              <button key={w} onClick={()=>{
+                const nw=[...words]; nw[focused]=w; setWords(nw);
+              }} style={{
+                fontFamily:'var(--mono)', fontSize:10, padding:'3px 7px',
+                border:'1px solid rgba(60,35,10,0.3)', background:'transparent',
+                borderRadius:999, cursor:'pointer', color:'var(--ink-soft)',
+              }}>{w}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* Base + formula */}
+        <div style={{marginTop:10, padding:'10px 12px', background:'var(--vellum-2)', border:'1px solid rgba(60,35,10,0.3)', borderRadius:10}}>
+          <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:13, marginBottom:6}}>База</div>
+          <select value={base} onChange={e=>setBase(e.target.value)} style={{
+            width:'100%', padding:'6px 8px', fontFamily:'var(--mono)', fontSize:12,
+            border:'1px solid rgba(60,35,10,0.35)', borderRadius:6, background:'oklch(0.96 0.02 82)',
+          }}>
+            {BASE_SPELLS.map(s=>(
+              <option key={s.id} value={s.id}>{s.name} — {s.gloss}</option>
+            ))}
+          </select>
+          <div style={{marginTop:10, fontFamily:'var(--mono)', fontSize:12, color:'var(--magic)', textAlign:'center', minHeight:20}}>
+            {words.filter(Boolean).join(' ') || <span style={{color:'var(--ink-faint)', fontStyle:'italic'}}>введите слова…</span>}
+          </div>
+        </div>
+
+        <div style={{display:'flex', gap:6, marginTop:10, justifyContent:'space-between', alignItems:'center', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)'}}>
+          <Chip color="ink">Слогов {filled}/6</Chip>
+          <Chip color="wax">Усталость ~{4+filled*2}</Chip>
+          <Chip color="magic">{SCHOOL_NAME_RU[school]}</Chip>
+        </div>
+
+        <div style={{display:'flex', gap:8, marginTop:12}}>
+          <button className="inkbtn ghost" style={{flex:1}} onClick={onLeave}>Выйти</button>
+          <button className="inkbtn primary" style={{flex:2}} disabled={!words.some(Boolean) || casting} onClick={cast}>
+            {casting ? 'Оракул думает…' : 'Пропеть инкантацию'}
+          </button>
+        </div>
+
+        {result && <AIResultCard result={result} school={school}/>}
+      </div>
+    </div>
+  );
+}
+
+function AIResultCard({result, school}){
+  return (
+    <div style={{
+      marginTop:12, padding:'12px 14px',
+      background:'linear-gradient(180deg, oklch(0.94 0.04 82), oklch(0.88 0.06 78))',
+      border:'1px solid rgba(60,35,10,0.45)', borderRadius:12,
+      boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 4px 8px rgba(40,25,10,0.18)',
+      position:'relative',
+    }}>
+      <div style={{position:'absolute', top:-10, right:12}}>
+        <div className="wax-seal" style={{width:34, height:34, fontSize:14}}>{SCHOOL_GLYPH[school]}</div>
+      </div>
+      <Ornament tiny>Оракул отвечает</Ornament>
+      <div style={{marginTop:8, fontFamily:'var(--display)', fontWeight:700, fontSize:17, color:'var(--ink)'}}>{result.name_ru}</div>
+      <div style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--magic)', marginTop:2}}>{result.formula}</div>
+      <p style={{fontFamily:'var(--serif)', fontSize:13, lineHeight:1.5, marginTop:10, color:'var(--ink)', textAlign:'justify'}}>
+        «{result.narrative}»
+      </p>
+      <div style={{display:'flex', gap:6, marginTop:8, flexWrap:'wrap'}}>
+        {result.states.map((s,i)=>(
+          <Chip key={i} color="magic">{s.label} · {s.dur}т</Chip>
+        ))}
+        <Chip color="wax">Усталость {result.fatigue}</Chip>
+        <Chip color="ink">Перезарядка {result.cd}т</Chip>
+      </div>
+    </div>
+  );
+}
+
+function mockAI(school, base, words){
+  const formula = words.filter(Boolean).join(' ');
+  const has = (w)=> words.some(x=>x.toLowerCase().includes(w.toLowerCase()));
+  const states = [];
+  if(school==='fire') states.push({label:'burning',dur:3});
+  if(school==='water'|| has('aqua')) states.push({label:'frozen', dur:2});
+  if(has('scutum')) states.push({label:'shielded', dur:3});
+  if(has('sphaera')|| has('murus')) states.push({label:'trapped', dur:2});
+  if(has('magnus')|| has('enormis')) states.push({label:'exposed', dur:2});
+  if(!states.length) states.push({label:'impact', dur:0});
+
+  const narrations = {
+    fire:'Воздух между вами вздрагивает — и в ладони распускается жаркий огненный цветок. Он устремляется вперёд, оставляя за собой запах калёного металла и тлеющую дорожку на земле.',
+    water:'Ледяной пар клубится над землёй и схлопывается в круг. В нём на мгновение замирает сама тишина — а затем всё вокруг покрывается тонкой изморозью.',
+    earth:'Земля глухо вздыхает и поднимается стеной. Камни срастаются с глухим щелчком, и на мгновение кажется, что вы слышите в них голос.',
+    air:'Порыв ветра сворачивается в спираль и с тонким свистом уходит вверх, унося за собой пыль и последний звук вашего голоса.',
+    chaos:'Пространство будто шаг назад сделало. Линии потекли, цвета сбились. Невозможно сказать, что именно произошло, — но что-то определённо да.',
+    order:'Над кругом выстраивается бледная решётка. Она ровная, как страница устава, и столь же неумолима.',
+    life:'Зелёный свет проливается сквозь пальцы, как тёплое молоко. Раны затягиваются, и становится слышно, как бьётся сердце.',
+    death:'Холод пробирает до костей — и не ваших. Что-то в цели начинает медленно истлевать изнутри.',
+  };
+
+  return {
+    name_ru: {
+      fire:'Малое Пламя, Направленное',
+      water:'Ледяной Круг',
+      earth:'Стена Тверди',
+      air:'Шквал',
+      chaos:'Смятение',
+      order:'Решётка Устава',
+      life:'Дыхание Жизни',
+      death:'Хладный Коготь',
+    }[school],
+    formula: `${base.name} + ${formula}`,
+    narrative: narrations[school],
+    states,
+    fatigue: 4 + words.filter(Boolean).length*2,
+    cd: 2 + words.filter(Boolean).length,
+  };
+}
+
+Object.assign(window, { SpellCircle });
+
+
+// ═══ screens/Grimoire.js ═══
+// Grimoire — physical books of varying sizes, each holding a set of spells.
+// Shelves view: books on wooden shelves, spines vary in height/width/colour.
+// Catalog view: the flat index of every spell you know, filterable.
+
+// Spells in your personal library (what you've learned)
+const DEMO_SPELLS = [
+  {id:'s1',  name:'Ignis Parvus',     ru:'Малый огонь',    school:'fire', tier:1},
+  {id:'s2',  name:'Ignis Magna',      ru:'Великое пламя',  school:'fire', tier:3},
+  {id:'s3',  name:'Ignis Conus',      ru:'Конус огня',     school:'fire', tier:2},
+  {id:'s4',  name:'Aqua Scutum',      ru:'Водный щит',     school:'water', tier:2},
+  {id:'s5',  name:'Aqua Nexus',       ru:'Водная связь',   school:'water', tier:2},
+  {id:'s6',  name:'Aqua Glacies',     ru:'Лёд',            school:'water', tier:3},
+  {id:'s7',  name:'Terra Mure',       ru:'Стена земли',    school:'earth', tier:2},
+  {id:'s8',  name:'Terra Vocatio',    ru:'Зов камня',      school:'earth', tier:3},
+  {id:'s9',  name:'Aer Velox',        ru:'Быстрый ветер',  school:'air',   tier:1},
+  {id:'s10', name:'Aer Conus',        ru:'Конус ветра',    school:'air',   tier:2},
+  {id:'s11', name:'Vita Sanatio',     ru:'Исцеление',      school:'life',  tier:2},
+  {id:'s12', name:'Vita Vinculum',    ru:'Узы жизни',      school:'life',  tier:3},
+  {id:'s13', name:'Mors Tactus',      ru:'Касание смерти', school:'death', tier:3},
+  {id:'s14', name:'Ordo Catena',      ru:'Цепь порядка',   school:'order', tier:3},
+  {id:'s15', name:'Chaos Scintilla',  ru:'Искра хаоса',    school:'chaos', tier:1},
+];
+
+// Your books — physical grimoires. Each has a size (pages), a binding style,
+// and a list of spell IDs it contains. Smaller books = travel grimoires.
+const BOOKS = [
+  {
+    id:'b1', name:'Пламенник', ru:'The Fire-Book',
+    size:'small', binding:'leather', tint:'fire',
+    spellIds:['s1','s3'],
+    notes:'Дорожная книжица огненных формул. Потёртые страницы.',
+  },
+  {
+    id:'b2', name:'Codex Aquarum', ru:'Кодекс вод',
+    size:'large', binding:'leather-gilt', tint:'water',
+    spellIds:['s4','s5','s6'],
+    notes:'Академический фолиант. Подарок деда. Инициалы золотом.',
+  },
+  {
+    id:'b3', name:'Вётви', ru:'Vine-book',
+    size:'medium', binding:'cloth', tint:'life',
+    spellIds:['s11','s12'],
+    notes:'Тонкая тетрадь в льняном переплёте.',
+  },
+  {
+    id:'b4', name:'Terra Magna', ru:'Великая земля',
+    size:'xl', binding:'wood', tint:'earth',
+    spellIds:['s7','s8'],
+    notes:'Массивный том в досках. Весит как кирпич.',
+  },
+  {
+    id:'b5', name:'Дневник', ru:'Journal',
+    size:'small', binding:'cloth', tint:'mixed',
+    spellIds:['s9','s10','s15'],
+    notes:'Ваши собственные записи. Эксперименты.',
+  },
+  {
+    id:'b6', name:'Opus Mortis', ru:'Труды смерти',
+    size:'medium', binding:'leather', tint:'death',
+    spellIds:['s13','s14'],
+    notes:'Приобретено на чёрном рынке. Без имени автора.',
+  },
+];
+
+function Grimoire({layout='shelves', onLeave, onLayoutChange}){
+  const [activeBook, setActiveBook] = React.useState(null); // book id when opened
+  const [query, setQuery] = React.useState('');
+  const [filterSchool, setFilterSchool] = React.useState(null);
+  // Currently-carried books (to take into a dungeon)
+  const [carried, setCarried] = React.useState(['b1','b3']);
+
+  function toggleCarry(id){
+    setCarried(c => c.includes(id) ? c.filter(x=>x!==id) : (c.length<3 ? [...c, id] : c));
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+      <div style={{position:'relative', padding:'8px 12px 4px'}}>
+        <div style={{display:'flex', justifyContent:'center', gap:4}}>
+          <button className={`inkbtn${layout==='shelves'?' primary':''}`}
+            style={{padding:'5px 12px', fontSize:11}}
+            onClick={()=>onLayoutChange('shelves')}>Полки (книги)</button>
+          <button className={`inkbtn${layout==='catalog'?' primary':''}`}
+            style={{padding:'5px 12px', fontSize:11}}
+            onClick={()=>onLayoutChange('catalog')}>Каталог (заклинания)</button>
+        </div>
+      </div>
+
+      <div className="mmgo-scroll" style={{position:'relative', flex:1, overflow:'auto', padding:'4px 12px 10px'}}>
+        {layout==='shelves'
+          ? <ShelvesView books={BOOKS} onOpen={setActiveBook} carried={carried} onToggleCarry={toggleCarry}/>
+          : <CatalogView spells={DEMO_SPELLS} books={BOOKS} query={query} setQuery={setQuery}
+              filterSchool={filterSchool} setFilterSchool={setFilterSchool}/>}
+      </div>
+
+      {/* Bottom ribbon — carried books summary */}
+      <CarryRibbon carried={carried} books={BOOKS} onLeave={onLeave}/>
+
+      {/* Book detail overlay */}
+      {activeBook && (
+        <BookDetail book={BOOKS.find(b=>b.id===activeBook)}
+          spells={DEMO_SPELLS}
+          onClose={()=>setActiveBook(null)}
+          carried={carried} onToggleCarry={toggleCarry}/>
+      )}
+    </div>
+  );
+}
+
+// ─── Shelves: wood shelves, variable-size book spines ───
+function ShelvesView({books, onOpen, carried, onToggleCarry}){
+  // Split books into shelves — try to balance widths (sum of widths ~ shelf capacity)
+  const SHELF_CAP = 280; // arbitrary width units
+  const shelves = [];
+  let cur = []; let curW = 0;
+  for(const b of books){
+    const w = BOOK_WIDTH(b);
+    if(curW + w > SHELF_CAP && cur.length){ shelves.push(cur); cur=[]; curW=0; }
+    cur.push(b); curW+=w;
+  }
+  if(cur.length) shelves.push(cur);
+
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:0, marginTop:6}}>
+      {shelves.map((row,si)=>(
+        <div key={si}>
+          <div style={{
+            display:'flex', alignItems:'flex-end', gap:3,
+            padding:'6px 6px 2px', minHeight:140,
+            background:'linear-gradient(180deg, rgba(40,25,10,0) 0%, rgba(40,25,10,0.06) 100%)',
+          }}>
+            {row.map(b => <BookSpine key={b.id} book={b} onOpen={onOpen} carried={carried.includes(b.id)} onToggleCarry={onToggleCarry}/>)}
+          </div>
+          {/* wooden shelf */}
+          <div className="wood" style={{
+            height:12, borderRadius:2,
+            boxShadow:'0 3px 3px rgba(0,0,0,0.3), inset 0 -2px 0 rgba(0,0,0,0.22), inset 0 1px 0 rgba(255,220,170,0.18)',
+            marginBottom: 4,
+          }}/>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+// A book's visual width based on thickness (spellIds count) & size class
+function BOOK_WIDTH(b){
+  const byPages = 14 + b.spellIds.length * 4.5;
+  const mult = {small:.85, medium:1.0, large:1.25, xl:1.6}[b.size] || 1.0;
+  return byPages * mult;
+}
+function BOOK_HEIGHT(b){
+  const base = {small:82, medium:100, large:120, xl:140}[b.size] || 100;
+  return base;
+}
+
+function BookSpine({book, onOpen, carried, onToggleCarry}){
+  const h = BOOK_HEIGHT(book);
+  const w = BOOK_WIDTH(book);
+  const TINT = book.tint==='mixed' ? 'oklch(0.40 0.08 60)' : `var(--s-${book.tint})`;
+  const DARK = book.tint==='mixed' ? 'oklch(0.25 0.06 60)' : `oklch(from var(--s-${book.tint}) calc(l*.55) c h)`;
+  const BINDING = {
+    'leather':     `linear-gradient(180deg, ${TINT}, ${DARK})`,
+    'leather-gilt':`linear-gradient(180deg, ${TINT}, ${DARK}), repeating-linear-gradient(90deg, transparent 0 4px, rgba(255,220,150,0.15) 4px 5px)`,
+    'cloth':       `linear-gradient(180deg, ${TINT}, ${DARK}), repeating-linear-gradient(90deg, rgba(0,0,0,0.06) 0 1px, transparent 1px 3px)`,
+    'wood':        `linear-gradient(180deg, oklch(0.45 0.06 45), oklch(0.28 0.05 42))`,
+  }[book.binding];
+
+  return (
+    <div onClick={()=>onOpen(book.id)}
+      onContextMenu={(e)=>{ e.preventDefault(); onToggleCarry(book.id); }}
+      style={{
+        width:w, height:h, minWidth: 16, flexShrink:0,
+        background: BINDING,
+        border:'1px solid rgba(0,0,0,0.5)', borderRadius:'2px 2.5px 1.5px 1.5px',
+        position:'relative', cursor:'pointer',
+        boxShadow:`inset 1.5px 0 0 rgba(255,255,255,${book.binding==='wood'?0.15:0.22}),
+          inset -1.5px 0 0 rgba(0,0,0,0.35),
+          0 2px 3px rgba(0,0,0,${carried?0.5:0.35})`,
+        overflow:'hidden',
+        display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center',
+        transform: carried ? 'translateY(-4px)' : 'none',
+        transition:'transform .2s ease',
+      }}
+      title={`${book.name} — ${book.ru} (${book.spellIds.length} закл.)`}
+    >
+      {/* gilt bands */}
+      {book.binding!=='cloth' && (
+        <>
+          <div style={{position:'absolute', top:10, left:0, right:0, height:1.5, background:'var(--gilt)', opacity:.8, boxShadow:'0 1px 0 rgba(0,0,0,0.3)'}}/>
+          <div style={{position:'absolute', top:18, left:0, right:0, height:0.5, background:'var(--gilt)', opacity:.5}}/>
+          <div style={{position:'absolute', bottom:10, left:0, right:0, height:1.5, background:'var(--gilt)', opacity:.8, boxShadow:'0 -1px 0 rgba(0,0,0,0.3)'}}/>
+        </>
+      )}
+      {/* spine rune */}
+      {w > 22 && (
+        <div style={{
+          position:'absolute', top:26, left:'50%', transform:'translateX(-50%)',
+          fontFamily:'var(--rune)', fontSize:14,
+          color: book.binding==='wood' ? 'var(--gilt)' : 'var(--gilt)',
+          filter:'drop-shadow(0 1px 0 rgba(0,0,0,0.4))',
+        }}>{book.tint==='mixed' ? '✶' : SCHOOL_GLYPH[book.tint]}</div>
+      )}
+      {/* label — vertical */}
+      <div style={{
+        writingMode:'vertical-rl', transform:'rotate(180deg)',
+        fontFamily:'var(--display)',
+        fontSize: w > 26 ? 10 : 8,
+        fontWeight:700,
+        color: book.binding==='wood' ? 'var(--gilt)' : '#f5ead3',
+        textShadow:'0 1px 0 rgba(0,0,0,0.5)',
+        letterSpacing:'.12em', padding:'38px 0 26px',
+        whiteSpace:'nowrap', textAlign:'center',
+        maxHeight:'100%', overflow:'hidden',
+      }}>{book.name}</div>
+      {/* spell count pip at bottom */}
+      <div style={{
+        position:'absolute', bottom:2, left:'50%', transform:'translateX(-50%)',
+        fontFamily:'var(--mono)', fontSize:7, color:'var(--gilt)', opacity:.8,
+        letterSpacing:'.05em',
+      }}>·{book.spellIds.length}·</div>
+      {/* carried indicator — bookmark ribbon */}
+      {carried && (
+        <div style={{
+          position:'absolute', top:-2, right:3, width:4, height:16,
+          background:'var(--wax)', borderRadius:'0 0 2px 2px',
+          boxShadow:'0 1px 2px rgba(0,0,0,0.5)',
+        }}/>
+      )}
+    </div>
+  );
+}
+
+// ─── Book detail overlay (opens into a spread) ───
+function BookDetail({book, spells, onClose, carried, onToggleCarry}){
+  const bookSpells = book.spellIds.map(id => spells.find(s=>s.id===id));
+  const isCarried = carried.includes(book.id);
+  return (
+    <div style={{
+      position:'absolute', inset:0, zIndex:20,
+      background:'rgba(20,15,10,0.65)',
+      display:'flex', flexDirection:'column',
+      padding:'14px 10px',
+    }} onClick={onClose}>
+      <div onClick={(e)=>e.stopPropagation()} style={{
+        flex:1, overflow:'auto',
+        background:`linear-gradient(180deg, oklch(from var(--s-${book.tint==='mixed'?'fire':book.tint}) 0.35 c h), oklch(from var(--s-${book.tint==='mixed'?'fire':book.tint}) 0.22 c h))`,
+        borderRadius:8,
+        padding: 4,
+        boxShadow:'0 16px 40px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,220,150,0.2)',
+      }}>
+        <div style={{
+          background:'linear-gradient(180deg, oklch(0.94 0.03 82), oklch(0.88 0.04 78))',
+          borderRadius:4,
+          padding:'14px 16px',
+          minHeight:'100%',
+          position:'relative',
+          boxShadow:'inset 0 0 30px rgba(60,35,10,0.15)',
+        }} className="mmgo-scroll">
+          {/* close */}
+          <button onClick={onClose} style={{
+            position:'absolute', top:6, right:8, zIndex:2,
+            border:'none', background:'rgba(60,35,10,0.1)', color:'var(--ink-soft)',
+            borderRadius:'50%', width:26, height:26, fontSize:14, cursor:'pointer',
+          }}>✕</button>
+
+          {/* Title */}
+          <div style={{textAlign:'center', paddingTop:6, paddingBottom:4}}>
+            <div style={{
+              fontFamily:'var(--rune)', fontSize:18,
+              color:`var(--s-${book.tint==='mixed'?'chaos':book.tint})`,
+              letterSpacing:'.1em',
+            }}>{book.tint==='mixed' ? '✶' : SCHOOL_GLYPH[book.tint]}</div>
+            <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:22, marginTop:4, color:'var(--ink)'}}>{book.name}</div>
+            <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:12, color:'var(--ink-soft)', marginTop:2}}>— {book.ru} —</div>
+          </div>
+
+          <div className="hrule" style={{margin:'12px 0 10px'}}/>
+
+          <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:12, color:'var(--ink-soft)', textAlign:'center', marginBottom:14}}>
+            «{book.notes}»
+          </div>
+
+          {/* Table of contents */}
+          <div style={{
+            fontFamily:'var(--display)', fontSize:11, fontWeight:700,
+            letterSpacing:'.08em', textTransform:'uppercase',
+            color:'var(--ink-faint)', marginBottom:6,
+          }}>Содержание</div>
+          <ol style={{listStyle:'none', padding:0, margin:0}}>
+            {bookSpells.map((s,i)=>(
+              <li key={s.id} style={{
+                display:'flex', alignItems:'baseline', gap:6,
+                padding:'6px 2px', borderBottom:'1px dotted rgba(60,35,10,0.22)',
+                fontFamily:'var(--serif)', fontSize:13,
+              }}>
+                <span style={{fontFamily:'var(--rune)', fontSize:14, color:`var(--s-${s.school})`, width:14, textAlign:'center'}}>{SCHOOL_GLYPH[s.school]}</span>
+                <span style={{fontFamily:'var(--display)', fontWeight:600, color:'var(--ink)'}}>{s.name}</span>
+                <span style={{flex:1, borderBottom:'1px dotted rgba(60,35,10,0.3)', margin:'0 4px', transform:'translateY(-3px)'}}/>
+                <span style={{color:'var(--ink-faint)', fontStyle:'italic', fontSize:11}}>{s.ru}</span>
+                <span style={{color:'var(--ink-faint)', fontFamily:'var(--mono)', fontSize:10}}>с.{(i+1)*7}</span>
+              </li>
+            ))}
+          </ol>
+
+          <div style={{display:'flex', gap:8, marginTop:14}}>
+            <Chip color="ink">Объём: {book.size}</Chip>
+            <Chip color="ink">Переплёт: {book.binding}</Chip>
+            <Chip color="magic">{book.spellIds.length} заклин.</Chip>
+          </div>
+
+          <div style={{display:'flex', gap:8, marginTop:14}}>
+            <button className="inkbtn ghost" style={{flex:1}} onClick={onClose}>Закрыть</button>
+            <button className={`inkbtn${isCarried?' primary':''}`} style={{flex:1}} onClick={()=>onToggleCarry(book.id)}>
+              {isCarried ? 'Убрать из сумки' : 'Взять с собой'}
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── Catalog view: index of every spell you know ───
+function CatalogView({spells, books, query, setQuery, filterSchool, setFilterSchool}){
+  const schools = ['fire','water','earth','air','life','death','order','chaos'];
+  let filtered = spells;
+  if(query) filtered = filtered.filter(s =>
+    s.name.toLowerCase().includes(query.toLowerCase()) ||
+    s.ru.toLowerCase().includes(query.toLowerCase())
+  );
+  if(filterSchool) filtered = filtered.filter(s => s.school===filterSchool);
+
+  // Which book(s) contain this spell?
+  function inBooks(sid){
+    return books.filter(b => b.spellIds.includes(sid));
+  }
+
+  return (
+    <div style={{marginTop:4}}>
+      {/* Filter bar */}
+      <div style={{display:'flex', gap:4, marginBottom:8, alignItems:'center'}}>
+        <input value={query} onChange={e=>setQuery(e.target.value)}
+          placeholder="поиск по названию…"
+          style={{
+            flex:1, padding:'5px 9px',
+            border:'1px solid rgba(60,35,10,0.35)', borderRadius:6,
+            background:'oklch(0.96 0.02 82)',
+            fontFamily:'var(--serif)', fontSize:12, color:'var(--ink)',
+          }}/>
+      </div>
+      <div style={{display:'flex', flexWrap:'wrap', gap:3, marginBottom:8, justifyContent:'center'}}>
+        <button onClick={()=>setFilterSchool(null)} style={{
+          padding:'3px 9px', borderRadius:999,
+          border:`1px solid ${!filterSchool?'var(--ink)':'rgba(60,35,10,0.25)'}`,
+          background: !filterSchool?'var(--vellum-shade)':'transparent',
+          fontFamily:'var(--mono)', fontSize:10, cursor:'pointer', color:'var(--ink)',
+        }}>все</button>
+        {schools.map(k=>(
+          <button key={k} onClick={()=>setFilterSchool(filterSchool===k?null:k)} style={{
+            padding:'3px 8px', borderRadius:999,
+            border:`1px solid ${filterSchool===k?`var(--s-${k})`:'rgba(60,35,10,0.25)'}`,
+            background: filterSchool===k?`oklch(from var(--s-${k}) 0.92 c h / 0.4)`:'transparent',
+            fontFamily:'var(--rune)', fontSize:12, cursor:'pointer',
+            color:`var(--s-${k})`,
+            display:'inline-flex', alignItems:'center', gap:3,
+          }}>{SCHOOL_GLYPH[k]} <span style={{fontFamily:'var(--mono)', fontSize:9}}>{SCHOOL_NAME_RU[k]}</span></button>
+        ))}
+      </div>
+
+      {/* index-card drawer */}
+      <div style={{
+        padding:8, borderRadius:6,
+        background:'linear-gradient(180deg, oklch(0.52 0.06 46), oklch(0.42 0.07 44))',
+        border:'1px solid rgba(0,0,0,0.45)',
+        boxShadow:'inset 0 1px 0 rgba(255,220,170,0.18), inset 0 -2px 4px rgba(0,0,0,0.35)',
+      }}>
+        <div style={{
+          background:'oklch(0.93 0.02 82)', borderRadius:3,
+          border:'1px solid rgba(60,35,10,0.35)',
+          boxShadow:'inset 0 0 0 2px rgba(255,245,220,0.4), 0 1px 2px rgba(0,0,0,0.3)',
+          padding:'5px 4px', display:'flex', flexDirection:'column', gap:3,
+          maxHeight:'100%',
+        }}>
+          {filtered.length === 0 && (
+            <div style={{padding:'16px 8px', textAlign:'center', fontStyle:'italic', color:'var(--ink-faint)', fontSize:11}}>
+              Ни одно заклинание не подходит.
+            </div>
+          )}
+          {filtered.map(s=>{
+            const inb = inBooks(s.id);
+            return (
+              <div key={s.id}
+                style={{
+                  display:'grid', gridTemplateColumns:'18px 1fr auto',
+                  gap:8, alignItems:'center',
+                  padding:'5px 8px',
+                  background:'oklch(0.96 0.02 82)',
+                  borderLeft:`3px solid var(--s-${s.school})`,
+                  borderRadius:2,
+                  fontFamily:'var(--mono)', fontSize:11,
+                  color:'var(--ink)',
+                  boxShadow:'0 1px 0 rgba(60,35,10,0.08)',
+                }}
+              >
+                <span style={{fontFamily:'var(--rune)', color:`var(--s-${s.school})`, fontSize:13, textAlign:'center'}}>{SCHOOL_GLYPH[s.school]}</span>
+                <div style={{display:'flex', flexDirection:'column', gap:1, minWidth:0}}>
+                  <span style={{fontFamily:'var(--display)', fontWeight:600, fontSize:11.5, color:'var(--ink)'}}>{s.name}</span>
+                  <span style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:10, color:'var(--ink-faint)'}}>{s.ru} · тир {s.tier}</span>
+                </div>
+                <div style={{display:'flex', flexDirection:'column', gap:2, alignItems:'flex-end'}}>
+                  {inb.map(b => (
+                    <span key={b.id} style={{
+                      fontFamily:'var(--serif)', fontSize:9, fontStyle:'italic',
+                      color:'var(--ink-faint)',
+                    }}>↦ {b.name}</span>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      <div style={{
+        marginTop:8, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:10,
+        color:'var(--ink-faint)', textAlign:'center',
+      }}>Каталог заклинаний — всё, что вы знаете. Сами книги смотрите на полках.</div>
+    </div>
+  );
+}
+
+// ─── Carry ribbon: what goes with you ───
+function CarryRibbon({carried, books, onLeave}){
+  const list = carried.map(id => books.find(b=>b.id===id)).filter(Boolean);
+  const weight = list.reduce((a,b)=> a + {small:.6, medium:1.2, large:1.8, xl:2.8}[b.size], 0);
+  return (
+    <div style={{
+      borderTop:'1px solid rgba(60,35,10,0.45)',
+      padding:'10px 12px 10px',
+      background:'linear-gradient(180deg, oklch(0.35 0.07 35), oklch(0.28 0.07 33))',
+      color:'#f5ead3',
+    }}>
+      <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:6}}>
+        <div style={{
+          fontFamily:'var(--display)', fontWeight:700, fontSize:12,
+          letterSpacing:'.08em', textTransform:'uppercase', color:'var(--gilt)',
+        }}>В сумке</div>
+        <span style={{fontFamily:'var(--mono)', fontSize:10, color:'rgba(245,234,211,0.75)'}}>
+          {list.length}/3 · {weight.toFixed(1)} кг
+        </span>
+      </div>
+      <div style={{
+        display:'flex', gap:4, minHeight:54,
+        padding:6, border:'1.5px dashed rgba(245,234,211,0.3)',
+        borderRadius:4, background:'rgba(0,0,0,0.25)',
+        alignItems:'flex-end',
+      }}>
+        {list.length===0 && (
+          <div style={{width:'100%', textAlign:'center', color:'rgba(245,234,211,0.4)', fontFamily:'var(--serif)', fontSize:11, fontStyle:'italic', alignSelf:'center'}}>
+            Нет взятых книг. Правый клик на корешке — взять; левый — открыть.
+          </div>
+        )}
+        {list.map(b=>{
+          const TINT = b.tint==='mixed' ? 'oklch(0.40 0.08 60)' : `var(--s-${b.tint})`;
+          const DARK = b.tint==='mixed' ? 'oklch(0.25 0.06 60)' : `oklch(from var(--s-${b.tint}) calc(l*.55) c h)`;
+          const w = BOOK_WIDTH(b)*.85, h = Math.min(BOOK_HEIGHT(b)*.5, 48);
+          return (
+            <div key={b.id} style={{
+              width:w, height:h,
+              background:`linear-gradient(180deg, ${TINT}, ${DARK})`,
+              border:'1px solid rgba(0,0,0,0.45)',
+              borderRadius:'2px 2.5px 1.5px 1.5px',
+              position:'relative',
+              boxShadow:'inset 1px 0 0 rgba(255,255,255,0.2), inset -1px 0 0 rgba(0,0,0,0.35), 0 1px 2px rgba(0,0,0,0.4)',
+              display:'flex', alignItems:'center', justifyContent:'center',
+            }}>
+              <div style={{
+                writingMode:'vertical-rl', transform:'rotate(180deg)',
+                fontFamily:'var(--display)', fontWeight:700, fontSize:8,
+                color:'#f5ead3', letterSpacing:'.1em',
+                whiteSpace:'nowrap',
+              }}>{b.name}</div>
+            </div>
+          );
+        })}
+      </div>
+      <div style={{display:'flex', gap:8, marginTop:8}}>
+        <button className="inkbtn ghost" style={{flex:1, color:'#f5ead3', borderColor:'rgba(245,234,211,0.35)'}} onClick={onLeave}>Закрыть</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Grimoire });
+
+
+// ═══ screens/Combat.js ═══
+// Combat — caster POV, simultaneous turn, grimoire + incantation
+
+const ENEMIES = [
+  {id:'e1', name:'Гоблин-вор',  hp:28, maxHp:28, states:['exposed']},
+  {id:'e2', name:'Пещерный жнец', hp:55, maxHp:55, states:['shielded']},
+];
+
+const ALLIES = [
+  {id:'a1', name:'Вы',        role:'Маг',    hp:null, class:'caster'},
+  {id:'a2', name:'Торвальд',  role:'Воин',   hp:null, class:'tool'},
+  {id:'a3', name:'Льенн',     role:'Алхимик',hp:null, class:'alch'},
+];
+
+const COMBAT_SPELLS = [
+  {id:'c1', name:'Ignis Parvus', ru:'Малый огонь', school:'fire'},
+  {id:'c2', name:'Aqua Scutum',  ru:'Водный щит', school:'water'},
+  {id:'c3', name:'Terra Mure',   ru:'Стена земли', school:'earth'},
+];
+
+function Combat({onLeave}){
+  const [partyHp, setPartyHp] = React.useState(72);
+  const [enemyHp, setEnemyHp] = React.useState(83);
+  const [partyMax] = React.useState(100);
+  const [enemyMax] = React.useState(100);
+  const [turn, setTurn] = React.useState(3);
+  const [timer, setTimer] = React.useState(42);
+  const [base, setBase] = React.useState('c1');
+  const [incant, setIncant] = React.useState('Conus Magnus');
+  // Target is derived from the spell + circumstances, NOT picked:
+  //   - attack spells → the most threatening enemy marked by the party
+  //   - defence spells → whoever's in trouble
+  //   - utility → environment / situation
+  // Player can influence via incantation ("...in scutum Torvaldis").
+  const auto = (()=>{
+    const spell = COMBAT_SPELLS.find(s=>s.id===base);
+    if(!spell) return {kind:'none', label:'—'};
+    if(spell.school==='fire' || spell.school==='air') {
+      const focus = ENEMIES.find(e=>e.states.includes('exposed')) || ENEMIES[0];
+      return {kind:'enemy', label:focus.name, reason:'самый открытый противник'};
+    }
+    if(spell.school==='water') {
+      const ally = ALLIES[0]; // you
+      return {kind:'ally', label:ally.name, reason:'ближайший союзник'};
+    }
+    if(spell.school==='earth') {
+      return {kind:'area', label:'стена между отрядом и врагами', reason:'разделить поле боя'};
+    }
+    return {kind:'self', label:'Вы', reason:'на себя'};
+  })();
+  const [log, setLog] = React.useState([
+    {t:'system', text:'Ход 2. Торвальд бьёт мечом: Жнец оглушён на 1 ход.'},
+    {t:'narr',   text:'Пещера пахнет серой. Где-то сзади капает вода — ровно, как метроном.'},
+  ]);
+  const [resolving, setResolving] = React.useState(false);
+
+  // timer tick
+  React.useEffect(()=>{
+    const id = setInterval(()=>setTimer(t=> t>0 ? t-1 : 0), 1000);
+    return ()=>clearInterval(id);
+  },[turn]);
+
+  function submit(){
+    setResolving(true);
+    setLog(l=>[...l,
+      {t:'action', text:`Вы: ${COMBAT_SPELLS.find(s=>s.id===base).name} + «${incant}» → ${auto.label}`},
+    ]);
+    setTimeout(()=>{
+      setLog(l=>[...l,
+        {t:'narr', text:'Ваш огонь сворачивается в узкий конус и обжигает жнецу плечо; его щит слетает с щелчком, как отстёгнутая застёжка. Торвальд, не мешкая, режет по открытой спине.'},
+        {t:'system', text:'Жнец: burning (3 т), shielded снят. Урон 18.'},
+      ]);
+      setEnemyHp(h=>Math.max(0, h-18));
+      setTurn(t=>t+1);
+      setTimer(45);
+      setResolving(false);
+    }, 1400);
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      <div style={{position:'relative', padding:'8px 12px 4px'}}>
+        <div style={{display:'flex', alignItems:'center', justifyContent:'space-between', gap:8, marginBottom:4}}>
+          <Chip color="wax">Ход {turn}</Chip>
+          <div style={{fontFamily:'var(--mono)', fontSize:11, color: timer<15?'var(--wax)':'var(--ink-soft)'}}>
+            ⏳ {Math.floor(timer/60)}:{String(timer%60).padStart(2,'0')}
+          </div>
+          <Chip color="ink">Дуэль · 3v2</Chip>
+        </div>
+        <HpBars pHp={partyHp} pMax={partyMax} eHp={enemyHp} eMax={enemyMax}/>
+      </div>
+
+      {/* Field */}
+      <div style={{position:'relative', padding:'4px 12px 0'}}>
+        <div style={{
+          padding:8, borderRadius:8,
+          background:'rgba(60,35,10,0.05)', border:'1px dashed rgba(60,35,10,0.3)',
+        }}>
+          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)', textTransform:'uppercase', letterSpacing:'.08em', marginBottom:4}}>Противники</div>
+          <div style={{display:'flex', gap:6}}>
+            {ENEMIES.map(e=>{
+              const isFocus = auto.kind==='enemy' && auto.label===e.name;
+              return (
+                <div key={e.id} style={{
+                  flex:1, padding:'6px 8px',
+                  background: isFocus ? 'oklch(0.88 0.08 30 / 0.5)':'oklch(0.94 0.03 80)',
+                  border:`1px solid ${isFocus?'var(--wax)':'rgba(60,35,10,0.3)'}`,
+                  borderRadius:6, position:'relative',
+                }}>
+                  <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:12}}>{e.name}</div>
+                  <div style={{display:'flex', gap:3, marginTop:3, flexWrap:'wrap'}}>
+                    {e.states.map(s=><Chip key={s} color="magic" style={{fontSize:8, padding:'1px 5px'}}>{s}</Chip>)}
+                  </div>
+                  {isFocus && (
+                    <div style={{
+                      position:'absolute', top:-6, right:-4,
+                      fontFamily:'var(--rune)', fontSize:14, color:'var(--wax)',
+                      filter:'drop-shadow(0 0 3px var(--wax-soft))',
+                    }}>✦</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+
+          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)', textTransform:'uppercase', letterSpacing:'.08em', margin:'8px 0 4px'}}>Отряд</div>
+          <div style={{display:'flex', gap:6}}>
+            {ALLIES.map(a=>(
+              <div key={a.id} style={{
+                flex:1, padding:'5px 7px',
+                background:'oklch(0.94 0.03 80)',
+                border:`1px solid ${a.id==='a1'?'var(--magic)':'rgba(60,35,10,0.25)'}`,
+                borderRadius:6,
+              }}>
+                <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:11}}>{a.name}</div>
+                <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)'}}>{a.role}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {/* Log */}
+      <div className="mmgo-scroll" style={{
+        position:'relative', flex:1, overflow:'auto', padding:'8px 12px',
+        margin:'8px 12px 0', borderRadius:8,
+        background:'oklch(0.97 0.015 82)', border:'1px solid rgba(60,35,10,0.25)',
+        boxShadow:'inset 0 2px 4px rgba(60,35,10,0.1)',
+      }}>
+        {log.map((l,i)=>(
+          <div key={i} style={{
+            fontSize: l.t==='narr'?13:11,
+            lineHeight:1.45, marginBottom:6,
+            fontFamily: l.t==='narr'?'var(--serif)':'var(--mono)',
+            fontStyle: l.t==='narr'?'italic':'normal',
+            color: l.t==='system'?'var(--ink-faint)':(l.t==='action'?'var(--magic)':'var(--ink)'),
+          }}>
+            {l.t==='system'&&'▸ '}{l.t==='action'&&'❯ '}{l.text}
+          </div>
+        ))}
+      </div>
+
+      {/* Caster action panel */}
+      <div style={{position:'relative', padding:'10px 12px 12px'}}>
+        <div style={{display:'flex', gap:6, marginBottom:6, overflowX:'auto', paddingBottom:2}}>
+          {COMBAT_SPELLS.map(s=>(
+            <button key={s.id} onClick={()=>setBase(s.id)} style={{
+              padding:'6px 10px', flexShrink:0,
+              background: base===s.id?`oklch(from var(--s-${s.school}) 0.9 calc(c*.5) h)`:'oklch(0.94 0.03 80)',
+              border:`1px solid ${base===s.id?`var(--s-${s.school})`:'rgba(60,35,10,0.3)'}`,
+              borderRadius:6, cursor:'pointer', textAlign:'left',
+              fontFamily:'var(--display)', fontSize:11, fontWeight:700,
+            }}>
+              <span style={{fontFamily:'var(--rune)', color:`var(--s-${s.school})`, marginRight:4}}>{SCHOOL_GLYPH[s.school]}</span>
+              {s.name}
+            </button>
+          ))}
+        </div>
+        <div style={{
+          display:'flex', alignItems:'center', gap:6,
+          padding:'3px 8px', marginBottom:4,
+          background:'rgba(60,35,10,0.05)',
+          border:'1px dashed rgba(60,35,10,0.3)',
+          borderRadius:6,
+          fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)',
+        }}>
+          <span style={{fontFamily:'var(--rune)', fontSize:12, color:'var(--wax)'}}>❯</span>
+          <span>цель определится сама: <strong style={{color:'var(--ink)', fontStyle:'normal', fontFamily:'var(--display)', fontWeight:700}}>{auto.label}</strong> <span style={{color:'var(--ink-faint)'}}>— {auto.reason}</span></span>
+        </div>
+        <div style={{
+          display:'flex', gap:6, alignItems:'center',
+          padding:'4px 4px 4px 10px',
+          background:'oklch(0.97 0.015 82)',
+          border:'1px solid rgba(60,35,10,0.35)',
+          borderRadius:10,
+        }}>
+          <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--magic)'}}>✦</span>
+          <input value={incant} onChange={e=>setIncant(e.target.value)}
+            placeholder="Latin incantation…"
+            style={{
+              flex:1, border:'none', background:'transparent', outline:'none',
+              fontFamily:'var(--mono)', fontSize:13, color:'var(--ink)',
+            }}/>
+          <button className="inkbtn primary" onClick={submit} disabled={resolving || !incant.trim()}
+            style={{padding:'6px 12px', fontSize:12}}>
+            {resolving?'…':'Произнести'}
+          </button>
+        </div>
+        <div style={{display:'flex', gap:6, marginTop:6, justifyContent:'center'}}>
+          <button className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}}>Готовый план</button>
+          <button className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}}>Пропустить</button>
+          <button className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}} onClick={onLeave}>Бежать</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HpBars({pHp, pMax, eHp, eMax}){
+  return (
+    <div style={{display:'flex', flexDirection:'column', gap:4, fontFamily:'var(--mono)', fontSize:10}}>
+      <Bar label="Отряд" val={pHp} max={pMax} color="var(--verdigris)"/>
+      <Bar label="Враги" val={eHp} max={eMax} color="var(--wax)"/>
+    </div>
+  );
+}
+function Bar({label, val, max, color}){
+  return (
+    <div style={{display:'flex', alignItems:'center', gap:6}}>
+      <span style={{width:40, color:'var(--ink-soft)', textTransform:'uppercase', letterSpacing:'.06em', fontSize:9}}>{label}</span>
+      <div style={{
+        flex:1, height:10, borderRadius:3,
+        background:'rgba(60,35,10,0.12)',
+        border:'1px solid rgba(60,35,10,0.3)',
+        position:'relative', overflow:'hidden',
+      }}>
+        <div style={{
+          width:`${(val/max)*100}%`, height:'100%',
+          background:`linear-gradient(180deg, ${color}, oklch(from ${color} calc(l*.7) c h))`,
+          transition:'width .4s ease',
+        }}/>
+      </div>
+      <span style={{width:46, textAlign:'right'}}>{val}/{max}</span>
+    </div>
+  );
+}
+
+Object.assign(window, { Combat });
+
+
+// ═══ screens/Base.js ═══
+// Base — skeuomorphic shelves: chest, shelves of grimoires, workbench, spell circle entry
+
+function Base({onGo, onLeave}){
+  // wire chest -> inventory
+  const goInv = ()=> onGo && onGo('inventory');
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+      <div className="parchment"/>
+      <div className="mmgo-scroll" style={{position:'relative', height:'100%', overflow:'auto', padding:'14px 14px 20px'}}>
+        <Ornament>Дом на хуторе</Ornament>
+        <div style={{textAlign:'center', fontStyle:'italic', color:'var(--ink-faint)', fontSize:11, marginTop:2, marginBottom:12}}>
+          У вас 3 дн. припасов · вес 8/20
+        </div>
+
+        {/* Workbench */}
+        <Tile onClick={()=>onGo('spell')} icon={<CircleIcon/>} title="Круг призыва" sub="Создание заклинаний" accent/>
+        <Tile onClick={()=>onGo('grimoire')} icon={<BookIcon/>} title="Полки с гримуарами" sub="3 книги · 24 заклинания"/>
+        <Tile onClick={goInv} icon={<ChestIcon/>} title="Сундук" sub="42 предмета · 8/20 кг"/>
+        <Tile onClick={()=>{}} icon={<AlembicIcon/>} title="Алхимический стол" sub="Варка · зельеварение"/>
+        <Tile onClick={()=>{}} icon={<ForgeIcon/>} title="Мастерская" sub="Починка · ремёсла"/>
+        <Tile onClick={()=>{}} icon={<BedIcon/>} title="Кровать" sub="Отдохнуть до рассвета"/>
+
+        <div className="hrule" style={{margin:'18px 4px 12px'}}/>
+        <button className="inkbtn ghost" onClick={onLeave} style={{width:'100%'}}>Выйти во двор</button>
+      </div>
+    </div>
+  );
+}
+
+function Tile({onClick, icon, title, sub, accent}){
+  return (
+    <button onClick={onClick} style={{
+      display:'flex', alignItems:'center', gap:12,
+      width:'100%', padding:'10px 12px', marginBottom:10,
+      background: accent
+        ? 'linear-gradient(180deg, oklch(0.9 0.05 295 / 0.35), oklch(0.82 0.06 290 / 0.5))'
+        : 'linear-gradient(180deg, oklch(0.92 0.03 80), oklch(0.86 0.04 76))',
+      border:`1px solid ${accent?'oklch(0.55 0.17 295 / 0.55)':'rgba(60,35,10,0.35)'}`,
+      borderRadius:12, cursor:'pointer', textAlign:'left',
+      boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(40,25,10,0.1)',
+    }}>
+      <div style={{
+        width:48, height:48, borderRadius:10,
+        background:'linear-gradient(180deg, oklch(0.82 0.05 78), oklch(0.72 0.06 72))',
+        border:'1px solid rgba(60,35,10,0.45)',
+        boxShadow:'inset 0 0 8px rgba(60,35,10,0.22), inset 0 1px 0 rgba(255,245,220,0.5)',
+        display:'flex', alignItems:'center', justifyContent:'center',
+        color:'var(--ink)', flexShrink:0,
+      }}>{icon}</div>
+      <div style={{flex:1}}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:16, color:'var(--ink)'}}>{title}</div>
+        <div style={{fontFamily:'var(--serif)', fontSize:11, fontStyle:'italic', color:'var(--ink-soft)', marginTop:2}}>{sub}</div>
+      </div>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--ink-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
+    </button>
+  );
+}
+
+// Tiny skeuomorphic icons
+function CircleIcon(){
+  return (
+    <svg width="28" height="28" viewBox="-14 -14 28 28">
+      <circle r="12" fill="none" stroke="var(--magic)" strokeWidth="1"/>
+      <circle r="9" fill="none" stroke="var(--ink)" strokeWidth=".8" strokeDasharray="1 1"/>
+      <circle r="5" fill="none" stroke="var(--ink)" strokeWidth=".8"/>
+      <polygon points="0,-4 3.8,2 -3.8,2" fill="none" stroke="var(--wax)" strokeWidth=".8"/>
+    </svg>
+  );
+}
+function BookIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <rect x="4" y="5" width="8" height="18" fill="var(--s-fire)" stroke="var(--ink)" strokeWidth="1" opacity=".9"/>
+      <rect x="13" y="3" width="7" height="20" fill="var(--s-water)" stroke="var(--ink)" strokeWidth="1" opacity=".9"/>
+      <rect x="21" y="6" width="4" height="17" fill="var(--s-life)" stroke="var(--ink)" strokeWidth="1" opacity=".9"/>
+      <line x1="6" y1="9" x2="10" y2="9" stroke="var(--gilt)" strokeWidth=".8"/>
+      <line x1="15" y1="7" x2="18" y2="7" stroke="var(--gilt)" strokeWidth=".8"/>
+    </svg>
+  );
+}
+function ChestIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28">
+      <rect x="3" y="9" width="22" height="14" fill="var(--sepia)" stroke="var(--ink)" strokeWidth="1"/>
+      <path d="M3 9 Q14 4 25 9" fill="none" stroke="var(--ink)" strokeWidth="1"/>
+      <line x1="3" y1="15" x2="25" y2="15" stroke="var(--gilt)" strokeWidth="1"/>
+      <rect x="12" y="13" width="4" height="5" fill="var(--gilt)" stroke="var(--ink)" strokeWidth=".7"/>
+    </svg>
+  );
+}
+function AlembicIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)" strokeWidth="1">
+      <path d="M11 3h6v6l4 12a3 3 0 01-3 4H10a3 3 0 01-3-4l4-12V3z"/>
+      <path d="M10 17h8" />
+      <path d="M12 19 Q14 22 16 19" stroke="var(--s-water)"/>
+    </svg>
+  );
+}
+function ForgeIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)" strokeWidth="1">
+      <path d="M5 22h18"/>
+      <path d="M8 22V13l-3-3 5-5 12 12-3 3h-9"/>
+      <circle cx="18" cy="19" r="1.5" fill="var(--s-fire)" stroke="none"/>
+    </svg>
+  );
+}
+function BedIcon(){
+  return (
+    <svg width="28" height="28" viewBox="0 0 28 28" fill="none" stroke="var(--ink)" strokeWidth="1">
+      <path d="M3 20V8"/><path d="M25 20V14"/>
+      <path d="M3 14h22"/><path d="M3 20h22"/>
+      <rect x="6" y="10" width="7" height="4" rx="1" fill="var(--vellum-shade)"/>
+    </svg>
+  );
+}
+
+Object.assign(window, { Base });
+
+
+// ═══ screens/Academy.js ═══
+// Academy — a university vibe: cloister courtyard, timetable, clubs board
+// Tries to mimic the real university experience: clock, schedule, buildings,
+// notice board with clubs, a ribbon with your current term.
+
+const BUILDINGS = [
+  {k:'wizardry', name:'Факультет Чародейства', sub:'Две школы на выбор', glyph:'✦', tint:'var(--magic)', rooms:['Аудитория 3 — Латынь и Инкантации','Лаб. №1 — Малый огонь','Кабинет декана']},
+  {k:'alchemy',  name:'Факультет Алхимии',     sub:'Варка, травы, перегонка', glyph:'⚗', tint:'oklch(0.5 0.12 145)', rooms:['Лаб. №2 — Перегонка','Теплица','Зал дегустаций']},
+  {k:'mastery',  name:'Факультет Мастерства',  sub:'Оружие, доспех, ловушки', glyph:'⚒', tint:'oklch(0.48 0.09 55)', rooms:['Кузница','Полигон','Оружейная']},
+  {k:'academia', name:'Коллегия Исследований', sub:'Аспирантура и диссертации', glyph:'☉', tint:'oklch(0.5 0.08 82)', rooms:['Библиотека','Архив','Кабинет профессора']},
+];
+
+const TIMETABLE = [
+  {day:'Пн', slot:'I',  subj:'Латынь и инкантации',    where:'ауд. 3',   prof:'маг. Лиен Тар'},
+  {day:'Пн', slot:'II', subj:'Теория элементов',       where:'ауд. 5',   prof:'маг. Гэвин'},
+  {day:'Вт', slot:'I',  subj:'Практика: Малый огонь',  where:'лаб. №1',  prof:'маг. Ортис',  done:true},
+  {day:'Вт', slot:'II', subj:'Этика боевой магии',     where:'ауд. 2',   prof:'маг. Морвиль'},
+  {day:'Ср', slot:'I',  subj:'Травник и реагенты',     where:'теплица',  prof:'мастер Кайе'},
+  {day:'Чт', slot:'I',  subj:'Дуэльный клуб',          where:'полигон',  prof:'капитан Борн', club:true},
+  {day:'Пт', slot:'I',  subj:'История княжества',      where:'ауд. 1',   prof:'проф. Веттен'},
+];
+
+const CLUBS = [
+  {name:'Дуэльный клуб',    members:24, tag:'спорт', note:'еженед. спарринги', hot:true},
+  {name:'Круг переводов',   members:11, tag:'яз.',   note:'читаем «De Elementis»'},
+  {name:'Экспедиционный',   members:18, tag:'иссл.', note:'идёт запись в поход'},
+  {name:'Общество трав',    members: 9, tag:'алх.',  note:'обмен семенами'},
+];
+
+function Academy({onLeave}){
+  const [tab, setTab] = React.useState('courtyard');
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      {/* Academy crest strip */}
+      <div style={{position:'relative', padding:'10px 14px 4px'}}>
+        <div style={{display:'flex', alignItems:'center', gap:10}}>
+          <div style={{
+            width:44, height:44, borderRadius:'50%',
+            background:'radial-gradient(circle at 35% 30%, oklch(0.9 0.05 82), oklch(0.72 0.09 78))',
+            border:'1.5px solid rgba(60,35,10,0.55)',
+            display:'flex', alignItems:'center', justifyContent:'center',
+            boxShadow:'inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(40,25,10,0.2)',
+            fontFamily:'var(--rune)', fontSize:22, color:'var(--wax-deep)',
+          }}>✦</div>
+          <div style={{flex:1}}>
+            <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:17, letterSpacing:'.02em'}}>Княжеская Академия</div>
+            <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-faint)'}}>
+              Scientia ante potentiam — знание прежде силы
+            </div>
+          </div>
+          <button onClick={onLeave} className="inkbtn ghost" style={{padding:'4px 10px', fontSize:10}}>Выйти</button>
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div style={{position:'relative', padding:'6px 12px 0', display:'flex', gap:4, borderBottom:'1px solid rgba(60,35,10,0.25)'}}>
+        {[
+          ['courtyard','Двор'],
+          ['schedule','Расписание'],
+          ['clubs','Клубы'],
+          ['enroll','Зачисление'],
+        ].map(([k,label])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{
+            flex:1, padding:'6px 4px', cursor:'pointer',
+            background: tab===k?'var(--vellum)':'transparent',
+            border:'1px solid rgba(60,35,10,0.3)',
+            borderBottom: tab===k?'1px solid var(--vellum)':'1px solid transparent',
+            borderRadius:'6px 6px 0 0',
+            fontFamily:'var(--display)', fontWeight: tab===k?700:500, fontSize:11,
+            color: tab===k?'var(--ink)':'var(--ink-faint)',
+            marginBottom:-1,
+            letterSpacing:'.04em',
+          }}>{label}</button>
+        ))}
+      </div>
+
+      <div className="mmgo-scroll" style={{position:'relative', flex:1, overflow:'auto', padding:'10px 12px 14px'}}>
+        {tab==='courtyard' && <Courtyard/>}
+        {tab==='schedule' && <Schedule/>}
+        {tab==='clubs' && <ClubsBoard/>}
+        {tab==='enroll' && <Enrollment/>}
+      </div>
+    </div>
+  );
+}
+
+// ─── Courtyard: engraved view of the academy building ───
+function Courtyard(){
+  return (
+    <div>
+      <AcademyVignette/>
+
+      <div style={{marginTop:12, fontFamily:'var(--serif)', fontSize:12, fontStyle:'italic', color:'var(--ink-soft)', textAlign:'center'}}>
+        Из окон факультета алхимии тянет лавандой и серой одновременно.
+      </div>
+
+      <div className="hrule" style={{margin:'14px 0'}}/>
+
+      {/* Building list */}
+      <div style={{display:'flex', flexDirection:'column', gap:8}}>
+        {BUILDINGS.map(b=>(
+          <button key={b.k} className="inkbtn" style={{
+            padding:'10px 12px', textAlign:'left',
+            display:'flex', alignItems:'center', gap:10,
+          }}>
+            <div style={{
+              width:38, height:38, borderRadius:8,
+              background:`radial-gradient(circle at 35% 30%, oklch(from ${b.tint} calc(l+.3) c h), ${b.tint})`,
+              display:'flex', alignItems:'center', justifyContent:'center',
+              color:'#f5ead3', fontFamily:'var(--rune)', fontSize:20,
+              border:'1px solid rgba(0,0,0,0.3)',
+              boxShadow:'inset 0 1px 0 rgba(255,245,220,0.3), 0 1px 2px rgba(0,0,0,0.2)',
+              flexShrink:0,
+            }}>{b.glyph}</div>
+            <div style={{flex:1}}>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14, color:'var(--ink)'}}>{b.name}</div>
+              <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)'}}>{b.sub}</div>
+            </div>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none"><path d="M9 6l6 6-6 6" stroke="var(--ink-faint)" strokeWidth="2" strokeLinecap="round"/></svg>
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// Ink-etching of the academy building — parchment plate, not a "top-down"
+function AcademyVignette(){
+  return (
+    <div style={{
+      position:'relative',
+      padding:'14px 10px 10px',
+      background:'linear-gradient(180deg, oklch(0.93 0.025 82), oklch(0.87 0.04 78))',
+      border:'1px solid rgba(60,35,10,0.4)',
+      borderRadius:8,
+      boxShadow:'inset 0 0 30px rgba(60,35,10,0.14), 0 2px 6px rgba(60,35,10,0.15)',
+      overflow:'hidden',
+    }} className="vignette">
+      {/* paper fibres */}
+      <div aria-hidden="true" style={{
+        position:'absolute', inset:0, pointerEvents:'none', opacity:.18,
+        background:'radial-gradient(circle at 20% 10%, rgba(60,35,10,0.3), transparent 40%), radial-gradient(circle at 80% 85%, rgba(60,35,10,0.25), transparent 40%)',
+      }}/>
+      <div style={{
+        fontFamily:'var(--display)', fontWeight:700, fontSize:10, letterSpacing:'.18em',
+        textAlign:'center', textTransform:'uppercase', color:'var(--ink-faint)',
+      }}>— Plate I —</div>
+      <div style={{
+        fontFamily:'var(--script)', fontSize:18, textAlign:'center', color:'var(--ink-soft)',
+        lineHeight:1,
+      }}>Academia Principis</div>
+
+      <svg viewBox="0 0 400 220" style={{width:'100%', height:'auto', display:'block', marginTop:6}}>
+        <defs>
+          <pattern id="hatch" patternUnits="userSpaceOnUse" width="3" height="3" patternTransform="rotate(45)">
+            <line x1="0" y1="0" x2="0" y2="3" stroke="#3a2515" strokeWidth=".4" strokeOpacity=".55"/>
+          </pattern>
+          <pattern id="hatch2" patternUnits="userSpaceOnUse" width="2.2" height="2.2" patternTransform="rotate(-45)">
+            <line x1="0" y1="0" x2="0" y2="2.2" stroke="#3a2515" strokeWidth=".35" strokeOpacity=".4"/>
+          </pattern>
+          <linearGradient id="skygrad" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0%"  stopColor="#d9c89c"/>
+            <stop offset="100%" stopColor="#e8d7a8"/>
+          </linearGradient>
+        </defs>
+
+        {/* sky panel */}
+        <rect x="8" y="10" width="384" height="150" fill="url(#skygrad)" stroke="#3a2515" strokeWidth=".6"/>
+        {/* distant hills */}
+        <path d="M8,130 Q 60,108 110,120 T 210,118 T 310,116 T 392,126 L 392,160 L 8,160 Z" fill="url(#hatch2)" stroke="#3a2515" strokeWidth=".5" strokeOpacity=".6"/>
+        {/* sun disc */}
+        <circle cx="330" cy="48" r="14" fill="none" stroke="#3a2515" strokeWidth=".6"/>
+        {[...Array(16)].map((_,i)=>{
+          const a=i*Math.PI*2/16, x1=330+Math.cos(a)*16, y1=48+Math.sin(a)*16, x2=330+Math.cos(a)*22, y2=48+Math.sin(a)*22;
+          return <line key={i} x1={x1} y1={y1} x2={x2} y2={y2} stroke="#3a2515" strokeWidth=".4"/>;
+        })}
+        {/* flock */}
+        <path d="M90,60 q4,-4 8,0 q4,-4 8,0" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+        <path d="M120,48 q3,-3 6,0 q3,-3 6,0" fill="none" stroke="#3a2515" strokeWidth=".4"/>
+
+        {/* ground line */}
+        <line x1="8" y1="160" x2="392" y2="160" stroke="#3a2515" strokeWidth=".8"/>
+
+        {/* Main central building — great hall */}
+        {/* base */}
+        <rect x="140" y="92" width="120" height="68" fill="#e8d7a8" stroke="#3a2515" strokeWidth=".9"/>
+        {/* stonework hatching */}
+        <rect x="140" y="130" width="120" height="30" fill="url(#hatch)" opacity=".4"/>
+        {/* pediment */}
+        <polygon points="130,92 200,58 270,92" fill="#d9c89c" stroke="#3a2515" strokeWidth=".9"/>
+        <polygon points="148,92 200,68 252,92" fill="none" stroke="#3a2515" strokeWidth=".4"/>
+        {/* rose window */}
+        <circle cx="200" cy="82" r="6" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+        {[...Array(8)].map((_,i)=>{
+          const a=i*Math.PI/4, x=200+Math.cos(a)*6, y=82+Math.sin(a)*6;
+          return <line key={i} x1="200" y1="82" x2={x} y2={y} stroke="#3a2515" strokeWidth=".3"/>;
+        })}
+        {/* columns */}
+        {[158,178,200,222,242].map((x,i)=>(
+          <g key={i}>
+            <line x1={x} y1="100" x2={x} y2="146" stroke="#3a2515" strokeWidth=".6"/>
+            <rect x={x-3} y="97" width="6" height="4" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+            <rect x={x-3.5} y="146" width="7" height="4" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+          </g>
+        ))}
+        {/* main doorway */}
+        <path d="M194,160 L194,142 Q194,134 200,134 Q206,134 206,142 L206,160 Z" fill="#3a2515" fillOpacity=".85" stroke="#3a2515" strokeWidth=".5"/>
+        <line x1="200" y1="160" x2="200" y2="134" stroke="#d9c89c" strokeOpacity=".4" strokeWidth=".3"/>
+        {/* steps */}
+        <rect x="178" y="157" width="44" height="3" fill="none" stroke="#3a2515" strokeWidth=".3"/>
+        <rect x="174" y="160" width="52" height="0" stroke="#3a2515" strokeWidth=".3"/>
+        <line x1="172" y1="160" x2="228" y2="160" stroke="#3a2515" strokeWidth=".4"/>
+
+        {/* Left wing — Alchemy (short, squat, with a chimney plume) */}
+        <rect x="60" y="110" width="70" height="50" fill="#e8d7a8" stroke="#3a2515" strokeWidth=".8"/>
+        <polygon points="56,110 95,86 134,110" fill="#d9c89c" stroke="#3a2515" strokeWidth=".8"/>
+        <rect x="60" y="140" width="70" height="20" fill="url(#hatch)" opacity=".35"/>
+        {/* windows */}
+        {[74,90,106,120].map((x,i)=>(
+          <rect key={i} x={x-3} y="120" width="6" height="10" fill="#3a2515" fillOpacity=".8"/>
+        ))}
+        {/* door */}
+        <path d="M90,160 L90,148 Q90,144 95,144 Q100,144 100,148 L100,160 Z" fill="#3a2515" fillOpacity=".8"/>
+        {/* chimney + smoke */}
+        <rect x="104" y="80" width="6" height="14" fill="#e8d7a8" stroke="#3a2515" strokeWidth=".5"/>
+        <path d="M107,80 Q 100,70 108,60 Q 102,50 112,42 Q 106,32 118,26" fill="none" stroke="#3a2515" strokeWidth=".5" strokeOpacity=".7"/>
+        <path d="M107,80 Q 114,68 106,58 Q 116,50 110,40" fill="none" stroke="#3a2515" strokeWidth=".4" strokeOpacity=".5"/>
+
+        {/* Right wing — Mastery (forge, anvil cue) */}
+        <rect x="270" y="114" width="70" height="46" fill="#e8d7a8" stroke="#3a2515" strokeWidth=".8"/>
+        <polygon points="266,114 305,92 344,114" fill="#d9c89c" stroke="#3a2515" strokeWidth=".8"/>
+        <rect x="270" y="142" width="70" height="18" fill="url(#hatch)" opacity=".35"/>
+        {/* big forge arch */}
+        <path d="M282,160 L282,140 Q282,130 292,130 Q302,130 302,140 L302,160 Z" fill="#3a2515" fillOpacity=".9"/>
+        {/* sparks */}
+        {[{x:292,y:128},{x:288,y:124},{x:296,y:126},{x:294,y:120}].map((s,i)=>(
+          <g key={i}>
+            <line x1={s.x-1.5} y1={s.y} x2={s.x+1.5} y2={s.y} stroke="#3a2515" strokeWidth=".5"/>
+            <line x1={s.x} y1={s.y-1.5} x2={s.x} y2={s.y+1.5} stroke="#3a2515" strokeWidth=".5"/>
+          </g>
+        ))}
+        <rect x="318" y="130" width="6" height="6" fill="#3a2515" fillOpacity=".7"/>
+        <rect x="308" y="130" width="6" height="6" fill="#3a2515" fillOpacity=".7"/>
+
+        {/* Tall tower — Research Collegium, behind centre */}
+        <rect x="193" y="20" width="14" height="72" fill="#e8d7a8" stroke="#3a2515" strokeWidth=".8"/>
+        <polygon points="189,20 200,4 211,20" fill="#3a2515" fillOpacity=".85" stroke="#3a2515" strokeWidth=".6"/>
+        <line x1="200" y1="4" x2="200" y2="-2" stroke="#3a2515" strokeWidth=".5"/>
+        <circle cx="200" cy="-3" r="1.2" fill="#3a2515"/>
+        {/* tower windows */}
+        {[32,48,64,80].map((y,i)=>(
+          <rect key={i} x="197" y={y} width="6" height="6" fill="#3a2515" fillOpacity=".85"/>
+        ))}
+        {/* telescope / observer marks */}
+        <line x1="205" y1="30" x2="214" y2="24" stroke="#3a2515" strokeWidth=".6"/>
+
+        {/* Foreground: cobbled plaza */}
+        <path d="M8,160 L60,200 L340,200 L392,160 Z" fill="#e0cd98" stroke="#3a2515" strokeWidth=".6"/>
+        <path d="M8,160 L60,200 L340,200 L392,160 Z" fill="url(#hatch2)" opacity=".4"/>
+        {/* plaza ink lines */}
+        {[170,188,200,212,230].map((x,i)=>(
+          <line key={i} x1={x} y1="162" x2={x-(x-200)*0.7} y2="200" stroke="#3a2515" strokeWidth=".3" strokeOpacity=".5"/>
+        ))}
+        <line x1="8" y1="180" x2="392" y2="180" stroke="#3a2515" strokeWidth=".3" strokeOpacity=".45" strokeDasharray="2 2"/>
+
+        {/* Tiny scholar figures */}
+        <ScholarFigure x={170} y={196}/>
+        <ScholarFigure x={186} y={194} mirror/>
+        <ScholarFigure x={240} y={196}/>
+        <ScholarFigure x={108} y={192}/>
+        <ScholarFigure x={304} y={194} mirror/>
+
+        {/* tiny trees flanking */}
+        <TinyTree x={32}  y={160}/>
+        <TinyTree x={368} y={160}/>
+
+        {/* corner flourishes */}
+        <path d="M10,10 Q 16,16 22,10" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+        <path d="M378,10 Q 384,16 390,10" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+        <path d="M10,210 Q 16,204 22,210" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+        <path d="M378,210 Q 384,204 390,210" fill="none" stroke="#3a2515" strokeWidth=".5"/>
+      </svg>
+
+      <div style={{
+        fontFamily:'var(--script)', fontSize:14, textAlign:'center',
+        color:'var(--ink-soft)', marginTop:2,
+      }}>Вид с южных ворот, в час ранней лекции</div>
+    </div>
+  );
+}
+
+function ScholarFigure({x, y, mirror}){
+  return (
+    <g transform={`translate(${x},${y})${mirror?' scale(-1,1)':''}`}>
+      {/* hood */}
+      <path d="M0,-10 Q -3,-4 -3,0 L 3,0 Q 3,-4 0,-10 Z" fill="#3a2515" fillOpacity=".9"/>
+      {/* robe */}
+      <path d="M-4,0 L 4,0 L 5,6 L -5,6 Z" fill="#3a2515" fillOpacity=".75" stroke="#3a2515" strokeWidth=".3"/>
+      <line x1="-3" y1="2" x2="-4" y2="6" stroke="#3a2515" strokeWidth=".3"/>
+    </g>
+  );
+}
+
+function TinyTree({x, y}){
+  return (
+    <g transform={`translate(${x},${y})`}>
+      <line x1="0" y1="0" x2="0" y2="-18" stroke="#3a2515" strokeWidth=".5"/>
+      <path d="M-8,-10 Q 0,-24 8,-10 Q 4,-8 0,-10 Q -4,-8 -8,-10 Z" fill="#d9c89c" stroke="#3a2515" strokeWidth=".5"/>
+      <path d="M-8,-10 Q 0,-24 8,-10" fill="url(#hatch)" opacity=".5"/>
+    </g>
+  );
+}
+
+// ─── Schedule ───
+function Schedule(){
+  return (
+    <div>
+      <Ornament tiny>Расписание · Осенний триместр</Ornament>
+      <div style={{
+        marginTop:10, border:'1px solid rgba(60,35,10,0.35)', borderRadius:8,
+        overflow:'hidden',
+        background:'oklch(0.96 0.02 82)',
+      }}>
+        {TIMETABLE.map((r,i)=>(
+          <div key={i} style={{
+            display:'grid', gridTemplateColumns:'28px 24px 1fr auto',
+            gap:8, alignItems:'center',
+            padding:'8px 10px',
+            borderBottom: i<TIMETABLE.length-1?'1px dashed rgba(60,35,10,0.2)':'none',
+            background: r.done?'oklch(0.94 0.03 140 / 0.3)':r.club?'oklch(0.94 0.05 30 / 0.3)':'transparent',
+          }}>
+            <span style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', fontWeight:700}}>{r.day}</span>
+            <span style={{
+              fontFamily:'var(--rune)', fontSize:14,
+              color: r.club?'var(--wax)':'var(--ink-faint)',
+              textAlign:'center',
+            }}>{r.slot}</span>
+            <div>
+              <div style={{fontFamily:'var(--display)', fontWeight:600, fontSize:13, color:'var(--ink)', textDecoration:r.done?'line-through':'none'}}>
+                {r.subj}
+              </div>
+              <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:10, color:'var(--ink-faint)'}}>
+                {r.where} · {r.prof}
+              </div>
+            </div>
+            {r.done && <Chip color="verdigris">сдано</Chip>}
+            {r.club && <Chip color="wax">клуб</Chip>}
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:12, display:'flex', gap:8, justifyContent:'space-between', alignItems:'center', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)'}}>
+        <Chip color="ink">Сессия через 18 дн.</Chip>
+        <Chip color="verdigris">Средний балл 4.2</Chip>
+        <Chip color="magic">3/7 сдано</Chip>
+      </div>
+    </div>
+  );
+}
+
+// ─── Clubs bulletin board ───
+function ClubsBoard(){
+  return (
+    <div>
+      <Ornament tiny>Доска объявлений</Ornament>
+      <div style={{
+        marginTop:10, padding:10, borderRadius:8,
+        background:'linear-gradient(180deg, oklch(0.45 0.05 38), oklch(0.36 0.05 36))',
+        border:'2px solid oklch(0.22 0.03 36)',
+        boxShadow:'inset 0 0 8px rgba(0,0,0,0.35), 0 2px 4px rgba(0,0,0,0.3)',
+        display:'grid', gridTemplateColumns:'1fr 1fr', gap:8,
+      }}>
+        {CLUBS.map((c,i)=>(
+          <div key={i} style={{
+            padding:'10px 9px',
+            background: 'oklch(0.96 0.03 82)',
+            border:'1px solid rgba(60,35,10,0.3)',
+            borderRadius:2,
+            transform: `rotate(${(i%2===0?-1:1)*1.2}deg)`,
+            boxShadow:'0 2px 6px rgba(0,0,0,0.35)',
+            position:'relative',
+          }}>
+            {/* thumbtack */}
+            <div style={{
+              position:'absolute', top:-5, left:'50%', transform:'translateX(-50%)',
+              width:10, height:10, borderRadius:'50%',
+              background:'radial-gradient(circle at 35% 30%, oklch(0.7 0.15 25), oklch(0.45 0.15 25))',
+              boxShadow:'0 1px 2px rgba(0,0,0,0.5)',
+            }}/>
+            <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:13, color:'var(--ink)'}}>{c.name}</div>
+            <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginTop:3}}>
+              {c.members} чел. · {c.tag}
+            </div>
+            <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink)', marginTop:6}}>
+              {c.note}
+            </div>
+            {c.hot && (
+              <div style={{
+                position:'absolute', top:-8, right:-6,
+                fontFamily:'var(--script)', fontSize:16, color:'var(--wax)',
+                transform:'rotate(10deg)',
+              }}>идёт набор!</div>
+            )}
+          </div>
+        ))}
+      </div>
+
+      <div style={{marginTop:10, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)', textAlign:'center'}}>
+        В клубе находят тех, с кем потом идут в подземелье.
+      </div>
+    </div>
+  );
+}
+
+// ─── Enrollment / progression ───
+function Enrollment(){
+  return (
+    <div>
+      <Ornament tiny>Ваш путь</Ornament>
+      <div style={{
+        marginTop:10, padding:'12px 14px',
+        background:'var(--vellum-2)', border:'1px solid rgba(60,35,10,0.35)', borderRadius:10,
+      }}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:15}}>Факультет Чародейства</div>
+        <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)', marginTop:2}}>
+          2-й курс бакалавриата · 1 семестр
+        </div>
+
+        {/* Schools chosen */}
+        <div style={{marginTop:10, display:'flex', gap:6}}>
+          <SchoolPick k="fire" chosen/>
+          <SchoolPick k="water" chosen/>
+          <SchoolPick k="earth"/>
+          <SchoolPick k="air"/>
+          <SchoolPick k="chaos"/>
+          <SchoolPick k="order"/>
+          <SchoolPick k="life"/>
+          <SchoolPick k="death"/>
+        </div>
+        <div style={{marginTop:6, fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-faint)'}}>
+          Огонь и Вода — выбрано. Смена возможна, одна школа может остаться.
+        </div>
+      </div>
+
+      {/* Progress ribbon */}
+      <div style={{marginTop:12, padding:'10px 12px', border:'1px solid rgba(60,35,10,0.3)', borderRadius:10, background:'var(--vellum-2)'}}>
+        <div style={{display:'flex', justifyContent:'space-between', fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginBottom:4}}>
+          <span>Базовое обр.</span><span>Бакалавриат</span><span>Магистратура</span><span>Аспирантура</span>
+        </div>
+        <div style={{height:10, borderRadius:3, background:'rgba(60,35,10,0.12)', border:'1px solid rgba(60,35,10,0.3)', overflow:'hidden', position:'relative'}}>
+          <div style={{width:'34%', height:'100%', background:'linear-gradient(180deg, var(--gilt), oklch(0.55 0.12 60))'}}/>
+          <div style={{position:'absolute', left:'34%', top:-2, bottom:-2, width:2, background:'var(--wax)', boxShadow:'0 0 4px var(--wax)'}}/>
+        </div>
+        <div style={{marginTop:6, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)'}}>
+          «На защиту дипломной работы нужно ещё 2 года игрового времени».
+        </div>
+      </div>
+
+      {/* Grant */}
+      <div style={{marginTop:12, padding:'10px 12px', border:'1px solid rgba(60,35,10,0.3)', borderRadius:10, background:'oklch(0.94 0.05 140 / 0.35)', position:'relative'}}>
+        <div style={{position:'absolute', top:-8, right:-6}}>
+          <div className="wax-seal" style={{width:32, height:32, fontSize:13}}>✦</div>
+        </div>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:13}}>Стипендия от благотворительного фонда</div>
+        <div style={{fontFamily:'var(--serif)', fontSize:12, marginTop:4, color:'var(--ink-soft)'}}>
+          Ваша успеваемость позволяет сохранять грант. Оплата обучения: <span style={{fontFamily:'var(--mono)', color:'var(--verdigris)'}}>0 монет</span>.
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function SchoolPick({k, chosen}){
+  return (
+    <div style={{
+      flex:1, aspectRatio:'1', borderRadius:'50%',
+      background: chosen ? `radial-gradient(circle at 35% 30%, oklch(from var(--s-${k}) calc(l+.2) c h), var(--s-${k}))` : 'oklch(0.92 0.02 80)',
+      border: `1.5px solid ${chosen?'transparent':'rgba(60,35,10,0.35)'}`,
+      color: chosen?'#f5ead3':`var(--s-${k})`,
+      display:'flex', alignItems:'center', justifyContent:'center',
+      fontFamily:'var(--rune)', fontSize:14,
+      boxShadow: chosen?`0 0 8px var(--s-${k})`:'inset 0 1px 0 rgba(255,245,220,0.5)',
+      position:'relative',
+    }} title={SCHOOL_NAME_RU[k]}>
+      {SCHOOL_GLYPH[k]}
+    </div>
+  );
+}
+
+Object.assign(window, { Academy });
+
+
+// ═══ screens/Market.js ═══
+// Market — capital city market: stalls with goods, haggle hint, currency display.
+// Kept deliberately simple: a parchment ledger of stalls, each with 2-4 items.
+
+const STALLS = [
+  {
+    id:'herbs', name:'Травник',
+    keeper:'тётка Мираб', tagline:'Травы, корни, толчёные кости',
+    items:[
+      {name:'Полынь, пучок',          price:3,  unit:'шт', tag:'алх.'},
+      {name:'Мандрагора (мал.)',      price:38, unit:'шт', tag:'редк.', short:true},
+      {name:'Соль смешанная',         price:6,  unit:'мерка'},
+      {name:'Слюна болотника',        price:24, unit:'флакон', tag:'алх.'},
+    ],
+  },
+  {
+    id:'paper', name:'Писчая лавка',
+    keeper:'мастер Эль', tagline:'Бумага, перья, чернила',
+    items:[
+      {name:'Пергамент, лист',        price:8,  unit:'шт'},
+      {name:'Чернила красные',        price:14, unit:'флакон'},
+      {name:'Перо вороны',            price:2,  unit:'шт'},
+      {name:'Перо феникса',           price:240,unit:'шт', tag:'редк.', short:true},
+    ],
+  },
+  {
+    id:'smith', name:'Кузня',
+    keeper:'кузнец Бран', tagline:'Железо, наконечники, простые ремонты',
+    items:[
+      {name:'Кинжал',                 price:42, unit:'шт'},
+      {name:'Замок дверной',          price:18, unit:'шт'},
+      {name:'Починка доспеха',        price:25, unit:'усл.'},
+    ],
+  },
+  {
+    id:'food', name:'Хлебная',
+    keeper:'старуха Лой', tagline:'Хлеб, сыр, сушёное мясо',
+    items:[
+      {name:'Хлеб ржаной',            price:2,  unit:'шт'},
+      {name:'Сыр овечий',             price:7,  unit:'кусок'},
+      {name:'Сушёное мясо',           price:11, unit:'связка'},
+      {name:'Дорожные припасы (3 дн)',price:15, unit:'набор', tag:'дорога'},
+    ],
+  },
+];
+
+function Market({onLeave}){
+  const [stallId, setStallId] = React.useState('herbs');
+  const [coins, setCoins] = React.useState(128);
+  const [bag, setBag] = React.useState({}); // name -> qty (just for the demo)
+  const stall = STALLS.find(s=>s.id===stallId);
+
+  function buy(item){
+    if(coins < item.price) return;
+    setCoins(c => c - item.price);
+    setBag(b => ({...b, [item.name]: (b[item.name]||0)+1}));
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      <div style={{position:'relative', padding:'10px 12px 4px'}}>
+        <Ornament tiny>Рыночная площадь</Ornament>
+      </div>
+
+      {/* Stall picker */}
+      <div style={{
+        position:'relative',
+        padding:'6px 10px',
+        display:'flex', gap:6, overflowX:'auto',
+      }}>
+        {STALLS.map(s=>(
+          <button key={s.id} onClick={()=>setStallId(s.id)} style={{
+            flexShrink:0, padding:'6px 12px', borderRadius:6,
+            background: stallId===s.id ? 'var(--vellum)' : 'transparent',
+            border: `1px solid ${stallId===s.id ? 'var(--ink)' : 'rgba(60,35,10,0.3)'}`,
+            cursor:'pointer',
+            fontFamily:'var(--display)', fontWeight: stallId===s.id?700:500, fontSize:12,
+            color: stallId===s.id ? 'var(--ink)' : 'var(--ink-soft)',
+          }}>{s.name}</button>
+        ))}
+      </div>
+
+      {/* Stall body */}
+      <div className="mmgo-scroll" style={{
+        position:'relative', flex:1, overflow:'auto', padding:'4px 12px 10px',
+      }}>
+        <div style={{
+          padding:'12px 14px',
+          background:'var(--vellum)', border:'1px solid rgba(60,35,10,0.4)',
+          borderRadius:10,
+          boxShadow:'inset 0 0 24px rgba(60,35,10,0.1), 0 2px 4px rgba(40,25,10,0.15)',
+        }}>
+          <div style={{display:'flex', alignItems:'baseline', justifyContent:'space-between', gap:8}}>
+            <div>
+              <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:18}}>{stall.name}</div>
+              <div style={{fontFamily:'var(--script)', fontSize:14, color:'var(--ink-soft)'}}>{stall.keeper}</div>
+            </div>
+            <Chip color="ink">тариф средний</Chip>
+          </div>
+          <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-faint)', marginTop:4}}>
+            «{stall.tagline}»
+          </div>
+
+          <div className="hrule" style={{margin:'12px 0'}}/>
+
+          <ul style={{listStyle:'none', padding:0, margin:0}}>
+            {stall.items.map(it=>(
+              <li key={it.name} style={{
+                display:'grid', gridTemplateColumns:'1fr auto auto', gap:10,
+                alignItems:'center', padding:'8px 0',
+                borderBottom:'1px dotted rgba(60,35,10,0.25)',
+              }}>
+                <div>
+                  <div style={{fontFamily:'var(--serif)', fontSize:13, color:'var(--ink)'}}>
+                    {it.name}
+                    {it.tag && <span style={{
+                      fontFamily:'var(--mono)', fontSize:9, marginLeft:6,
+                      color:'var(--wax)', textTransform:'uppercase', letterSpacing:'.05em',
+                    }}>· {it.tag}</span>}
+                    {it.short && <span style={{
+                      fontFamily:'var(--script)', fontSize:11, marginLeft:6, color:'var(--ink-faint)',
+                    }}>(спрашивайте)</span>}
+                  </div>
+                  {bag[it.name] && (
+                    <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--verdigris)', marginTop:1}}>
+                      ✓ куплено · {bag[it.name]} {it.unit}
+                    </div>
+                  )}
+                </div>
+                <div style={{
+                  fontFamily:'var(--mono)', fontSize:12,
+                  color: coins<it.price?'var(--ink-faint)':'var(--ink)',
+                  textAlign:'right',
+                }}>
+                  {it.price}<span style={{color:'var(--gilt)', marginLeft:2}}>🜚</span>
+                  <div style={{fontSize:9, color:'var(--ink-faint)'}}>/ {it.unit}</div>
+                </div>
+                <button onClick={()=>buy(it)} disabled={coins<it.price}
+                  className="inkbtn"
+                  style={{padding:'5px 10px', fontSize:11}}>
+                  купить
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div style={{marginTop:10, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-faint)', textAlign:'center'}}>
+          На рынке полдень. Запах рыбы и пряностей.
+        </div>
+      </div>
+
+      {/* Footer ribbon — coins, leave */}
+      <div style={{
+        borderTop:'1px solid rgba(60,35,10,0.45)',
+        padding:'10px 12px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        background:'var(--vellum-2)',
+      }}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14}}>
+          У вас: <span style={{color:'var(--gilt)'}}>{coins}</span>
+          <span style={{fontFamily:'var(--mono)', fontSize:12, color:'var(--ink-soft)', marginLeft:2}}>🜚</span>
+        </div>
+        <button className="inkbtn ghost" onClick={onLeave}>Уйти с рынка</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Market });
+
+
+// ═══ screens/Tavern.js ═══
+// Tavern — hire crew (tool/alch), drink, listen for rumours.
+// Implements the GDD's "tool"-class (warrior/scout) and "alch"-class (alchemist/healer)
+// who travel with the caster, plus a rumour board.
+
+const HIREABLES = [
+  {
+    id:'torvald', name:'Торвальд', role:'Воин (tool)',
+    cost:18, day:'нанят на день',
+    skills:['меч-щит','подавление','инициатива'],
+    short:'Бывший дружинник. Молчалив. Не любит магов, но идёт за деньги.',
+    school:'tool',
+  },
+  {
+    id:'lien', name:'Льенн', role:'Алхимик (alch)',
+    cost:22, day:'на день',
+    skills:['зелья','лечение','травы'],
+    short:'Студентка с факультета алхимии. Подрабатывает между лекциями.',
+    school:'alch',
+  },
+  {
+    id:'gris', name:'Грис', role:'Лучник (tool)',
+    cost:14, day:'на день',
+    skills:['лук','следы','бесшумность'],
+    short:'Охотник из Малых Вод. Знает все тропы возле озера.',
+    school:'tool',
+  },
+  {
+    id:'morv', name:'Морв', role:'Ремонтник (tool)',
+    cost:12, day:'на день',
+    skills:['ловушки','замки','верёвки'],
+    short:'Глуховатый, но руки — золото. Берёт авансом.',
+    school:'tool',
+  },
+];
+
+const RUMOURS = [
+  {tag:'башня', text:'Говорят, на нижнем ярусе подземелья снова шумит.', hot:true},
+  {tag:'рынок', text:'Купцы из Верхнего Предела привезли соль вдвое дешевле обычного.'},
+  {tag:'двор',  text:'Княжеский писарь ищет сведущего в латыни. Платит исправно.'},
+  {tag:'хутор', text:'У Жёлтых Полей третий день подряд кто-то портит изгородь.'},
+];
+
+function Tavern({onLeave, party=[], setParty}){
+  const [tab, setTab] = React.useState('hire');
+  const localParty = party && party.length ? party : ['torvald','lien'];
+  const partySet = new Set(localParty);
+
+  function toggleHire(id){
+    const next = partySet.has(id)
+      ? localParty.filter(x=>x!==id)
+      : (localParty.length<3 ? [...localParty, id] : localParty);
+    setParty && setParty(next);
+  }
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      {/* Header — wood panel header */}
+      <div style={{
+        position:'relative',
+        padding:'12px 14px 10px',
+        background:'linear-gradient(180deg, oklch(0.42 0.07 35), oklch(0.34 0.07 33))',
+        borderBottom:'1px solid rgba(0,0,0,0.45)',
+        boxShadow:'inset 0 -2px 0 rgba(0,0,0,0.3)',
+        color:'#f5ead3',
+      }}>
+        <div style={{
+          fontFamily:'var(--script)', fontSize:18, lineHeight:1,
+          color:'var(--gilt)', letterSpacing:'.04em', textAlign:'center',
+        }}>«Три пера»</div>
+        <div style={{
+          fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11,
+          color:'rgba(245,234,211,0.7)', textAlign:'center', marginTop:2,
+        }}>таверна и заезжий дом</div>
+      </div>
+
+      <div style={{
+        display:'flex', borderBottom:'1px solid rgba(60,35,10,0.3)',
+        background:'var(--vellum-2)',
+      }}>
+        {[['hire','Доска найма'],['rumours','Слухи'],['drink','Заказать']].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{
+            flex:1, padding:'8px 4px', cursor:'pointer',
+            background: tab===k?'var(--vellum)':'transparent',
+            border:'none',
+            borderBottom: tab===k?'2px solid var(--wax)':'2px solid transparent',
+            fontFamily:'var(--display)', fontWeight: tab===k?700:500, fontSize:12,
+            color: tab===k?'var(--ink)':'var(--ink-soft)',
+            letterSpacing:'.04em',
+          }}>{l}</button>
+        ))}
+      </div>
+
+      <div className="mmgo-scroll" style={{position:'relative', flex:1, overflow:'auto', padding:'10px 12px 0'}}>
+        {tab==='hire' && (
+          <div>
+            <div style={{
+              fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-faint)',
+              textTransform:'uppercase', letterSpacing:'.08em', marginBottom:6,
+              display:'flex', justifyContent:'space-between',
+            }}>
+              <span>Доска найма</span>
+              <span>в отряде {localParty.length}/3</span>
+            </div>
+            <div style={{
+              padding:8, borderRadius:6,
+              background:'linear-gradient(180deg, oklch(0.45 0.05 38), oklch(0.36 0.05 36))',
+              border:'2px solid oklch(0.22 0.03 36)',
+              boxShadow:'inset 0 0 8px rgba(0,0,0,0.35)',
+              display:'flex', flexDirection:'column', gap:8,
+            }}>
+              {HIREABLES.map((h,i)=>{
+                const hired = partySet.has(h.id);
+                return (
+                  <div key={h.id} style={{
+                    padding:'10px 12px',
+                    background:'oklch(0.95 0.03 82)',
+                    border:'1px solid rgba(60,35,10,0.3)',
+                    borderRadius:2,
+                    transform: `rotate(${(i%2===0?-0.6:0.5)}deg)`,
+                    boxShadow:'0 2px 5px rgba(0,0,0,0.35)',
+                    position:'relative',
+                  }}>
+                    {/* tack */}
+                    <div style={{
+                      position:'absolute', top:-5, left:'50%', transform:'translateX(-50%)',
+                      width:8, height:8, borderRadius:'50%',
+                      background:'radial-gradient(circle at 35% 30%, oklch(0.7 0.15 25), oklch(0.45 0.15 25))',
+                      boxShadow:'0 1px 2px rgba(0,0,0,0.5)',
+                    }}/>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'baseline', gap:8}}>
+                      <div>
+                        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14, color:'var(--ink)'}}>{h.name}</div>
+                        <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)', marginTop:1}}>{h.role}</div>
+                      </div>
+                      <div style={{textAlign:'right'}}>
+                        <div style={{fontFamily:'var(--mono)', fontSize:13, color:'var(--ink)'}}>{h.cost}<span style={{color:'var(--gilt)', marginLeft:2}}>🜚</span></div>
+                        <div style={{fontSize:9, color:'var(--ink-faint)'}}>{h.day}</div>
+                      </div>
+                    </div>
+                    <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-soft)', marginTop:6}}>
+                      «{h.short}»
+                    </div>
+                    <div style={{display:'flex', gap:4, flexWrap:'wrap', marginTop:8}}>
+                      {h.skills.map(s=>(
+                        <span key={s} style={{
+                          fontFamily:'var(--mono)', fontSize:9,
+                          padding:'1px 6px', borderRadius:3,
+                          background:'oklch(0.9 0.03 80)',
+                          border:'1px solid rgba(60,35,10,0.25)',
+                          color:'var(--ink-soft)',
+                        }}>{s}</span>
+                      ))}
+                    </div>
+                    <button onClick={()=>toggleHire(h.id)}
+                      className={`inkbtn${hired?' primary':''}`}
+                      style={{marginTop:10, width:'100%', padding:'6px', fontSize:11}}>
+                      {hired?'✓ уже в отряде — отказать':'нанять'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+            <div style={{marginTop:10, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-faint)', textAlign:'center'}}>
+              Tool — за оружие. Alch — за зелья. Caster — это вы.
+            </div>
+          </div>
+        )}
+
+        {tab==='rumours' && (
+          <div>
+            <Ornament tiny>Слухи дня</Ornament>
+            <div style={{marginTop:8, display:'flex', flexDirection:'column', gap:8}}>
+              {RUMOURS.map((r,i)=>(
+                <div key={i} style={{
+                  padding:'10px 12px',
+                  background:'var(--vellum)',
+                  border:`1px solid ${r.hot?'var(--wax)':'rgba(60,35,10,0.3)'}`,
+                  borderLeft:`3px solid ${r.hot?'var(--wax)':'var(--ink-soft)'}`,
+                  borderRadius:6,
+                  position:'relative',
+                }}>
+                  <div style={{display:'flex', gap:8, alignItems:'baseline'}}>
+                    <span style={{
+                      fontFamily:'var(--mono)', fontSize:9,
+                      padding:'1px 6px', borderRadius:2,
+                      background:'rgba(60,35,10,0.08)', color:'var(--ink-soft)',
+                      textTransform:'uppercase', letterSpacing:'.05em',
+                    }}>{r.tag}</span>
+                    {r.hot && <span style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--wax)'}}>● горячее</span>}
+                  </div>
+                  <div style={{fontFamily:'var(--serif)', fontSize:13, marginTop:4, color:'var(--ink)'}}>{r.text}</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {tab==='drink' && (
+          <div>
+            <Ornament tiny>Меню</Ornament>
+            <div style={{marginTop:8, padding:14, background:'var(--vellum)', border:'1px solid rgba(60,35,10,0.3)', borderRadius:8}}>
+              <ul style={{listStyle:'none', padding:0, margin:0, fontFamily:'var(--serif)', fontSize:13}}>
+                {[
+                  ['Эль тёмный, кружка',     2],
+                  ['Вино из Малых Вод',      6],
+                  ['Похлёбка с олениной',    4],
+                  ['Жаркое + хлеб + сыр',    9],
+                  ['Постель до утра',       10],
+                ].map(([n,p])=>(
+                  <li key={n} style={{display:'flex', justifyContent:'space-between', padding:'6px 0', borderBottom:'1px dotted rgba(60,35,10,0.25)'}}>
+                    <span>{n}</span>
+                    <span style={{fontFamily:'var(--mono)', color:'var(--ink-soft)'}}>{p} <span style={{color:'var(--gilt)'}}>🜚</span></span>
+                  </li>
+                ))}
+              </ul>
+              <button className="inkbtn primary" style={{width:'100%', marginTop:10}}>Заказать всё (31🜚)</button>
+            </div>
+            <div style={{marginTop:10, fontFamily:'var(--serif)', fontStyle:'italic', fontSize:11, color:'var(--ink-faint)', textAlign:'center'}}>
+              Тёплая еда возвращает 1 ⚡ и сбрасывает усталость до утра.
+            </div>
+          </div>
+        )}
+      </div>
+
+      <div style={{
+        borderTop:'1px solid rgba(60,35,10,0.4)',
+        padding:'10px 12px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+        background:'var(--vellum-2)',
+      }}>
+        <div style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)'}}>
+          отряд: {localParty.map(id=>HIREABLES.find(h=>h.id===id)?.name.split(' ')[0]).join(' · ')}
+        </div>
+        <button className="inkbtn ghost" onClick={onLeave}>Выйти</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Tavern, HIREABLES });
+
+
+// ═══ screens/Dungeon.js ═══
+// Dungeon — top-down tile/room map. Visually a hand-inked dungeon plan on parchment.
+// Same visual language as world map, but smaller scale, room-based, with a fog of war.
+
+const ROOMS = [
+  // x,y in % of viewport. type: entrance | room | shrine | treasure | boss
+  {id:'r0', x:50, y:88, type:'entrance', label:'Вход'},
+  {id:'r1', x:50, y:72, type:'room',     label:'Передняя'},
+  {id:'r2', x:30, y:60, type:'room',     label:'Кладовая'},
+  {id:'r3', x:70, y:60, type:'shrine',   label:'Алтарь'},
+  {id:'r4', x:50, y:48, type:'room',     label:'Перекрёсток'},
+  {id:'r5', x:22, y:34, type:'treasure', label:'Сундук'},
+  {id:'r6', x:78, y:32, type:'room',     label:'Колодец'},
+  {id:'r7', x:50, y:22, type:'boss',     label:'Зал Стража'},
+];
+
+const CORRIDORS = [
+  ['r0','r1'], ['r1','r2'], ['r1','r3'], ['r1','r4'],
+  ['r4','r5'], ['r4','r6'], ['r4','r7'],
+];
+
+function Dungeon({onLeave, onCombat}){
+  const [pos, setPos] = React.useState('r0');
+  const [seen, setSeen] = React.useState(new Set(['r0','r1']));
+
+  function move(roomId){
+    if(roomId===pos) return;
+    // only allow if connected
+    const ok = CORRIDORS.some(([a,b])=> (a===pos && b===roomId)||(b===pos && a===roomId));
+    if(!ok) return;
+    setPos(roomId);
+    setSeen(s => new Set([...s, roomId]));
+  }
+
+  const here = ROOMS.find(r=>r.id===pos);
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      {/* Dungeon parchment background — darker, water-stained */}
+      <div style={{
+        position:'absolute', inset:0,
+        background:`
+          radial-gradient(ellipse at 30% 20%, oklch(0.62 0.06 60 / 0.6), transparent 40%),
+          radial-gradient(ellipse at 70% 80%, oklch(0.55 0.08 35 / 0.5), transparent 50%),
+          linear-gradient(180deg, oklch(0.74 0.05 65), oklch(0.66 0.06 60))
+        `,
+      }}/>
+      <div className="parchment" style={{opacity:0.7}}/>
+
+      {/* The dungeon plan itself */}
+      <div style={{position:'relative', flex:1, overflow:'hidden'}}>
+        <svg viewBox="0 0 100 100" preserveAspectRatio="none" style={{
+          position:'absolute', inset:0, width:'100%', height:'100%',
+        }}>
+          {/* Corridors */}
+          {CORRIDORS.map(([a,b],i)=>{
+            const ra = ROOMS.find(r=>r.id===a);
+            const rb = ROOMS.find(r=>r.id===b);
+            const known = seen.has(a) && seen.has(b);
+            return (
+              <line key={i}
+                x1={ra.x} y1={ra.y} x2={rb.x} y2={rb.y}
+                stroke={known?'oklch(0.30 0.04 40)':'rgba(60,35,10,0.18)'}
+                strokeWidth="0.7"
+                strokeDasharray={known?'':'1.5 1.2'}
+                vectorEffect="non-scaling-stroke"
+              />
+            );
+          })}
+        </svg>
+
+        {/* Rooms */}
+        {ROOMS.map(r=>{
+          const isHere = r.id===pos;
+          const known = seen.has(r.id);
+          const reachable = CORRIDORS.some(([a,b])=> (a===pos && b===r.id)||(b===pos && a===r.id));
+          if(!known && !reachable) return null;
+          return (
+            <button key={r.id}
+              onClick={()=>move(r.id)}
+              disabled={!reachable && !isHere}
+              style={{
+                position:'absolute', left:`${r.x}%`, top:`${r.y}%`,
+                transform:'translate(-50%,-50%)',
+                width:42, height:32, padding:0,
+                background:'transparent', border:'none', cursor:reachable?'pointer':'default',
+              }}>
+              <RoomGlyph type={r.type} state={isHere?'here':known?'seen':'reachable'}/>
+              {(known || isHere) && (
+                <div style={{
+                  position:'absolute', top:'100%', left:'50%', transform:'translateX(-50%)',
+                  fontFamily:'var(--display)', fontSize:9, fontWeight:600,
+                  color: isHere ? 'var(--wax)' : 'var(--ink)',
+                  textShadow:'0 0 3px rgba(245,234,211,0.9)',
+                  whiteSpace:'nowrap', marginTop:2,
+                  pointerEvents:'none',
+                }}>{r.label}</div>
+              )}
+            </button>
+          );
+        })}
+
+        {/* Compass / scale ornament — bottom corner */}
+        <div style={{
+          position:'absolute', bottom:8, left:8,
+          fontFamily:'var(--rune)', fontSize:10, color:'var(--ink-soft)',
+          opacity:0.7,
+        }}>
+          ◬ Подземелье Башни — ярус I
+        </div>
+      </div>
+
+      {/* Bottom panel — current room + actions */}
+      <div style={{
+        position:'relative',
+        borderTop:'1px solid rgba(60,35,10,0.45)',
+        background:'var(--vellum)',
+        padding:'10px 12px',
+      }}>
+        <div style={{display:'flex', alignItems:'baseline', gap:8, marginBottom:8}}>
+          <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:14}}>{here.label}</div>
+          <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--ink-faint)', textTransform:'uppercase', letterSpacing:'.06em'}}>
+            {ROOM_DESC[here.type]?.tag}
+          </div>
+        </div>
+        <div style={{fontFamily:'var(--serif)', fontStyle:'italic', fontSize:12, color:'var(--ink-soft)', lineHeight:1.45}}>
+          {ROOM_DESC[here.type]?.text}
+        </div>
+
+        <div style={{display:'flex', gap:6, marginTop:10}}>
+          {here.type==='boss' && (
+            <button className="inkbtn primary" onClick={onCombat} style={{flex:1}}>
+              Бой со Стражем
+            </button>
+          )}
+          {here.type==='treasure' && (
+            <button className="inkbtn primary" style={{flex:1}}>Открыть сундук</button>
+          )}
+          {here.type==='shrine' && (
+            <button className="inkbtn" style={{flex:1}}>Помолиться (+1 ⚡)</button>
+          )}
+          {here.type==='room' && (
+            <button className="inkbtn" style={{flex:1}}>Обыскать комнату</button>
+          )}
+          {here.type==='entrance' && (
+            <button className="inkbtn ghost" onClick={onLeave} style={{flex:1}}>← Выйти из подземелья</button>
+          )}
+          {here.type!=='entrance' && (
+            <button className="inkbtn ghost" onClick={()=>setPos('r0')}>в начало</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const ROOM_DESC = {
+  entrance: {tag:'вход',     text:'Каменная арка, мхом по углам. Снаружи светит солнце; внутри — холод и эхо.'},
+  room:     {tag:'комната',  text:'Пустое помещение. По стенам — следы старого пожара.'},
+  shrine:   {tag:'алтарь',   text:'Каменный алтарь. На нём догорает чья-то свеча. Магия здесь сильнее.'},
+  treasure: {tag:'сокровищница', text:'Окованный медью сундук. Замок цел, но на петлях — свежие царапины.'},
+  boss:     {tag:'опасно',   text:'В дальнем углу что-то крупное переводит дыхание. Воздух гудит низко.'},
+};
+
+function RoomGlyph({type, state}){
+  // state: here | seen | reachable
+  const fill = type==='boss'    ? 'oklch(0.55 0.18 28)'
+            : type==='treasure' ? 'oklch(0.65 0.13 80)'
+            : type==='shrine'   ? 'oklch(0.55 0.16 295)'
+            : type==='entrance' ? 'oklch(0.50 0.10 165)'
+            : 'oklch(0.92 0.04 80)';
+  const stroke = state==='here' ? 'var(--wax)' : 'var(--ink)';
+  const sw = state==='here' ? 1.6 : 0.9;
+  const opacity = state==='reachable' ? 0.55 : 1;
+  return (
+    <svg width="42" height="32" viewBox="-21 -16 42 32" style={{opacity, overflow:'visible'}}>
+      {/* shadow */}
+      <rect x="-13" y="-9" width="26" height="18" rx="2" fill="rgba(0,0,0,0.3)" transform="translate(1, 1)"/>
+      {/* room rect */}
+      <rect x="-13" y="-9" width="26" height="18" rx="2" fill={fill} stroke={stroke} strokeWidth={sw}/>
+      {type==='boss' && (
+        <text x="0" y="3" textAnchor="middle" fontSize="10" fontFamily="var(--rune)" fill="oklch(0.25 0.08 28)" fontWeight="700">⚔</text>
+      )}
+      {type==='treasure' && (
+        <text x="0" y="3" textAnchor="middle" fontSize="10" fontFamily="var(--rune)" fill="oklch(0.30 0.08 60)" fontWeight="700">⛁</text>
+      )}
+      {type==='shrine' && (
+        <text x="0" y="3" textAnchor="middle" fontSize="10" fontFamily="var(--rune)" fill="oklch(0.30 0.10 295)" fontWeight="700">✦</text>
+      )}
+      {type==='entrance' && (
+        <text x="0" y="3" textAnchor="middle" fontSize="10" fontFamily="var(--rune)" fill="oklch(0.25 0.10 165)" fontWeight="700">↟</text>
+      )}
+      {state==='here' && (
+        <circle r="2.5" cx="0" cy="0" fill="var(--wax)" stroke="oklch(0.25 0.10 27)" strokeWidth="0.6" style={{animation:'pulse-magic 1.6s ease-in-out infinite'}}/>
+      )}
+    </svg>
+  );
+}
+
+Object.assign(window, { Dungeon });
+
+
+// ═══ screens/Inventory.js ═══
+// Inventory — chest contents + carried-on-person split.
+// Parchment ledger of items, sortable by category, with weight/coin readout.
+
+const ITEMS = [
+  // chest items
+  {id:'i1',  loc:'chest', cat:'weapon',   name:'Меч стальной',          qty:1, weight:1.4, val:42, tag:''},
+  {id:'i2',  loc:'chest', cat:'armor',    name:'Кольчуга',              qty:1, weight:6.0, val:120, tag:''},
+  {id:'i3',  loc:'chest', cat:'reagent',  name:'Ртуть, флакон',         qty:3, weight:0.2, val:18, tag:'алх.'},
+  {id:'i4',  loc:'chest', cat:'reagent',  name:'Корень мандрагоры',     qty:2, weight:0.05, val:38, tag:'редк.'},
+  {id:'i5',  loc:'chest', cat:'reagent',  name:'Соль смешанная',        qty:8, weight:0.1, val:6, tag:''},
+  {id:'i6',  loc:'chest', cat:'paper',    name:'Пергамент, лист',       qty:24, weight:0.02, val:8, tag:''},
+  {id:'i7',  loc:'chest', cat:'paper',    name:'Чернила красные',       qty:4, weight:0.15, val:14, tag:''},
+  {id:'i8',  loc:'chest', cat:'tool',     name:'Отмычки (3 шт)',        qty:1, weight:0.1, val:30, tag:''},
+  {id:'i9',  loc:'chest', cat:'misc',     name:'Письмо с печатью',      qty:1, weight:0.01, val:0, tag:'квест'},
+  {id:'i10', loc:'chest', cat:'misc',     name:'Серебряный кулон',      qty:1, weight:0.05, val:80, tag:''},
+
+  // carried items
+  {id:'c1',  loc:'carry', cat:'reagent',  name:'Полынь, пучок',         qty:5, weight:0.05, val:3, tag:''},
+  {id:'c2',  loc:'carry', cat:'paper',    name:'Походный гримуар',      qty:1, weight:0.4, val:0, tag:'актив.'},
+  {id:'c3',  loc:'carry', cat:'tool',     name:'Кинжал',                qty:1, weight:0.4, val:18, tag:''},
+  {id:'c4',  loc:'carry', cat:'food',     name:'Дорожные припасы',      qty:3, weight:0.3, val:5, tag:'дн.'},
+  {id:'c5',  loc:'carry', cat:'food',     name:'Фляга с водой',         qty:1, weight:0.5, val:2, tag:''},
+];
+
+const CATS = [
+  {k:'all',     label:'Все'},
+  {k:'reagent', label:'Реагенты'},
+  {k:'paper',   label:'Бумага'},
+  {k:'weapon',  label:'Оружие'},
+  {k:'armor',   label:'Доспехи'},
+  {k:'tool',    label:'Снаряжение'},
+  {k:'food',    label:'Еда'},
+  {k:'misc',    label:'Прочее'},
+];
+
+const CAT_ICON = {
+  reagent:'⚗', paper:'✎', weapon:'⚔', armor:'⛨', tool:'🜔', food:'⌬', misc:'❖',
+};
+
+function Inventory({onLeave}){
+  const [tab, setTab] = React.useState('chest'); // chest | carry
+  const [cat, setCat] = React.useState('all');
+  const [items] = React.useState(ITEMS); // immutable for the demo
+
+  const visible = items.filter(i=>i.loc===tab && (cat==='all' || i.cat===cat));
+  const totalWeight = items.filter(i=>i.loc==='carry').reduce((s,i)=>s+i.qty*i.weight,0);
+  const carryCap = 20;
+  const totalValue = items.filter(i=>i.loc===tab).reduce((s,i)=>s+i.qty*i.val,0);
+
+  return (
+    <div style={{position:'relative', flex:1, overflow:'hidden', display:'flex', flexDirection:'column'}}>
+      <div className="parchment"/>
+
+      <div style={{position:'relative', padding:'10px 14px 6px', textAlign:'center'}}>
+        <div style={{fontFamily:'var(--display)', fontWeight:700, fontSize:16, letterSpacing:'.04em'}}>Опись</div>
+        <div style={{fontFamily:'var(--script)', fontSize:13, color:'var(--ink-soft)', marginTop:-2}}>
+          {tab==='chest'?'сундук в доме':'при себе'}
+        </div>
+      </div>
+
+      <div style={{
+        position:'relative',
+        display:'flex', padding:'4px 12px', gap:6,
+        borderBottom:'1px solid rgba(60,35,10,0.3)',
+      }}>
+        {[['chest','Сундук'],['carry','При себе']].map(([k,l])=>(
+          <button key={k} onClick={()=>setTab(k)} style={{
+            flex:1, padding:'8px', cursor:'pointer',
+            background: tab===k?'var(--vellum)':'transparent',
+            border:`1px solid ${tab===k?'var(--ink)':'rgba(60,35,10,0.25)'}`,
+            borderRadius:'6px 6px 0 0',
+            borderBottom:tab===k?'1px solid var(--vellum)':'1px solid rgba(60,35,10,0.3)',
+            marginBottom:-1,
+            fontFamily:'var(--display)', fontWeight: tab===k?700:500, fontSize:13,
+            color: tab===k?'var(--ink)':'var(--ink-soft)',
+          }}>{l}</button>
+        ))}
+      </div>
+
+      {/* Category strip */}
+      <div style={{
+        position:'relative', padding:'6px 10px',
+        display:'flex', gap:4, overflowX:'auto',
+        borderBottom:'1px solid rgba(60,35,10,0.2)',
+      }}>
+        {CATS.map(c=>(
+          <button key={c.k} onClick={()=>setCat(c.k)} style={{
+            flexShrink:0, padding:'4px 10px', borderRadius:4,
+            background: cat===c.k ? 'rgba(60,35,10,0.15)':'transparent',
+            border:'1px solid transparent',
+            fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-soft)',
+            textTransform:'uppercase', letterSpacing:'.06em',
+            cursor:'pointer',
+            fontWeight: cat===c.k?700:500,
+          }}>{c.label}</button>
+        ))}
+      </div>
+
+      {/* Items list */}
+      <div className="mmgo-scroll" style={{position:'relative', flex:1, overflow:'auto'}}>
+        {visible.length===0 && (
+          <div style={{textAlign:'center', padding:40, fontFamily:'var(--serif)', fontStyle:'italic', color:'var(--ink-faint)', fontSize:12}}>
+            пусто
+          </div>
+        )}
+        <ul style={{listStyle:'none', margin:0, padding:'4px 0'}}>
+          {visible.map(it=>(
+            <li key={it.id} style={{
+              display:'grid',
+              gridTemplateColumns:'24px 1fr auto auto',
+              alignItems:'center', gap:10,
+              padding:'9px 14px',
+              borderBottom:'1px dotted rgba(60,35,10,0.2)',
+              cursor:'pointer',
+            }}>
+              <div style={{
+                width:24, height:24, display:'flex', alignItems:'center', justifyContent:'center',
+                fontSize:14, color:'var(--ink-soft)',
+              }}>{CAT_ICON[it.cat]}</div>
+              <div>
+                <div style={{fontFamily:'var(--serif)', fontSize:13, color:'var(--ink)'}}>
+                  {it.name}
+                  {it.qty>1 && <span style={{fontFamily:'var(--mono)', color:'var(--ink-soft)', marginLeft:6}}>× {it.qty}</span>}
+                </div>
+                {it.tag && (
+                  <div style={{fontFamily:'var(--mono)', fontSize:9, color:'var(--wax)', textTransform:'uppercase', letterSpacing:'.05em', marginTop:1}}>
+                    {it.tag}
+                  </div>
+                )}
+              </div>
+              <div style={{fontFamily:'var(--mono)', fontSize:10, color:'var(--ink-faint)', textAlign:'right'}}>
+                {(it.qty*it.weight).toFixed(2)} кг
+              </div>
+              <div style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink-soft)', textAlign:'right', minWidth:40}}>
+                {it.val>0? <>{it.val*it.qty}<span style={{color:'var(--gilt)', marginLeft:1}}>🜚</span></> : '—'}
+              </div>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      {/* Footer ribbon */}
+      <div style={{
+        borderTop:'1px solid rgba(60,35,10,0.45)',
+        background:'var(--vellum-2)',
+        padding:'8px 14px',
+        display:'flex', alignItems:'center', justifyContent:'space-between',
+      }}>
+        <div style={{fontFamily:'var(--mono)', fontSize:11, color:'var(--ink)'}}>
+          вес: <b>{totalWeight.toFixed(1)}</b> / {carryCap} кг
+          <span style={{color:'var(--ink-soft)', marginLeft:8}}>· оценка: {totalValue}🜚</span>
+        </div>
+        <button className="inkbtn ghost" onClick={onLeave} style={{padding:'5px 10px', fontSize:11}}>Закрыть</button>
+      </div>
+    </div>
+  );
+}
+
+Object.assign(window, { Inventory });
+
+
+// ═══ app.js ═══
+// MMGO — main router + Telegram mini-app shell inside iOS device frame
+
+const { useState, useEffect } = React;
+
+function App(){
+  const [screen, setScreen] = useState('map');
+  const [currentPoi, setCurrentPoi] = useState(()=> localStorage.getItem('mmgo.poi') || null);
+  const [gameTime, setGameTime] = useState({day:14, month:7, year:1247, season:'Лето'});
+  const [backendState, setBackendState] = useState(null);
+  const [backendPois, setBackendPois] = useState(null);
+  const [backendRoads, setBackendRoads] = useState(null);
+
+  // Tweaks — simplified, no edit mode
+  const [tweaks, setTweaks] = useState({night: false, grimoireLayout: "shelves"});
+  const tweaksOpen = false;
+
+  // Persisted party
+  const [party, setParty] = useState(()=> {
+    try { return JSON.parse(localStorage.getItem('mmgo.party')||'["torvald","lien"]'); }
+    catch(e){ return ['torvald','lien']; }
+  });
+  useEffect(()=>{ localStorage.setItem('mmgo.party', JSON.stringify(party)); },[party]);
+
+  // Fetch real backend state
+  const refreshBackendState = React.useCallback(() => {
+    fetch('/api/play/state', { credentials: 'same-origin', headers: { accept: 'application/json' } })
+      .then(r => r.json())
+      .then(payload => {
+        if (payload.ok) {
+          window.__GAME_STATE = payload.state;
+          setBackendState(payload.state);
+          const pois = backendToPOIS(payload.state);
+          setBackendPois(pois);
+          if (pois) {
+            const { paths, adj } = backendToRoads(payload.state, pois);
+            setBackendRoads({ paths, adj });
+            const currentLoc = payload.state.current_location;
+            if (currentLoc && !localStorage.getItem('mmgo.poi')) {
+              setCurrentPoi(currentLoc.id);
+            }
+          }
+          if (payload.state.realm) {
+            setGameTime({
+              day: payload.state.realm.day || 14,
+              month: payload.state.realm.month || 7,
+              year: payload.state.realm.year || 1247,
+              season: payload.state.realm.season || 'Лето',
+            });
+          }
+        }
+      })
+      .catch(err => console.error('Failed to fetch game state:', err));
+  }, []);
+
+  useEffect(() => { refreshBackendState(); }, []);
+
+  const title = {
+    map:'Карта княжества',
+    location:'Прибытие',
+    base:'Хутор',
+    spell:'Круг призыва',
+    grimoire:'Гримуары',
+    combat:'Бой',
+    academy:'Академия',
+    market:'Рынок',
+    tavern:'Таверна',
+    dungeon:'Подземелье',
+    inventory:'Опись',
+  }[screen];
+
+  const subtitle = {
+    map:'ручная съёмка · 1247 г.',
+    location:'вы здесь',
+    base:'ваш дом',
+    spell:'Латынь и намерение',
+    grimoire:'полки и каталог',
+    combat:'одновременные ходы',
+    academy:'осенний триместр',
+    market:'столица · полдень',
+    tavern:'«Три пера»',
+    dungeon:'ярус I',
+    inventory:'сундук и карманы',
+  }[screen];
+
+  function go(s){ setScreen(s); }
+  function enterLocation(poiId){
+    setCurrentPoi(poiId);
+    setScreen('location');
+  }
+
+  // Screen content
+  let body;
+  if(screen==='map')      body = <MapScreen night={tweaks.night} onEnter={enterLocation} gameTime={gameTime} setGameTime={setGameTime}
+    backendState={backendState} backendPois={backendPois} backendRoads={backendRoads} backendJourneysPath={window.__API.journeysPath}
+    refreshBackend={refreshBackendState} />;
+  else if(screen==='location') body = <LocationEvent poiId={currentPoi} onLeave={()=>setScreen('map')} onGo={(k)=>{
+      if(k==='base')        setScreen('base');
+      else if(k==='dungeon') setScreen('dungeon');
+      else if(k==='party' || k==='tavern') setScreen('tavern');
+      else if(k==='market') setScreen('market');
+      else if(k==='academy') setScreen('academy');
+      else if(k==='library') setScreen('grimoire');
+      else if(k==='letter')  setScreen('base'); // placeholder
+      else setScreen('base');
+    }}/>;
+  else if(screen==='base')    body = <Base onGo={go} onLeave={()=>setScreen('location')}/>;
+  else if(screen==='spell')   body = <SpellCircle onLeave={()=>setScreen('base')}/>;
+  else if(screen==='grimoire')body = <Grimoire layout={tweaks.grimoireLayout} onLayoutChange={(l)=>setTweak('grimoireLayout',l)} onLeave={()=>setScreen('base')}/>;
+  else if(screen==='combat')  body = <Combat onLeave={()=>setScreen('dungeon')}/>;
+  else if(screen==='academy') body = <Academy onLeave={()=>setScreen('location')}/>;
+  else if(screen==='market')  body = <Market onLeave={()=>setScreen('location')}/>;
+  else if(screen==='tavern')  body = <Tavern onLeave={()=>setScreen('location')} party={party} setParty={setParty}/>;
+  else if(screen==='dungeon') body = <Dungeon onLeave={()=>setScreen('location')} onCombat={()=>setScreen('combat')}/>;
+  else if(screen==='inventory')body = <Inventory onLeave={()=>setScreen('base')}/>;
+
+  return (
+    <>
+      <div style={{
+        position:'fixed', inset:0, display:'flex', flexDirection:'column',
+        background: tweaks.night ? 'oklch(0.16 0.03 258)' : 'oklch(0.94 0.022 82)',
+        overflow:'hidden',
+      }}>
+        <MiniAppHeader
+          title={title}
+          subtitle={subtitle}
+          left={screen!=='map' ? <HeaderBack onClick={()=>setScreen('map')}/> : null}
+          right={<div style={{display:'flex', alignItems:'center', gap:4}}><HeaderMenu/></div>}
+        />
+        <div style={{padding:'4px 10px 0', display:'flex', justifyContent:'center', gap:6, flexShrink:0}}>
+          <GameTimePill day={gameTime.day} month={gameTime.month} year={gameTime.year} season={gameTime.season} night={tweaks.night}/>
+          <Chip color="verdigris">⚡ {backendState?.magic?.mana_available ?? 14} / {backendState?.magic?.mana_max ?? 20}</Chip>
+          <Chip color="wax">🜚 {backendState?.magic?.pyra_balance ?? 128}</Chip>
+        </div>
+        <div style={{flex:1, display:'flex', flexDirection:'column', marginTop:6, minHeight:0}}>
+          {body}
+        </div>
+      </div>
+      <VibesParticles count={25}/>
+      <VibesOverlays/>
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(<App/>);
+
+// app runs at bottom
+
+
+</script>
+
+<template id="__bundler_thumbnail">
+<svg viewBox="0 0 120 80" xmlns="http://www.w3.org/2000/svg">
+  <rect width="120" height="80" fill="oklch(0.18 0.04 50)"/>
+  <rect x="35" y="8" width="50" height="64" rx="8" fill="oklch(0.94 0.03 80)" stroke="oklch(0.52 0.08 56)" stroke-width="0.5"/>
+  <circle cx="60" cy="38" r="16" fill="none" stroke="oklch(0.50 0.18 295)" stroke-width="0.8"/>
+  <text x="60" y="43" text-anchor="middle" font-size="12" fill="oklch(0.52 0.17 27)">✦</text>
+  <text x="60" y="64" text-anchor="middle" font-size="5" fill="oklch(0.42 0.05 52)" letter-spacing="1">MMGO</text>
+</svg>
+</template>
+</body>
+</html>

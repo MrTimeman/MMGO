@@ -198,21 +198,26 @@ defmodule MMGO.Accounts do
     |> String.downcase()
     |> String.replace(~r/[^a-z0-9]+/u, "-")
     |> String.trim("-")
+    |> case do
+      "" -> ""
+      slug -> slug
+    end
   end
 
-  defp random_suffix(bytes) do
-    bytes
+  defp telegram_atom_key(key) when is_binary(key) do
+    key
+    |> String.to_existing_atom()
+  rescue
+    ArgumentError -> :__missing__
+  end
+
+  defp random_suffix(length) do
+    length
     |> :crypto.strong_rand_bytes()
-    |> Base.encode16(case: :lower)
+    |> Base.encode32(case: :lower, padding: false)
+    |> binary_part(0, length)
   end
 
-  defp is_nil_or_empty?(value), do: is_nil(value) or value == ""
-
-  defp telegram_atom_key("id"), do: :id
-  defp telegram_atom_key("username"), do: :username
-  defp telegram_atom_key("first_name"), do: :first_name
-  defp telegram_atom_key("last_name"), do: :last_name
-  defp telegram_atom_key("language_code"), do: :language_code
-  defp telegram_atom_key("is_bot"), do: :is_bot
-  defp telegram_atom_key(_key), do: nil
+  defp is_nil_or_empty?(value) when value in [nil, ""], do: true
+  defp is_nil_or_empty?(_), do: false
 end

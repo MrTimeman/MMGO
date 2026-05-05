@@ -8,6 +8,9 @@ defmodule Mix.Tasks.Ai.Test do
       GEMINI_API_KEY=xxx mix ai.test narrate
       GEMINI_API_KEY=xxx mix ai.test orchestrate
       GEMINI_API_KEY=xxx mix ai.test dungeon
+
+      DEEPSEEK_API_KEY=xxx MMGO_AI_PROVIDER=deepseek mix ai.test
+      DEEPSEEK_API_KEY=xxx DEEPSEEK_MODEL=deepseek-v4-flash mix ai.test
   """
 
   use Mix.Task

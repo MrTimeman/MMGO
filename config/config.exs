@@ -17,13 +17,7 @@ config :mmgo, Oban,
   plugins: [
     {Oban.Plugins.Pruner, max_age: 60 * 60 * 24}
   ],
-  queues: [default: 10, telegram: 5]
-
-config :mmgo, MMGO.Telegram,
-  api_base_url: "https://api.telegram.org",
-  bot_token: nil,
-  webhook_path: "/api/telegram/webhook",
-  webhook_secret: nil
+  queues: [default: 10]
 
 config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
@@ -44,16 +38,24 @@ config :mmgo, MMGO.AI.Providers.Gemini,
   api_base_url: "https://generativelanguage.googleapis.com/v1beta",
   api_key: nil
 
-config :mmgo, MMGO.Operator, handles: []
+config :mmgo, MMGO.AI.Providers.DeepSeek,
+  api_base_url: "https://api.deepseek.com",
+  api_key: nil,
+  models: %{
+    spell_compile: "deepseek-chat",
+    turn_narration: "deepseek-chat",
+    combat_orchestrator: "deepseek-chat",
+    dungeon_tick: "deepseek-chat"
+  },
+  max_tokens: 4096,
+  thinking: nil,
+  reasoning_effort: nil
+
+config :mmgo, MMGO.Telegram,
+  api_base_url: "https://api.telegram.org",
+  bot_token: nil
 
 config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
-
-config :mmgo, MMGO.Federation,
-  freeze_game_days: 28,
-  level_retention_bps: 800,
-  xp_retention_bps: 700,
-  public_base_url: nil,
-  import_token: nil
 
 # Configure the endpoint
 config :mmgo, MMGOWeb.Endpoint,

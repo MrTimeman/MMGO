@@ -2,7 +2,6 @@ defmodule MMGO.Combat.Engine do
   alias MMGO.Combat.{Action, Combat, Orchestrator, Participant, RNG, Turn}
   alias MMGO.Inventory.{InventoryItem, ItemAction}
   alias MMGO.Spells.{Runtime, Spell, SpellEffect}
-  alias MMGO.Worlds
 
   def resolve_turn(%Combat{} = combat, %Turn{} = turn, participants, actions, opts \\ []) do
     participants_by_id =
@@ -300,22 +299,10 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
-      is_nil(action.spell) ->
+      is_nil(action.spell) or action.spell.__struct__ == Ecto.Association.NotLoaded ->
         {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "invalid_action", %{"participant_id" => participant.id})
-           | events
-         ]}
-
-      not Worlds.magic_allowed_for_combat?(combat) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "magic_suppressed", %{
-             "participant_id" => participant.id,
-             "spell_id" => action.spell_id,
-             "location_kind" =>
-               combat.metadata["location_kind"] || combat.metadata[:location_kind]
-           })
            | events
          ]}
 
@@ -329,7 +316,7 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
-      action.spell.creator_character_id != participant.character_id ->
+      is_nil(action.spell.creator_character_id) or action.spell.creator_character_id != participant.character_id ->
         {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "unauthorized_spell", %{

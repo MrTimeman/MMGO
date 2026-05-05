@@ -2,35 +2,13 @@ defmodule MMGO.Operator do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Academy
-  alias MMGO.Academy.Enrollment
-  alias MMGO.Academia
-  alias MMGO.Academia.{Professor, Project, Publication}
-  alias MMGO.Alchemy
-  alias MMGO.Alchemy.BrewJob
-  alias MMGO.Bases
-  alias MMGO.Bases.Base
-  alias MMGO.Clubs.{Club, Invitation}
   alias MMGO.Combat.Combat
-  alias MMGO.Crafting
-  alias MMGO.Crafting.CraftJob
   alias MMGO.Dungeons
   alias MMGO.Dungeons.{Extraction, Run, State}
   alias MMGO.Economy.EconomyAccount
-  alias MMGO.Federation
-  alias MMGO.Federation.Migration
-  alias MMGO.Market.Listing
-  alias MMGO.NPCShops.{Offer, Shop}
-  alias MMGO.Notifications.Notification
-  alias MMGO.Overworld.Encounter
   alias MMGO.Operator.AuditEvent
-  alias MMGO.Organizations.Organization
   alias MMGO.Parties.Expedition
-  alias MMGO.Progression.{Milestone, RewardGrant}
-  alias MMGO.Reputation.{CrimeRecord, Profile}
   alias MMGO.Repo
-  alias MMGO.Scavenging
-  alias MMGO.Scavenging.Attempt
   alias MMGO.Travel
   alias MMGO.Travel.Journey
   alias MMGO.Worlds.{Location, Realm, Route}
@@ -43,33 +21,11 @@ defmodule MMGO.Operator do
       locations: Repo.aggregate(Location, :count, :id),
       routes: Repo.aggregate(Route, :count, :id),
       active_journeys: count_active(Journey),
-      active_enrollments: count_active(Enrollment),
-      active_research_projects: count_active(Project),
-      active_professors: count_active(Professor),
-      publications: Repo.aggregate(Publication, :count, :id),
-      active_brew_jobs: count_active(BrewJob),
-      active_craft_jobs: count_active(CraftJob),
-      active_bases: count_active(Base),
-      building_bases: count_status(Base, :building),
-      active_clubs: count_active(Club),
-      pending_club_invitations: count_status(Invitation, :pending),
-      active_migrations: count_active(Migration),
-      active_scavenge_attempts: count_active(Attempt),
       active_expeditions: count_active(Expedition),
       active_runs: count_active(Run),
       active_extractions: count_active(Extraction),
       active_dungeon_cycles: count_dungeon_cycles(),
-      active_overworld_encounters: count_active(Encounter),
-      active_organizations: count_active(Organization),
-      configured_milestones: Repo.aggregate(Milestone, :count, :id),
-      reward_grants: Repo.aggregate(RewardGrant, :count, :id),
       active_combats: count_combat_active(),
-      active_market_listings: count_active(Listing),
-      active_npc_shops: count_active(Shop),
-      npc_shop_offers: Repo.aggregate(Offer, :count, :id),
-      active_market_bans: count_active_market_bans(),
-      open_crimes: count_status(CrimeRecord, :open),
-      pending_notifications: count_status(Notification, :pending),
       treasury_balance_total: balance_total(:treasury),
       character_balance_total: balance_total(:character)
     }
@@ -103,95 +59,6 @@ defmodule MMGO.Operator do
         Repo.aggregate(
           from(journey in Journey,
             where: journey.realm_id == ^realm.id and journey.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_enrollments:
-        Repo.aggregate(
-          from(enrollment in Enrollment,
-            where: enrollment.realm_id == ^realm.id and enrollment.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_research_projects:
-        Repo.aggregate(
-          from(project in Project,
-            where: project.realm_id == ^realm.id and project.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_professors:
-        Repo.aggregate(
-          from(professor in Professor,
-            where: professor.realm_id == ^realm.id and professor.status == :active
-          ),
-          :count,
-          :id
-        ),
-      publications:
-        Repo.aggregate(
-          from(publication in Publication, where: publication.realm_id == ^realm.id),
-          :count,
-          :id
-        ),
-      active_brew_jobs:
-        Repo.aggregate(
-          from(brew_job in BrewJob,
-            where: brew_job.realm_id == ^realm.id and brew_job.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_craft_jobs:
-        Repo.aggregate(
-          from(craft_job in CraftJob,
-            where: craft_job.realm_id == ^realm.id and craft_job.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_bases:
-        Repo.aggregate(
-          from(base in Base, where: base.realm_id == ^realm.id and base.status == :active),
-          :count,
-          :id
-        ),
-      building_bases:
-        Repo.aggregate(
-          from(base in Base, where: base.realm_id == ^realm.id and base.status == :building),
-          :count,
-          :id
-        ),
-      active_clubs:
-        Repo.aggregate(
-          from(club in Club, where: club.realm_id == ^realm.id and club.status == :active),
-          :count,
-          :id
-        ),
-      pending_club_invitations:
-        Repo.aggregate(
-          from(invitation in Invitation,
-            join: club in assoc(invitation, :club),
-            where: club.realm_id == ^realm.id and invitation.status == :pending
-          ),
-          :count,
-          :id
-        ),
-      active_migrations:
-        Repo.aggregate(
-          from(migration in Migration,
-            where: migration.origin_realm_id == ^realm.id and migration.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_scavenge_attempts:
-        Repo.aggregate(
-          from(attempt in Attempt,
-            where: attempt.realm_id == ^realm.id and attempt.status == :active
           ),
           :count,
           :id
@@ -232,61 +99,12 @@ defmodule MMGO.Operator do
           :count,
           :id
         ),
-      active_overworld_encounters:
-        Repo.aggregate(
-          from(encounter in Encounter,
-            where: encounter.realm_id == ^realm.id and encounter.status in [:pending, :active]
-          ),
-          :count,
-          :id
-        ),
       active_combats:
         Repo.aggregate(
           from(combat in Combat,
             where:
               combat.realm_id == ^realm.id and
                 combat.status in [:active_turn, :locked, :resolving]
-          ),
-          :count,
-          :id
-        ),
-      active_market_listings:
-        Repo.aggregate(
-          from(listing in Listing,
-            where: listing.realm_id == ^realm.id and listing.status == :active
-          ),
-          :count,
-          :id
-        ),
-      active_npc_shops:
-        Repo.aggregate(
-          from(shop in Shop, where: shop.realm_id == ^realm.id and shop.status == :active),
-          :count,
-          :id
-        ),
-      npc_shop_offers:
-        Repo.aggregate(
-          from(offer in Offer,
-            join: shop in assoc(offer, :shop),
-            where: shop.realm_id == ^realm.id
-          ),
-          :count,
-          :id
-        ),
-      active_market_bans:
-        Repo.aggregate(
-          from(profile in Profile,
-            where:
-              profile.realm_id == ^realm.id and not is_nil(profile.market_ban_until) and
-                profile.market_ban_until > ^DateTime.utc_now()
-          ),
-          :count,
-          :id
-        ),
-      open_crimes:
-        Repo.aggregate(
-          from(crime in CrimeRecord,
-            where: crime.realm_id == ^realm.id and crime.status == :open
           ),
           :count,
           :id
@@ -316,29 +134,13 @@ defmodule MMGO.Operator do
 
     Repo.transaction(fn ->
       journeys = Travel.complete_due_journeys(now)
-      enrollments = Academy.complete_due_enrollments(now)
-      projects = Academia.complete_due_projects(now)
-      brew_jobs = Alchemy.complete_due_brew_jobs(now)
-      craft_jobs = Crafting.complete_due_craft_jobs(now)
-      bases = Bases.complete_due_base_builds(now)
-      migrations = Federation.complete_due_migrations(now)
       dungeons = Dungeons.maintain_due_dungeons(now)
       extractions = Dungeons.complete_due_extractions(now)
-      attempts = Scavenging.complete_due_attempts(now)
-      refreshed_caches = Scavenging.refresh_due_resource_caches(now)
 
       summary = %{
         completed_journeys: count_ok(journeys),
-        completed_enrollments: count_ok(enrollments),
-        completed_research_projects: count_ok(projects),
-        completed_brew_jobs: count_ok(brew_jobs),
-        completed_craft_jobs: count_ok(craft_jobs),
-        completed_bases: count_ok(bases),
         completed_dungeon_cycles: count_ok(dungeons),
-        completed_extractions: count_ok(extractions),
-        completed_migrations: count_ok(migrations),
-        completed_attempts: count_ok(attempts),
-        refreshed_resource_caches: length(refreshed_caches)
+        completed_extractions: count_ok(extractions)
       }
 
       audit_event =
@@ -374,10 +176,6 @@ defmodule MMGO.Operator do
     Repo.aggregate(from(record in module, where: record.status == :active), :count, :id)
   end
 
-  defp count_status(module, status) do
-    Repo.aggregate(from(record in module, where: record.status == ^status), :count, :id)
-  end
-
   defp count_combat_active do
     Repo.aggregate(
       from(combat in Combat, where: combat.status in [:active_turn, :locked, :resolving]),
@@ -388,18 +186,6 @@ defmodule MMGO.Operator do
 
   defp count_dungeon_cycles do
     Repo.aggregate(from(state in State), :count, :id)
-  end
-
-  defp count_active_market_bans do
-    now = DateTime.utc_now()
-
-    Repo.aggregate(
-      from(profile in Profile,
-        where: not is_nil(profile.market_ban_until) and profile.market_ban_until > ^now
-      ),
-      :count,
-      :id
-    )
   end
 
   defp balance_total(owner_type) do

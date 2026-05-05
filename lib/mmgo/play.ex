@@ -4,13 +4,10 @@ defmodule MMGO.Play do
   alias Ecto.Changeset
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Dungeons
-  alias MMGO.Inventory
-  alias MMGO.Inventory.ItemTemplate
   alias MMGO.Grimoires
   alias MMGO.Parties
   alias MMGO.Repo
   alias MMGO.Spells.Spell
-  alias MMGO.Survival
   alias MMGO.Travel
   alias MMGO.Travel.{Clock, Journey}
   alias MMGO.Worlds
@@ -18,8 +15,6 @@ defmodule MMGO.Play do
 
   @browser_account_handle "wayfarer-local"
   @browser_character_name "Альтаир Вейн"
-  @starter_ration_code "play_map_ration"
-  @starter_ration_quantity 24
   @map_image_url "/images/demo-map.png"
   @default_map_width 2_000
   @default_map_height 2_000
@@ -244,41 +239,7 @@ defmodule MMGO.Play do
   defp ensure_character_location!(%Character{} = character, _entry_location), do: character
 
   defp ensure_starter_supplies!(%Character{} = character) do
-    minimum_food_units = @starter_ration_quantity
-    available_food_units = Survival.food_units_available(character)
-
-    if available_food_units < minimum_food_units do
-      template = starter_ration_template!()
-
-      Inventory.grant_item(character, template, %{
-        quantity: minimum_food_units - available_food_units
-      })
-    else
-      {:ok, :already_stocked}
-    end
-  end
-
-  defp starter_ration_template! do
-    Repo.get_by(ItemTemplate, code: @starter_ration_code) ||
-      create_starter_ration_template!()
-  end
-
-  defp create_starter_ration_template! do
-    {:ok, template} =
-      Inventory.create_item_template(%{
-        code: @starter_ration_code,
-        name: "Дорожный паёк",
-        item_type: :food,
-        stackable: true,
-        weight: 1,
-        max_durability: 0,
-        nutrition_units: 1,
-        tags: ["travel", "starter"],
-        metadata: %{"source" => "play_map"},
-        actions: []
-      })
-
-    template
+    {:ok, character}
   end
 
   defp entry_location_for_realm(%Realm{} = realm) do
@@ -371,11 +332,11 @@ defmodule MMGO.Play do
     }
   end
 
-  defp supply_payload(%Character{} = character) do
+  defp supply_payload(%Character{} = _character) do
     %{
-      food_units_available: Survival.food_units_available(character),
-      carried_weight: Survival.carried_weight(character),
-      carry_capacity: Survival.carry_capacity(character)
+      food_units_available: 0,
+      carried_weight: 0,
+      carry_capacity: 100
     }
   end
 
@@ -471,10 +432,8 @@ defmodule MMGO.Play do
 
   defp available_route_payload(
          {%Route{} = route, %Location{} = destination},
-         %Character{} = character
+         %Character{} = _character
        ) do
-    plan = Survival.travel_plan(character, route.travel_days)
-
     %{
       id: route.id,
       name: route.name,
@@ -482,9 +441,9 @@ defmodule MMGO.Play do
       destination_name: destination.name,
       destination_kind: to_string(destination.kind),
       travel_days: route.travel_days,
-      total_game_days: plan.total_game_days,
-      required_food_units: plan.required_food_units,
-      encumbrance_penalty_days: plan.encumbrance_penalty_days,
+      total_game_days: route.travel_days,
+      required_food_units: 0,
+      encumbrance_penalty_days: 0,
       risk_level: route.risk_level
     }
   end

@@ -33,7 +33,7 @@ defmodule MMGO.Dungeons do
   alias MMGO.Economy
   alias MMGO.Grimoires
   alias MMGO.Inventory
-  alias MMGO.Notifications
+  # Notifications removed in MVP
   alias MMGO.Parties
   alias MMGO.Parties.{Expedition, ExpeditionMember}
   alias MMGO.Repo
@@ -1059,25 +1059,11 @@ defmodule MMGO.Dungeons do
       extraction_type == :return_ritual and is_nil(caster) ->
         Repo.rollback(extraction_changeset("a caster must initiate the return ritual"))
 
-      extraction_type == :return_ritual and not ritual_caster?(caster) ->
-        Repo.rollback(
-          extraction_changeset(
-            "initiator must be a wizardry specialist to perform the return ritual"
-          )
-        )
-
       extraction_type == :return_ritual and not expedition_member?(expedition.id, caster.id) ->
         Repo.rollback(extraction_changeset("ritual caster must belong to the expedition"))
 
       true ->
         :ok
-    end
-  end
-
-  defp ritual_caster?(%Character{} = character) do
-    case MMGO.Academy.active_specialization(character.id) do
-      %MMGO.Academy.Specialization{track: :wizardry} -> true
-      _other -> false
     end
   end
 
@@ -1189,15 +1175,8 @@ defmodule MMGO.Dungeons do
     {inventory_drops, grimoire_drop}
   end
 
-  defp notify_run_exit!(members, run, extraction_type, lost_item_count) do
-    Enum.each(members, fn member ->
-      character = Repo.get!(Character, member.character_id)
-
-      case run.status do
-        :failed -> _ = Notifications.notify_run_failed(character, run, lost_item_count)
-        _other -> _ = Notifications.notify_extraction_completed(character, run, extraction_type)
-      end
-    end)
+  defp notify_run_exit!(_members, _run, _extraction_type, _lost_item_count) do
+    :ok
   end
 
   defp lock_or_init_state!(dungeon_id, now) do

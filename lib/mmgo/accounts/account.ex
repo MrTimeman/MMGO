@@ -14,8 +14,8 @@ defmodule MMGO.Accounts.Account do
     field :status, Ecto.Enum, values: [:active, :suspended], default: :active
     field :settings, :map, default: %{}
 
-    has_one :telegram_identity, TelegramIdentity
     has_many :characters, Character
+    has_one :telegram_identity, TelegramIdentity
 
     timestamps(type: :utc_datetime_usec)
   end

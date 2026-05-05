@@ -1,7 +1,6 @@
 defmodule MMGO.Worlds do
   import Ecto.Query, warn: false
 
-  alias MMGO.Federation.Ruleset
   alias MMGO.Repo
   alias MMGO.Worlds.{Location, Realm, Route}
 
@@ -33,22 +32,12 @@ defmodule MMGO.Worlds do
     Realm.changeset(realm, attrs)
   end
 
-  def realm_ruleset(%Realm{} = realm), do: Ruleset.normalize(realm.ruleset)
+  def realm_ruleset(%Realm{} = realm), do: realm.ruleset || %{}
 
   def realm_ruleset(realm_id) when is_binary(realm_id),
     do: realm_id |> get_realm!() |> realm_ruleset()
 
-  def magic_allowed_for_combat?(combat) do
-    location_kind = combat.metadata["location_kind"] || combat.metadata[:location_kind]
-
-    if is_nil(location_kind) do
-      true
-    else
-      combat.realm_id
-      |> realm_ruleset()
-      |> Ruleset.magic_allowed?(to_string(location_kind), combat.kind)
-    end
-  end
+  def magic_allowed_for_combat?(_combat), do: true
 
   def list_locations_for_realm(realm_id) when is_binary(realm_id) do
     Repo.all(
@@ -127,6 +116,28 @@ defmodule MMGO.Worlds do
 
   def change_route(%Route{} = route, attrs \\ %{}) do
     Route.changeset(route, attrs)
+  end
+
+  def update_location(%Location{} = location, attrs) do
+    location |> Location.changeset(attrs) |> Repo.update()
+  end
+
+  def update_route(%Route{} = route, attrs) do
+    route |> Route.changeset(attrs) |> Repo.update()
+  end
+
+  def delete_location(%Location{} = location) do
+    Repo.transaction(fn ->
+      from(r in Route,
+        where: r.origin_location_id == ^location.id or r.destination_location_id == ^location.id)
+      |> Repo.delete_all()
+
+      Repo.delete(location)
+    end)
+  end
+
+  def delete_route(%Route{} = route) do
+    Repo.delete(route)
   end
 
   defp stringify_keys(map) when is_map(map) do

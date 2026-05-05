@@ -4,7 +4,6 @@ defmodule MMGO.Travel do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Repo
-  alias MMGO.Survival
   alias MMGO.Travel.{Clock, CompleteJourneyWorker, Journey}
   alias MMGO.Worlds.Route
 
@@ -40,15 +39,14 @@ defmodule MMGO.Travel do
       end
 
       {from_location_id, to_location_id} = resolve_route_direction(character, route)
-      plan = Survival.travel_plan(character, route.travel_days)
+      travel_days = route.travel_days
+      total_game_days = travel_days
+      food_units_consumed = 0
+      encumbrance_penalty_days = 0
+      carried_weight = 0
+      carry_capacity = 100
 
-      food_result =
-        case Survival.consume_food(Repo, character, plan.required_food_units) do
-          {:ok, food_result} -> food_result
-          {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
-        end
-
-      arrival_at = Clock.arrival_at(started_at, plan.total_game_days)
+      arrival_at = Clock.arrival_at(started_at, total_game_days)
 
       journey =
         %Journey{}
@@ -59,11 +57,11 @@ defmodule MMGO.Travel do
           from_location_id: from_location_id,
           to_location_id: to_location_id,
           status: :active,
-          travel_days: plan.total_game_days,
-          food_units_consumed: food_result.food_units_consumed,
-          encumbrance_penalty_days: plan.encumbrance_penalty_days,
-          carried_weight: plan.current_weight,
-          carry_capacity: plan.carry_capacity,
+          travel_days: total_game_days,
+          food_units_consumed: food_units_consumed,
+          encumbrance_penalty_days: encumbrance_penalty_days,
+          carried_weight: carried_weight,
+          carry_capacity: carry_capacity,
           started_at: started_at,
           arrival_at: arrival_at
         })

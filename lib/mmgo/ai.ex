@@ -1,6 +1,8 @@
 defmodule MMGO.AI do
   import Ecto.Query, warn: false
 
+  require Logger
+
   alias MMGO.AI.{PromptVersions, Request}
   alias MMGO.Repo
 
@@ -31,6 +33,8 @@ defmodule MMGO.AI do
         end
 
       {:error, reason} ->
+        Logger.error("[AI] spell_compile FAILED: #{inspect(reason)}")
+
         ai_request_attrs = %{
           kind: :spell_compile,
           status: :failed,
@@ -79,6 +83,8 @@ defmodule MMGO.AI do
         end
 
       {:error, reason} ->
+        Logger.error("[AI] turn_narration FAILED: #{inspect(reason)}")
+
         ai_request_attrs = %{
           kind: :turn_narration,
           status: :failed,
@@ -128,6 +134,8 @@ defmodule MMGO.AI do
         end
 
       {:error, reason} ->
+        Logger.error("[AI] combat_orchestrator FAILED: #{inspect(reason)}")
+
         ai_request_attrs = %{
           kind: :combat_orchestrator,
           status: :failed,
@@ -175,6 +183,8 @@ defmodule MMGO.AI do
         end
 
       {:error, reason} ->
+        Logger.error("[AI] dungeon_tick FAILED: #{inspect(reason)}")
+
         ai_request_attrs = %{
           kind: :dungeon_tick,
           status: :failed,

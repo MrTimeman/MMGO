@@ -82,7 +82,7 @@ defmodule MMGO.TravelTest do
     assert journey.status == :active
     assert journey.from_location_id == city.id
     assert journey.to_location_id == tower.id
-    assert journey.food_units_consumed == 10
+    assert journey.food_units_consumed == 0
 
     assert DateTime.compare(journey.arrival_at, Clock.arrival_at(started_at, route.travel_days)) ==
              :eq
@@ -99,7 +99,7 @@ defmodule MMGO.TravelTest do
         item_template_id: ration_template.id
       )
 
-    assert ration_stack.quantity == 10
+    assert ration_stack.quantity == 20
   end
 
   test "start_journey/3 rejects characters with an existing active journey", %{

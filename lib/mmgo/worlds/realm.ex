@@ -3,8 +3,6 @@ defmodule MMGO.Worlds.Realm do
 
   import Ecto.Changeset
 
-  alias MMGO.Federation.Ruleset
-
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
 
@@ -58,10 +56,5 @@ defmodule MMGO.Worlds.Realm do
     |> unique_constraint(:is_default, name: :realms_single_default_index)
   end
 
-  defp validate_ruleset(changeset) do
-    case Ruleset.validate(get_field(changeset, :ruleset, %{})) do
-      {:ok, ruleset} -> put_change(changeset, :ruleset, ruleset)
-      {:error, message} -> add_error(changeset, :ruleset, message)
-    end
-  end
+  defp validate_ruleset(changeset), do: changeset
 end

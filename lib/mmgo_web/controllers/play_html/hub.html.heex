@@ -1,0 +1,1719 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+  <meta name="csrf-token" content={@csrf_token}>
+  <title>MMGO</title>
+  <script src="https://telegram.org/js/telegram-web-app.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@400;600;700&family=Vollkorn:ital,wght@0,400;0,600;1,400&family=Courier+Prime:ital,wght@0,400;0,700;1,400&family=IM+Fell+English:ital@0;1&display=swap" rel="stylesheet">
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --display: 'Cinzel', 'Palatino Linotype', Georgia, serif;
+      --serif:   'Vollkorn', 'Palatino Linotype', Georgia, serif;
+      --rune:    'IM Fell English', 'Palatino Linotype', serif;
+      --mono:    'Courier Prime', 'Courier New', monospace;
+
+      --ink:        oklch(0.22 0.04 50);
+      --ink-soft:   oklch(0.42 0.05 52);
+      --ink-faint:  oklch(0.58 0.05 55);
+      --wax:        oklch(0.52 0.17 27);
+      --wax-deep:   oklch(0.38 0.14 28);
+      --gilt:       oklch(0.72 0.10 62);
+      --magic:      oklch(0.50 0.18 295);
+      --magic-soft: oklch(0.70 0.12 295);
+      --verdigris:  oklch(0.48 0.10 165);
+      --vellum:        oklch(0.945 0.030 80);
+      --vellum-2:      oklch(0.905 0.038 78);
+      --vellum-shade:  oklch(0.860 0.042 75);
+      --sepia:         oklch(0.52 0.08 56);
+      --s-fire:   oklch(0.58 0.19 35);
+      --s-water:  oklch(0.52 0.15 248);
+      --s-earth:  oklch(0.48 0.13 128);
+      --s-air:    oklch(0.72 0.10 222);
+      --s-chaos:  oklch(0.50 0.18 305);
+      --s-order:  oklch(0.65 0.07 242);
+      --s-life:   oklch(0.54 0.14 148);
+      --s-death:  oklch(0.35 0.12 318);
+    }
+
+    html, body {
+      height: 100%;
+      background: var(--vellum);
+      font-family: var(--serif);
+      color: var(--ink);
+      -webkit-font-smoothing: antialiased;
+      text-rendering: optimizeLegibility;
+      overflow: hidden;
+    }
+
+    .app {
+      height: 100%;
+      width: 100%;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      background: var(--vellum);
+    }
+
+    .parchment-bg {
+      position: absolute;
+      inset: 0;
+      pointer-events: none;
+      z-index: 0;
+      background-image:
+        url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='300' height='300'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.72' numOctaves='4' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.055'/%3E%3C/svg%3E");
+      mix-blend-mode: multiply;
+    }
+
+    /* ── App header ── */
+    .app-header {
+      position: relative;
+      z-index: 5;
+      display: flex;
+      align-items: center;
+      padding: 10px 16px 8px;
+      border-bottom: 1px solid rgba(60,35,10,0.22);
+      background: linear-gradient(180deg, rgba(255,245,220,0.8), rgba(255,245,220,0));
+      flex-shrink: 0;
+    }
+    .app-header .title {
+      flex: 1;
+      text-align: center;
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 18px;
+      letter-spacing: 0.12em;
+      color: var(--ink);
+    }
+    .app-header .subtitle {
+      text-align: center;
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 11px;
+      color: var(--ink-faint);
+      margin-top: 1px;
+    }
+
+    /* ── Scrollable content ── */
+    .tab-panel {
+      display: none;
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: rgba(60,35,10,0.2) transparent;
+      padding: 14px 14px 10px;
+      position: relative;
+    }
+    .tab-panel::-webkit-scrollbar { width: 3px; }
+    .tab-panel::-webkit-scrollbar-thumb { background: rgba(60,35,10,0.18); border-radius: 2px; }
+    .tab-panel.active { display: block; }
+    #tab-dungeons.active { display: flex; flex-direction: column; }
+
+    /* ── Ornamental heading ── */
+    .ornament {
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 14px;
+      letter-spacing: 0.08em;
+      color: var(--ink);
+      text-align: center;
+      margin-bottom: 12px;
+      position: relative;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .ornament::before, .ornament::after {
+      content: '';
+      flex: 1;
+      height: 1px;
+      background: linear-gradient(90deg, transparent, rgba(60,35,10,0.3), transparent);
+    }
+    .ornament.small { font-size: 12px; margin-bottom: 8px; }
+
+    /* ── Parchment card ── */
+    .card {
+      background: linear-gradient(180deg, var(--vellum), var(--vellum-2));
+      border: 1px solid rgba(60,35,10,0.28);
+      border-radius: 10px;
+      padding: 14px;
+      margin-bottom: 12px;
+      box-shadow: inset 0 1px 0 rgba(255,245,220,0.7), 0 2px 6px rgba(40,25,10,0.08);
+      position: relative;
+    }
+    .card .empty {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 13px;
+      color: var(--ink-faint);
+      text-align: center;
+      padding: 6px 0;
+    }
+
+    /* ── Ink buttons ── */
+    .inkbtn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 18px;
+      border-radius: 8px;
+      border: 1px solid rgba(60,35,10,0.45);
+      background: linear-gradient(180deg, var(--vellum), var(--vellum-2));
+      color: var(--ink);
+      font-family: var(--display);
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.05em;
+      cursor: pointer;
+      box-shadow: inset 0 1px 0 rgba(255,245,220,0.65), 0 2px 4px rgba(40,25,10,0.12);
+      transition: background 0.15s, box-shadow 0.15s;
+      -webkit-font-smoothing: antialiased;
+    }
+    .inkbtn:hover:not(:disabled) {
+      background: linear-gradient(180deg, var(--vellum-shade), oklch(0.86 0.04 76));
+    }
+    .inkbtn:active:not(:disabled) { opacity: 0.85; }
+    .inkbtn:disabled { opacity: 0.45; cursor: default; }
+    .inkbtn.primary {
+      background: linear-gradient(180deg, var(--wax), var(--wax-deep));
+      border-color: rgba(80,20,5,0.5);
+      color: #f5ead3;
+      box-shadow: inset 0 1px 0 rgba(255,220,180,0.3), 0 2px 6px rgba(120,30,10,0.35);
+    }
+    .inkbtn.primary:hover:not(:disabled) {
+      background: linear-gradient(180deg, oklch(0.56 0.17 27), var(--wax));
+    }
+    .inkbtn.ghost {
+      background: transparent;
+      border-color: rgba(60,35,10,0.35);
+      color: var(--ink-soft);
+      box-shadow: none;
+    }
+    .inkbtn.ghost:hover:not(:disabled) { background: rgba(60,35,10,0.06); }
+    .inkbtn.full { width: 100%; }
+    .inkbtn.small { padding: 5px 12px; font-size: 11px; }
+
+    /* ── Form fields ── */
+    .field-group { margin-bottom: 10px; }
+    .field-label {
+      display: block;
+      font-family: var(--mono);
+      font-size: 10px;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      color: var(--ink-faint);
+      margin-bottom: 4px;
+    }
+    .ink-input, .ink-select {
+      width: 100%;
+      padding: 8px 10px;
+      border: 1px solid rgba(60,35,10,0.35);
+      border-radius: 6px;
+      background: oklch(0.96 0.02 82);
+      font-family: var(--mono);
+      font-size: 13px;
+      color: var(--ink);
+    }
+    .ink-input:focus, .ink-select:focus { outline: none; border-color: rgba(60,35,10,0.6); }
+    .ink-select { cursor: pointer; }
+    .field-row { display: flex; gap: 8px; }
+    .field-row .field-group { flex: 1; }
+
+    /* ── Search dropdown ── */
+    .search-wrap { position: relative; }
+    .search-dropdown {
+      position: absolute;
+      top: 100%;
+      left: 0; right: 0;
+      background: var(--vellum);
+      border: 1px solid rgba(60,35,10,0.35);
+      border-top: none;
+      border-radius: 0 0 8px 8px;
+      max-height: 200px;
+      overflow-y: auto;
+      z-index: 30;
+      display: none;
+      box-shadow: 0 4px 12px rgba(40,25,10,0.15);
+    }
+    .search-dropdown.show { display: block; }
+    .search-dropdown .drop-item {
+      padding: 9px 12px;
+      font-size: 13px;
+      font-family: var(--serif);
+      border-bottom: 1px solid rgba(60,35,10,0.12);
+      cursor: pointer;
+      color: var(--ink);
+    }
+    .search-dropdown .drop-item:last-child { border-bottom: none; }
+    .search-dropdown .drop-item:hover, .search-dropdown .drop-item.sel {
+      background: rgba(60,35,10,0.06);
+      color: var(--wax);
+    }
+
+    /* ── Chip / badge ── */
+    .chip {
+      display: inline-flex;
+      align-items: center;
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-family: var(--mono);
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .chip.ink { background: rgba(60,35,10,0.12); color: var(--ink-soft); }
+    .chip.wax { background: rgba(120,30,10,0.15); color: var(--wax); }
+    .chip.magic { background: rgba(90,60,180,0.12); color: var(--magic); }
+    .chip.gilt { background: rgba(140,100,30,0.12); color: var(--gilt); }
+    .chip.life { background: rgba(60,120,60,0.12); color: var(--s-life); }
+    .chip.danger { background: rgba(160,30,30,0.15); color: oklch(0.55 0.18 27); }
+
+    /* ── Wax seal ── */
+    .wax-seal {
+      width: 38px; height: 38px;
+      border-radius: 50%;
+      background: radial-gradient(circle at 35% 28%, oklch(0.65 0.18 27), var(--wax) 45%, var(--wax-deep));
+      border: 1.5px solid oklch(0.30 0.10 27);
+      display: flex; align-items: center; justify-content: center;
+      color: #f5ead3;
+      font-family: var(--rune);
+      box-shadow: 0 2px 6px rgba(80,20,5,0.45), inset 0 1px 0 rgba(255,200,160,0.3);
+    }
+
+    /* ── Hrule ── */
+    .hrule {
+      height: 1px;
+      margin: 12px 0;
+      background: linear-gradient(90deg, transparent 0%, rgba(60,35,10,0.3) 20%, rgba(60,35,10,0.3) 80%, transparent 100%);
+      position: relative;
+    }
+    .hrule::after {
+      content: '✦';
+      position: absolute; left: 50%; top: 50%;
+      transform: translate(-50%, -50%);
+      background: var(--vellum-2);
+      padding: 0 8px;
+      font-family: var(--rune);
+      font-size: 11px;
+      color: var(--gilt);
+      line-height: 1;
+    }
+
+    /* ── Result banner ── */
+    .result-banner {
+      padding: 10px 14px;
+      border-radius: 8px;
+      margin-top: 10px;
+      font-family: var(--serif);
+      font-size: 13px;
+      line-height: 1.5;
+      display: none;
+      position: relative;
+    }
+    .result-banner.show { display: block; }
+    .result-banner.win { background: rgba(60,120,60,0.1); border: 1px solid rgba(60,120,60,0.4); }
+    .result-banner.lose { background: rgba(120,30,10,0.1); border: 1px solid rgba(120,30,10,0.4); }
+    .result-banner.draw { background: rgba(140,100,30,0.1); border: 1px solid rgba(140,100,30,0.3); }
+
+    /* ── Duel entry row ── */
+    .duel-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(60,35,10,0.12);
+      font-size: 13px;
+    }
+    .duel-row:last-child { border-bottom: none; }
+    .duel-row .opp { font-family: var(--display); font-size: 12px; font-weight: 600; }
+    .duel-row .meta { font-size: 11px; color: var(--ink-faint); margin-top: 1px; }
+
+    /* ── Dungeon node row ── */
+    .node-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1px solid rgba(60,35,10,0.22);
+      border-radius: 8px;
+      margin-bottom: 6px;
+      background: linear-gradient(180deg, var(--vellum), var(--vellum-shade));
+      cursor: pointer;
+      transition: background 0.12s;
+    }
+    .node-row:hover { background: linear-gradient(180deg, var(--vellum-shade), var(--vellum-2)); }
+    .node-row .node-glyph {
+      font-family: var(--rune);
+      font-size: 18px;
+      color: var(--ink-soft);
+      width: 24px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .node-row .node-label { font-family: var(--display); font-size: 12px; font-weight: 600; }
+    .node-row .node-meta { font-size: 11px; color: var(--ink-faint); }
+    .node-row .node-go { margin-left: auto; }
+
+    /* ── Dungeon list item ── */
+    .dungeon-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 0;
+      border-bottom: 1px solid rgba(60,35,10,0.12);
+    }
+    .dungeon-item:last-child { border-bottom: none; }
+    .dungeon-item .dname { font-family: var(--display); font-size: 13px; font-weight: 600; }
+
+    /* ── Encounter row ── */
+    .enc-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(60,35,10,0.10);
+      font-size: 13px;
+    }
+    .enc-row:last-child { border-bottom: none; }
+
+    /* ── Bottom nav ── */
+    .bottom-nav {
+      position: relative;
+      z-index: 10;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      border-top: 1px solid rgba(60,35,10,0.28);
+      background: linear-gradient(180deg, rgba(255,245,220,0), rgba(60,35,10,0.06));
+      padding: 6px 4px max(6px, env(safe-area-inset-bottom));
+      flex-shrink: 0;
+    }
+    .bottom-nav button {
+      border: none;
+      background: none;
+      cursor: pointer;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 3px;
+      padding: 6px 4px;
+      color: var(--ink-faint);
+      font-family: var(--display);
+      font-size: 10px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      transition: color 0.15s;
+    }
+    .bottom-nav button.active { color: var(--wax); }
+    .bottom-nav button .nav-ico { font-size: 20px; line-height: 1; }
+
+    /* ── Toast ── */
+    .toast {
+      position: fixed;
+      top: 16px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 200;
+      padding: 9px 20px;
+      border-radius: 8px;
+      font-family: var(--display);
+      font-size: 12px;
+      text-align: center;
+      pointer-events: none;
+      opacity: 0;
+      transition: opacity 0.25s;
+      max-width: 320px;
+    }
+    .toast.show { opacity: 1; }
+    .toast.error {
+      background: linear-gradient(180deg, var(--wax), var(--wax-deep));
+      color: #f5ead3;
+      box-shadow: 0 4px 12px rgba(120,30,10,0.4);
+    }
+    .toast.info {
+      background: linear-gradient(180deg, var(--vellum), var(--vellum-2));
+      border: 1px solid rgba(60,35,10,0.35);
+      color: var(--ink);
+      box-shadow: 0 4px 12px rgba(40,25,10,0.15);
+    }
+
+    /* ─────────────────── Spell Circle ─────────────────── */
+    #spell-tab-content {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .circle-wrap {
+      position: relative;
+      width: 100%;
+      aspect-ratio: 1 / 1;
+      max-width: 300px;
+      margin: 0 auto;
+      transition: filter 0.8s ease;
+    }
+
+    .ring-outer {
+      position: absolute;
+      inset: 6px;
+      animation: spin-slow 90s linear infinite;
+    }
+    .ring-mid {
+      position: absolute;
+      inset: 24px;
+      animation: spin-rev 60s linear infinite;
+    }
+    .ring-inner {
+      position: absolute;
+      inset: 0;
+    }
+    .slot-btn {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 52px;
+      height: 52px;
+      border-radius: 50%;
+      border: 1.5px solid rgba(60,35,10,0.45);
+      background: radial-gradient(circle at 35% 30%, oklch(0.92 0.02 80), oklch(0.84 0.03 76));
+      box-shadow: inset 0 1px 0 rgba(255,245,220,0.6), 0 2px 4px rgba(0,0,0,0.15);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      padding: 0;
+      transition: all 0.15s ease;
+    }
+    .slot-btn.filled {
+      background: radial-gradient(circle at 35% 30%, oklch(0.90 0.08 295), oklch(0.78 0.12 295));
+      border-color: var(--magic);
+    }
+    .slot-btn.focused {
+      border-color: var(--wax);
+      box-shadow: 0 0 0 3px oklch(0.55 0.14 27 / 0.3), inset 0 1px 0 rgba(255,245,220,0.6);
+    }
+    .slot-label {
+      font-family: var(--mono);
+      font-size: 7px;
+      letter-spacing: 0.05em;
+      color: var(--ink-faint);
+      text-transform: uppercase;
+      line-height: 1;
+    }
+    .slot-glyph {
+      font-family: var(--rune);
+      font-size: 16px;
+      color: rgba(60,35,10,0.3);
+      line-height: 1;
+      margin-top: 1px;
+    }
+    .slot-glyph.has-word {
+      font-family: var(--mono);
+      font-size: 9px;
+      color: var(--magic);
+    }
+
+    .school-picker {
+      display: flex;
+      justify-content: center;
+      gap: 6px;
+      flex-wrap: wrap;
+    }
+    .school-btn {
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      background: oklch(0.92 0.02 80);
+      border: 1px solid rgba(60,35,10,0.3);
+      font-family: var(--rune);
+      font-size: 14px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: inset 0 1px 0 rgba(255,245,220,0.5);
+      transition: all 0.15s;
+    }
+    .school-btn.active {
+      box-shadow: 0 0 8px currentColor, inset 0 1px 0 rgba(255,245,220,0.5);
+      color: #f5ead3 !important;
+      border-color: transparent;
+    }
+
+    .slot-editor {
+      padding: 12px;
+      background: var(--vellum-2);
+      border: 1px solid rgba(60,35,10,0.28);
+      border-radius: 10px;
+    }
+    .slot-editor-head {
+      display: flex;
+      align-items: baseline;
+      justify-content: space-between;
+      gap: 8px;
+      margin-bottom: 8px;
+    }
+    .slot-editor-title {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 13px;
+    }
+    .slot-editor-hint {
+      font-size: 10px;
+      color: var(--ink-faint);
+      font-style: italic;
+    }
+    .example-chips {
+      display: flex;
+      gap: 5px;
+      flex-wrap: wrap;
+      margin-top: 6px;
+    }
+    .example-chip {
+      font-family: var(--mono);
+      font-size: 10px;
+      padding: 3px 8px;
+      border: 1px solid rgba(60,35,10,0.28);
+      border-radius: 999px;
+      background: transparent;
+      color: var(--ink-soft);
+      cursor: pointer;
+    }
+    .example-chip:hover { background: rgba(60,35,10,0.06); }
+
+    .formula-display {
+      font-family: var(--mono);
+      font-size: 12px;
+      color: var(--magic);
+      text-align: center;
+      min-height: 20px;
+      padding: 6px 0;
+    }
+    .formula-display.empty {
+      font-style: italic;
+      color: var(--ink-faint);
+    }
+
+    .spell-stats {
+      display: flex;
+      gap: 6px;
+      justify-content: center;
+      flex-wrap: wrap;
+    }
+
+    /* AI Result Card */
+    .ai-result-card {
+      background: linear-gradient(180deg, oklch(0.94 0.04 82), oklch(0.88 0.06 78));
+      border: 1px solid rgba(60,35,10,0.45);
+      border-radius: 12px;
+      padding: 14px;
+      box-shadow: inset 0 1px 0 rgba(255,245,220,0.6), 0 4px 8px rgba(40,25,10,0.18);
+      position: relative;
+    }
+    .ai-result-card .seal {
+      position: absolute;
+      top: -10px; right: 12px;
+    }
+    .ai-result-name {
+      font-family: var(--display);
+      font-weight: 700;
+      font-size: 16px;
+      color: var(--ink);
+      margin-top: 4px;
+    }
+    .ai-result-formula {
+      font-family: var(--mono);
+      font-size: 11px;
+      color: var(--magic);
+      margin-top: 2px;
+    }
+    .ai-result-narrative {
+      font-family: var(--serif);
+      font-style: italic;
+      font-size: 13px;
+      line-height: 1.55;
+      margin-top: 10px;
+      color: var(--ink);
+      text-align: justify;
+    }
+    .ai-result-chips {
+      display: flex;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-top: 8px;
+    }
+
+    /* Grimoire list */
+    .grimoire-entry {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(60,35,10,0.12);
+      font-size: 13px;
+    }
+    .grimoire-entry:last-child { border-bottom: none; }
+    .grimoire-entry .gschool {
+      font-family: var(--rune);
+      font-size: 16px;
+      width: 20px;
+      text-align: center;
+      flex-shrink: 0;
+    }
+    .grimoire-entry .gname { font-family: var(--display); font-size: 12px; font-weight: 600; }
+    .grimoire-entry .gmeta { font-size: 11px; color: var(--ink-faint); }
+
+    /* ── Animations ── */
+    @keyframes spin-slow {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(360deg); }
+    }
+    @keyframes spin-rev {
+      from { transform: rotate(0deg); }
+      to   { transform: rotate(-360deg); }
+    }
+    @keyframes flicker {
+      0%, 100% { stroke-opacity: 0.9; }
+      50%       { stroke-opacity: 0.4; }
+    }
+    @keyframes pulse-magic {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50%       { opacity: 0.6; transform: scale(0.97); }
+    }
+    @keyframes pulse {
+      0%, 100% { opacity: 1; }
+      50%       { opacity: 0.4; }
+    }
+
+    input, select, textarea, button { font-family: var(--serif); }
+    input:focus, select:focus, textarea:focus { outline: none; }
+  </style>
+</head>
+<body>
+<div class="app">
+  <div class="parchment-bg"></div>
+  <div id="toast" class="toast"></div>
+
+  <!-- Header -->
+  <div class="app-header">
+    <div>
+      <div class="title">MMGO</div>
+      <div class="subtitle" id="char-subtitle">Загрузка…</div>
+    </div>
+  </div>
+
+  <!-- ⚔ Duels panel -->
+  <div class="tab-panel active" id="tab-duels">
+    <div class="ornament">Поединки</div>
+
+    <div class="card" id="card-active-duels">
+      <div class="ornament small">Активные дуэли</div>
+      <div id="duels-list"><div class="empty">Загрузка…</div></div>
+    </div>
+
+    <div class="card">
+      <div class="ornament small">Бросить вызов</div>
+      <div class="field-group search-wrap">
+        <label class="field-label">Поиск мага</label>
+        <input type="text" id="opponent-search" class="ink-input" placeholder="Имя или позывной…" autocomplete="off">
+        <div class="search-dropdown" id="search-results"></div>
+      </div>
+      <input type="hidden" id="opponent-id">
+      <div class="field-row" style="margin-top:10px">
+        <div class="field-group">
+          <label class="field-label">Ставка (золото)</label>
+          <input type="number" id="wager-input" class="ink-input" value="50" min="1">
+        </div>
+        <div style="display:flex;align-items:flex-end;padding-bottom:0">
+          <button class="inkbtn primary" onclick="doChallenge()">Вызвать</button>
+        </div>
+      </div>
+      <div id="duel-result" class="result-banner"></div>
+    </div>
+  </div>
+
+  <!-- ⬢ Dungeons panel -->
+  <!-- The dungeon tab is structured differently — map takes full height, no scrolling -->
+  <div class="tab-panel" id="tab-dungeons" style="padding:0;overflow:hidden;flex-direction:column">
+
+    <!-- Active dungeon run: full-screen map -->
+    <div id="dungeon-run-view" style="display:none;flex:1;flex-direction:column;overflow:hidden">
+      <!-- Map area -->
+      <div id="dungeon-map-area" style="
+        position:relative;flex:1;overflow:hidden;
+        background:linear-gradient(180deg, oklch(0.74 0.05 65), oklch(0.66 0.06 60));
+      ">
+        <!-- Parchment noise -->
+        <div style="position:absolute;inset:0;pointer-events:none;z-index:0;opacity:0.7;
+          background-image:url('data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 width=%27300%27 height=%27300%27%3E%3Cfilter id=%27n%27%3E%3CfeTurbulence type=%27fractalNoise%27 baseFrequency=%270.72%27 numOctaves=%274%27 stitchTiles=%27stitch%27/%3E%3CfeColorMatrix type=%27saturate%27 values=%270%27/%3E%3C/filter%3E%3Crect width=%27100%25%27 height=%27100%25%27 filter=%27url(%23n)%27 opacity=%270.055%27/%3E%3C/svg%3E');
+          mix-blend-mode:multiply;"></div>
+        <!-- Compass ornament -->
+        <div style="position:absolute;bottom:8px;left:10px;z-index:2;font-family:var(--rune);font-size:10px;color:oklch(0.30 0.04 40);opacity:0.7" id="dungeon-compass"></div>
+        <!-- SVG map (corridors + rooms) -->
+        <svg id="dungeon-svg" viewBox="0 0 100 100" preserveAspectRatio="none"
+          style="position:absolute;inset:0;width:100%;height:100%;z-index:1"></svg>
+        <!-- Room button overlay -->
+        <div id="dungeon-rooms" style="position:absolute;inset:0;z-index:2"></div>
+      </div>
+      <!-- Bottom panel -->
+      <div id="dungeon-bottom-panel" style="
+        position:relative;z-index:5;flex-shrink:0;
+        border-top:1px solid rgba(60,35,10,0.45);
+        background:var(--vellum);
+        padding:10px 14px 12px;
+      ">
+        <div style="display:flex;align-items:baseline;gap:8px;margin-bottom:4px">
+          <div id="dungeon-room-name" style="font-family:var(--display);font-weight:700;font-size:15px;color:var(--ink)"></div>
+          <div id="dungeon-room-tag" style="font-family:var(--mono);font-size:9px;color:var(--ink-faint);text-transform:uppercase;letter-spacing:.06em"></div>
+        </div>
+        <div id="dungeon-room-desc" style="font-family:var(--serif);font-style:italic;font-size:12px;color:var(--ink-soft);line-height:1.45;margin-bottom:10px"></div>
+        <div id="dungeon-room-actions" style="display:flex;gap:6px;flex-wrap:wrap"></div>
+      </div>
+    </div>
+
+    <!-- In party but no active run -->
+    <div id="dungeon-party-view" style="display:none;flex:1;overflow-y:auto;padding:14px">
+      <div class="ornament">Отряд</div>
+      <div class="card" id="party-card">
+        <div style="font-family:var(--display);font-size:12px;letter-spacing:0.06em;color:var(--ink-soft);margin-bottom:10px" id="party-name-label"></div>
+        <div id="party-members-list" style="display:flex;flex-direction:column;gap:6px;margin-bottom:14px"></div>
+        <button class="inkbtn" onclick="leaveParty()" style="color:var(--wax);border-color:var(--wax)">⚑ Покинуть отряд</button>
+      </div>
+      <div class="ornament" style="margin-top:14px">Подземелья</div>
+      <div class="card">
+        <div id="dungeons-list-party"><div class="empty">Загрузка…</div></div>
+      </div>
+    </div>
+
+    <!-- No active run, no party: dungeon list -->
+    <div id="dungeon-list-view" style="flex:1;overflow-y:auto;padding:14px">
+      <div class="ornament">Подземелья</div>
+      <div class="card">
+        <div id="dungeons-list"><div class="empty">Загрузка…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ✦ Spells panel -->
+  <div class="tab-panel" id="tab-spells">
+    <div class="ornament">Круг призыва</div>
+    <p style="text-align:center;font-style:italic;font-size:11px;color:var(--ink-faint);margin:-6px 0 14px">«Слова — это сосуды. Сосуды держат намерение».</p>
+
+    <div id="spell-tab-content">
+      <!-- Summoning circle -->
+      <div id="circle-wrap" class="circle-wrap">
+        <!-- Outer rotating ring -->
+        <div class="ring-outer" id="ring-outer">
+          <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+            <circle r="95" fill="none" stroke="var(--s-fire)" stroke-opacity="0.2" stroke-width="0.6" id="ring-outer-circle"/>
+            <g id="ring-outer-ticks"></g>
+          </svg>
+        </div>
+        <!-- Middle counter-rotating ring -->
+        <div class="ring-mid" id="ring-mid">
+          <svg viewBox="-100 -100 200 200" width="100%" height="100%">
+            <circle r="85" fill="none" stroke="var(--s-fire)" stroke-opacity="0.5" stroke-width="1" stroke-dasharray="4 2" id="ring-mid-circle"/>
+            <g id="ring-mid-glyphs"></g>
+          </svg>
+        </div>
+        <!-- Inner: connecting lines + triangle + center -->
+        <div class="ring-inner">
+          <svg viewBox="-100 -100 200 200" width="100%" height="100%" id="ring-inner-svg">
+            <g id="connect-lines"></g>
+            <polygon points="0,-40 34.6,20 -34.6,20" fill="none" stroke="var(--s-fire)" stroke-width="1" stroke-opacity="0.3" id="inner-triangle"/>
+            <circle r="20" fill="var(--s-fire)" fill-opacity="0.05" stroke="var(--s-fire)" stroke-width="1" stroke-opacity="0.4" id="inner-circle"/>
+            <text x="0" y="7" text-anchor="middle" font-family="'IM Fell English', serif" font-size="22" fill="var(--s-fire)" id="center-glyph">◬</text>
+          </svg>
+        </div>
+        <!-- 6 Slot buttons — injected by JS -->
+        <div id="slots-container" style="position:absolute;inset:0;pointer-events:none"></div>
+        <!-- Glow layer -->
+        <div id="circle-glow" style="position:absolute;inset:10%;border-radius:50%;pointer-events:none;transition:all 0.8s ease;"></div>
+      </div>
+
+      <!-- School picker -->
+      <div class="school-picker" id="school-picker"></div>
+
+      <!-- Slot editor -->
+      <div class="slot-editor" id="slot-editor">
+        <div class="slot-editor-head">
+          <span class="slot-editor-title" id="slot-editor-title">Слог 1. Действие</span>
+          <span class="slot-editor-hint" id="slot-editor-hint">что делает</span>
+        </div>
+        <input type="text" class="ink-input" id="slot-input" placeholder="Ictus">
+        <div class="example-chips" id="example-chips"></div>
+      </div>
+
+      <!-- Spell name + formula -->
+      <div class="card" style="margin-bottom:0">
+        <div class="field-group">
+          <label class="field-label">Имя заклинания (необязательно)</label>
+          <input type="text" class="ink-input" id="spell-name-input" placeholder="Сгенерируется автоматически">
+        </div>
+        <div id="formula-display" class="formula-display empty">введите слова в круг…</div>
+        <div class="spell-stats" id="spell-stats">
+          <span class="chip ink">Слогов 0/6</span>
+          <span class="chip wax">Усталость ~4</span>
+          <span class="chip magic">Огонь</span>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:8px;margin-top:4px">
+        <button class="inkbtn ghost" style="flex:1" onclick="clearCircle()">Очистить</button>
+        <button class="inkbtn primary" style="flex:2" id="cast-btn" onclick="castSpell()">Пропеть инкантацию</button>
+      </div>
+
+      <div id="ai-result-card" style="display:none"></div>
+
+      <!-- Grimoire -->
+      <div class="hrule" style="margin:4px 0 12px"></div>
+      <div class="ornament small">Мой гримуар</div>
+      <div class="card" style="margin-bottom:0">
+        <div id="grimoire-list"><div class="empty">Загрузка…</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bottom nav -->
+  <nav class="bottom-nav">
+    <button class="active" data-tab="duels" onclick="switchTab('duels')">
+      <span class="nav-ico">⚔</span>
+      Дуэль
+    </button>
+    <button data-tab="dungeons" onclick="switchTab('dungeons')">
+      <span class="nav-ico">⬢</span>
+      Подземелье
+    </button>
+    <button data-tab="spells" onclick="switchTab('spells')">
+      <span class="nav-ico">✦</span>
+      Магия
+    </button>
+  </nav>
+</div>
+
+<script>
+// ── Constants ──
+const CSRF = document.querySelector("meta[name='csrf-token']").getAttribute("content");
+
+const SCHOOL_GLYPH = {
+  fire:'◬', water:'◉', earth:'⬢', air:'≋',
+  chaos:'✧', order:'✦', life:'❋', death:'☗',
+};
+const SCHOOL_NAME_RU = {
+  fire:'Огонь', water:'Вода', earth:'Земля', air:'Воздух',
+  chaos:'Хаос', order:'Порядок', life:'Жизнь', death:'Смерть',
+};
+const SCHOOL_COLOR = {
+  fire:'var(--s-fire)', water:'var(--s-water)', earth:'var(--s-earth)', air:'var(--s-air)',
+  chaos:'var(--s-chaos)', order:'var(--s-order)', life:'var(--s-life)', death:'var(--s-death)',
+};
+
+const SLOTS = [
+  {k:'actio',   ru:'Действие',   hint:'что делает',     examples:['Ictus','Captio','Scutum','Sanatio']},
+  {k:'forma',   ru:'Форма',      hint:'геометрия',      examples:['Radius','Sphaera','Murus','Conus']},
+  {k:'vis',     ru:'Сила',       hint:'интенсивность',  examples:['Levis','Mediocris','Magnus','Enormis']},
+  {k:'tempus',  ru:'Время',      hint:'длительность',   examples:['Momentum','Sustineo','Tardus']},
+  {k:'mutatio', ru:'Мутация',    hint:'комбо-эффект',   examples:['Motus','Glacies','Dissipatio']},
+  {k:'pretium', ru:'Цена',       hint:'доп. цена',      examples:['Sanguis','Mora','Focus']},
+];
+
+const SCHOOL_NARRATIONS = {
+  fire:'Воздух между вами вздрагивает — и в ладони распускается жаркий огненный цветок. Он устремляется вперёд, оставляя за собой запах калёного металла.',
+  water:'Ледяной пар клубится над землёй и схлопывается в круг. В нём на мгновение замирает сама тишина — а затем всё вокруг покрывается тонкой изморозью.',
+  earth:'Земля глухо вздыхает и поднимается стеной. Камни срастаются с глухим щелчком, и на мгновение кажется, что вы слышите в них голос.',
+  air:'Порыв ветра сворачивается в спираль и с тонким свистом уходит вверх, унося за собой пыль и последний звук.',
+  chaos:'Пространство будто шаг назад сделало. Линии потекли, цвета сбились. Невозможно сказать, что именно произошло.',
+  order:'Над кругом выстраивается бледная решётка. Она ровная, как страница устава, и столь же неумолима.',
+  life:'Зелёный свет проливается сквозь пальцы, как тёплое молоко. Раны затягиваются, и становится слышно, как бьётся сердце.',
+  death:'Холод пробирает до костей — и не ваших. Что-то в цели начинает медленно истлевать изнутри.',
+};
+const SCHOOL_SPELL_NAMES = {
+  fire:'Малое Пламя, Направленное', water:'Ледяной Круг', earth:'Стена Тверди', air:'Шквал',
+  chaos:'Смятение', order:'Решётка Устава', life:'Дыхание Жизни', death:'Хладный Коготь',
+};
+
+// ── State ──
+const circle = {
+  school: 'fire',
+  words: ['','','','','',''],
+  focused: 0,
+  casting: false,
+};
+let selectedOpponent = null;
+let searchTimer = null;
+
+// ── Helpers ──
+function esc(s) {
+  return String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;').replace(/'/g,'&#39;');
+}
+
+function toast(msg, type) {
+  var t = document.getElementById('toast');
+  t.textContent = msg;
+  t.className = 'toast ' + (type || 'info') + ' show';
+  clearTimeout(t._t);
+  t._t = setTimeout(function(){ t.classList.remove('show'); }, 3000);
+}
+
+// ── Tab switching ──
+function switchTab(tab) {
+  document.querySelectorAll('.tab-panel').forEach(function(p){ p.classList.remove('active'); });
+  document.getElementById('tab-' + tab).classList.add('active');
+  document.querySelectorAll('.bottom-nav button').forEach(function(b){
+    b.classList.toggle('active', b.dataset.tab === tab);
+  });
+}
+
+// ── API ──
+async function apiGet(url) {
+  var r = await fetch(url, { headers: {'X-CSRF-Token': CSRF} });
+  return r.json();
+}
+async function apiPost(url, body) {
+  var r = await fetch(url, {
+    method: 'POST',
+    headers: {'Content-Type':'application/json','X-CSRF-Token':CSRF},
+    body: JSON.stringify(body),
+  });
+  return r.json();
+}
+
+// ════════════════════════════════════════════
+// DUELS
+// ════════════════════════════════════════════
+function renderDuels(state) {
+  var dl = document.getElementById('duels-list');
+  if (!state.duels || state.duels.length === 0) {
+    dl.innerHTML = '<div class="empty">Нет активных дуэлей.</div>';
+    return;
+  }
+  dl.innerHTML = state.duels.map(function(d) {
+    var opp = esc(d.opponent_name || d.challenger_name || 'неизвестен');
+    var pot = esc(d.pot_amount || '?');
+    var statusChip = d.status === 'active'
+      ? '<span class="chip wax">⚡ Идёт</span>'
+      : d.status === 'pending'
+      ? '<span class="chip ink">⏳ Ожидает</span>'
+      : '<span class="chip ink">' + esc(d.status) + '</span>';
+    var resolved = d.combat_status === 'finished' ? ' <span class="chip life">✓</span>' : '';
+    return '<div class="duel-row">'
+      + '<div><div class="opp">vs ' + opp + '</div>'
+      + '<div class="meta">Ставка: ' + pot + 'g</div></div>'
+      + '<div style="display:flex;gap:4px;align-items:center">' + statusChip + resolved + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+document.getElementById('opponent-search').addEventListener('input', function() {
+  var q = this.value.trim();
+  if (q.length < 1) {
+    document.getElementById('search-results').classList.remove('show');
+    return;
+  }
+  clearTimeout(searchTimer);
+  searchTimer = setTimeout(async function() {
+    try {
+      var data = await apiGet('/api/play/characters/search?q=' + encodeURIComponent(q));
+      if (!data.ok) return;
+      var res = document.getElementById('search-results');
+      if (!data.characters || data.characters.length === 0) {
+        res.innerHTML = '<div class="drop-item" style="color:var(--ink-faint)">Нет совпадений</div>';
+        res.classList.add('show');
+        return;
+      }
+      res.innerHTML = data.characters.map(function(c) {
+        return '<div class="drop-item" data-id="' + esc(c.id) + '" data-name="' + esc(c.name) + '">'
+          + esc(c.name)
+          + ' <span style="color:var(--ink-faint);font-size:11px">@' + esc(c.handle || '?') + ' · Ур.' + esc(c.level) + '</span>'
+          + '</div>';
+      }).join('');
+      res.classList.add('show');
+    } catch(e) {}
+  }, 300);
+});
+
+document.getElementById('search-results').addEventListener('click', function(e) {
+  var item = e.target.closest('.drop-item[data-id]');
+  if (!item) return;
+  selectedOpponent = { id: item.dataset.id, name: item.dataset.name };
+  document.getElementById('opponent-search').value = item.dataset.name;
+  document.getElementById('opponent-id').value = item.dataset.id;
+  document.getElementById('search-results').classList.remove('show');
+});
+
+document.addEventListener('click', function(e) {
+  if (!e.target.closest('.search-wrap')) {
+    document.getElementById('search-results').classList.remove('show');
+  }
+});
+
+async function doChallenge() {
+  var opponentId = document.getElementById('opponent-id').value;
+  var wager = parseInt(document.getElementById('wager-input').value, 10);
+  if (!opponentId) { toast('Сначала выберите соперника.', 'error'); return; }
+  if (!wager || wager < 1) { toast('Укажите ставку.', 'error'); return; }
+  try {
+    var data = await apiPost('/api/play/duels', { opponent_id: opponentId, wager_amount: wager });
+    var banner = document.getElementById('duel-result');
+    if (data.ok) {
+      var winner = data.result && data.result.winner;
+      var turns  = data.result && data.result.turns;
+      var isWin  = winner && winner !== 'draw';
+      var cls    = winner === 'draw' ? 'draw' : isWin ? 'win' : 'lose';
+      var icon   = winner === 'draw' ? '⚖' : isWin ? '⚔ Победа' : '✗ Поражение';
+      var msg    = '<strong>' + icon + '</strong> · '
+        + (winner === 'draw'
+           ? 'Ничья после ' + turns + ' ходов.'
+           : 'Победитель: ' + esc(winner) + '. Ходов: ' + turns + '.');
+      banner.innerHTML = msg;
+      banner.className = 'result-banner ' + cls + ' show';
+      loadState();
+    } else {
+      banner.innerHTML = esc(data.error || 'Ошибка');
+      banner.className = 'result-banner lose show';
+    }
+  } catch(err) { toast('Сетевая ошибка.', 'error'); }
+}
+
+// ════════════════════════════════════════════
+// DUNGEONS
+// ════════════════════════════════════════════
+var dungeonState = null;
+
+var ROOM_DESC = {
+  entrance: {tag:'вход',        text:'Каменная арка, мхом по углам. Снаружи светит солнце — внутри холод и эхо.'},
+  room:     {tag:'комната',     text:'Пустое помещение. По стенам — следы старого пожара.'},
+  shrine:   {tag:'алтарь',      text:'Каменный алтарь. На нём догорает чья-то свеча. Магия здесь сильнее.'},
+  treasure: {tag:'сокровищница',text:'Окованный медью сундук. Замок цел, но на петлях — свежие царапины.'},
+  boss:     {tag:'опасно',      text:'В дальнем углу что-то крупное переводит дыхание. Воздух гудит низко.'},
+  rest:     {tag:'отдых',       text:'Тихое место. Здесь можно перевести дух.'},
+  corridor: {tag:'коридор',     text:'Узкий проход. Факелы давно погасли.'},
+};
+
+function nodeColor(kind) {
+  if (kind === 'boss')     return 'oklch(0.55 0.18 28)';
+  if (kind === 'treasure') return 'oklch(0.65 0.13 80)';
+  if (kind === 'shrine')   return 'oklch(0.55 0.16 295)';
+  if (kind === 'entrance') return 'oklch(0.50 0.10 165)';
+  if (kind === 'rest')     return 'oklch(0.60 0.08 165)';
+  return 'oklch(0.88 0.04 80)';
+}
+function nodeIcon(kind) {
+  if (kind === 'boss')     return '⚔';
+  if (kind === 'treasure') return '⛁';
+  if (kind === 'shrine')   return '✦';
+  if (kind === 'entrance') return '↟';
+  if (kind === 'rest')     return '⌂';
+  return '';
+}
+
+function renderDungeons(state) {
+  var runView   = document.getElementById('dungeon-run-view');
+  var partyView = document.getElementById('dungeon-party-view');
+  var listView  = document.getElementById('dungeon-list-view');
+
+  if (state.active_run) {
+    runView.style.display   = 'flex';
+    if (partyView) partyView.style.display = 'none';
+    listView.style.display  = 'none';
+    loadDungeonState();
+    return;
+  }
+
+  runView.style.display = 'none';
+
+  if (state.party) {
+    // In party but no active run
+    if (partyView) partyView.style.display = 'block';
+    listView.style.display = 'none';
+
+    document.getElementById('party-name-label').textContent = state.party.name;
+    var membersHtml = state.party.members.map(function(m) {
+      return '<div style="display:flex;align-items:center;gap:6px;font-size:13px">'
+        + '<span style="font-family:var(--display);font-size:10px;color:var(--' + (m.role === 'leader' ? 'wax' : 'ink-faint') + ')">' + (m.role === 'leader' ? '★' : '•') + '</span>'
+        + esc(m.name) + '</div>';
+    }).join('');
+    document.getElementById('party-members-list').innerHTML = membersHtml;
+
+    var dglp = document.getElementById('dungeons-list-party');
+    if (!state.dungeons || state.dungeons.length === 0) {
+      dglp.innerHTML = '<div class="empty">Нет доступных подземелий.</div>';
+    } else {
+      dglp.innerHTML = state.dungeons.map(function(d) {
+        return '<div class="dungeon-item">'
+          + '<div><div class="dname">' + esc(d.name) + '</div></div>'
+          + '<button class="inkbtn small" data-dungeon-id="' + esc(d.id) + '">Войти</button></div>';
+      }).join('');
+    }
+  } else {
+    // No party, no run: plain list
+    if (partyView) partyView.style.display = 'none';
+    listView.style.display  = 'block';
+
+    var dgl = document.getElementById('dungeons-list');
+    if (!state.dungeons || state.dungeons.length === 0) {
+      dgl.innerHTML = '<div class="empty">Нет доступных подземелий.</div>';
+      return;
+    }
+    dgl.innerHTML = state.dungeons.map(function(d) {
+      return '<div class="dungeon-item">'
+        + '<div><div class="dname">' + esc(d.name) + '</div></div>'
+        + '<button class="inkbtn small" data-dungeon-id="' + esc(d.id) + '">Войти</button></div>';
+    }).join('');
+  }
+}
+
+function onDungeonClick(e) {
+  var btn = e.target.closest('button[data-dungeon-id]');
+  if (btn) doEnterDungeon(btn.dataset.dungeonId);
+}
+document.getElementById('dungeons-list').addEventListener('click', onDungeonClick);
+document.getElementById('dungeons-list-party').addEventListener('click', onDungeonClick);
+
+async function leaveParty() {
+  if (!confirm('Покинуть отряд?')) return;
+  try {
+    var data = await apiPost('/api/play/party/leave', {});
+    if (data.ok) loadState();
+    else alert(data.error || 'Ошибка');
+  } catch(e) { alert('Ошибка: ' + e.message); }
+}
+
+// Compute bounding box and map node positions to SVG % coords
+function layoutNodes(nodes) {
+  if (!nodes.length) return nodes;
+  var xs = nodes.map(function(n){ return n.x; });
+  var ys = nodes.map(function(n){ return n.y; });
+  var minX = Math.min.apply(null, xs), maxX = Math.max.apply(null, xs);
+  var minY = Math.min.apply(null, ys), maxY = Math.max.apply(null, ys);
+  var rangeX = maxX - minX || 1, rangeY = maxY - minY || 1;
+  // Map to 10%–90% of SVG, invert Y so lower y = top of screen
+  return nodes.map(function(n) {
+    return Object.assign({}, n, {
+      px: 10 + ((n.x - minX) / rangeX) * 80,
+      py: 10 + ((maxY - n.y) / rangeY) * 80,
+    });
+  });
+}
+
+function renderDungeonMap(s) {
+  dungeonState = s;
+  var nodes = layoutNodes(s.nodes || []);
+  var nodeMap = {};
+  nodes.forEach(function(n){ nodeMap[n.id] = n; });
+
+  // SVG corridors
+  var svg = document.getElementById('dungeon-svg');
+  var corridorHtml = '';
+  (s.corridors || []).forEach(function(c) {
+    var a = nodeMap[c.from_id], b = nodeMap[c.to_id];
+    if (!a || !b) return;
+    var aVis = a.state !== 'hidden', bVis = b.state !== 'hidden';
+    if (!aVis && !bVis) return;
+    var known = aVis && bVis;
+    corridorHtml += '<line'
+      + ' x1="' + a.px.toFixed(1) + '" y1="' + a.py.toFixed(1) + '"'
+      + ' x2="' + b.px.toFixed(1) + '" y2="' + b.py.toFixed(1) + '"'
+      + ' stroke="' + (known ? 'oklch(0.30 0.04 40)' : 'rgba(60,35,10,0.2)') + '"'
+      + ' stroke-width="0.7"'
+      + (known ? '' : ' stroke-dasharray="1.5 1.2"')
+      + ' vector-effect="non-scaling-stroke"/>';
+  });
+  svg.innerHTML = corridorHtml;
+
+  // Room buttons
+  var roomsDiv = document.getElementById('dungeon-rooms');
+  var roomsHtml = '';
+  nodes.forEach(function(n) {
+    if (n.state === 'hidden') return;
+    var isHere = n.state === 'here';
+    var isReachable = n.state === 'reachable';
+    var fill = nodeColor(n.kind);
+    var icon = nodeIcon(n.kind);
+    var stroke = isHere ? 'var(--wax)' : 'oklch(0.30 0.04 40)';
+    var sw = isHere ? 1.6 : 0.9;
+    var opacity = isReachable ? 0.55 : 1;
+    var cursor = isReachable ? 'pointer' : (isHere ? 'default' : 'default');
+    var pulse = isHere ? '<circle r="2.5" cx="0" cy="0" fill="var(--wax)" stroke="oklch(0.25 0.10 27)" stroke-width="0.6" style="animation:pulse-magic 1.6s ease-in-out infinite"/>' : '';
+    var svgContent = '<rect x="-13" y="-9" width="26" height="18" rx="2" fill="rgba(0,0,0,0.3)" transform="translate(1,1)"/>'
+      + '<rect x="-13" y="-9" width="26" height="18" rx="2" fill="' + fill + '" stroke="' + stroke + '" stroke-width="' + sw + '"/>'
+      + (icon ? '<text x="0" y="4" text-anchor="middle" font-size="10" font-family="\'IM Fell English\',serif" fill="oklch(0.25 0.08 40)">' + icon + '</text>' : '')
+      + pulse;
+
+    roomsHtml += '<button'
+      + ' style="position:absolute;left:' + n.px.toFixed(1) + '%;top:' + n.py.toFixed(1) + '%;'
+      + 'transform:translate(-50%,-50%);width:42px;height:32px;padding:0;background:transparent;border:none;'
+      + 'cursor:' + cursor + ';opacity:' + opacity + '"'
+      + (isReachable ? ' data-move-id="' + esc(n.id) + '"' : '')
+      + (isHere ? ' data-here="1"' : '')
+      + '>'
+      + '<svg width="42" height="32" viewBox="-21 -16 42 32" style="overflow:visible">' + svgContent + '</svg>'
+      + '<div style="position:absolute;top:100%;left:50%;transform:translateX(-50%);'
+      + 'font-family:var(--display);font-size:9px;font-weight:600;white-space:nowrap;margin-top:2px;pointer-events:none;'
+      + 'color:' + (isHere ? 'var(--wax)' : 'oklch(0.28 0.04 40)') + ';text-shadow:0 0 3px rgba(245,234,211,0.9)">'
+      + esc(n.name) + '</div>'
+      + '</button>';
+  });
+  roomsDiv.innerHTML = roomsHtml;
+
+  // Bottom panel
+  var currentNode = nodes.find(function(n){ return n.state === 'here'; }) || {};
+  var desc = ROOM_DESC[currentNode.kind] || {tag:'', text:''};
+  document.getElementById('dungeon-room-name').textContent = currentNode.name || '';
+  document.getElementById('dungeon-room-tag').textContent  = desc.tag;
+  document.getElementById('dungeon-room-desc').textContent = desc.text;
+  document.getElementById('dungeon-compass').textContent   = '◬ ' + esc(s.dungeon_name) + ' — шаг ' + s.steps_taken;
+
+  // Encounters for bottom panel actions
+  var activeFight = (s.encounters || []).find(function(e){ return e.status === 'pending' || e.status === 'active'; });
+  var actionsHtml = '';
+  if (activeFight) {
+    actionsHtml += '<button class="inkbtn primary" data-encounter-id="' + esc(activeFight.id) + '">⚔ Сразиться</button>';
+  }
+  if (currentNode.kind === 'boss' && !activeFight) {
+    actionsHtml += '<button class="inkbtn primary" disabled>⚔ Страж повержен</button>';
+  }
+  document.getElementById('dungeon-room-actions').innerHTML = actionsHtml;
+}
+
+// Click on room node to move
+document.getElementById('dungeon-rooms').addEventListener('click', function(e) {
+  var btn = e.target.closest('button[data-move-id]');
+  if (btn) doMove(btn.dataset.moveId);
+});
+
+// Click encounter fight button
+document.getElementById('dungeon-room-actions').addEventListener('click', function(e) {
+  var btn = e.target.closest('button[data-encounter-id]');
+  if (btn) doFightEncounter(btn.dataset.encounterId);
+});
+
+async function loadDungeonState() {
+  try {
+    var data = await apiGet('/api/play/dungeons/state');
+    if (!data.ok) return;
+    renderDungeonMap(data.state);
+    document.getElementById('dungeon-run-view').style.display = 'flex';
+    document.getElementById('dungeon-list-view').style.display = 'none';
+  } catch(e) {}
+}
+
+async function doEnterDungeon(dungeonId) {
+  try {
+    var data = await apiPost('/api/play/dungeons/enter', { dungeon_id: dungeonId });
+    if (data.ok) {
+      toast('Вошли в подземелье!', 'info');
+      loadState();
+    } else {
+      toast(data.error || 'Ошибка', 'error');
+    }
+  } catch(err) { toast('Сетевая ошибка.', 'error'); }
+}
+
+async function doMove(nodeId) {
+  try {
+    var data = await apiPost('/api/play/dungeons/move', { to_node_id: nodeId });
+    if (data.ok) {
+      renderDungeonMap(data.state);
+    } else {
+      toast(data.error || 'Ошибка', 'error');
+    }
+  } catch(err) { toast('Сетевая ошибка.', 'error'); }
+}
+
+async function doFightEncounter(encounterId) {
+  try {
+    var data = await apiPost('/api/play/dungeons/fight', { encounter_id: encounterId });
+    if (data.ok) {
+      var res = data.result;
+      toast((res.winner ? 'Победитель: ' + esc(res.winner) : 'Ничья') + ' · ' + (res.turns || 0) + ' ходов', 'info');
+      loadDungeonState();
+    } else {
+      toast(data.error || 'Ошибка', 'error');
+    }
+  } catch(err) { toast('Сетевая ошибка.', 'error'); }
+}
+
+// ════════════════════════════════════════════
+// SPELL CIRCLE
+// ════════════════════════════════════════════
+function buildOuterTicks() {
+  var g = document.getElementById('ring-outer-ticks');
+  var html = '';
+  for (var i = 0; i < 48; i++) {
+    var a = i * Math.PI * 2 / 48;
+    var x1 = Math.cos(a) * 88, y1 = Math.sin(a) * 88;
+    var x2 = Math.cos(a) * 95, y2 = Math.sin(a) * 95;
+    html += '<line x1="' + x1.toFixed(2) + '" y1="' + y1.toFixed(2)
+          + '" x2="' + x2.toFixed(2) + '" y2="' + y2.toFixed(2)
+          + '" stroke="var(--ink)" stroke-opacity="0.25" stroke-width="0.4"/>';
+  }
+  g.innerHTML = html;
+}
+
+function buildMidGlyphs() {
+  var schools = ['fire','water','earth','air','chaos','order','life','death'];
+  var g = document.getElementById('ring-mid-glyphs');
+  var html = '';
+  schools.forEach(function(s, i) {
+    var a = i * Math.PI * 2 / 8 - Math.PI / 2;
+    var x = Math.cos(a) * 75, y = Math.sin(a) * 75 + 4;
+    html += '<text x="' + x.toFixed(2) + '" y="' + y.toFixed(2)
+          + '" text-anchor="middle" font-family="\'IM Fell English\', serif" font-size="11"'
+          + ' fill="var(--s-' + s + ')" opacity="' + (s === circle.school ? '1' : '0.3') + '"'
+          + ' class="school-svg-glyph" data-school="' + s + '">'
+          + SCHOOL_GLYPH[s] + '</text>';
+  });
+  g.innerHTML = html;
+}
+
+function buildSchoolPicker() {
+  var container = document.getElementById('school-picker');
+  var schools = ['fire','water','earth','air','chaos','order','life','death'];
+  container.innerHTML = schools.map(function(s) {
+    var active = s === circle.school;
+    return '<button class="school-btn' + (active ? ' active' : '') + '"'
+      + ' onclick="selectSchool(\'' + s + '\')"'
+      + ' style="color:' + SCHOOL_COLOR[s] + ';' + (active ? 'background:' + SCHOOL_COLOR[s] + ';' : '') + '"'
+      + ' title="' + SCHOOL_NAME_RU[s] + '">'
+      + SCHOOL_GLYPH[s] + '</button>';
+  }).join('');
+}
+
+function buildSlotButtons() {
+  var container = document.getElementById('slots-container');
+  container.style.pointerEvents = 'none';
+  container.innerHTML = SLOTS.map(function(slot, i) {
+    var angle = i * Math.PI * 2 / 6 - Math.PI / 2;
+    var r = 44;
+    var left = 50 + Math.cos(angle) * r;
+    var top  = 50 + Math.sin(angle) * r;
+    var filled = !!circle.words[i];
+    var focused = circle.focused === i;
+    var cls = 'slot-btn' + (filled ? ' filled' : '') + (focused ? ' focused' : '');
+    return '<button class="' + cls + '" style="left:' + left + '%;top:' + top + '%;pointer-events:all"'
+      + ' onclick="focusSlot(' + i + ')">'
+      + '<span class="slot-label">' + slot.ru + '</span>'
+      + '<span class="slot-glyph' + (filled ? ' has-word' : '') + '">'
+      + (filled ? esc(circle.words[i].substring(0, 6)) : (i + 1))
+      + '</span>'
+      + '</button>';
+  }).join('');
+}
+
+function updateConnectLines() {
+  var g = document.getElementById('connect-lines');
+  var filledIdx = circle.words.map(function(w, i){ return w ? i : -1; }).filter(function(i){ return i >= 0; });
+  if (filledIdx.length < 2) { g.innerHTML = ''; return; }
+  var slotPos = function(i) {
+    var a = i * Math.PI * 2 / 6 - Math.PI / 2;
+    return [Math.cos(a) * 44, Math.sin(a) * 44];
+  };
+  var html = '';
+  for (var a = 0; a < filledIdx.length; a++) {
+    for (var b = a + 1; b < filledIdx.length; b++) {
+      var p1 = slotPos(filledIdx[a]), p2 = slotPos(filledIdx[b]);
+      html += '<line x1="' + p1[0].toFixed(2) + '" y1="' + p1[1].toFixed(2)
+            + '" x2="' + p2[0].toFixed(2) + '" y2="' + p2[1].toFixed(2)
+            + '" stroke="' + SCHOOL_COLOR[circle.school] + '" stroke-opacity="0.55" stroke-width="0.5"'
+            + ' stroke-linecap="round" style="animation:flicker 2.5s infinite;filter:drop-shadow(0 0 2px ' + SCHOOL_COLOR[circle.school] + ')"/>';
+    }
+  }
+  g.innerHTML = html;
+}
+
+function updateSchoolVisuals() {
+  var sc = circle.school;
+  var col = SCHOOL_COLOR[sc];
+  // Outer ring
+  document.getElementById('ring-outer-circle').setAttribute('stroke', col);
+  document.getElementById('ring-mid-circle').setAttribute('stroke', col);
+  // Inner triangle/circle/glyph
+  document.getElementById('inner-triangle').setAttribute('stroke', col);
+  document.getElementById('inner-circle').setAttribute('fill', col);
+  document.getElementById('inner-circle').setAttribute('stroke', col);
+  document.getElementById('center-glyph').setAttribute('fill', col);
+  document.getElementById('center-glyph').textContent = SCHOOL_GLYPH[sc];
+  // Mid glyphs opacity
+  document.querySelectorAll('.school-svg-glyph').forEach(function(el) {
+    el.setAttribute('opacity', el.dataset.school === sc ? '1' : '0.3');
+  });
+  // Glow
+  var filled = circle.words.filter(Boolean).length;
+  var activation = filled / 6;
+  var glow = document.getElementById('circle-glow');
+  var outerRing = document.getElementById('ring-outer');
+  if (activation > 0) {
+    glow.style.background = 'radial-gradient(circle, color-mix(in oklch, ' + col + ' ' + Math.round((0.06 + activation * 0.18) * 100) + '%, transparent) 10%, transparent 65%)';
+    glow.style.animation = filled >= 3 ? 'pulse-magic 2.4s ease-in-out infinite' : 'none';
+  } else {
+    glow.style.background = 'none';
+    glow.style.animation = 'none';
+  }
+  // Outer ring speed
+  var dur = Math.max(12, 90 - activation * 70);
+  outerRing.style.animationDuration = dur + 's';
+  // Drop shadow on circle wrap
+  var wrap = document.getElementById('circle-wrap');
+  if (activation > 0) {
+    wrap.style.filter = 'drop-shadow(0 0 ' + (4 + activation * 10) + 'px ' + col + ')';
+  } else {
+    wrap.style.filter = 'none';
+  }
+  // Outer ring opacity
+  document.getElementById('ring-outer-circle').setAttribute('stroke-opacity', (0.2 + activation * 0.3).toFixed(2));
+  document.getElementById('ring-outer-ticks').querySelectorAll('line').forEach(function(l) {
+    l.setAttribute('stroke-opacity', (0.25 + activation * 0.4).toFixed(2));
+  });
+}
+
+function updateFormulaDisplay() {
+  var filled = circle.words.filter(Boolean);
+  var display = document.getElementById('formula-display');
+  if (filled.length > 0) {
+    display.textContent = filled.join(' ');
+    display.classList.remove('empty');
+  } else {
+    display.textContent = 'введите слова…';
+    display.classList.add('empty');
+  }
+}
+
+function updateSpellStats() {
+  var filled = circle.words.filter(Boolean).length;
+  document.getElementById('spell-stats').innerHTML =
+    '<span class="chip ink">Слогов ' + filled + '/6</span>'
+    + '<span class="chip wax">Усталость ~' + (4 + filled * 2) + '</span>'
+    + '<span class="chip magic">' + SCHOOL_NAME_RU[circle.school] + '</span>';
+}
+
+function updateSlotEditor() {
+  var i = circle.focused;
+  var slot = SLOTS[i];
+  document.getElementById('slot-editor-title').textContent = 'Слог ' + (i + 1) + '. ' + slot.ru;
+  document.getElementById('slot-editor-hint').textContent = slot.hint;
+  document.getElementById('slot-input').value = circle.words[i];
+  document.getElementById('slot-input').placeholder = slot.examples[0];
+  document.getElementById('example-chips').innerHTML = slot.examples.map(function(w) {
+    return '<button class="example-chip" onclick="setWordFromChip(\'' + esc(w) + '\')">' + esc(w) + '</button>';
+  }).join('');
+}
+
+function renderCircle() {
+  buildSlotButtons();
+  updateConnectLines();
+  updateSchoolVisuals();
+  updateSlotEditor();
+  updateFormulaDisplay();
+  updateSpellStats();
+}
+
+function selectSchool(s) {
+  circle.school = s;
+  buildSchoolPicker();
+  buildMidGlyphs();
+  renderCircle();
+}
+
+function focusSlot(i) {
+  circle.focused = i;
+  renderCircle();
+  document.getElementById('slot-input').focus();
+}
+
+document.getElementById('slot-input').addEventListener('input', function() {
+  circle.words[circle.focused] = this.value;
+  renderCircle();
+});
+
+function setWordFromChip(word) {
+  circle.words[circle.focused] = word;
+  renderCircle();
+  document.getElementById('slot-input').value = word;
+}
+
+function clearCircle() {
+  circle.words = ['','','','','',''];
+  circle.focused = 0;
+  document.getElementById('ai-result-card').style.display = 'none';
+  document.getElementById('spell-name-input').value = '';
+  renderCircle();
+}
+
+async function castSpell() {
+  var filled = circle.words.filter(Boolean);
+  if (!filled.length) { toast('Введите хотя бы одно слово.', 'error'); return; }
+  if (circle.casting) return;
+
+  var btn = document.getElementById('cast-btn');
+  btn.disabled = true;
+  btn.textContent = 'Оракул думает…';
+  circle.casting = true;
+  document.getElementById('circle-wrap').style.filter = 'drop-shadow(0 0 14px ' + SCHOOL_COLOR[circle.school] + ')';
+  document.getElementById('ring-inner').style.animation = 'pulse-magic 1.2s ease-in-out infinite';
+
+  var formula = filled.join(' ');
+  var school = circle.school;
+  var customName = document.getElementById('spell-name-input').value.trim();
+  var autoName = SCHOOL_NAME_RU[school] + ' ' + filled.slice(0, 2).join(' ');
+  var name = customName || autoName;
+
+  try {
+    var controller = new AbortController();
+    var timeoutId = setTimeout(function() { controller.abort(); }, 130_000);
+
+    var r = await fetch('/api/play/spells', {
+      method: 'POST',
+      headers: {'Content-Type':'application/json','X-CSRF-Token':CSRF},
+      body: JSON.stringify({
+        name: name,
+        formula: formula,
+        school: school,
+        targeting: 'enemy',
+        delivery_form: 'single_target',
+      }),
+      signal: controller.signal,
+    });
+    clearTimeout(timeoutId);
+
+    var data = await r.json();
+
+    if (data.ok) {
+      showSpellResult({
+        name_ru: esc(data.spell.name),
+        formula: esc(data.spell.formula || formula),
+        narrative: SCHOOL_NARRATIONS[school],
+        states: (data.spell.effects || []).map(function(e) { return {label: e.state, dur: e.intensity}; }),
+        fatigue: data.spell.fatigue_cost || (4 + filled.length * 2),
+        cd: data.spell.cooldown_turns || (2 + filled.length),
+      }, school);
+      loadSpells();
+    } else {
+      toast('Ошибка: ' + (data.error || 'неизвестная'), 'error');
+      showSpellResult(mockResult(school, name, formula, filled.length), school);
+    }
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      toast('Оракул не ответил. Попробуйте ещё раз.', 'error');
+    } else {
+      toast('Сетевая ошибка.', 'error');
+    }
+    showSpellResult(mockResult(school, name, formula, filled.length), school);
+  } finally {
+    circle.casting = false;
+    btn.disabled = false;
+    btn.textContent = 'Пропеть инкантацию';
+    document.getElementById('ring-inner').style.animation = 'none';
+    updateSchoolVisuals();
+  }
+}
+
+function mockResult(school, baseName, formula, filledCount) {
+  var states = [];
+  if (school === 'fire') states.push({label:'горение', dur:3});
+  if (school === 'water') states.push({label:'заморозка', dur:2});
+  if (school === 'life') states.push({label:'исцеление', dur:3});
+  if (school === 'death') states.push({label:'истощение', dur:2});
+  if (!states.length) states.push({label:'урон', dur:0});
+  return {
+    name_ru: SCHOOL_SPELL_NAMES[school] || 'Неизвестное заклинание',
+    formula: formula,
+    narrative: SCHOOL_NARRATIONS[school],
+    states: states,
+    fatigue: 4 + filledCount * 2,
+    cd: 2 + filledCount,
+  };
+}
+
+function showSpellResult(res, school) {
+  var card = document.getElementById('ai-result-card');
+  var statesHtml = res.states.map(function(s) {
+    return '<span class="chip magic">' + esc(s.label) + (s.dur > 0 ? ' · ' + s.dur + 'т' : '') + '</span>';
+  }).join('');
+  card.innerHTML = '<div class="ai-result-card">'
+    + '<div class="seal"><div class="wax-seal" style="font-size:16px">' + SCHOOL_GLYPH[school] + '</div></div>'
+    + '<div class="ornament small" style="margin-bottom:6px">Оракул отвечает</div>'
+    + '<div class="ai-result-name">' + res.name_ru + '</div>'
+    + '<div class="ai-result-formula">' + esc(res.formula) + '</div>'
+    + '<p class="ai-result-narrative">«' + esc(res.narrative) + '»</p>'
+    + '<div class="ai-result-chips">' + statesHtml
+    + '<span class="chip wax">Усталость ' + esc(res.fatigue) + '</span>'
+    + '<span class="chip ink">Перезарядка ' + esc(res.cd) + 'т</span>'
+    + '</div></div>';
+  card.style.display = 'block';
+}
+
+// ── Grimoire ──
+async function loadSpells() {
+  try {
+    var data = await apiGet('/api/play/spells');
+    if (!data.ok) return;
+    var gl = document.getElementById('grimoire-list');
+    if (!data.spells || data.spells.length === 0) {
+      gl.innerHTML = '<div class="empty">Гримуар пуст.</div>';
+      return;
+    }
+    gl.innerHTML = data.spells.map(function(s) {
+      return '<div class="grimoire-entry">'
+        + '<span class="gschool" style="color:var(--s-' + esc(s.school) + ')">'
+        + (SCHOOL_GLYPH[s.school] || '✦') + '</span>'
+        + '<div><div class="gname">' + esc(s.name) + '</div>'
+        + '<div class="gmeta">' + esc(s.school) + ' · ' + esc(s.targeting) + ' · ' + esc(s.delivery_form) + '</div></div>'
+        + '</div>';
+    }).join('');
+  } catch(e) {}
+}
+
+// ════════════════════════════════════════════
+// INIT
+// ════════════════════════════════════════════
+async function loadState() {
+  try {
+    var data = await apiGet('/api/play/hub');
+    if (!data.ok) throw new Error(data.error || 'unknown');
+    var c = data.state.character;
+    var sub = document.getElementById('char-subtitle');
+    if (!sub.dataset.tgset) {
+      sub.textContent = c ? c.name : 'Неизвестный маг';
+    }
+    renderDuels(data.state);
+    renderDungeons(data.state);
+    loadSpells();
+  } catch(err) {
+    document.querySelectorAll('.empty').forEach(function(e){ e.textContent = 'Ошибка: ' + err.message; });
+  }
+}
+
+async function init() {
+  buildOuterTicks();
+  buildMidGlyphs();
+  buildSchoolPicker();
+  renderCircle();
+
+  var tg = window.Telegram && window.Telegram.WebApp;
+  if (tg) {
+    tg.expand();
+    tg.ready();
+    var u = tg.initDataUnsafe && tg.initDataUnsafe.user;
+    if (u && u.first_name) {
+      var sub = document.getElementById('char-subtitle');
+      sub.textContent = u.first_name + (u.last_name ? ' ' + u.last_name : '');
+      sub.dataset.tgset = '1';
+    }
+    if (tg.initData) {
+      try { await apiPost('/api/auth/telegram', { initData: tg.initData }); } catch(e) {}
+    }
+  }
+
+  loadState();
+}
+
+init();
+</script>
+</body>
+</html>

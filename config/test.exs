@@ -45,6 +45,19 @@ config :mmgo, MMGO.AI.Providers.Gemini,
   api_base_url: "http://localhost:8082",
   api_key: "test-gemini-key"
 
+config :mmgo, MMGO.AI.Providers.DeepSeek,
+  api_base_url: "http://localhost:8083",
+  api_key: "test-deepseek-key",
+  models: %{
+    spell_compile: "deepseek-v4-pro-test",
+    turn_narration: "deepseek-v4-pro-test",
+    combat_orchestrator: "deepseek-v4-pro-test",
+    dungeon_tick: "deepseek-v4-pro-test"
+  },
+  max_tokens: 4096,
+  thinking: nil,
+  reasoning_effort: nil
+
 config :mmgo, MMGO.Federation,
   freeze_game_days: 28,
   level_retention_bps: 800,

@@ -26,14 +26,8 @@ defmodule MMGO.Accounts.TelegramIdentity do
   def changeset(identity, attrs) do
     identity
     |> cast(attrs, [
-      :telegram_user_id,
-      :telegram_username,
-      :first_name,
-      :last_name,
-      :language_code,
-      :is_bot,
-      :auth_data,
-      :last_seen_at
+      :telegram_user_id, :telegram_username, :first_name, :last_name,
+      :language_code, :is_bot, :auth_data, :last_seen_at
     ])
     |> validate_required([:telegram_user_id, :last_seen_at])
     |> unique_constraint(:telegram_user_id)

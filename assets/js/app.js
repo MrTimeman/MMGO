@@ -25,6 +25,7 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/mmgo"
 import topbar from "../vendor/topbar"
 import {Hooks} from "./hooks"
+import {initTelegramAuth} from "./telegram-auth"
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -37,6 +38,9 @@ const liveSocket = new LiveSocket("/live", Socket, {
 topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
 window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
 window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
+
+// Authenticate via Telegram WebApp if running inside Telegram
+initTelegramAuth()
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()

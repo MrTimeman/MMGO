@@ -22,32 +22,64 @@ end
 
 config :mmgo, MMGOWeb.Endpoint, http: [port: String.to_integer(System.get_env("PORT", "4000"))]
 
-telegram_config = Application.get_env(:mmgo, MMGO.Telegram, [])
-
-config :mmgo, MMGO.Telegram,
-  api_base_url:
-    System.get_env("TELEGRAM_API_BASE_URL") || telegram_config[:api_base_url] ||
-      "https://api.telegram.org",
-  bot_token: System.get_env("TELEGRAM_BOT_TOKEN") || telegram_config[:bot_token],
-  webhook_secret: System.get_env("TELEGRAM_WEBHOOK_SECRET") || telegram_config[:webhook_secret],
-  webhook_path: telegram_config[:webhook_path] || "/api/telegram/webhook"
-
 ai_config = Application.get_env(:mmgo, MMGO.AI, [])
 gemini_config = Application.get_env(:mmgo, MMGO.AI.Providers.Gemini, [])
+deepseek_config = Application.get_env(:mmgo, MMGO.AI.Providers.DeepSeek, [])
 gemini_api_key = System.get_env("GEMINI_API_KEY") || gemini_config[:api_key]
 gemini_env_api_key = System.get_env("GEMINI_API_KEY")
+deepseek_api_key = System.get_env("DEEPSEEK_API_KEY") || deepseek_config[:api_key]
+deepseek_env_api_key = System.get_env("DEEPSEEK_API_KEY")
+
+selected_ai_provider =
+  case String.downcase(System.get_env("MMGO_AI_PROVIDER") || "") do
+    "deepseek" -> MMGO.AI.Providers.DeepSeek
+    "gemini" -> MMGO.AI.Providers.Gemini
+    "mock" -> MMGO.AI.Providers.Mock
+    _ when deepseek_env_api_key not in [nil, ""] -> MMGO.AI.Providers.DeepSeek
+    _ when gemini_env_api_key not in [nil, ""] -> MMGO.AI.Providers.Gemini
+    _ -> ai_config[:default_provider]
+  end
+
+deepseek_default_model = System.get_env("DEEPSEEK_MODEL") || "deepseek-chat"
+deepseek_models = deepseek_config[:models] || %{}
+
+deepseek_max_tokens =
+  case Integer.parse(System.get_env("DEEPSEEK_MAX_TOKENS") || "") do
+    {tokens, ""} -> tokens
+    _ -> deepseek_config[:max_tokens] || 4096
+  end
+
+ai_models =
+  if selected_ai_provider == MMGO.AI.Providers.DeepSeek do
+    %{
+      spell_compile:
+        System.get_env("DEEPSEEK_SPELL_MODEL") || deepseek_models[:spell_compile] ||
+          deepseek_default_model,
+      turn_narration:
+        System.get_env("DEEPSEEK_NARRATION_MODEL") || deepseek_models[:turn_narration] ||
+          deepseek_default_model,
+      combat_orchestrator:
+        System.get_env("DEEPSEEK_ORCHESTRATOR_MODEL") ||
+          deepseek_models[:combat_orchestrator] || deepseek_default_model,
+      dungeon_tick:
+        System.get_env("DEEPSEEK_DUNGEON_TICK_MODEL") || deepseek_models[:dungeon_tick] ||
+          deepseek_default_model
+    }
+  else
+    %{
+      spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
+      turn_narration:
+        System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration],
+      combat_orchestrator:
+        System.get_env("GEMINI_ORCHESTRATOR_MODEL") || ai_config[:models][:combat_orchestrator],
+      dungeon_tick:
+        System.get_env("GEMINI_DUNGEON_TICK_MODEL") || ai_config[:models][:dungeon_tick]
+    }
+  end
 
 config :mmgo, MMGO.AI,
-  default_provider:
-    if(gemini_env_api_key, do: MMGO.AI.Providers.Gemini, else: ai_config[:default_provider]),
-  models: %{
-    spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
-    turn_narration:
-      System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration],
-    combat_orchestrator:
-      System.get_env("GEMINI_ORCHESTRATOR_MODEL") || ai_config[:models][:combat_orchestrator],
-    dungeon_tick: System.get_env("GEMINI_DUNGEON_TICK_MODEL") || ai_config[:models][:dungeon_tick]
-  },
+  default_provider: selected_ai_provider,
+  models: ai_models,
   prompt_versions: ai_config[:prompt_versions]
 
 config :mmgo, MMGO.AI.Providers.Gemini,
@@ -56,15 +88,21 @@ config :mmgo, MMGO.AI.Providers.Gemini,
       "https://generativelanguage.googleapis.com/v1beta",
   api_key: gemini_api_key
 
-operator_config = Application.get_env(:mmgo, MMGO.Operator, [])
+config :mmgo, MMGO.AI.Providers.DeepSeek,
+  api_base_url:
+    System.get_env("DEEPSEEK_API_BASE_URL") || deepseek_config[:api_base_url] ||
+      "https://api.deepseek.com",
+  api_key: deepseek_api_key,
+  max_tokens: deepseek_max_tokens,
+  thinking: System.get_env("DEEPSEEK_THINKING") || deepseek_config[:thinking],
+  reasoning_effort:
+    System.get_env("DEEPSEEK_REASONING_EFFORT") || deepseek_config[:reasoning_effort]
 
-operator_handles =
-  case System.get_env("OPERATOR_HANDLES") do
-    nil -> operator_config[:handles] || []
-    raw_handles -> raw_handles |> String.split(",", trim: true) |> Enum.map(&String.trim/1)
-  end
+telegram_config = Application.get_env(:mmgo, MMGO.Telegram, [])
 
-config :mmgo, MMGO.Operator, handles: operator_handles
+config :mmgo, MMGO.Telegram,
+  api_base_url: System.get_env("TELEGRAM_API_BASE_URL") || telegram_config[:api_base_url],
+  bot_token: System.get_env("TELEGRAM_BOT_TOKEN") || telegram_config[:bot_token]
 
 pvp_config = Application.get_env(:mmgo, MMGO.PVP, [])
 
@@ -73,28 +111,6 @@ config :mmgo, MMGO.PVP,
     String.to_integer(
       System.get_env("DUEL_TAX_RATE_BPS") || to_string(pvp_config[:duel_tax_rate_bps] || 500)
     )
-
-federation_config = Application.get_env(:mmgo, MMGO.Federation, [])
-
-config :mmgo, MMGO.Federation,
-  freeze_game_days:
-    String.to_integer(
-      System.get_env("FEDERATION_FREEZE_GAME_DAYS") ||
-        to_string(federation_config[:freeze_game_days] || 28)
-    ),
-  level_retention_bps:
-    String.to_integer(
-      System.get_env("FEDERATION_LEVEL_RETENTION_BPS") ||
-        to_string(federation_config[:level_retention_bps] || 800)
-    ),
-  xp_retention_bps:
-    String.to_integer(
-      System.get_env("FEDERATION_XP_RETENTION_BPS") ||
-        to_string(federation_config[:xp_retention_bps] || 700)
-    ),
-  public_base_url:
-    System.get_env("FEDERATION_PUBLIC_BASE_URL") || federation_config[:public_base_url],
-  import_token: System.get_env("FEDERATION_IMPORT_TOKEN") || federation_config[:import_token]
 
 if config_env() == :prod do
   database_url =
