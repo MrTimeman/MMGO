@@ -40,7 +40,7 @@ selected_ai_provider =
     _ -> ai_config[:default_provider]
   end
 
-deepseek_default_model = System.get_env("DEEPSEEK_MODEL") || "deepseek-chat"
+deepseek_default_model = System.get_env("DEEPSEEK_MODEL") || "deepseek-v4-pro"
 deepseek_models = deepseek_config[:models] || %{}
 
 deepseek_max_tokens =

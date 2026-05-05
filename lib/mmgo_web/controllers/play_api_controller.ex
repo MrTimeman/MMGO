@@ -9,7 +9,7 @@ defmodule MMGOWeb.PlayApiController do
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Dungeons.{Encounter, Link, Node, NodeState, Run}
   alias MMGO.Grimoires.{Grimoire, GrimoireEntry}
-  alias MMGO.Parties.Expedition
+  alias MMGO.Parties.{Expedition, Membership}
   alias MMGOWeb.PlaySession
 
   # ── Hub ──────────────────────────────────────────────────────────────────
@@ -493,6 +493,11 @@ defmodule MMGOWeb.PlayApiController do
   defp ensure_party(character) do
     case Parties.active_party_for_character(character.id) do
       nil ->
+        # Deactivate any stale memberships from disbanded parties
+        Repo.update_all(
+          from(m in Membership, where: m.character_id == ^character.id and m.status == :active),
+          set: [status: :left, left_at: DateTime.utc_now()]
+        )
         case Parties.create_party(character) do
           {:ok, %{party: party}} -> {:ok, party}
           err -> err

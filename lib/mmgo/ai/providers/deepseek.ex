@@ -28,7 +28,8 @@ defmodule MMGO.AI.Providers.DeepSeek do
     body =
       request_body(model, prompt_payload, temperature,
         response_format: %{type: "json_object"},
-        system_suffix: json_schema_suffix(prompt_payload)
+        system_suffix: json_schema_suffix(prompt_payload),
+        force_disable_thinking: true
       )
 
     with {:ok, response} <- request(body),
@@ -63,7 +64,7 @@ defmodule MMGO.AI.Providers.DeepSeek do
 
     base_body
     |> maybe_put(:response_format, opts[:response_format])
-    |> maybe_put(:thinking, thinking_config())
+    |> maybe_put(:thinking, thinking_config(opts))
     |> maybe_put(:reasoning_effort, config()[:reasoning_effort])
   end
 
@@ -129,10 +130,14 @@ defmodule MMGO.AI.Providers.DeepSeek do
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
-  defp thinking_config do
-    case config()[:thinking] do
-      value when value in ["enabled", "disabled"] -> %{type: value}
-      _ -> nil
+  defp thinking_config(opts) do
+    cond do
+      opts[:force_disable_thinking] -> %{type: "disabled"}
+      true ->
+        case config()[:thinking] do
+          value when value in ["enabled", "disabled"] -> %{type: value}
+          _ -> nil
+        end
     end
   end
 
