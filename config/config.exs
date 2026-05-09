@@ -41,12 +41,7 @@ config :mmgo, MMGO.AI.Providers.Gemini,
 config :mmgo, MMGO.AI.Providers.DeepSeek,
   api_base_url: "https://api.deepseek.com",
   api_key: nil,
-  models: %{
-    spell_compile: "deepseek-chat",
-    turn_narration: "deepseek-chat",
-    combat_orchestrator: "deepseek-chat",
-    dungeon_tick: "deepseek-chat"
-  },
+  models: %{},
   max_tokens: 4096,
   thinking: nil,
   reasoning_effort: nil

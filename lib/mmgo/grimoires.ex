@@ -127,12 +127,8 @@ defmodule MMGO.Grimoires do
     end
   end
 
-  defp validate_grimoire_is_writable(%Grimoire{status: status})
-       when status in [:sealed, :active] do
-    {:error, writable_changeset()}
-  end
-
-  defp validate_grimoire_is_writable(_grimoire), do: :ok
+  defp validate_grimoire_is_writable(%Grimoire{status: :draft}), do: :ok
+  defp validate_grimoire_is_writable(_grimoire), do: {:error, writable_changeset()}
 
   defp validate_grimoire_capacity(%Grimoire{} = grimoire) do
     if length(grimoire.entries) >= grimoire.capacity do

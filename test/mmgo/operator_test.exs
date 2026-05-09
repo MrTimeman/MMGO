@@ -59,7 +59,9 @@ defmodule MMGO.OperatorTest do
     journey_character = character_fixture(realm, city, "journey-operator", "Journey Operator")
 
     {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 5})
-    {:ok, _journey_rations} = Inventory.grant_item(journey_character, ration_template, %{quantity: 5})
+
+    {:ok, _journey_rations} =
+      Inventory.grant_item(journey_character, ration_template, %{quantity: 5})
 
     %{
       realm: realm,

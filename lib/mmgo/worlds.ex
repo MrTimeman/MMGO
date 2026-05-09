@@ -129,7 +129,8 @@ defmodule MMGO.Worlds do
   def delete_location(%Location{} = location) do
     Repo.transaction(fn ->
       from(r in Route,
-        where: r.origin_location_id == ^location.id or r.destination_location_id == ^location.id)
+        where: r.origin_location_id == ^location.id or r.destination_location_id == ^location.id
+      )
       |> Repo.delete_all()
 
       Repo.delete(location)

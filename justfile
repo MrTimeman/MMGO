@@ -1,44 +1,36 @@
-# Default: start dev server
+# ── Dev ─────────────────────────────────────────────────────────────────────
+
 default: dev
 
-# Start the development server
 dev:
     mix phx.server
 
-# Start the local map demo and print the suggested route
-demo:
-    @echo "MMGO local map demo"
-    @echo "Open http://localhost:4000/play"
-    @echo "Suggested route: Capital City -> Ash Crossing -> The Tower"
-    @echo "Use the in-app 'Reset demo to start' button to return to Capital City."
-    mix phx.server
-
-# Start dev server with interactive Elixir shell
 iex:
     iex -S mix phx.server
 
-# Full project setup (deps, DB, assets)
 setup:
     mix setup
 
-# Reset DB, reseed the map graph, and get ready for the local demo
-demo-setup:
-    mix ecto.reset
-    @echo "Demo world reseeded. Start it with: just demo"
+# ── Test ────────────────────────────────────────────────────────────────────
 
-# Run the test suite
 test *args:
     mix test {{args}}
 
-# Run precommit checks (compile, format, test)
+test-watch:
+    fswatch lib test | mix test --stale --listen-on-stdin
+
 check:
     mix precommit
 
-# Format code
+# ── Format & Clean ──────────────────────────────────────────────────────────
+
 fmt:
     mix format
 
-# ── Database ────────────────────────────────────────────────────────────────
+clean:
+    mix clean
+
+# ── DB ──────────────────────────────────────────────────────────────────────
 
 db-setup:
     mix ecto.setup
@@ -52,28 +44,70 @@ db-migrate:
 db-rollback:
     mix ecto.rollback
 
-# ── Docker ──────────────────────────────────────────────────────────────────
+db-prod-reset:
+    ssh -J root@192.168.1.71 root@nova 'docker exec mmgo-postgres psql -U postgres mmgo_prod -c "TRUNCATE characters CASCADE"'
 
-# Start Postgres in the background
+db-prod-shell:
+    ssh -J root@192.168.1.71 root@nova 'docker exec -it mmgo-postgres psql -U postgres mmgo_prod'
+
+# ── Docker (local) ──────────────────────────────────────────────────────────
+
 up:
     docker compose up -d
 
-# Stop all containers
 down:
     docker compose down
 
 # ── Assets ──────────────────────────────────────────────────────────────────
 
-# Build JS + CSS for development
 assets:
     mix assets.build
 
-# Build and digest assets for production
 assets-deploy:
     mix assets.deploy
 
-# ── Misc ────────────────────────────────────────────────────────────────────
+# ── Deploy (nova) ───────────────────────────────────────────────────────────
 
-# Remove compiled artefacts
-clean:
-    mix clean
+# Full deploy: compile → rsync → build → restart
+deploy:
+    mix compile
+    rsync -az -e "ssh -J root@192.168.1.71" --exclude='.git' --exclude='_build' --exclude='deps' --exclude='.elixir_ls' --exclude='.env' . root@nova:/opt/mmgo/
+    ssh -J root@192.168.1.71 root@nova 'cd /opt/mmgo && docker compose -f docker-compose.prod.yml build app && docker rm -f mmgo-app && docker compose -f docker-compose.prod.yml up -d --no-deps app'
+
+# Deploy without compile (if already compiled)
+deploy-fast:
+    rsync -az -e "ssh -J root@192.168.1.71" --exclude='.git' --exclude='_build' --exclude='deps' --exclude='.elixir_ls' --exclude='.env' . root@nova:/opt/mmgo/
+    ssh -J root@192.168.1.71 root@nova 'cd /opt/mmgo && docker compose -f docker-compose.prod.yml build app && docker rm -f mmgo-app && docker compose -f docker-compose.prod.yml up -d --no-deps app'
+
+# Restart app container only (no rebuild)
+deploy-restart:
+    ssh -J root@192.168.1.71 root@nova 'docker rm -f mmgo-app && cd /opt/mmgo && docker compose -f docker-compose.prod.yml up -d --no-deps app'
+
+# ── Logs ────────────────────────────────────────────────────────────────────
+
+logs:
+    ssh -J root@192.168.1.71 root@nova 'docker logs mmgo-app --tail 50'
+
+logs-follow:
+    ssh -J root@192.168.1.71 root@nova 'docker logs -f mmgo-app'
+
+# ── SSH ─────────────────────────────────────────────────────────────────────
+
+ssh-nova:
+    ssh -J root@192.168.1.71 root@nova
+
+ssh-app:
+    ssh -J root@192.168.1.71 root@nova 'docker exec -it mmgo-app sh'
+
+# ── Git ─────────────────────────────────────────────────────────────────────
+
+push *args:
+    git add -A
+    git commit -m "{{args}}" -m "Co-Authored-By: Claude Opus 4.7 <noreply@anthropic.com>"
+    git push origin $(git branch --show-current)
+
+pull:
+    git pull origin $(git branch --show-current)
+
+main:
+    git checkout main && git pull origin main

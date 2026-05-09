@@ -14,7 +14,7 @@ defmodule MMGO.AccountsTest do
         is_default: true
       })
 
-    {:ok, city} =
+    {:ok, _city} =
       Worlds.create_location(realm, %{
         slug: "capital-city",
         name: "Capital City",

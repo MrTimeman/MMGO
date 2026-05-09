@@ -29,15 +29,27 @@ gemini_api_key = System.get_env("GEMINI_API_KEY") || gemini_config[:api_key]
 gemini_env_api_key = System.get_env("GEMINI_API_KEY")
 deepseek_api_key = System.get_env("DEEPSEEK_API_KEY") || deepseek_config[:api_key]
 deepseek_env_api_key = System.get_env("DEEPSEEK_API_KEY")
+runtime_env = config_env()
 
 selected_ai_provider =
   case String.downcase(System.get_env("MMGO_AI_PROVIDER") || "") do
-    "deepseek" -> MMGO.AI.Providers.DeepSeek
-    "gemini" -> MMGO.AI.Providers.Gemini
-    "mock" -> MMGO.AI.Providers.Mock
-    _ when deepseek_env_api_key not in [nil, ""] -> MMGO.AI.Providers.DeepSeek
-    _ when gemini_env_api_key not in [nil, ""] -> MMGO.AI.Providers.Gemini
-    _ -> ai_config[:default_provider]
+    "deepseek" ->
+      MMGO.AI.Providers.DeepSeek
+
+    "gemini" ->
+      MMGO.AI.Providers.Gemini
+
+    "mock" ->
+      MMGO.AI.Providers.Mock
+
+    _ when runtime_env != :test and deepseek_env_api_key not in [nil, ""] ->
+      MMGO.AI.Providers.DeepSeek
+
+    _ when runtime_env != :test and gemini_env_api_key not in [nil, ""] ->
+      MMGO.AI.Providers.Gemini
+
+    _ ->
+      ai_config[:default_provider]
   end
 
 deepseek_default_model = System.get_env("DEEPSEEK_MODEL") || "deepseek-v4-pro"

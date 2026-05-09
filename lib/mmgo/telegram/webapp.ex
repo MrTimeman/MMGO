@@ -1,10 +1,11 @@
 defmodule MMGO.Telegram.WebApp do
-  def validate_init_data(init_data, bot_token) when is_binary(init_data) and is_binary(bot_token) do
+  def validate_init_data(init_data, bot_token)
+      when is_binary(init_data) and is_binary(bot_token) do
     params = URI.decode_query(init_data)
 
     with {:ok, hash} <- Map.fetch(params, "hash"),
          {:ok, data_check_string} <- build_data_check_string(params) do
-      secret_key = :crypto.mac(:hmac, :sha256, bot_token, "WebAppData")
+      secret_key = :crypto.mac(:hmac, :sha256, "WebAppData", bot_token)
       computed = :crypto.mac(:hmac, :sha256, secret_key, data_check_string)
       computed_hex = Base.encode16(computed, case: :lower)
 

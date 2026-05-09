@@ -1051,10 +1051,8 @@ defmodule MMGO.Dungeons do
       extraction && extraction.id != current_extraction_id ->
         Repo.rollback(extraction_changeset("run already has an active extraction"))
 
-      encounter && encounter.status in [:pending, :active] ->
-        Repo.rollback(
-          extraction_changeset("current encounter must be resolved before extraction")
-        )
+      encounter && encounter.status == :active ->
+        Repo.rollback(extraction_changeset("current combat must be resolved before extraction"))
 
       extraction_type == :return_ritual and is_nil(caster) ->
         Repo.rollback(extraction_changeset("a caster must initiate the return ritual"))
@@ -1169,6 +1167,7 @@ defmodule MMGO.Dungeons do
             |> Repo.insert!()
 
           Repo.delete!(grimoire)
+
           drop
       end
 

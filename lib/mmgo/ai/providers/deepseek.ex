@@ -34,7 +34,7 @@ defmodule MMGO.AI.Providers.DeepSeek do
 
     with {:ok, response} <- request(body),
          {:ok, text} <- extract_content(response),
-         {:ok, decoded} <- Jason.decode(text) do
+         {:ok, decoded} <- decode_json(text) do
       {:ok, decoded}
     else
       {:error, _reason} = error -> error
@@ -79,8 +79,8 @@ defmodule MMGO.AI.Providers.DeepSeek do
                {"authorization", "Bearer #{api_key}"},
                {"content-type", "application/json"}
              ],
-             receive_timeout: 120_000,
-             connect_options: [timeout: 15_000]
+             receive_timeout: 180_000,
+             connect_options: [timeout: 30_000]
            ) do
         {:ok, %Req.Response{status: status, body: response_body}} when status in 200..299 ->
           {:ok, decode_body(response_body)}
@@ -132,13 +132,26 @@ defmodule MMGO.AI.Providers.DeepSeek do
 
   defp thinking_config(opts) do
     cond do
-      opts[:force_disable_thinking] -> %{type: "disabled"}
+      opts[:force_disable_thinking] ->
+        %{type: "disabled"}
+
       true ->
         case config()[:thinking] do
           value when value in ["enabled", "disabled"] -> %{type: value}
           _ -> nil
         end
     end
+  end
+
+  defp decode_json(text) do
+    cleaned =
+      text
+      |> String.trim()
+      |> String.replace(~r/^```(?:json)?\s*\n?/, "")
+      |> String.replace(~r/\n?```\s*$/, "")
+      |> String.trim()
+
+    Jason.decode(cleaned)
   end
 
   defp decode_body(body) when is_binary(body) do

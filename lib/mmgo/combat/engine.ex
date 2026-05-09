@@ -316,7 +316,8 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
-      is_nil(action.spell.creator_character_id) or action.spell.creator_character_id != participant.character_id ->
+      is_nil(action.spell.creator_character_id) or
+          action.spell.creator_character_id != participant.character_id ->
         {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "unauthorized_spell", %{

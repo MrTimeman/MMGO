@@ -46,6 +46,8 @@ defmodule MMGOWeb.Router do
 
     get "/hub", PlayApiController, :hub
     get "/state", PlayApiController, :state
+    post "/journeys", PlayApiController, :create_journey
+    post "/utility-spells", PlayApiController, :cast_utility_spell
     get "/characters/search", PlayApiController, :search_characters
     get "/spells", PlayApiController, :list_spells
     post "/spells", PlayApiController, :create_spell
@@ -54,6 +56,10 @@ defmodule MMGOWeb.Router do
     post "/dungeons/enter", PlayApiController, :enter_dungeon
     post "/dungeons/move", PlayApiController, :move_in_dungeon
     post "/dungeons/fight", PlayApiController, :fight_encounter
+    post "/dungeons/harvest", PlayApiController, :harvest_resource
+    post "/dungeons/claim-loot", PlayApiController, :claim_loot
+    post "/dungeons/extract", PlayApiController, :extract_dungeon
+    post "/dungeons/return-ritual", PlayApiController, :return_ritual
     post "/party/leave", PlayApiController, :leave_party
     post "/demo/reset", PlayDemoController, :reset
   end

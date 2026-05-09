@@ -311,6 +311,89 @@ defmodule MMGOWeb.PlayApiControllerTest do
     assert Enum.any?(hidden_state.metadata["environment_states"], &(&1["state"] == "revealed"))
   end
 
+  test "dungeon state exposes the expedition map, exits, and extraction readiness", %{
+    conn: conn,
+    realm: realm,
+    tower: tower
+  } do
+    %{
+      dungeon: dungeon,
+      entrance_node: entrance_node,
+      rest_node: rest_node,
+      run: run,
+      leader: leader
+    } =
+      dungeon_run_fixture(realm, tower, "state")
+
+    conn =
+      conn
+      |> init_test_session(%{play_character_id: leader.id})
+      |> get(~p"/api/play/dungeons/state")
+
+    payload = json_response(conn, 200)
+    state = payload["state"]
+
+    assert payload["ok"] == true
+    assert state["dungeon_name"] == dungeon.name
+    assert state["current_node"]["id"] == entrance_node.id
+    assert state["current_node"]["description"] =~ "Башней"
+    assert state["extraction"]["can_ascent"] == true
+    assert state["progress"]["known_nodes"] == 2
+    assert state["progress"]["available_resources"] == 1
+
+    assert [%{"id" => rest_node_id}] = state["current_node"]["exits"]
+    assert rest_node_id == rest_node.id
+    assert Enum.any?(state["nodes"], &(&1["id"] == rest_node.id and &1["reachable"] == true))
+
+    conn =
+      conn
+      |> recycle()
+      |> init_test_session(%{play_character_id: leader.id})
+      |> put_json_csrf_header()
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/api/play/dungeons/extract", Jason.encode!(%{}))
+
+    extract_payload = json_response(conn, 200)
+    assert extract_payload["ok"] == true
+    assert get_in(extract_payload, ["result", "status"]) == "completed"
+    assert Repo.reload!(run).status == :completed
+  end
+
+  test "dungeon move keeps already visited adjacent rooms reachable", %{
+    conn: conn,
+    realm: realm,
+    tower: tower
+  } do
+    %{
+      entrance_node: entrance_node,
+      rest_node: rest_node,
+      deeper_node: deeper_node,
+      leader: leader
+    } =
+      dungeon_run_fixture(realm, tower, "move")
+
+    conn =
+      conn
+      |> init_test_session(%{play_character_id: leader.id})
+      |> put_json_csrf_header()
+      |> put_req_header("content-type", "application/json")
+      |> post(~p"/api/play/dungeons/move", Jason.encode!(%{to_node_id: rest_node.id}))
+
+    payload = json_response(conn, 200)
+    state = payload["state"]
+
+    assert payload["ok"] == true
+    assert state["current_node"]["id"] == rest_node.id
+
+    entrance_payload = Enum.find(state["nodes"], &(&1["id"] == entrance_node.id))
+    assert entrance_payload["state"] == "visited"
+    assert entrance_payload["reachable"] == true
+
+    exit_ids = Enum.map(state["current_node"]["exits"], & &1["id"])
+    assert entrance_node.id in exit_ids
+    assert deeper_node.id in exit_ids
+  end
+
   defp character_fixture(realm, location, handle, name) do
     account =
       %Account{}
@@ -325,6 +408,78 @@ defmodule MMGOWeb.PlayApiControllerTest do
     |> Repo.insert!()
     |> Character.travel_changeset(%{current_location_id: location.id})
     |> Repo.update!()
+  end
+
+  defp dungeon_run_fixture(realm, tower, slug_suffix) do
+    {:ok, dungeon} =
+      Dungeons.create_dungeon(realm, %{
+        slug: "tower-dungeon-#{slug_suffix}",
+        name: "Tower Dungeon #{slug_suffix}",
+        status: :active,
+        entrance_location_id: tower.id
+      })
+
+    {:ok, floor} = Dungeons.create_floor(dungeon, %{number: 1, name: "Upper Halls"})
+
+    {:ok, entrance_node} =
+      Dungeons.create_node(floor, %{
+        slug: "entrance",
+        name: "Tower Gate",
+        kind: :entrance,
+        x: 0,
+        y: 0,
+        threat_level: 0
+      })
+
+    {:ok, rest_node} =
+      Dungeons.create_node(floor, %{
+        slug: "rest",
+        name: "Lantern Niche",
+        kind: :rest,
+        x: 1,
+        y: 0,
+        threat_level: 0
+      })
+
+    {:ok, deeper_node} =
+      Dungeons.create_node(floor, %{
+        slug: "deeper",
+        name: "Cold Gallery",
+        kind: :room,
+        x: 2,
+        y: 0,
+        threat_level: 0
+      })
+
+    {:ok, _entry_link} =
+      Dungeons.create_link(dungeon, %{
+        from_node_id: entrance_node.id,
+        to_node_id: rest_node.id,
+        travel_cost: 1,
+        bidirectional: true
+      })
+
+    {:ok, _gallery_link} =
+      Dungeons.create_link(dungeon, %{
+        from_node_id: rest_node.id,
+        to_node_id: deeper_node.id,
+        travel_cost: 1,
+        bidirectional: true
+      })
+
+    leader = character_fixture(realm, tower, "delver-#{slug_suffix}", "Delver #{slug_suffix}")
+    {:ok, %{party: party}} = Parties.create_party(leader, %{name: "Tower Survey"})
+    {:ok, %{expedition: expedition}} = Parties.start_expedition(party)
+    {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+
+    %{
+      dungeon: dungeon,
+      entrance_node: entrance_node,
+      rest_node: rest_node,
+      deeper_node: deeper_node,
+      leader: leader,
+      run: run
+    }
   end
 
   defp put_json_csrf_header(conn) do
