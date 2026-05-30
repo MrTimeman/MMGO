@@ -36,10 +36,17 @@ ai_config = Application.get_env(:mmgo, MMGO.AI, [])
 gemini_config = Application.get_env(:mmgo, MMGO.AI.Providers.Gemini, [])
 gemini_api_key = System.get_env("GEMINI_API_KEY") || gemini_config[:api_key]
 gemini_env_api_key = System.get_env("GEMINI_API_KEY")
+deepseek_api_key = System.get_env("DEEPSEEK_API_KEY")
+
+default_provider =
+  cond do
+    deepseek_api_key -> MMGO.AI.Providers.DeepSeek
+    gemini_env_api_key -> MMGO.AI.Providers.Gemini
+    true -> ai_config[:default_provider]
+  end
 
 config :mmgo, MMGO.AI,
-  default_provider:
-    if(gemini_env_api_key, do: MMGO.AI.Providers.Gemini, else: ai_config[:default_provider]),
+  default_provider: default_provider,
   models: %{
     spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
     turn_narration:
@@ -52,6 +59,9 @@ config :mmgo, MMGO.AI.Providers.Gemini,
     System.get_env("GEMINI_API_BASE_URL") || gemini_config[:api_base_url] ||
       "https://generativelanguage.googleapis.com/v1beta",
   api_key: gemini_api_key
+
+config :mmgo, MMGO.AI.Providers.DeepSeek,
+  api_key: deepseek_api_key
 
 operator_config = Application.get_env(:mmgo, MMGO.Operator, [])
 

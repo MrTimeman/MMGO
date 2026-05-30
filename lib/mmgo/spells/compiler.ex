@@ -7,13 +7,19 @@ defmodule MMGO.Spells.Compiler do
 
   def compile_and_store(%Character{} = character, attrs, opts \\ []) when is_map(attrs) do
     with {:ok, request} <- normalize_request(attrs) do
+      schools = Keyword.get(opts, :schools, %{})
+      environment_tags = Keyword.get(opts, :environment_tags, [])
+
       prompt_payload =
         SpellCompilePrompt.build(%{
           character: %{
             id: character.id,
             level: character.level,
-            realm_id: character.realm_id
+            realm_id: character.realm_id,
+            school_primary: schools[:primary],
+            school_secondary: schools[:secondary]
           },
+          environment_tags: environment_tags,
           request: request,
           states: Spell.effect_states()
         })
