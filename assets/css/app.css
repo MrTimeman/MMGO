@@ -1,6 +1,5 @@
 @import url('https://fonts.googleapis.com/css2?family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&family=PT+Sans:ital,wght@0,400;0,700;1,400&family=Great+Vibes&display=swap');
 @import "tailwindcss" source(none);
-@import "../node_modules/leaflet/dist/leaflet.css";
 @source "../css";
 @source "../js";
 @source "../../lib/mmgo_web";

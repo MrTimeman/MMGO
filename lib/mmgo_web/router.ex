@@ -25,7 +25,7 @@ defmodule MMGOWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
-    get "/play", PlayController, :show
+    live "/map", MapLive
 
     live "/academy/bulletin-board", BulletinBoardLive
     live "/academy/study-desk", StudyDeskLive
