@@ -55,7 +55,7 @@ defmodule MMGO.FederationRulesetTest do
     {global_caster, global_target, global_spell} = duel_fixture(global_realm, global_city, 50)
 
     {:ok, canonical_duel} = PVP.challenge_duel(canonical_caster, canonical_target, 10)
-    {:ok, canonical_duel} = PVP.accept_duel(canonical_duel)
+    {:ok, canonical_duel} = PVP.accept_duel(canonical_duel, canonical_target)
     canonical_combat = Combat.get_combat!(canonical_duel.combat.id)
 
     canonical_participant =
@@ -71,7 +71,7 @@ defmodule MMGO.FederationRulesetTest do
     assert Repo.get_by!(Event, combat_id: canonical_combat.id, event_type: "magic_suppressed")
 
     {:ok, global_duel} = PVP.challenge_duel(global_caster, global_target, 10)
-    {:ok, global_duel} = PVP.accept_duel(global_duel)
+    {:ok, global_duel} = PVP.accept_duel(global_duel, global_target)
     global_combat = Combat.get_combat!(global_duel.combat.id)
 
     global_participant =

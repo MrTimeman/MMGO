@@ -22,6 +22,16 @@ defmodule MMGO.Organizations do
     |> Repo.preload(memberships: active_membership_query())
   end
 
+  def list_active_organizations_for_realm(realm_id) when is_binary(realm_id) do
+    Organization
+    |> where(
+      [organization],
+      organization.realm_id == ^realm_id and organization.status == :active
+    )
+    |> order_by([organization], asc: organization.inserted_at)
+    |> Repo.all()
+  end
+
   def get_organization!(id) do
     Organization
     |> Repo.get!(id)

@@ -5,99 +5,29 @@ defmodule MMGO.AI do
   alias MMGO.Repo
 
   def compile_spell(prompt_payload, opts \\ []) when is_map(prompt_payload) do
-    provider = provider(opts)
-    model = model_for(:spell_compile, opts)
-    prompt_version = Keyword.get(opts, :prompt_version, PromptVersions.for!(:spell_compile))
-    metadata = normalize_map(Keyword.get(opts, :metadata, %{}))
-    started_at = System.monotonic_time(:millisecond)
+    {schema, prompt_payload} = Map.pop(prompt_payload, :schema)
 
-    case provider.compile_spell(prompt_payload, Keyword.put(opts, :model, model)) do
-      {:ok, compiled_spell} ->
-        ai_request_attrs = %{
-          kind: :spell_compile,
-          status: :succeeded,
-          provider: provider_name(provider),
-          model: model,
-          prompt_version: prompt_version,
-          request_payload: prompt_payload,
-          response_payload: compiled_spell,
-          latency_ms: elapsed_ms(started_at),
-          metadata: metadata,
-          character_id: metadata["character_id"]
-        }
-
-        with {:ok, ai_request} <- create_request(ai_request_attrs) do
-          {:ok, %{compiled_spell: compiled_spell, ai_request: ai_request}}
-        end
-
-      {:error, reason} ->
-        ai_request_attrs = %{
-          kind: :spell_compile,
-          status: :failed,
-          provider: provider_name(provider),
-          model: model,
-          prompt_version: prompt_version,
-          request_payload: prompt_payload,
-          response_payload: %{},
-          latency_ms: elapsed_ms(started_at),
-          error: inspect(reason),
-          metadata: metadata,
-          character_id: metadata["character_id"]
-        }
-
-        with {:ok, _ai_request} <- create_request(ai_request_attrs) do
-          {:error, reason}
-        end
-    end
+    run(:spell_compile, prompt_payload, opts,
+      result_key: :compiled_spell,
+      stored_request_payload: Map.put(prompt_payload, :schema, schema),
+      response_payload: & &1,
+      request_attrs: fn metadata -> %{character_id: metadata["character_id"]} end,
+      call: fn provider, payload, call_opts ->
+        provider.structured_completion(payload, schema, call_opts)
+      end
+    )
   end
 
   def narrate_turn(prompt_payload, opts \\ []) when is_map(prompt_payload) do
-    provider = provider(opts)
-    model = model_for(:turn_narration, opts)
-    prompt_version = Keyword.get(opts, :prompt_version, PromptVersions.for!(:turn_narration))
-    metadata = normalize_map(Keyword.get(opts, :metadata, %{}))
-    started_at = System.monotonic_time(:millisecond)
-
-    case provider.narrate_turn(prompt_payload, Keyword.put(opts, :model, model)) do
-      {:ok, narration} ->
-        ai_request_attrs = %{
-          kind: :turn_narration,
-          status: :succeeded,
-          provider: provider_name(provider),
-          model: model,
-          prompt_version: prompt_version,
-          request_payload: prompt_payload,
-          response_payload: %{"text" => narration},
-          latency_ms: elapsed_ms(started_at),
-          metadata: metadata,
-          combat_id: metadata["combat_id"],
-          combat_turn_id: metadata["combat_turn_id"]
-        }
-
-        with {:ok, ai_request} <- create_request(ai_request_attrs) do
-          {:ok, %{narration: narration, ai_request: ai_request}}
-        end
-
-      {:error, reason} ->
-        ai_request_attrs = %{
-          kind: :turn_narration,
-          status: :failed,
-          provider: provider_name(provider),
-          model: model,
-          prompt_version: prompt_version,
-          request_payload: prompt_payload,
-          response_payload: %{},
-          latency_ms: elapsed_ms(started_at),
-          error: inspect(reason),
-          metadata: metadata,
-          combat_id: metadata["combat_id"],
-          combat_turn_id: metadata["combat_turn_id"]
-        }
-
-        with {:ok, _ai_request} <- create_request(ai_request_attrs) do
-          {:error, reason}
-        end
-    end
+    run(:turn_narration, prompt_payload, opts,
+      result_key: :narration,
+      stored_request_payload: prompt_payload,
+      response_payload: &%{"text" => &1},
+      request_attrs: fn metadata ->
+        %{combat_id: metadata["combat_id"], combat_turn_id: metadata["combat_turn_id"]}
+      end,
+      call: fn provider, payload, call_opts -> provider.text_completion(payload, call_opts) end
+    )
   end
 
   def update_request(%Request{} = request, attrs) when is_map(attrs) do
@@ -114,6 +44,62 @@ defmodule MMGO.AI do
       end
 
     Repo.all(from request in query, order_by: [desc: request.inserted_at])
+  end
+
+  # Generic plumbing shared by every AI use case: resolves the provider and
+  # model, invokes the provider callback, and persists an MMGO.AI.Request
+  # audit row for both the success and failure paths. Individual use cases
+  # (compile_spell, narrate_turn, ...) supply only what differs: which
+  # provider callback to call, how to shape the payloads for storage, and
+  # which foreign keys to stamp onto the audit row.
+  defp run(kind, prompt_payload, opts, config) do
+    provider = provider(opts)
+    model = model_for(kind, opts)
+    prompt_version = Keyword.get(opts, :prompt_version, PromptVersions.for!(kind))
+    metadata = normalize_map(Keyword.get(opts, :metadata, %{}))
+    started_at = System.monotonic_time(:millisecond)
+
+    result_key = Keyword.fetch!(config, :result_key)
+    call = Keyword.fetch!(config, :call)
+
+    base_attrs = %{
+      kind: kind,
+      provider: provider_name(provider),
+      model: model,
+      prompt_version: prompt_version,
+      request_payload: Keyword.fetch!(config, :stored_request_payload),
+      metadata: metadata
+    }
+
+    request_attrs =
+      Map.merge(base_attrs, Keyword.fetch!(config, :request_attrs).(metadata))
+
+    case call.(provider, prompt_payload, Keyword.put(opts, :model, model)) do
+      {:ok, result} ->
+        attrs =
+          Map.merge(request_attrs, %{
+            status: :succeeded,
+            response_payload: Keyword.fetch!(config, :response_payload).(result),
+            latency_ms: elapsed_ms(started_at)
+          })
+
+        with {:ok, ai_request} <- create_request(attrs) do
+          {:ok, %{result_key => result, ai_request: ai_request}}
+        end
+
+      {:error, reason} ->
+        attrs =
+          Map.merge(request_attrs, %{
+            status: :failed,
+            response_payload: %{},
+            latency_ms: elapsed_ms(started_at),
+            error: inspect(reason)
+          })
+
+        with {:ok, _ai_request} <- create_request(attrs) do
+          {:error, reason}
+        end
+    end
   end
 
   defp create_request(attrs) do

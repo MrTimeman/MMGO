@@ -3,6 +3,7 @@ defmodule MMGO.Academia do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
+
   alias MMGO.Academia.{
     AdvisorRelationship,
     CompleteProjectWorker,
@@ -12,6 +13,7 @@ defmodule MMGO.Academia do
     Publication,
     ThesisDefenseWorker
   }
+
   alias MMGO.Notifications
   alias MMGO.Progression
   alias MMGO.Repo
@@ -110,7 +112,8 @@ defmodule MMGO.Academia do
                 "granted_at" => now
               })
 
-            publication = if project.project_kind != :thesis, do: publish_project!(project, now), else: nil
+            publication =
+              if project.project_kind != :thesis, do: publish_project!(project, now), else: nil
 
             defense_at =
               if project.project_kind == :thesis do
@@ -124,7 +127,8 @@ defmodule MMGO.Academia do
                 completed_at: now,
                 publication_id: publication && publication.id,
                 defense_scheduled_at: defense_at,
-                defense_state: if(project.project_kind == :thesis, do: :pending_defense, else: nil)
+                defense_state:
+                  if(project.project_kind == :thesis, do: :pending_defense, else: nil)
               })
               |> Repo.update!()
 
@@ -135,7 +139,8 @@ defmodule MMGO.Academia do
       end)
 
     case result do
-      {:ok, %{project: %Project{project_kind: :thesis, defense_scheduled_at: defense_at} = project}} ->
+      {:ok,
+       %{project: %Project{project_kind: :thesis, defense_scheduled_at: defense_at} = project}} ->
         %{"project_id" => project.id}
         |> ThesisDefenseWorker.new(
           schedule_in: max(DateTime.diff(defense_at, DateTime.utc_now(), :second), 0)
@@ -228,8 +233,7 @@ defmodule MMGO.Academia do
   def list_advisees(professor_character_id) when is_binary(professor_character_id) do
     Repo.all(
       from rel in AdvisorRelationship,
-        where:
-          rel.professor_character_id == ^professor_character_id and rel.status == :active,
+        where: rel.professor_character_id == ^professor_character_id and rel.status == :active,
         preload: [:student_character]
     )
   end
@@ -261,7 +265,10 @@ defmodule MMGO.Academia do
             existing
         end
 
-      metadata = if reason, do: Map.put(reputation.metadata || %{}, "last_reason", reason), else: reputation.metadata
+      metadata =
+        if reason,
+          do: Map.put(reputation.metadata || %{}, "last_reason", reason),
+          else: reputation.metadata
 
       reputation
       |> ProfessorReputation.changeset(%{
@@ -308,8 +315,7 @@ defmodule MMGO.Academia do
           job =
             %{"project_id" => project_id}
             |> ThesisDefenseWorker.new(
-              schedule_in:
-                max(DateTime.diff(defense_at, DateTime.utc_now(), :second), 0)
+              schedule_in: max(DateTime.diff(defense_at, DateTime.utc_now(), :second), 0)
             )
             |> Oban.insert!()
 
@@ -362,11 +368,21 @@ defmodule MMGO.Academia do
             |> Repo.update!()
 
           if new_state == :accepted or new_state == :accepted_with_revisions do
-            maybe_adjust_advisor_reputation(project.character_id, project.realm_id, +5, "thesis_accepted")
+            maybe_adjust_advisor_reputation(
+              project.character_id,
+              project.realm_id,
+              +5,
+              "thesis_accepted"
+            )
           end
 
           if new_state == :rejected do
-            maybe_adjust_advisor_reputation(project.character_id, project.realm_id, -5, "thesis_rejected")
+            maybe_adjust_advisor_reputation(
+              project.character_id,
+              project.realm_id,
+              -5,
+              "thesis_rejected"
+            )
           end
 
           updated_project
@@ -395,7 +411,12 @@ defmodule MMGO.Academia do
 
         true ->
           existing_votes = Map.get(project.metadata || %{}, "defense_votes", %{})
-          updated_votes = Map.put(existing_votes, professor_character_id, %{"vote" => to_string(vote), "voted_at" => DateTime.to_iso8601(now)})
+
+          updated_votes =
+            Map.put(existing_votes, professor_character_id, %{
+              "vote" => to_string(vote),
+              "voted_at" => DateTime.to_iso8601(now)
+            })
 
           project
           |> Project.changeset(%{
@@ -586,8 +607,11 @@ defmodule MMGO.Academia do
            student_character_id: student_character_id,
            status: :active
          ) do
-      nil -> :ok
-      relationship -> adjust_reputation(relationship.professor_character_id, realm_id, delta, reason)
+      nil ->
+        :ok
+
+      relationship ->
+        adjust_reputation(relationship.professor_character_id, realm_id, delta, reason)
     end
   end
 end

@@ -111,23 +111,25 @@ defmodule MMGO.Combat do
   end
 
   def resolve_turn(%Combat{} = combat) do
-    runtime_combat = get_combat!(combat.id)
+    Repo.transaction(fn ->
+      runtime_combat = lock_combat!(combat.id)
 
-    with {:ok, turn} <- fetch_turn(runtime_combat, runtime_combat.turn_number) do
-      actions =
-        Action
-        |> where([action], action.combat_turn_id == ^turn.id)
-        |> Repo.all()
-        |> Repo.preload([
-          :spell,
-          :participant,
-          :target_participant,
-          inventory_item: :item_template
-        ])
+      with {:ok, turn} <- fetch_turn(runtime_combat, runtime_combat.turn_number),
+           :ok <- ensure_turn_resolvable(turn) do
+        actions =
+          Action
+          |> where([action], action.combat_turn_id == ^turn.id)
+          |> Repo.all()
+          |> Repo.preload([
+            :spell,
+            :participant,
+            :target_participant,
+            inventory_item: :item_template
+          ])
 
-      resolution = Engine.resolve_turn(runtime_combat, turn, runtime_combat.participants, actions)
+        resolution =
+          Engine.resolve_turn(runtime_combat, turn, runtime_combat.participants, actions)
 
-      Repo.transaction(fn ->
         Enum.each(resolution.inventory_updates, fn {inventory_item_id, attrs} ->
           inventory_item = Repo.get!(InventoryItem, inventory_item_id)
 
@@ -170,8 +172,18 @@ defmodule MMGO.Combat do
         end
 
         updated_combat
-      end)
-    end
+      else
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    end)
+  end
+
+  defp lock_combat!(combat_id) do
+    Combat
+    |> where([combat], combat.id == ^combat_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one!()
+    |> Repo.preload(participants: [:character, :actor_template, grimoire: :entries])
   end
 
   defp fetch_open_turn(%Combat{} = combat) do
@@ -188,6 +200,9 @@ defmodule MMGO.Combat do
       nil -> {:error, :turn_not_found}
     end
   end
+
+  defp ensure_turn_resolvable(%Turn{status: status}) when status in [:open, :locked], do: :ok
+  defp ensure_turn_resolvable(%Turn{}), do: {:error, :turn_closed}
 
   defp maybe_lock_turn(%Combat{} = combat, %Turn{} = turn) do
     active_count =

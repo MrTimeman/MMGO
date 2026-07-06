@@ -40,6 +40,7 @@ deepseek_api_key = System.get_env("DEEPSEEK_API_KEY")
 
 default_provider =
   cond do
+    config_env() == :test -> ai_config[:default_provider]
     deepseek_api_key -> MMGO.AI.Providers.DeepSeek
     gemini_env_api_key -> MMGO.AI.Providers.Gemini
     true -> ai_config[:default_provider]
@@ -60,8 +61,7 @@ config :mmgo, MMGO.AI.Providers.Gemini,
       "https://generativelanguage.googleapis.com/v1beta",
   api_key: gemini_api_key
 
-config :mmgo, MMGO.AI.Providers.DeepSeek,
-  api_key: deepseek_api_key
+config :mmgo, MMGO.AI.Providers.DeepSeek, api_key: deepseek_api_key
 
 operator_config = Application.get_env(:mmgo, MMGO.Operator, [])
 

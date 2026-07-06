@@ -23,7 +23,7 @@ defmodule MMGO.AI.Providers.GeminiTest do
     %{bypass: bypass}
   end
 
-  test "compile_spell/2 posts JSON schema requests to Gemini", %{bypass: bypass} do
+  test "structured_completion/3 posts JSON schema requests to Gemini", %{bypass: bypass} do
     Bypass.expect_once(bypass, "POST", "/models/gemini-3-flash-test:generateContent", fn conn ->
       assert Plug.Conn.get_req_header(conn, "x-goog-api-key") == ["gemini-test-key"]
       {:ok, body, conn} = Plug.Conn.read_body(conn)
@@ -36,17 +36,14 @@ defmodule MMGO.AI.Providers.GeminiTest do
       )
     end)
 
-    prompt_payload = %{
-      system_prompt: "Compile the spell.",
-      user_prompt: "{}",
-      schema: %{type: "object", properties: %{name: %{type: "string"}}}
-    }
+    prompt_payload = %{system_prompt: "Compile the spell.", user_prompt: "{}"}
+    schema = %{type: "object", properties: %{name: %{type: "string"}}}
 
     assert {:ok, %{"name" => "Ignis Sphaera", "school" => "fire"}} =
-             Gemini.compile_spell(prompt_payload, model: "gemini-3-flash-test")
+             Gemini.structured_completion(prompt_payload, schema, model: "gemini-3-flash-test")
   end
 
-  test "narrate_turn/2 returns plain text narration", %{bypass: bypass} do
+  test "text_completion/2 returns plain text narration", %{bypass: bypass} do
     Bypass.expect_once(bypass, "POST", "/models/g3f-lite-test:generateContent", fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       assert body =~ ~s("responseMimeType":"text/plain")
@@ -61,10 +58,10 @@ defmodule MMGO.AI.Providers.GeminiTest do
     prompt_payload = %{system_prompt: "Narrate the turn.", user_prompt: "{}"}
 
     assert {:ok, "A wall of fire shudders through the chamber."} =
-             Gemini.narrate_turn(prompt_payload, model: "g3f-lite-test")
+             Gemini.text_completion(prompt_payload, model: "g3f-lite-test")
   end
 
-  test "compile_spell/2 fails without an API key" do
+  test "structured_completion/3 fails without an API key" do
     original = Application.get_env(:mmgo, MMGO.AI.Providers.Gemini)
 
     Application.put_env(:mmgo, MMGO.AI.Providers.Gemini,
@@ -81,7 +78,7 @@ defmodule MMGO.AI.Providers.GeminiTest do
     end)
 
     assert {:error, :missing_api_key} =
-             Gemini.compile_spell(%{system_prompt: "", user_prompt: "", schema: %{}},
+             Gemini.structured_completion(%{system_prompt: "", user_prompt: ""}, %{},
                model: "gemini-3-flash-test"
              )
   end

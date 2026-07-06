@@ -1,7 +1,7 @@
 defmodule MMGO.AI.Providers.Gemini do
   @behaviour MMGO.AI.Provider
 
-  def compile_spell(prompt_payload, opts) do
+  def structured_completion(prompt_payload, schema, opts) do
     model = Keyword.fetch!(opts, :model)
 
     body = %{
@@ -17,7 +17,7 @@ defmodule MMGO.AI.Providers.Gemini do
       ],
       generationConfig: %{
         responseMimeType: "application/json",
-        responseSchema: prompt_payload.schema,
+        responseSchema: schema,
         temperature: 0.3
       }
     }
@@ -31,7 +31,7 @@ defmodule MMGO.AI.Providers.Gemini do
     end
   end
 
-  def narrate_turn(prompt_payload, opts) do
+  def text_completion(prompt_payload, opts) do
     model = Keyword.fetch!(opts, :model)
 
     body = %{

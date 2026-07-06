@@ -3,7 +3,16 @@ defmodule MMGO.Academy do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
-  alias MMGO.Academy.{CompleteEnrollmentWorker, Course, CourseEnrollment, Enrollment, Specialization, Term}
+
+  alias MMGO.Academy.{
+    CompleteEnrollmentWorker,
+    Course,
+    CourseEnrollment,
+    Enrollment,
+    Specialization,
+    Term
+  }
+
   alias MMGO.Progression
   alias MMGO.Repo
   alias MMGO.Travel.Clock
@@ -578,8 +587,12 @@ defmodule MMGO.Academy do
     failed = failed_terms_count(enrollment_id)
 
     cond do
-      failed >= 7 -> :expulsion
-      failed >= 4 -> :probation
+      failed >= 7 ->
+        :expulsion
+
+      failed >= 4 ->
+        :probation
+
       true ->
         gpa = gpa_for_enrollment(enrollment_id) || 0.0
 
@@ -606,18 +619,84 @@ defmodule MMGO.Academy do
 
   defp default_seeded_courses do
     [
-      %{source: :seeded, title: "History of the Realm", npc_professor_code: "npc_historian", syllabus: %{"track" => nil, "years" => [1, 2]}},
-      %{source: :seeded, title: "Elemental Literacy", npc_professor_code: "npc_elementalist", syllabus: %{"track" => nil, "years" => [1]}},
-      %{source: :seeded, title: "Overworld Survival", npc_professor_code: "npc_ranger", syllabus: %{"track" => nil, "years" => [1, 2]}},
-      %{source: :seeded, title: "Economic Basics", npc_professor_code: "npc_economist", syllabus: %{"track" => nil, "years" => [3, 4]}},
-      %{source: :seeded, title: "Civic Law", npc_professor_code: "npc_magistrate", syllabus: %{"track" => nil, "years" => [5, 6]}},
-      %{source: :seeded, title: "Latin Fundamentals", npc_professor_code: "npc_linguist", syllabus: %{"track" => nil, "years" => [7, 8, 9, 10]}},
-      %{source: :seeded, title: "Incantation Construction I", npc_professor_code: "npc_wizard_1", track: :wizardry, syllabus: %{"year" => 1}},
-      %{source: :seeded, title: "Incantation Construction II", npc_professor_code: "npc_wizard_2", track: :wizardry, syllabus: %{"year" => 2}},
-      %{source: :seeded, title: "Ingredients Taxonomy", npc_professor_code: "npc_alchemist_1", track: :alchemy, syllabus: %{"year" => 1}},
-      %{source: :seeded, title: "Basic Brewing", npc_professor_code: "npc_alchemist_2", track: :alchemy, syllabus: %{"year" => 1}},
-      %{source: :seeded, title: "Materials Science", npc_professor_code: "npc_master_1", track: :mastery, syllabus: %{"year" => 1}},
-      %{source: :seeded, title: "Basic Forging", npc_professor_code: "npc_master_2", track: :mastery, syllabus: %{"year" => 1}}
+      %{
+        source: :seeded,
+        title: "History of the Realm",
+        npc_professor_code: "npc_historian",
+        syllabus: %{"track" => nil, "years" => [1, 2]}
+      },
+      %{
+        source: :seeded,
+        title: "Elemental Literacy",
+        npc_professor_code: "npc_elementalist",
+        syllabus: %{"track" => nil, "years" => [1]}
+      },
+      %{
+        source: :seeded,
+        title: "Overworld Survival",
+        npc_professor_code: "npc_ranger",
+        syllabus: %{"track" => nil, "years" => [1, 2]}
+      },
+      %{
+        source: :seeded,
+        title: "Economic Basics",
+        npc_professor_code: "npc_economist",
+        syllabus: %{"track" => nil, "years" => [3, 4]}
+      },
+      %{
+        source: :seeded,
+        title: "Civic Law",
+        npc_professor_code: "npc_magistrate",
+        syllabus: %{"track" => nil, "years" => [5, 6]}
+      },
+      %{
+        source: :seeded,
+        title: "Latin Fundamentals",
+        npc_professor_code: "npc_linguist",
+        syllabus: %{"track" => nil, "years" => [7, 8, 9, 10]}
+      },
+      %{
+        source: :seeded,
+        title: "Incantation Construction I",
+        npc_professor_code: "npc_wizard_1",
+        track: :wizardry,
+        syllabus: %{"year" => 1}
+      },
+      %{
+        source: :seeded,
+        title: "Incantation Construction II",
+        npc_professor_code: "npc_wizard_2",
+        track: :wizardry,
+        syllabus: %{"year" => 2}
+      },
+      %{
+        source: :seeded,
+        title: "Ingredients Taxonomy",
+        npc_professor_code: "npc_alchemist_1",
+        track: :alchemy,
+        syllabus: %{"year" => 1}
+      },
+      %{
+        source: :seeded,
+        title: "Basic Brewing",
+        npc_professor_code: "npc_alchemist_2",
+        track: :alchemy,
+        syllabus: %{"year" => 1}
+      },
+      %{
+        source: :seeded,
+        title: "Materials Science",
+        npc_professor_code: "npc_master_1",
+        track: :mastery,
+        syllabus: %{"year" => 1}
+      },
+      %{
+        source: :seeded,
+        title: "Basic Forging",
+        npc_professor_code: "npc_master_2",
+        track: :mastery,
+        syllabus: %{"year" => 1}
+      }
     ]
   end
 end

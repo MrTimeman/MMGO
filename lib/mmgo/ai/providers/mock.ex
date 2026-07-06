@@ -1,7 +1,7 @@
 defmodule MMGO.AI.Providers.Mock do
   @behaviour MMGO.AI.Provider
 
-  def compile_spell(prompt_payload, _opts) do
+  def structured_completion(prompt_payload, _schema, _opts) do
     decoded_payload = decode_prompt_payload(prompt_payload)
     request = decoded_payload["request"] || %{}
     character = decoded_payload["character"] || %{}
@@ -37,7 +37,7 @@ defmodule MMGO.AI.Providers.Mock do
      }}
   end
 
-  def narrate_turn(prompt_payload, _opts) do
+  def text_completion(prompt_payload, _opts) do
     decoded_payload = decode_prompt_payload(prompt_payload)
     turn = decoded_payload["turn"] || %{}
     events = decoded_payload["events"] || []

@@ -203,6 +203,94 @@ defmodule MMGO.CombatTest do
     assert rejected_event.payload["spell_id"] == other_spell.id
   end
 
+  test "resolve_turn/1 serializes concurrent resolves and never double-processes a turn", %{
+    realm: realm,
+    attacker: attacker,
+    defender: defender
+  } do
+    # A one-shot spell so the combat finishes on turn 1 — that way a second,
+    # concurrent resolve of the *same* turn has no legitimate turn 2 to fall
+    # through to; it can only be a stale double-resolve of turn 1.
+    killing_blow =
+      spell_fixture(attacker, %{
+        name: "Ignis Ultima",
+        formula: "Ignis Ultima Suprema",
+        school: :fire,
+        targeting: :enemy,
+        delivery_form: :sphere,
+        effects: [
+          %{applies_to: :target, state: "impact", intensity: 100, variance: 0, duration: 0}
+        ],
+        failure_profile: %{
+          difficulty: 5,
+          base_success_rate: 100,
+          partial_success_rate: 0,
+          backlash_damage: 0
+        }
+      })
+
+    _attacker_grimoire = grimoire_fixture(attacker, killing_blow, "Killing Blow Grimoire")
+
+    {:ok, %{combat: combat}} =
+      Combat.create_duel(realm, %{
+        participants: [
+          %{character_id: attacker.id, side: "attackers", position: 0},
+          %{character_id: defender.id, side: "defenders", position: 0}
+        ],
+        sides: %{
+          attackers: %{"label" => "Red", "shared_hp" => 100, "max_shared_hp" => 100},
+          defenders: %{"label" => "Blue", "shared_hp" => 100, "max_shared_hp" => 100}
+        }
+      })
+
+    combat = Combat.get_combat!(combat.id)
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    assert {:ok, _action} =
+             Combat.submit_action(combat, attacker_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: killing_blow.id,
+               target_side: "defenders"
+             })
+
+    parent = self()
+
+    # Simulate two participants both hitting "resolve" for the same combat at
+    # the same time: two separate processes racing MMGO.Combat.resolve_turn/1
+    # against the same combat row. Without a row lock + in-transaction status
+    # re-check, both could read the same open turn, both compute a resolution,
+    # and both write it — double-inserting events and double-finishing the
+    # combat. With the fix, only one wins the row lock and actually resolves
+    # the turn; the other blocks on the lock, then sees turn 1 already
+    # resolved once it acquires it and bails out instead of re-processing.
+    tasks =
+      for _ <- 1..2 do
+        Task.async(fn ->
+          Ecto.Adapters.SQL.Sandbox.allow(Repo, parent, self())
+          Combat.resolve_turn(combat)
+        end)
+      end
+
+    results = Enum.map(tasks, &Task.await(&1, 5_000))
+
+    assert Enum.count(results, &match?({:ok, %CombatSchema{}}, &1)) == 1
+    assert Enum.count(results, &match?({:error, :turn_closed}, &1)) == 1
+
+    # The turn only ever resolved once: exactly one set of resolution events
+    # was written and the combat finished exactly once.
+    resolved_combat = Combat.get_combat!(combat.id)
+    assert resolved_combat.status == :finished
+    assert resolved_combat.turn_number == 1
+
+    events =
+      Event
+      |> where([event], event.combat_id == ^combat.id and event.turn_number == 1)
+      |> Repo.all()
+
+    action_events = Enum.filter(events, &(&1.event_type in ["spell_cast", "partial_spell_cast"]))
+    assert length(action_events) == 1
+  end
+
   defp character_fixture(handle, realm, name) do
     account =
       %Account{}

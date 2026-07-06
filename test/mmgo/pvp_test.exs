@@ -3,6 +3,7 @@ defmodule MMGO.PVPTest do
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat.Combat, as: CombatSchema
+  alias MMGO.Combat.Resolution, as: CombatResolution
   alias MMGO.Economy
   alias MMGO.PVP
   alias MMGO.Repo
@@ -43,14 +44,14 @@ defmodule MMGO.PVPTest do
     assert duel.pot_amount == 50
   end
 
-  test "accept_duel/1 creates escrow and combat", %{
+  test "accept_duel/2 creates escrow and combat", %{
     realm: realm,
     challenger: challenger,
     opponent: opponent
   } do
     {:ok, duel} = PVP.challenge_duel(challenger, opponent, 25)
 
-    assert {:ok, accepted_duel} = PVP.accept_duel(duel)
+    assert {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
     assert accepted_duel.status == :active
     assert accepted_duel.combat_id
     assert accepted_duel.escrow_account_id
@@ -67,13 +68,46 @@ defmodule MMGO.PVPTest do
     assert Economy.treasury_account_for_realm(realm.id).current_balance == 800
   end
 
+  test "accept_duel/2 rejects a non-opponent actor and moves no funds", %{
+    realm: realm,
+    challenger: challenger,
+    opponent: opponent
+  } do
+    {:ok, duel} = PVP.challenge_duel(challenger, opponent, 25)
+
+    {:ok, challenger_account_before} = Economy.ensure_character_account(challenger)
+    {:ok, opponent_account_before} = Economy.ensure_character_account(opponent)
+
+    location = Worlds.get_location!(challenger.current_location_id)
+    bystander = character_fixture(realm, location, "bystander", "Bystander")
+    {:ok, _bystander_funds} = Economy.grant_from_treasury(realm, bystander, 100)
+
+    assert {:error, changeset} = PVP.accept_duel(duel, bystander)
+    assert "only the challenged opponent can accept this duel" in errors_on(changeset).status
+
+    assert {:error, challenger_changeset} = PVP.accept_duel(duel, challenger)
+
+    assert "only the challenged opponent can accept this duel" in errors_on(challenger_changeset).status
+
+    reloaded_duel = PVP.get_duel!(duel.id)
+    assert reloaded_duel.status == :pending
+    refute reloaded_duel.escrow_account_id
+    refute reloaded_duel.combat_id
+
+    assert Economy.get_account!(challenger_account_before.id).current_balance ==
+             challenger_account_before.current_balance
+
+    assert Economy.get_account!(opponent_account_before.id).current_balance ==
+             opponent_account_before.current_balance
+  end
+
   test "settle_duel_from_combat/1 pays the winner and taxes the pot", %{
     realm: realm,
     challenger: challenger,
     opponent: opponent
   } do
     {:ok, duel} = PVP.challenge_duel(challenger, opponent, 20)
-    {:ok, accepted_duel} = PVP.accept_duel(duel)
+    {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
 
     combat =
       accepted_duel.combat
@@ -88,6 +122,11 @@ defmodule MMGO.PVPTest do
     assert resolved_duel.status == :resolved
     assert resolved_duel.winner_character_id == challenger.id
 
+    # Re-fetch from the DB (not the struct settle_duel_from_combat handed
+    # back) to prove the winner was actually persisted, not just reflected
+    # on an in-memory struct that never made it into the UPDATE statement.
+    assert PVP.get_duel!(duel.id).winner_character_id == challenger.id
+
     {:ok, challenger_account} = Economy.ensure_character_account(challenger)
     {:ok, opponent_account} = Economy.ensure_character_account(opponent)
     treasury = Economy.treasury_account_for_realm(realm.id)
@@ -99,13 +138,69 @@ defmodule MMGO.PVPTest do
     assert escrow.current_balance == 0
   end
 
+  test "Combat.Resolution.finalize/1 settles a finished duel without going through Telegram", %{
+    challenger: challenger,
+    opponent: opponent
+  } do
+    {:ok, duel} = PVP.challenge_duel(challenger, opponent, 20)
+    {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
+
+    combat =
+      accepted_duel.combat
+      |> CombatSchema.changeset(%{
+        status: :finished,
+        winner_side: "defenders",
+        finished_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    # This is the domain-layer hook that any caller (web LiveView, Telegram,
+    # future API) is expected to call after MMGO.Combat.resolve_turn/1
+    # returns a finished combat. It must settle the wager on its own —
+    # nothing here touches MMGO.PVP or the Telegram dispatcher directly.
+    assert {:ok, resolved_duel} = CombatResolution.finalize(combat)
+    assert resolved_duel.status == :resolved
+    assert resolved_duel.winner_character_id == opponent.id
+
+    {:ok, challenger_account} = Economy.ensure_character_account(challenger)
+    {:ok, opponent_account} = Economy.ensure_character_account(opponent)
+    escrow = Economy.get_account!(accepted_duel.escrow_account_id)
+
+    assert Economy.get_account!(challenger_account.id).current_balance == 80
+    assert Economy.get_account!(opponent_account.id).current_balance == 118
+    assert escrow.current_balance == 0
+
+    # Reflects the previously-broken web path: a duel accepted (escrow
+    # funded, combat created) is not stuck forever once its combat finishes,
+    # because settlement no longer lives only inside the Telegram dispatcher.
+    # Re-fetching fresh from the DB (rather than reusing resolved_duel) also
+    # proves the winner was actually persisted, not just present on an
+    # in-memory struct that never reached the database.
+    reloaded_duel = PVP.get_duel!(duel.id)
+    assert reloaded_duel.status == :resolved
+    assert reloaded_duel.winner_character_id == opponent.id
+  end
+
+  test "Combat.Resolution.finalize/1 is a no-op for a duel combat that has not finished", %{
+    challenger: challenger,
+    opponent: opponent
+  } do
+    {:ok, duel} = PVP.challenge_duel(challenger, opponent, 20)
+    {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
+
+    assert {:ok, :no_op} = CombatResolution.finalize(accepted_duel.combat)
+
+    unchanged_duel = PVP.get_duel!(duel.id)
+    assert unchanged_duel.status == :active
+  end
+
   test "cancel_duel/2 refunds active duel escrow", %{
     realm: _realm,
     challenger: challenger,
     opponent: opponent
   } do
     {:ok, duel} = PVP.challenge_duel(challenger, opponent, 15)
-    {:ok, accepted_duel} = PVP.accept_duel(duel)
+    {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
 
     assert {:ok, cancelled_duel} = PVP.cancel_duel(accepted_duel, challenger)
     assert cancelled_duel.status == :cancelled

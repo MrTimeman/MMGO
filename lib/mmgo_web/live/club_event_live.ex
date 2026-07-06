@@ -1,20 +1,33 @@
 defmodule MMGOWeb.ClubEventLive do
   use MMGOWeb, :live_view
 
+  alias MMGO.Accounts
   alias MMGO.Clubs
+  alias MMGOWeb.LocationGate
 
   @impl true
-  def mount(%{"event_id" => event_id}, _session, socket) do
-    event = Clubs.get_event!(event_id)
-    character = socket.assigns[:current_character]
-    attended = character && already_attended?(event, character.id)
+  def mount(%{"event_id" => event_id}, session, socket) do
+    character = socket.assigns[:current_character] || load_character(session)
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Club Event — #{event.kind}")
-     |> assign(:event, event)
-     |> assign(:character, character)
-     |> assign(:attended, attended)}
+    if is_nil(character) do
+      {:ok, push_navigate(socket, to: ~p"/play/continue")}
+    else
+      case LocationGate.gate(socket, character, :city) do
+        {:halt, socket} ->
+          {:ok, socket}
+
+        {:ok, socket} ->
+          event = Clubs.get_event!(event_id)
+          attended = already_attended?(event, character.id)
+
+          {:ok,
+           socket
+           |> assign(:page_title, "Club Event — #{event.kind}")
+           |> assign(:event, event)
+           |> assign(:character, character)
+           |> assign(:attended, attended)}
+      end
+    end
   end
 
   @impl true
@@ -43,17 +56,20 @@ defmodule MMGOWeb.ClubEventLive do
   def render(assigns) do
     ~H"""
     <div class="club-event">
+      <a href={~p"/map"} class="map-back-link">← World map</a>
       <h1>Club Event</h1>
 
       <section class="event-details">
-        <p>Type: <strong><%= @event.kind %></strong></p>
-        <p>Club: <strong><%= @event.club && @event.club.name %></strong></p>
-        <p>Scheduled: <strong><%= Calendar.strftime(@event.scheduled_at, "%Y-%m-%d %H:%M UTC") %></strong></p>
-        <p>Status: <strong><%= @event.status %></strong></p>
+        <p>Type: <strong>{@event.kind}</strong></p>
+        <p>Club: <strong>{@event.club && @event.club.name}</strong></p>
+        <p>
+          Scheduled: <strong>{Calendar.strftime(@event.scheduled_at, "%Y-%m-%d %H:%M UTC")}</strong>
+        </p>
+        <p>Status: <strong>{@event.status}</strong></p>
       </section>
 
       <section class="event-description">
-        <%= event_description(@event.kind) %>
+        {event_description(@event.kind)}
       </section>
 
       <section class="event-action">
@@ -78,6 +94,14 @@ defmodule MMGOWeb.ClubEventLive do
   defp already_attended?(event, character_id) do
     Enum.any?(event.attendances || [], &(&1.character_id == character_id))
   end
+
+  defp load_character(%{"demo_character_id" => id}) when is_binary(id) do
+    Accounts.get_character!(id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_character(_session), do: nil
 
   defp event_description(:general_meeting),
     do: "A lore circle gathering. Share knowledge and build friendships."

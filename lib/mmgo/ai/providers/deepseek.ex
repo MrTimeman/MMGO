@@ -2,22 +2,19 @@ defmodule MMGO.AI.Providers.DeepSeek do
   @behaviour MMGO.AI.Provider
 
   @api_base "https://api.deepseek.com/v1"
-  @spell_model "deepseek-chat"
-  @narration_model "deepseek-chat"
+  @default_model "deepseek-chat"
 
-  def compile_spell(prompt_payload, opts) do
-    model = Keyword.get(opts, :model, @spell_model)
-
-    schema_hint =
-      case Map.get(prompt_payload, :schema) do
-        nil -> ""
-        schema -> "\n\nYou MUST return a JSON object matching this exact schema:\n#{Jason.encode!(schema, pretty: true)}"
-      end
+  # DeepSeek has no native structured-output/schema field (unlike Gemini's
+  # responseSchema), so we improvise by asking for a JSON object and
+  # injecting the schema into the system prompt as an explicit instruction.
+  # This is a DeepSeek-specific workaround, kept internal to this module.
+  def structured_completion(prompt_payload, schema, opts) do
+    model = Keyword.get(opts, :model, @default_model)
 
     body = %{
       model: model,
       messages: [
-        %{role: "system", content: prompt_payload.system_prompt <> schema_hint},
+        %{role: "system", content: prompt_payload.system_prompt <> schema_hint(schema)},
         %{role: "user", content: prompt_payload.user_prompt}
       ],
       response_format: %{type: "json_object"},
@@ -30,8 +27,8 @@ defmodule MMGO.AI.Providers.DeepSeek do
     end
   end
 
-  def narrate_turn(prompt_payload, opts) do
-    model = Keyword.get(opts, :model, @narration_model)
+  def text_completion(prompt_payload, opts) do
+    model = Keyword.get(opts, :model, @default_model)
 
     body = %{
       model: model,
@@ -45,6 +42,12 @@ defmodule MMGO.AI.Providers.DeepSeek do
     with {:ok, text} <- chat(body) do
       {:ok, String.trim(text)}
     end
+  end
+
+  defp schema_hint(nil), do: ""
+
+  defp schema_hint(schema) do
+    "\n\nYou MUST return a JSON object matching this exact schema:\n#{Jason.encode!(schema, pretty: true)}"
   end
 
   defp chat(body) do

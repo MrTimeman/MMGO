@@ -74,3 +74,8 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Enable the dev-only route scope (e.g. /editor) so MapEditorLive can be
+# exercised in tests. This only gates route registration at compile time —
+# no other runtime behavior changes — so it's safe to turn on for :test too.
+config :mmgo, dev_routes: true

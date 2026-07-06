@@ -28,6 +28,7 @@ upsert_location = fn realm, attrs ->
     nil ->
       {:ok, loc} = Worlds.create_location(realm, attrs)
       loc
+
     loc ->
       loc
   end
@@ -46,65 +47,81 @@ upsert_route = fn realm, attrs ->
   end
 end
 
-capital_city = upsert_location.(canonical_realm, %{
-  slug: "capital-city",
-  name: "Столица",
-  kind: :city,
-  x: 960,
-  y: 1040,
-  safe_zone: true,
-  metadata: %{"description" => "Главный город королевства. Здесь расположены Академия, рынки и таверны."}
-})
+capital_city =
+  upsert_location.(canonical_realm, %{
+    slug: "capital-city",
+    name: "Столица",
+    kind: :city,
+    x: 960,
+    y: 1040,
+    safe_zone: true,
+    metadata: %{
+      "description" => "Главный город королевства. Здесь расположены Академия, рынки и таверны."
+    }
+  })
 
-tower = upsert_location.(canonical_realm, %{
-  slug: "the-tower",
-  name: "Башня",
-  kind: :tower,
-  x: 830,
-  y: 385,
-  safe_zone: false,
-  metadata: %{"description" => "Единственное место, где работает магия. Здесь начинается подземелье."}
-})
+tower =
+  upsert_location.(canonical_realm, %{
+    slug: "the-tower",
+    name: "Башня",
+    kind: :tower,
+    x: 830,
+    y: 385,
+    safe_zone: false,
+    metadata: %{
+      "description" => "Единственное место, где работает магия. Здесь начинается подземелье."
+    }
+  })
 
-northeast_city = upsert_location.(canonical_realm, %{
-  slug: "northeast-city",
-  name: "Восточный Предел",
-  kind: :city,
-  x: 1470,
-  y: 600,
-  safe_zone: true,
-  metadata: %{"description" => "Торговый город на востоке. Известен рынками редких ингредиентов."}
-})
+northeast_city =
+  upsert_location.(canonical_realm, %{
+    slug: "northeast-city",
+    name: "Восточный Предел",
+    kind: :city,
+    x: 1470,
+    y: 600,
+    safe_zone: true,
+    metadata: %{
+      "description" => "Торговый город на востоке. Известен рынками редких ингредиентов."
+    }
+  })
 
-south_town = upsert_location.(canonical_realm, %{
-  slug: "south-town",
-  name: "Южный Форт",
-  kind: :city,
-  x: 1055,
-  y: 1345,
-  safe_zone: true,
-  metadata: %{"description" => "Небольшой укреплённый город на юге. Отправная точка для экспедиций."}
-})
+south_town =
+  upsert_location.(canonical_realm, %{
+    slug: "south-town",
+    name: "Южный Форт",
+    kind: :city,
+    x: 1055,
+    y: 1345,
+    safe_zone: true,
+    metadata: %{
+      "description" => "Небольшой укреплённый город на юге. Отправная точка для экспедиций."
+    }
+  })
 
-far_south_village = upsert_location.(canonical_realm, %{
-  slug: "far-south-village",
-  name: "Дальняя Слобода",
-  kind: :wilderness,
-  x: 945,
-  y: 1840,
-  safe_zone: false,
-  metadata: %{"description" => "Отдалённое поселение. Опасно, но богато редкими травами."}
-})
+far_south_village =
+  upsert_location.(canonical_realm, %{
+    slug: "far-south-village",
+    name: "Дальняя Слобода",
+    kind: :wilderness,
+    x: 945,
+    y: 1840,
+    safe_zone: false,
+    metadata: %{"description" => "Отдалённое поселение. Опасно, но богато редкими травами."}
+  })
 
-mountain_watchtower = upsert_location.(canonical_realm, %{
-  slug: "mountain-watchtower",
-  name: "Горная Стража",
-  kind: :wilderness,
-  x: 660,
-  y: 855,
-  safe_zone: false,
-  metadata: %{"description" => "Заброшенная сторожевая башня в горах. Говорят, здесь есть тайные пути."}
-})
+mountain_watchtower =
+  upsert_location.(canonical_realm, %{
+    slug: "mountain-watchtower",
+    name: "Горная Стража",
+    kind: :wilderness,
+    x: 660,
+    y: 855,
+    safe_zone: false,
+    metadata: %{
+      "description" => "Заброшенная сторожевая башня в горах. Говорят, здесь есть тайные пути."
+    }
+  })
 
 # Roads visible on the map
 upsert_route.(canonical_realm, %{

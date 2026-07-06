@@ -11,6 +11,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Clubs
   alias MMGO.Clubs.Invitation, as: ClubInvitation
   alias MMGO.Combat
+  alias MMGO.Combat.Resolution, as: CombatResolution
   alias MMGO.Crafting
   alias MMGO.Dungeons
   alias MMGO.Events
@@ -1398,7 +1399,7 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("duel", ["accept", duel_id], character) do
     with %{} = duel <- load_owned_duel(duel_id, character.id, :pending),
          true <- duel.opponent_character_id == character.id,
-         {:ok, updated_duel} <- PVP.accept_duel(duel) do
+         {:ok, updated_duel} <- PVP.accept_duel(duel, character) do
       {:ok, "Duel accepted. Combat #{updated_duel.combat_id} is ready."}
     else
       nil ->
@@ -1735,20 +1736,15 @@ defmodule MMGO.Telegram.Commands do
     with %{} = combat <- Combat.active_combat_for_character(character.id),
          true <- combat.status == :locked or combat.status == :active_turn,
          {:ok, resolved_combat} <- Combat.resolve_turn(combat) do
-      case resolved_combat do
-        %{status: :finished, kind: :dungeon_encounter} = finished_combat ->
-          {:ok, _result} = Dungeons.sync_encounter_combat(finished_combat)
-          {:ok, combat_resolution_text(finished_combat)}
+      case CombatResolution.finalize(resolved_combat) do
+        {:ok, _result} ->
+          {:ok, combat_resolution_text(resolved_combat)}
 
-        %{status: :finished, kind: :duel} = finished_combat ->
-          if finished_combat.metadata["duel_id"] || finished_combat.metadata[:duel_id] do
-            {:ok, _result} = PVP.settle_duel_from_combat(finished_combat)
-          end
+        {:error, %Changeset{} = changeset} ->
+          {:ok, "Combat resolved, but settlement failed: #{format_changeset(changeset)}"}
 
-          {:ok, combat_resolution_text(finished_combat)}
-
-        finished_combat ->
-          {:ok, combat_resolution_text(finished_combat)}
+        {:error, reason} ->
+          {:ok, "Combat resolved, but settlement failed: #{inspect(reason)}"}
       end
     else
       nil ->

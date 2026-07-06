@@ -2,26 +2,41 @@ defmodule MMGOWeb.BulletinBoardLive do
   use MMGOWeb, :live_view
 
   alias MMGO.Academy
+  alias MMGO.Accounts
   alias MMGO.Clubs
+  alias MMGOWeb.LocationGate
 
   @impl true
-  def mount(_params, _session, socket) do
-    character = socket.assigns[:current_character]
-    realm_id = character && character.realm_id
+  def mount(_params, session, socket) do
+    character = socket.assigns[:current_character] || load_character(session)
 
-    {:ok,
-     socket
-     |> assign(:page_title, "Bulletin Board")
-     |> assign(:realm_id, realm_id)
-     |> assign(:courses, load_courses(realm_id))
-     |> assign(:upcoming_events, load_events(realm_id))
-     |> assign(:leaderboard, load_leaderboard(realm_id))}
+    if is_nil(character) do
+      {:ok, push_navigate(socket, to: ~p"/play/continue")}
+    else
+      case LocationGate.gate(socket, character, :city) do
+        {:halt, socket} ->
+          {:ok, socket}
+
+        {:ok, socket} ->
+          realm_id = character.realm_id
+
+          {:ok,
+           socket
+           |> assign(:page_title, "Bulletin Board")
+           |> assign(:character, character)
+           |> assign(:realm_id, realm_id)
+           |> assign(:courses, load_courses(realm_id))
+           |> assign(:upcoming_events, load_events(realm_id))
+           |> assign(:leaderboard, load_leaderboard(realm_id))}
+      end
+    end
   end
 
   @impl true
   def render(assigns) do
     ~H"""
     <div class="bulletin-board">
+      <a href={~p"/map"} class="map-back-link">← World map</a>
       <h1>Academy Bulletin Board</h1>
 
       <section class="bb-section">
@@ -38,14 +53,16 @@ defmodule MMGOWeb.BulletinBoardLive do
           <tbody>
             <%= for course <- @courses do %>
               <tr>
-                <td><%= course.title %></td>
-                <td><%= course.track || "—" %></td>
-                <td><%= course.npc_professor_code || "Player" %></td>
-                <td><%= course.source %></td>
+                <td>{course.title}</td>
+                <td>{course.track || "—"}</td>
+                <td>{course.npc_professor_code || "Player"}</td>
+                <td>{course.source}</td>
               </tr>
             <% end %>
             <%= if @courses == [] do %>
-              <tr><td colspan="4">No courses available this term.</td></tr>
+              <tr>
+                <td colspan="4">No courses available this term.</td>
+              </tr>
             <% end %>
           </tbody>
         </table>
@@ -56,9 +73,8 @@ defmodule MMGOWeb.BulletinBoardLive do
         <ul class="bb-list">
           <%= for event <- @upcoming_events do %>
             <li>
-              <strong><%= event.club && event.club.name %></strong>
-              — <%= event.kind %>
-              @ <%= Calendar.strftime(event.scheduled_at, "%Y-%m-%d %H:%M UTC") %>
+              <strong>{event.club && event.club.name}</strong>
+              — {event.kind} @ {Calendar.strftime(event.scheduled_at, "%Y-%m-%d %H:%M UTC")}
               <.link navigate={~p"/academy/club-events/#{event.id}"}>Join</.link>
             </li>
           <% end %>
@@ -73,8 +89,7 @@ defmodule MMGOWeb.BulletinBoardLive do
         <ol class="bb-list">
           <%= for {enrollment, gpa, rank} <- @leaderboard do %>
             <li>
-              #<%= rank %> — character <code><%= enrollment.character_id %></code>
-              — GPA <%= gpa || "—" %>
+              #{rank} — character <code>{enrollment.character_id}</code> — GPA {gpa || "—"}
             </li>
           <% end %>
           <%= if @leaderboard == [] do %>
@@ -89,6 +104,14 @@ defmodule MMGOWeb.BulletinBoardLive do
     </div>
     """
   end
+
+  defp load_character(%{"demo_character_id" => id}) when is_binary(id) do
+    Accounts.get_character!(id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_character(_session), do: nil
 
   defp load_courses(nil), do: []
 

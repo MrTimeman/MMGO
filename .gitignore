@@ -43,3 +43,6 @@ npm-debug.log
 
 # Local dev-only demo (never ships)
 lib/mmgo_web/live/hooks_demo_live.ex
+
+# Local Claude Code tooling state
+/.claude/

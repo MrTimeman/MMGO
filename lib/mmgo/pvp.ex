@@ -108,9 +108,14 @@ defmodule MMGO.PVP do
     |> normalize_transaction_result()
   end
 
-  def accept_duel(%Duel{} = duel) do
+  def accept_duel(%Duel{} = duel, %Character{} = actor) do
     Repo.transaction(fn ->
       duel = lock_duel!(duel.id)
+
+      if duel.opponent_character_id != actor.id do
+        Repo.rollback(duel_changeset("only the challenged opponent can accept this duel"))
+      end
+
       challenger = lock_character!(duel.challenger_character_id)
       opponent = lock_character!(duel.opponent_character_id)
 
@@ -220,19 +225,23 @@ defmodule MMGO.PVP do
         Repo.rollback(duel_changeset("duel is not active"))
       end
 
-      duel =
+      %{winner_character_id: winner_character_id} =
         case combat.winner_side do
           "attackers" -> payout_duel!(duel, duel.challenger_character_id)
           "defenders" -> payout_duel!(duel, duel.opponent_character_id)
           _other -> refund_duel!(duel)
         end
 
+      # payout_duel!/refund_duel! set winner_character_id via a raw struct
+      # update (`%{duel | ...}`), not through a changeset. Ecto's cast/3 only
+      # persists a field when it differs from the *struct's current* value,
+      # so building the changeset off that already-mutated struct would see
+      # "no change" and silently skip writing the column — force_change
+      # ensures the winner is actually persisted, not just reflected in the
+      # in-memory return value.
       duel
-      |> Duel.changeset(%{
-        status: :resolved,
-        winner_character_id: duel.winner_character_id,
-        resolved_at: DateTime.utc_now()
-      })
+      |> Duel.changeset(%{status: :resolved, resolved_at: DateTime.utc_now()})
+      |> Changeset.force_change(:winner_character_id, winner_character_id)
       |> Repo.update!()
       |> Repo.preload([
         :challenger_character,

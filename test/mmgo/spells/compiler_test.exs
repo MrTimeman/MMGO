@@ -10,7 +10,7 @@ defmodule MMGO.Spells.CompilerTest do
   defmodule InvalidSpellProvider do
     @behaviour MMGO.AI.Provider
 
-    def compile_spell(_prompt_payload, _opts) do
+    def structured_completion(_prompt_payload, _schema, _opts) do
       {:ok,
        %{
          "name" => "Broken Spell",
@@ -35,7 +35,7 @@ defmodule MMGO.Spells.CompilerTest do
        }}
     end
 
-    def narrate_turn(_prompt_payload, _opts), do: {:ok, "unused"}
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
   end
 
   setup do

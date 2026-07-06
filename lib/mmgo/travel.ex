@@ -26,6 +26,7 @@ defmodule MMGO.Travel do
 
   def start_journey(%Character{} = character, %Route{} = route, opts \\ []) do
     started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
+    base_travel_days = travel_days_override(opts) || route.travel_days
 
     Repo.transaction(fn ->
       character = lock_character!(character.id)
@@ -40,7 +41,7 @@ defmodule MMGO.Travel do
       end
 
       {from_location_id, to_location_id} = resolve_route_direction(character, route)
-      plan = Survival.travel_plan(character, route.travel_days)
+      plan = Survival.travel_plan(character, base_travel_days)
 
       food_result =
         case Survival.consume_food(Repo, character, plan.required_food_units) do
@@ -150,6 +151,13 @@ defmodule MMGO.Travel do
 
   defp resolve_route_direction(_character, _route) do
     Repo.rollback(route_changeset("route is not connected to the character's current location"))
+  end
+
+  defp travel_days_override(opts) do
+    case Keyword.get(opts, :travel_days_override) do
+      value when is_integer(value) and value > 0 -> value
+      _ -> nil
+    end
   end
 
   defp lock_character!(character_id) do

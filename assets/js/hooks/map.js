@@ -83,11 +83,13 @@ export const MapHook = {
     // Info panel
     const panel = document.createElement("div")
     panel.style.cssText = `
-      position:absolute;bottom:0;left:0;right:0;
+      position:absolute;bottom:0.75rem;left:0.75rem;right:0.75rem;
       background:rgba(12,10,9,0.96);border-top:1px solid #44403c;
-      padding:1rem;font-family:'PT Serif',serif;color:#e7e5e4;
-      transform:translateY(100%);transition:transform 0.25s ease;
-      z-index:10;max-height:50%;overflow-y:auto
+      border:1px solid #44403c;border-radius:0.5rem;
+      padding:0.75rem;font-family:'PT Serif',serif;color:#e7e5e4;
+      transform:translateY(calc(100% + 1rem));transition:transform 0.25s ease;
+      z-index:10;max-height:min(32vh,16rem);overflow-y:auto;
+      box-shadow:0 18px 48px rgba(0,0,0,0.45)
     `
     panel.id = "map-panel"
     this._panel = panel
@@ -257,24 +259,26 @@ export const MapHook = {
          </div>`
       : ""
 
-    const travelBtn = (!isHere)
+    const travelBtn = loc.can_travel
       ? `<button onclick="this.closest('[id]').__hook.travelTo('${loc.slug}')"
            style="margin-top:1rem;width:100%;padding:0.6rem;background:#78350f;color:#fef3c7;
                   border:1px solid #f59e0b;border-radius:0.375rem;font-family:inherit;
                   font-size:0.9rem;cursor:pointer">
            Отправиться →
          </button>`
-      : `<div style="margin-top:1rem;font-size:0.85rem;color:#22c55e">Вы здесь</div>`
+      : isHere
+        ? `<div style="margin-top:1rem;font-size:0.85rem;color:#22c55e">Вы здесь</div>`
+        : `<div style="margin-top:1rem;font-size:0.85rem;color:#a8a29e">Нет прямого маршрута</div>`
 
     this._panel.innerHTML = `
-      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:0.5rem">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:0.75rem;margin-bottom:0.4rem">
         <div>
-          <div style="font-size:1.1rem;font-weight:700;color:#f59e0b">${loc.name}</div>
-          <div style="font-size:0.8rem;color:#a8a29e;margin-top:0.15rem">${kindLabel}</div>
+          <div style="font-size:1rem;font-weight:700;color:#f59e0b">${loc.name}</div>
+          <div style="font-size:0.75rem;color:#a8a29e;margin-top:0.1rem">${kindLabel}</div>
         </div>
         ${safeTag}
       </div>
-      ${loc.description ? `<div style="font-size:0.85rem;color:#d4d0cc;line-height:1.5">${loc.description}</div>` : ""}
+      ${loc.description ? `<div style="font-size:0.8rem;color:#d4d0cc;line-height:1.35">${loc.description}</div>` : ""}
       ${othersHtml}
       ${travelBtn}
     `
@@ -291,7 +295,7 @@ export const MapHook = {
 
   _closePanel() {
     this._selected = null
-    this._panel.style.transform = "translateY(100%)"
+    this._panel.style.transform = "translateY(calc(100% + 1rem))"
     this._renderLocations()
   },
 

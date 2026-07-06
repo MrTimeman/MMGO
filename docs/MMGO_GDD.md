@@ -74,6 +74,14 @@ March 2026
   - [15.1 Donation Model](#151-donation-model)
   - [15.2 Principles](#152-principles)
 - [16. Game Meta & Design Philosophy](#16-game-meta--design-philosophy)
+- [17. Player Organisations](#17-player-organisations)
+  - [17.1 Concept](#171-concept)
+  - [17.2 Organisation Kinds](#172-organisation-kinds)
+  - [17.3 Ownership & Co-Ownership](#173-ownership--co-ownership)
+  - [17.4 Governance Blocks](#174-governance-blocks)
+  - [17.5 Map Filters & Territory](#175-map-filters--territory)
+  - [17.6 Relationship to Existing Systems](#176-relationship-to-existing-systems)
+  - [17.7 Implementation Roadmap](#177-implementation-roadmap)
   - [16.1 Core Experience](#161-core-experience)
   - [16.2 Design Pillars](#162-design-pillars)
   - [16.3 Target Audience](#163-target-audience)
@@ -379,7 +387,7 @@ The calendar uses 13 months of 28 days each (364 days/year). Travel, food consum
 
 # 5. Location & Map
 
-The map is the primary interface. To do anything, the player must physically travel there. The visual layer is a Starsector-style map showing the world, player position, and points of interest. All interactions (building, crafting, trading, conversation) happen as text-based events triggered at specific locations. No 3D, no sprites — just the map and text.
+The map is the primary interface. To do anything, the player must physically travel there. The visual layer is a scalable hexagonal world map with a three-level nested hierarchy (aperture-7, H3-style): the finest hexes are 64px per side, every 7 fine hexes nest into one medium hex, and every 7 medium hexes nest into one world-level hex (49 fine hexes each). Zooming out merges hexes into their parents — world view shows big hexes with aggregated terrain, mid zoom shows the medium level, close-up shows the fine 64px hexes with full sprite tiles, roads, and the visible hex-in-hex nesting. Terrain and roads are painted per-hex (at any hierarchy level) in the realm operator's map editor, and fine-hex terrain drives precise travel pathfinding. All interactions (building, crafting, trading, conversation) happen as text-based events triggered at specific locations. No 3D — the hex map plus text events carry the whole game.
 
 ## 5.1 Geography
 
@@ -395,7 +403,7 @@ The realm (principality) is bounded by the map edges. Key geographic features:
 
 ## 5.2 Travel
 
-Travel consumes game time and food. The player moves across the map in real time (their position updates as game-days pass). Longer journeys require more food supplies from inventory. If food runs out, the player suffers penalties (slower movement, HP drain).
+Travel consumes game time and food. The player moves across the map in real time (their position updates as game-days pass). Journeys still run between known locations, but their duration and food cost are computed by precise pathfinding over the hex terrain: roads are fast, wilderness is slow, mountains are slower still, water is impassable. Longer journeys require more food supplies from inventory. If food runs out, the player suffers penalties (slower movement, HP drain).
 
 The overworld is fully PvP-enabled outside of cities. A player carrying loot from a dungeon run back to their city base can be ambushed on the road. This makes escort parties, trade caravans, and route planning meaningful. Notably, magic does not work in the overworld — combat on the road uses only tools, weapons, and potions. Casters are vulnerable outside the Tower.
 
@@ -1034,7 +1042,7 @@ MMGO is a slow, social, text-based MMO where the journey matters more than the d
 
 - Gemini API for spell resolution, combat orchestration, and narrative generation
 
-- Starsector-style map rendered in the Mini App
+- Scalable hex map (canvas-rendered, sprite tiles, 3 zoom LOD tiers) rendered in the Mini App
 
 - Text-based event system for all non-map interactions
 
@@ -1059,3 +1067,64 @@ Examples of intended tone:
 - A major boss encounter may trigger a sweeping symphonic cue in the spirit of Dvorak’s *From the New World*
 
 The soundtrack should make ordinary play feel alive and important play feel historic.
+
+# 17. Player Organisations
+
+## 17.1 Concept
+
+Organisations are the end-game power layer of MMGO, inspired by EVE Online's corporations and alliances. Once a player has achieved personal goals — graduated, gotten rich, reached deep dungeon levels — the next horizon is collective power: founding or leading an organisation that owns assets, controls infrastructure, and shapes realm politics.
+
+Organisations are deliberately open-ended. The game provides ownership, membership, and governance primitives; players compose them into whatever structure they want — a trade company running caravan escorts, a cult selling fast travel, a council governing a micro-village, a guild taxing the black market. The Secret Cult (§5.5) is the canonical example: what looks like NPC lore at launch is in fact an organisation — a player-run body that controls the underground passages, sets access rules, and charges for passage. Ambitious players can eventually infiltrate, take over, or out-compete it.
+
+## 17.2 Organisation Kinds
+
+Four founding archetypes exist (already reflected in the backend): **cult**, **company**, **council**, **guild**. Kinds are flavor presets — default role titles, starting governance template, and reputation framing — not hard mechanical constraints. A company can run a religion; a cult can trade. The kind chosen at founding sets expectations, not limits.
+
+## 17.3 Ownership & Co-Ownership
+
+Organisations can own anything a player can own, and some things players cannot:
+
+- **Assets** — currency treasury, items, grimoires, stockpiles stored in org facilities
+- **Property** — bases, workshops, city buildings, micro-village structures
+- **Infrastructure** — fast-travel networks (linked locations), toll roads, caravan routes
+- **Enterprises** — shops, courier services, escort contracts, scholarship funds
+
+Every ownable thing carries an ownership record supporting **shares**: a base can be 60% owned by an organisation, 25% by a founding player, 15% by an allied organisation. Shares determine profit splits and weigh into governance decisions where the org's constitution says they do. Co-ownership is the glue for alliances and joint ventures — and the source of hostile-takeover gameplay.
+
+## 17.4 Governance Blocks
+
+There is no fixed government type. Each organisation assembles its own constitution from composable **governance blocks**:
+
+- **Leadership selection** — appointment by founder, election by members, share-weighted vote, ritual duel, rotation, inheritance
+- **Decision rules** — autocrat decides, officer council votes, all-member referendum, share-weighted vote; different rules can apply to different decision domains (spending, war, admissions)
+- **Membership rules** — open door, invitation-only, application with vote, dues (one-time or per-term), probation periods
+- **Succession & exit** — what happens when a leader quits, dies to expulsion, or goes inactive; who can dissolve the org and how assets split
+- **Treasury permissions** — who can spend, spending limits per role, approval thresholds for large amounts
+
+Blocks are data, not code: the backend stores each org's assembled constitution in its `hierarchy_rules`/metadata and enforces it generically. New block types can be added over time without breaking existing organisations. This is how one realm can host a rigid militarist hierarchy, a share-holding trade company, and an anarchist commune simultaneously.
+
+## 17.5 Map Filters & Territory
+
+The world map gains **filter overlays** (EVE / HOI4 style). The default view is geographic; toggling filters recolors and annotates the map:
+
+- **Political** — locations and regions tinted by controlling/linked organisation, with org banners
+- **Infrastructure** — fast-travel networks, toll routes, org facilities
+- **Economic** — trade activity, shop ownership, tax zones (later)
+- **Diplomacy** — alliances, rivalries, active conflicts (later)
+
+Filters are the primary way organisational power becomes *visible*: a growing cult literally spreads its color across the map.
+
+## 17.6 Relationship to Existing Systems
+
+- **Secret Cult (§5.5)** — implemented as a seeded organisation of kind `cult` with a fast-travel network; player takeover is the long-term quest payoff.
+- **Academy clubs (§9.8)** — remain the club system (a study/social activity), but adopt governance blocks for their internal life (elected club president, officer roles). Clubs are the tutorial for organisations: low stakes, same verbs.
+- **Academy Head (§9.11)** — the Academy itself behaves as a council-kind organisation whose leadership-selection block is "election by Professors every ~10 real days."
+- **Black market (§12.3)** — thieves' guilds and enforcement rackets are expected emergent organisations.
+- **Economy (§12)** — org treasuries are economy accounts inside the closed money supply; org transactions are taxed like player ones (and evadable like player ones).
+
+## 17.7 Implementation Roadmap
+
+- **v1 (exists)** — founding (4 kinds), ranked roles with permissions, invitations, memberships, org-linked fast travel. Backend + Telegram commands; web UI pending.
+- **v2** — org treasury (economy account per org), ownership registry with shares, org-owned property.
+- **v3** — governance blocks engine (constitution as data, generic enforcement, elections/votes).
+- **v4** — territory influence, map political filter driven by real control data, diplomacy (alliances, rivalries, wars).

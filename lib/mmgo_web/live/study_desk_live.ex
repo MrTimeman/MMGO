@@ -2,30 +2,36 @@ defmodule MMGOWeb.StudyDeskLive do
   use MMGOWeb, :live_view
 
   alias MMGO.Academy
+  alias MMGO.Accounts
+  alias MMGOWeb.LocationGate
 
   @impl true
-  def mount(_params, _session, socket) do
-    character = socket.assigns[:current_character]
+  def mount(_params, session, socket) do
+    character = socket.assigns[:current_character] || load_character(session)
 
-    {enrollment, terms, gpa, failed_count} =
-      if character do
-        enrollment = Academy.current_enrollment(character.id)
-        terms = if enrollment, do: Academy.list_terms_for_enrollment(enrollment.id), else: []
-        gpa = if enrollment, do: Academy.gpa_for_enrollment(enrollment.id), else: nil
-        failed = if enrollment, do: Academy.failed_terms_count(enrollment.id), else: 0
-        {enrollment, terms, gpa, failed}
-      else
-        {nil, [], nil, 0}
+    if is_nil(character) do
+      {:ok, push_navigate(socket, to: ~p"/play/continue")}
+    else
+      case LocationGate.gate(socket, character, :city) do
+        {:halt, socket} ->
+          {:ok, socket}
+
+        {:ok, socket} ->
+          enrollment = Academy.current_enrollment(character.id)
+          terms = if enrollment, do: Academy.list_terms_for_enrollment(enrollment.id), else: []
+          gpa = if enrollment, do: Academy.gpa_for_enrollment(enrollment.id), else: nil
+          failed_count = if enrollment, do: Academy.failed_terms_count(enrollment.id), else: 0
+
+          {:ok,
+           socket
+           |> assign(:page_title, "Study Desk")
+           |> assign(:character, character)
+           |> assign(:enrollment, enrollment)
+           |> assign(:terms, terms)
+           |> assign(:gpa, gpa)
+           |> assign(:failed_count, failed_count)}
       end
-
-    {:ok,
-     socket
-     |> assign(:page_title, "Study Desk")
-     |> assign(:character, character)
-     |> assign(:enrollment, enrollment)
-     |> assign(:terms, terms)
-     |> assign(:gpa, gpa)
-     |> assign(:failed_count, failed_count)}
+    end
   end
 
   @impl true
@@ -49,17 +55,21 @@ defmodule MMGOWeb.StudyDeskLive do
   def render(assigns) do
     ~H"""
     <div class="study-desk">
+      <a href={~p"/map"} class="map-back-link">← World map</a>
       <h1>Study Desk</h1>
 
       <%= if @enrollment do %>
         <section class="desk-enrollment">
           <h2>Current Enrollment</h2>
-          <p>Program: <strong><%= @enrollment.program_type %></strong></p>
-          <p>Track: <strong><%= @enrollment.track || "—" %></strong></p>
-          <p>Status: <strong><%= @enrollment.status %></strong></p>
-          <p>GPA: <strong><%= @gpa || "No exams yet" %></strong></p>
-          <p>Failed terms: <strong><%= @failed_count %></strong></p>
-          <p>Expected completion: <strong><%= Calendar.strftime(@enrollment.expected_completion_at, "%Y-%m-%d") %></strong></p>
+          <p>Program: <strong>{@enrollment.program_type}</strong></p>
+          <p>Track: <strong>{@enrollment.track || "—"}</strong></p>
+          <p>Status: <strong>{@enrollment.status}</strong></p>
+          <p>GPA: <strong>{@gpa || "No exams yet"}</strong></p>
+          <p>Failed terms: <strong>{@failed_count}</strong></p>
+          <p>
+            Expected completion:
+            <strong>{Calendar.strftime(@enrollment.expected_completion_at, "%Y-%m-%d")}</strong>
+          </p>
         </section>
 
         <section class="desk-terms">
@@ -76,9 +86,9 @@ defmodule MMGOWeb.StudyDeskLive do
             <tbody>
               <%= for term <- @terms do %>
                 <tr>
-                  <td><%= term.term_number %></td>
-                  <td><%= term.status %></td>
-                  <td><%= term.exam_score || "—" %></td>
+                  <td>{term.term_number}</td>
+                  <td>{term.status}</td>
+                  <td>{term.exam_score || "—"}</td>
                   <td>
                     <%= if term.status == :active do %>
                       <.link navigate={~p"/academy/exam/#{term.id}"}>Take Exam</.link>
@@ -87,7 +97,9 @@ defmodule MMGOWeb.StudyDeskLive do
                 </tr>
               <% end %>
               <%= if @terms == [] do %>
-                <tr><td colspan="4">No terms started yet.</td></tr>
+                <tr>
+                  <td colspan="4">No terms started yet.</td>
+                </tr>
               <% end %>
             </tbody>
           </table>
@@ -97,11 +109,23 @@ defmodule MMGOWeb.StudyDeskLive do
           <% end %>
         </section>
       <% else %>
-        <p>You are not currently enrolled. Visit the <.link navigate={~p"/academy/bulletin-board"}>Bulletin Board</.link> for enrollment info.</p>
+        <p>
+          You are not currently enrolled. Visit the
+          <.link navigate={~p"/academy/bulletin-board"}>Bulletin Board</.link>
+          for enrollment info.
+        </p>
       <% end %>
     </div>
     """
   end
+
+  defp load_character(%{"demo_character_id" => id}) when is_binary(id) do
+    Accounts.get_character!(id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp load_character(_session), do: nil
 
   defp error_message(%Ecto.Changeset{} = changeset) do
     changeset.errors

@@ -93,3 +93,13 @@ config :phoenix_live_view,
 
 # Disable swoosh api client as it is only required for production adapters.
 config :swoosh, :api_client, false
+
+# Path to the world hex-map JSON, relative to the project root. The editor and
+# generator tasks need to read/write the *source* file, not the copy under
+# _build that Application.app_dir/2 would resolve to.
+config :mmgo, :world_map_path, "priv/static/maps/world.json"
+
+# Directory the map editor reads/writes sprite images and manifest.json from.
+# Same rationale as :world_map_path above: point at the source tree so
+# uploads land where they'll be served immediately and are visible to git.
+config :mmgo, :sprites_path, "priv/static/sprites"

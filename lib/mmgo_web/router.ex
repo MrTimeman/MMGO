@@ -25,12 +25,21 @@ defmodule MMGOWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    get "/play/new", PlayDemoController, :new
+    get "/play/continue", PlayDemoController, :continue
+    get "/demo/start", PlayDemoController, :start
+
     live "/map", MapLive
+    live "/spellbook", SpellbookLive
+    live "/pvp", DuelLive
 
     live "/academy/bulletin-board", BulletinBoardLive
     live "/academy/study-desk", StudyDeskLive
     live "/academy/exam/:term_id", ExamLive
     live "/academy/club-events/:event_id", ClubEventLive
+
+    live "/orgs", OrganizationsLive
+    live "/orgs/:id", OrganizationsLive
   end
 
   scope "/", MMGOWeb do
@@ -52,6 +61,7 @@ defmodule MMGOWeb.Router do
 
     get "/state", PlayApiController, :state
     post "/journeys", PlayApiController, :create_journey
+    post "/reset", PlayDemoController, :reset
     post "/demo/reset", PlayDemoController, :reset
   end
 
@@ -69,6 +79,12 @@ defmodule MMGOWeb.Router do
 
       live_dashboard "/dashboard", metrics: MMGOWeb.Telemetry
       live "/hooks", HooksDemoLive
+    end
+
+    scope "/", MMGOWeb do
+      pipe_through :browser
+
+      live "/editor", MapEditorLive
     end
   end
 end

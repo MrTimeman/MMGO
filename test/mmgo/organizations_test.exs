@@ -37,6 +37,23 @@ defmodule MMGO.OrganizationsTest do
     %{city: city, tower: tower, founder: founder, invitee: invitee}
   end
 
+  test "list_active_organizations_for_realm/1 returns only active orgs in the realm", %{
+    founder: founder
+  } do
+    assert {:ok, %{organization: organization}} =
+             Organizations.create_organization(founder, :guild, "Cartographers", %{})
+
+    realm_id = founder.realm_id
+    listed = Organizations.list_active_organizations_for_realm(realm_id)
+    assert Enum.map(listed, & &1.id) == [organization.id]
+
+    organization
+    |> Ecto.Changeset.change(status: :archived)
+    |> Repo.update!()
+
+    assert Organizations.list_active_organizations_for_realm(realm_id) == []
+  end
+
   test "create_organization/4 creates a cult with an archbishop role", %{
     founder: founder,
     city: city,
