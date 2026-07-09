@@ -24,54 +24,63 @@ precision highp float;
 
 varying vec2 vUv;
 uniform vec2 uSize;
+uniform vec2 uCenter;
+uniform float uDpr;
 uniform float uTime;
 uniform float uExcitation;
-uniform float uLegendaryTint;
+uniform float uHue;
+uniform float uOutcome;
+uniform float uProgress;
 uniform float uWhiteout;
 
 const float ppi = 96.0;
-const float tau = 6.28318530718;
 
 float angularDistance(float a, float b) {
   return abs(atan(sin(a - b), cos(a - b)));
 }
 
+vec3 hueToRgb(float hue) {
+  vec3 p = abs(fract(vec3(hue, hue + 0.6666667, hue + 0.3333333)) * 6.0 - 3.0);
+  return clamp(p - 1.0, 0.0, 1.0);
+}
+
 void main() {
   vec2 fragCoord = vUv * uSize;
-  vec2 center = uSize * 0.5;
-  vec2 p = (fragCoord - center) / (1.5 * ppi);
-  p.x *= uSize.x / max(uSize.y, 1.0);
+  vec2 p = (fragCoord - uCenter) / (1.35 * ppi * uDpr);
 
   float a = atan(p.x, p.y);
   float r = length(p);
 
   float time = uTime / 200.0;
-  vec3 tint = vec3(0.25);
-  tint.r += 1.0 * uLegendaryTint;
-  tint.g += 0.6 * uLegendaryTint;
-  tint.b += 0.25 * (1.0 - uLegendaryTint);
+  float life = smoothstep(0.02, 0.18, uProgress) * (1.0 - smoothstep(0.88, 1.0, uProgress));
+  vec3 school = hueToRgb(uHue / 360.0);
+  vec3 gold = vec3(1.0, 0.72, 0.25);
+  vec3 tint = mix(gold, school, 0.58);
+  vec3 failureTint = vec3(1.0, 0.28, 0.1);
+  tint = mix(tint, failureTint, uOutcome);
 
-  float radialFade = smoothstep(1.35, 0.06, r);
-  float outerFade = 1.0 - smoothstep(1.05, 1.46, r);
+  float radialFade = smoothstep(1.42, 0.08, r);
+  float outerFade = 1.0 - smoothstep(1.12, 1.5, r);
   float beamA = angularDistance(a, time * 2.6);
   float beamB = angularDistance(a, time * -1.7 + 2.18);
   float beamC = angularDistance(a, time * 1.2 + 4.35);
   float spokes =
-    pow(1.0 - smoothstep(0.0, 0.095, beamA), 2.4) +
-    pow(1.0 - smoothstep(0.0, 0.075, beamB), 2.0) * 0.72 +
-    pow(1.0 - smoothstep(0.0, 0.06, beamC), 1.8) * 0.52;
-  spokes *= radialFade * outerFade * (0.35 + uExcitation * 0.9);
+    pow(1.0 - smoothstep(0.0, 0.12, beamA), 2.4) +
+    pow(1.0 - smoothstep(0.0, 0.09, beamB), 2.0) * 0.78 +
+    pow(1.0 - smoothstep(0.0, 0.07, beamC), 1.8) * 0.56;
+  spokes *= radialFade * outerFade * (0.48 + uExcitation * 1.15);
 
-  float core = smoothstep(0.34, 0.0, r) * (0.35 + uExcitation * 0.85);
-  float halo = smoothstep(1.2, 0.0, r) * (0.08 + 0.28 * uExcitation);
+  float core = smoothstep(0.46, 0.0, r) * (0.55 + uExcitation * 1.15);
+  float aura = smoothstep(1.22, 0.0, r) * (0.12 + 0.34 * uExcitation);
+  float crackle = uOutcome * pow(max(0.0, sin(a * 13.0 + time * 9.0)), 10.0) * smoothstep(0.72, 0.14, r) * 0.38;
   float white = smoothstep(0.68, 1.0, uWhiteout);
 
-  vec3 color = tint * (spokes * 1.25 + halo * 0.65 + core * 0.9);
-  color += vec3(1.0) * pow(clamp(spokes, 0.0, 1.0), 2.0) * uExcitation;
-  color += vec3(1.0, 0.94, 0.76) * core * uExcitation;
+  vec3 color = tint * (spokes * 1.38 + aura * 0.78 + core * 1.05 + crackle);
+  color += vec3(1.0) * pow(clamp(spokes, 0.0, 1.0), 2.0) * (0.25 + uExcitation);
+  color += vec3(1.0, 0.94, 0.76) * core * (0.22 + uExcitation);
   color = mix(color, vec3(1.0), white);
 
-  float alpha = clamp(spokes + core * 0.82 + halo * 0.3 + white * 0.85, 0.0, 1.0);
+  float alpha = clamp((spokes * 1.1 + core * 0.95 + aura * 0.36 + crackle) * life + white * 0.85, 0.0, 1.0);
   gl_FragColor = vec4(color, alpha);
 }
 `
@@ -785,12 +794,15 @@ export const SpellCircleHook = {
 
     const pos = gl.getAttribLocation(program, 'aPos')
     const uSize = gl.getUniformLocation(program, 'uSize')
+    const uCenter = gl.getUniformLocation(program, 'uCenter')
+    const uDpr = gl.getUniformLocation(program, 'uDpr')
     const uTime = gl.getUniformLocation(program, 'uTime')
     const uExcitation = gl.getUniformLocation(program, 'uExcitation')
-    const uLegendaryTint = gl.getUniformLocation(program, 'uLegendaryTint')
+    const uHue = gl.getUniformLocation(program, 'uHue')
+    const uOutcome = gl.getUniformLocation(program, 'uOutcome')
+    const uProgress = gl.getUniformLocation(program, 'uProgress')
     const uWhiteout = gl.getUniformLocation(program, 'uWhiteout')
     const hue = Number.parseFloat(getComputedStyle(this.el).getPropertyValue('--sc-hue')) || 45
-    const tint = Math.max(0.15, Math.min(1, 1 - Math.abs(hue - 45) / 220))
     const startedAt = performance.now()
     const duration = outcome === 'failure' ? 3000 : 2200
 
@@ -816,15 +828,27 @@ export const SpellCircleHook = {
         : smoothstep(0.48, 0.76, t) * (1 - smoothstep(0.82, 1.0, t))
       const excitation = Math.min(1, 0.08 + smoothstep(0.26, 0.58, t) * 1.05)
       const size = resize()
+      const circleRect = this.el.querySelector('.sc__circle')?.getBoundingClientRect()
+      const centerX = circleRect ? circleRect.left + circleRect.width / 2 : window.innerWidth / 2
+      const centerY = circleRect ? circleRect.top + circleRect.height / 2 : window.innerHeight / 2
+      const dpr = Math.min(window.devicePixelRatio || 1, 2)
+      canvas.style.transformOrigin = `${centerX}px ${centerY}px`
+      canvas.style.clipPath = circleRect
+        ? `circle(${Math.max(circleRect.width, circleRect.height) * 0.68}px at ${centerX}px ${centerY}px)`
+        : 'none'
 
       gl.useProgram(program)
       gl.enableVertexAttribArray(pos)
       gl.bindBuffer(gl.ARRAY_BUFFER, buffer)
       gl.vertexAttribPointer(pos, 2, gl.FLOAT, false, 0, 0)
       gl.uniform2f(uSize, size.width, size.height)
+      gl.uniform2f(uCenter, centerX * dpr, centerY * dpr)
+      gl.uniform1f(uDpr, dpr)
       gl.uniform1f(uTime, elapsed)
       gl.uniform1f(uExcitation, excitation)
-      gl.uniform1f(uLegendaryTint, tint)
+      gl.uniform1f(uHue, hue)
+      gl.uniform1f(uOutcome, outcome === 'failure' ? 1 : 0)
+      gl.uniform1f(uProgress, t)
       gl.uniform1f(uWhiteout, whiteout)
       gl.clearColor(0, 0, 0, 0)
       gl.clear(gl.COLOR_BUFFER_BIT)
