@@ -11,12 +11,16 @@ defmodule MMGO.Play do
 
   alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Combat, as: CombatContext
+  alias MMGO.Combat.{Combat, Event, Participant, Resolution}
   alias MMGO.Economy
   alias MMGO.Economy.EconomyAccount
   alias MMGO.Grimoires
   alias MMGO.Grimoires.Grimoire
   alias MMGO.Inventory
   alias MMGO.Inventory.{InventoryItem, ItemTemplate}
+  alias MMGO.Organizations
+  alias MMGO.Organizations.{Invitation, Organization, Role}
   alias MMGO.PVP
   alias MMGO.PVP.Duel
   alias MMGO.Repo
@@ -24,6 +28,7 @@ defmodule MMGO.Play do
   alias MMGO.Spells.Spell
   alias MMGO.Survival
   alias MMGO.Travel
+  alias MMGO.Travel.Clock
   alias MMGO.Travel.Journey
   alias MMGO.WorldMap
   alias MMGO.WorldMap.Path
@@ -40,6 +45,7 @@ defmodule MMGO.Play do
   @starter_reagent_code "demo_lumen_dust"
   @starter_reagent_quantity 6
   @starter_spell_name "Ember Spark"
+  @demo_duel_stake 100
 
   def load_demo_state(character_id) when is_binary(character_id) do
     with {:ok, character} <- load_character(character_id) do
@@ -208,6 +214,273 @@ defmodule MMGO.Play do
     end
   end
 
+  @doc """
+  Server-authoritative read model for the spellbook screen: the caster, their
+  owned spells, and their grimoires (with inscribed entries preloaded).
+
+  Rules stay in `MMGO.Spells`/`MMGO.Grimoires`; this only composes the reads a
+  gated `/spellbook` view needs.
+  """
+  def spellbook_state(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      {:ok,
+       %{
+         character: character,
+         spells: Spells.list_spells_for_character(character.id),
+         grimoires: Grimoires.list_grimoires_for_character(character.id),
+         active_grimoire: Grimoires.active_grimoire_for_character(character.id)
+       }}
+    end
+  end
+
+  # Latin-word incantation slots map deterministically onto engine primitives.
+  # This is the deterministic safety boundary the GDD requires around any AI
+  # narration: the UI never chooses raw effect state, only intent words.
+  @school_effect_state %{
+    fire: "burning",
+    water: "frozen",
+    earth: "staggered",
+    air: "exposed",
+    life: "regenerating",
+    death: "silenced",
+    chaos: "impact",
+    order: "shielded"
+  }
+
+  @doc """
+  Compiles a composed incantation into a real, persisted spell owned by the
+  caster. `attrs` carries the presentation choices (`formula`, `school`, and an
+  optional `base_id` from the caster's own library); the resulting effect,
+  targeting, and failure profile are derived here so the client can never inject
+  arbitrary engine state.
+  """
+  def compile_spell(character_or_id, attrs) when is_map(attrs) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         {:ok, school} <- normalize_school(attrs["school"] || attrs[:school]),
+         {:ok, formula} <- normalize_formula(attrs["formula"] || attrs[:formula]) do
+      base = compile_base_spell(character, attrs["base_id"] || attrs[:base_id])
+      word_count = formula |> String.split(" ", trim: true) |> length()
+
+      Spells.create_spell(character, %{
+        name: compiled_spell_name(school, base),
+        formula: formula,
+        school: school,
+        description: "Круг замкнулся: интенция связана в устойчивую формулу школы #{school}.",
+        level_requirement: max(character.level || 1, 1),
+        fatigue_cost: 4 + word_count,
+        cooldown_turns: 1 + div(word_count, 3),
+        targeting: :enemy,
+        delivery_form: :single_target,
+        tags: ["composed"],
+        narrative_tags: [Atom.to_string(school)],
+        source_spell_id: base && base.id,
+        effects: [
+          %{
+            applies_to: :target,
+            state: Map.fetch!(@school_effect_state, school),
+            intensity: 6 + word_count,
+            variance: 2,
+            duration: 1 + div(word_count, 2)
+          }
+        ],
+        failure_profile: %{
+          difficulty: 6 + word_count,
+          base_success_rate: max(90 - word_count * 3, 40),
+          partial_success_rate: 5
+        }
+      })
+    end
+  end
+
+  def compile_spell(_character_or_id, _attrs), do: {:error, :missing_formula}
+
+  @doc "Binds a new empty grimoire owned by the caster."
+  def create_grimoire(character_or_id, name) when is_binary(name) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      Grimoires.create_grimoire(character, %{name: name, capacity: 7, weight: 2})
+    end
+  end
+
+  @doc "Activates one of the caster's own grimoires as their loadout."
+  def activate_grimoire(character_or_id, grimoire_id) when is_binary(grimoire_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         %Grimoire{owner_character_id: owner} = grimoire <- safe_get_grimoire(grimoire_id),
+         true <- owner == character.id do
+      Grimoires.activate_grimoire(character, grimoire)
+    else
+      false -> {:error, :not_grimoire_owner}
+      nil -> {:error, :grimoire_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Inscribes the first known spell that isn't yet in `grimoire_id`. Only the
+  owner may write, and the grimoire's own capacity/write-once rules still apply
+  in `MMGO.Grimoires`.
+  """
+  def inscribe_next_spell(character_or_id, grimoire_id) when is_binary(grimoire_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         %Grimoire{owner_character_id: owner} = grimoire <- safe_get_grimoire(grimoire_id),
+         true <- owner == character.id do
+      inscribed = MapSet.new(grimoire.entries, & &1.spell_id)
+
+      character.id
+      |> Spells.list_spells_for_character()
+      |> Enum.find(&(not MapSet.member?(inscribed, &1.id)))
+      |> case do
+        nil -> {:error, :no_spell_to_inscribe}
+        %Spell{} = spell -> Grimoires.inscribe_spell(grimoire, spell)
+      end
+    else
+      false -> {:error, :not_grimoire_owner}
+      nil -> {:error, :grimoire_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp safe_get_grimoire(grimoire_id) do
+    Grimoires.get_grimoire!(grimoire_id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  # ------------------------------------------------------------------
+  # Organizations (GDD §17)
+  # ------------------------------------------------------------------
+
+  @doc "Read model for the `/orgs` registry: the character, their organizations, and pending invitations."
+  def organizations_index(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      {:ok,
+       %{
+         character: character,
+         organizations: Organizations.list_organizations_for_character(character.id),
+         invitations: Organizations.pending_invitations_for_character(character.id)
+       }}
+    end
+  end
+
+  @doc "Founds an organization with the session character as the leader."
+  def found_organization(character_or_id, kind, name) when is_binary(name) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      Organizations.create_organization(character, kind, name)
+    end
+  end
+
+  @doc """
+  Detail read model for one organization, gated on the session character being
+  an active member. Returns `{:error, :not_member}` for outsiders.
+  """
+  def organization_detail(character_or_id, organization_id) when is_binary(organization_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         %Organization{} = organization <- safe_get_organization(organization_id) do
+      case Enum.find(organization.memberships, &(&1.character_id == character.id)) do
+        nil ->
+          {:error, :not_member}
+
+        membership ->
+          {:ok, %{character: character, organization: organization, membership: membership}}
+      end
+    else
+      nil -> {:error, :not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Invites a character (looked up by handle in the inviter's realm) into an organization role."
+  def invite_to_organization(character_or_id, organization_id, handle, role_id)
+      when is_binary(organization_id) and is_binary(handle) and is_binary(role_id) do
+    with {:ok, inviter} <- normalize_character(character_or_id),
+         %Organization{} = organization <- safe_get_organization(organization_id),
+         %Character{} = invitee <- Accounts.get_character_by_handle(inviter.realm_id, handle),
+         %Role{} = role <- Enum.find(organization.roles, &(&1.id == role_id)) do
+      Organizations.invite_member(organization, inviter, invitee, role)
+    else
+      nil -> {:error, :invalid_invite}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Accepts a pending organization invitation owned by the session character."
+  def accept_org_invitation(character_or_id, invitation_id) when is_binary(invitation_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         %Invitation{} = invitation <- safe_get_invitation(invitation_id) do
+      Organizations.accept_invitation(invitation, character)
+    else
+      nil -> {:error, :invitation_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc "Rejects a pending organization invitation owned by the session character."
+  def reject_org_invitation(character_or_id, invitation_id) when is_binary(invitation_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         %Invitation{} = invitation <- safe_get_invitation(invitation_id) do
+      Organizations.reject_invitation(invitation, character)
+    else
+      nil -> {:error, :invitation_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp safe_get_organization(organization_id) do
+    Organizations.get_organization!(organization_id)
+  rescue
+    Ecto.NoResultsError -> nil
+  end
+
+  defp safe_get_invitation(invitation_id) do
+    Repo.get(Invitation, invitation_id)
+  end
+
+  defp normalize_school(school) when is_atom(school) and not is_nil(school) do
+    if Map.has_key?(@school_effect_state, school),
+      do: {:ok, school},
+      else: {:error, :invalid_school}
+  end
+
+  defp normalize_school(school) when is_binary(school) do
+    case Enum.find(Map.keys(@school_effect_state), &(Atom.to_string(&1) == school)) do
+      nil -> {:error, :invalid_school}
+      atom -> {:ok, atom}
+    end
+  end
+
+  defp normalize_school(_school), do: {:error, :invalid_school}
+
+  defp normalize_formula(formula) when is_binary(formula) do
+    trimmed = String.trim(formula)
+    if String.length(trimmed) >= 3, do: {:ok, trimmed}, else: {:error, :formula_too_short}
+  end
+
+  defp normalize_formula(_formula), do: {:error, :formula_too_short}
+
+  defp compile_base_spell(_character, nil), do: nil
+  defp compile_base_spell(_character, ""), do: nil
+
+  defp compile_base_spell(character, base_id) when is_binary(base_id) do
+    character.id
+    |> Spells.list_spells_for_character()
+    |> Enum.find(&(&1.id == base_id))
+  end
+
+  defp compiled_spell_name(school, nil), do: "Formula #{school_word(school)}"
+  defp compiled_spell_name(school, base), do: "#{school_word(school)} #{first_word(base.name)}"
+
+  defp school_word(:fire), do: "Ignis"
+  defp school_word(:water), do: "Glacies"
+  defp school_word(:earth), do: "Terra"
+  defp school_word(:air), do: "Ventus"
+  defp school_word(:life), do: "Vita"
+  defp school_word(:death), do: "Mortis"
+  defp school_word(:chaos), do: "Discordia"
+  defp school_word(:order), do: "Ordo"
+
+  defp first_word(name) when is_binary(name) do
+    name |> String.split(" ", trim: true) |> List.first() || name
+  end
+
   def state_for_character(%Character{} = character) do
     character = Repo.preload(character, :current_location, force: true)
     active_journey = get_active_journey(character)
@@ -229,6 +502,128 @@ defmodule MMGO.Play do
       spells: play_summaries.spells,
       duel: play_summaries.duel
     }
+  end
+
+  @doc """
+  Loads the server-authoritative state needed by the in-progress journey
+  screen. This is intentionally a presentation read model: travel rules stay
+  in `MMGO.Travel` and survival calculations stay in `MMGO.Survival`.
+  """
+  def travel_state(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      state = state_for_character(character)
+
+      {:ok,
+       %{
+         character: state.character,
+         current_location: state.current_location,
+         journey: state.active_journey,
+         journey_progress: journey_progress(state.active_journey),
+         food_units: state.food_units,
+         carried_weight: Survival.carried_weight(state.character),
+         carry_capacity: Survival.carry_capacity(state.character)
+       }}
+    end
+  end
+
+  @doc """
+  Loads the server-authoritative inventory read model for a character.
+
+  The active grimoire is returned separately because it is stored in the
+  grimoire context, while its weight is already included by `Survival`.
+  """
+  def inventory_state(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      items = Inventory.list_inventory_for_character(character.id)
+
+      {:ok,
+       %{
+         character: character,
+         current_location: character.current_location,
+         items: items,
+         available_quantities: Map.new(items, &{&1.id, Inventory.available_quantity(&1)}),
+         active_grimoire: Grimoires.active_grimoire_for_character(character.id),
+         food_units: Survival.food_units_available(character),
+         carried_weight: Survival.carried_weight(character),
+         carry_capacity: Survival.carry_capacity(character)
+       }}
+    end
+  end
+
+  @doc """
+  Starts and immediately accepts a duel against the local demo opponent.
+
+  This only orchestrates the existing PvP and combat contexts. The fixed
+  local stake keeps the browser demo deterministic and prevents a client from
+  choosing its own wager.
+  """
+  def start_demo_duel(character_or_id, opponent_id) when is_binary(opponent_id) do
+    with {:ok, challenger} <- normalize_character(character_or_id),
+         {:ok, opponent} <- normalize_character(opponent_id),
+         {:ok, duel} <- PVP.challenge_duel(challenger, opponent, @demo_duel_stake),
+         {:ok, duel} <- PVP.accept_duel(duel, opponent) do
+      duel_combat_state_for(challenger, duel)
+    end
+  end
+
+  def start_demo_duel(_character_or_id, _opponent_id), do: {:error, :missing_opponent}
+
+  @doc """
+  Returns the active duel's combat read model for a character.
+  """
+  def active_duel_combat_state(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         %Duel{} = duel <- PVP.active_duel_for_character(character.id) do
+      duel_combat_state_for(character, PVP.get_duel!(duel.id))
+    else
+      nil -> {:error, :no_active_duel}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc """
+  Submits a prepared spell for the local player and resolves the current duel
+  turn. Neither participant, target side, nor duel id is trusted from the UI.
+  """
+  def cast_and_resolve_duel_turn(character_or_id, spell_id) when is_binary(spell_id) do
+    with {:ok, state} <- active_duel_combat_state(character_or_id),
+         %Spell{} = spell <- Enum.find(state.prepared_spells, &(&1.id == spell_id)),
+         {:ok, _turn} <-
+           CombatContext.submit_action(state.combat, state.participant.id, %{
+             action_type: :cast_spell,
+             spell_id: spell.id,
+             target_side: opposing_side(state.combat, state.participant.side)
+           }) do
+      resolve_duel_turn(state)
+    else
+      nil -> {:error, :spell_not_prepared}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def cast_and_resolve_duel_turn(_character_or_id, _spell_id), do: {:error, :missing_spell}
+
+  @doc """
+  Submits a wait action for the local player and resolves the current duel
+  turn. This is a real combat action, rather than a frontend-only skip.
+  """
+  def wait_and_resolve_duel_turn(character_or_id) do
+    with {:ok, state} <- active_duel_combat_state(character_or_id),
+         {:ok, _turn} <-
+           CombatContext.submit_action(state.combat, state.participant.id, %{
+             action_type: :wait
+           }) do
+      resolve_duel_turn(state)
+    end
+  end
+
+  @doc """
+  Cancels the session character's active duel through the PvP context.
+  """
+  def cancel_active_duel(character_or_id) do
+    with {:ok, state} <- active_duel_combat_state(character_or_id) do
+      PVP.cancel_duel(state.duel, state.character)
+    end
   end
 
   def list_locations_with_routes(realm_id) when is_binary(realm_id) do
@@ -602,6 +997,110 @@ defmodule MMGO.Play do
 
   defp preload_journey(nil), do: nil
   defp preload_journey(journey), do: Repo.preload(journey, [:from_location, :to_location])
+
+  defp duel_combat_state_for(%Character{} = _character, %Duel{combat_id: nil}),
+    do: {:error, :duel_has_no_combat}
+
+  defp duel_combat_state_for(%Character{} = character, %Duel{} = duel) do
+    duel = PVP.get_duel!(duel.id)
+    combat = CombatContext.get_combat!(duel.combat_id)
+
+    case Enum.find(combat.participants, &(&1.character_id == character.id)) do
+      %Participant{} = participant ->
+        prepared_spell_ids = prepared_spell_ids(participant)
+
+        {:ok,
+         %{
+           character: character,
+           duel: duel,
+           combat: combat,
+           participant: participant,
+           prepared_spells:
+             character.id
+             |> Spells.list_spells_for_character()
+             |> Enum.filter(&MapSet.member?(prepared_spell_ids, &1.id)),
+           sides: combat_side_summaries(combat),
+           events: combat_events(combat.id)
+         }}
+
+      nil ->
+        {:error, :not_a_duel_participant}
+    end
+  end
+
+  defp resolve_duel_turn(state) do
+    with {:ok, resolved_combat} <- CombatContext.resolve_turn(state.combat),
+         {:ok, _result} <- Resolution.finalize(resolved_combat) do
+      refreshed_duel = PVP.get_duel!(state.duel.id)
+      duel_combat_state_for(state.character, refreshed_duel)
+    end
+  end
+
+  defp prepared_spell_ids(%Participant{grimoire: nil}), do: MapSet.new()
+
+  defp prepared_spell_ids(%Participant{grimoire: grimoire}) do
+    grimoire.entries
+    |> Enum.map(& &1.spell_id)
+    |> MapSet.new()
+  end
+
+  defp opposing_side(%Combat{} = combat, own_side) do
+    combat.participants
+    |> Enum.map(& &1.side)
+    |> Enum.uniq()
+    |> Enum.find(&(&1 != own_side))
+  end
+
+  defp combat_side_summaries(%Combat{} = combat) do
+    combat.sides
+    |> Enum.map(fn {side_id, values} ->
+      %{
+        id: side_id,
+        label: Map.get(values, "label") || Map.get(values, :label) || String.capitalize(side_id),
+        shared_hp: Map.get(values, "shared_hp") || Map.get(values, :shared_hp) || 0,
+        max_shared_hp: Map.get(values, "max_shared_hp") || Map.get(values, :max_shared_hp) || 0,
+        participants:
+          combat.participants
+          |> Enum.filter(&(&1.side == side_id))
+          |> Enum.map(& &1.display_name)
+      }
+    end)
+    |> Enum.sort_by(& &1.id)
+  end
+
+  defp combat_events(combat_id) do
+    Repo.all(
+      from event in Event,
+        where: event.combat_id == ^combat_id,
+        order_by: [asc: event.turn_number, asc: event.sequence],
+        limit: 12
+    )
+  end
+
+  defp journey_progress(nil), do: nil
+
+  defp journey_progress(%Journey{} = journey) do
+    duration_seconds = max(DateTime.diff(journey.arrival_at, journey.started_at, :second), 1)
+
+    elapsed_seconds =
+      DateTime.utc_now()
+      |> DateTime.diff(journey.started_at, :second)
+      |> max(0)
+      |> min(duration_seconds)
+
+    elapsed_game_days =
+      elapsed_seconds
+      |> Clock.real_seconds_to_game_days()
+      |> floor()
+      |> min(journey.travel_days)
+
+    %{
+      elapsed_game_days: elapsed_game_days,
+      remaining_game_days: max(journey.travel_days - elapsed_game_days, 0),
+      percent: floor(elapsed_seconds / duration_seconds * 100),
+      remaining_seconds: max(duration_seconds - elapsed_seconds, 0)
+    }
+  end
 
   defp preload_duel(nil), do: nil
   defp preload_duel(duel), do: PVP.get_duel!(duel.id)

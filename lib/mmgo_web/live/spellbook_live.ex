@@ -1,5 +1,16 @@
 defmodule MMGOWeb.SpellbookLive do
+  @moduledoc """
+  The Tower spellbook, wired to the real `MMGO.Spells`/`MMGO.Grimoires`
+  contexts through `MMGO.Play`.
+
+  Map-first (GDD §5): magic only works at the Tower, so mount gates on the
+  session character's location. Domain rules stay in their contexts — this view
+  only composes reads and forwards player intent.
+  """
   use MMGOWeb, :live_view
+
+  alias MMGO.Play
+  alias MMGOWeb.LocationGate
 
   @school_label %{
     fire: "Огонь",
@@ -44,101 +55,32 @@ defmodule MMGOWeb.SpellbookLive do
     delayed_trigger: "отложенный триггер"
   }
 
-  @demo_character %{id: "demo-albert", name: "Альберт Северин", level: 12}
-
-  @demo_spells [
-    %{
-      id: "ember-spark",
-      name: "Scintilla Cineris",
-      formula: "Ictus Radius Levis",
-      school: :fire,
-      description: "Тонкая искра бьёт по одной цели и оставляет на коже серую метку жара.",
-      level_requirement: 1,
-      fatigue_cost: 3,
-      mana_cost: 8,
-      cooldown_turns: 1,
-      delivery_form: :beam,
-      targeting: :enemy,
-      effects: [:burn],
-      lineage: "академическая азбука Огня"
-    },
-    %{
-      id: "chaos-veil",
-      name: "Velum Discordiae",
-      formula: "Scutum Nexus Mediocris Sustineo",
-      school: :chaos,
-      description: "Неровная завеса сбивает прицел и иногда меняет направление слабых чар.",
-      level_requirement: 8,
-      fatigue_cost: 7,
-      mana_cost: 18,
-      cooldown_turns: 3,
-      delivery_form: :zone,
-      targeting: :self,
-      effects: [:deflect, :confuse],
-      lineage: "на основе Scintilla Cineris"
-    },
-    %{
-      id: "ash-wall",
-      name: "Murus Favillae",
-      formula: "Captio Murus Magnus Tardus Dissipatio",
-      school: :fire,
-      description: "Пепельная стена медленно поднимается из пола и крошится огненными хлопьями.",
-      level_requirement: 11,
-      fatigue_cost: 10,
-      mana_cost: 24,
-      cooldown_turns: 4,
-      delivery_form: :wall,
-      targeting: :zone,
-      effects: [:block, :burn],
-      lineage: "на основе Velum Discordiae"
-    }
-  ]
-
-  @demo_grimoires [
-    %{
-      id: "gr-chaos",
-      name: "Гримуар Хаоса",
-      status: :active,
-      capacity: 9,
-      weight: 2.4,
-      entries: [
-        %{slot: 0, spell_id: "ember-spark"},
-        %{slot: 1, spell_id: "chaos-veil"}
-      ]
-    },
-    %{
-      id: "gr-small",
-      name: "Малый гримуар",
-      status: :sealed,
-      capacity: 5,
-      weight: 1.1,
-      entries: [%{slot: 0, spell_id: "ember-spark"}]
-    },
-    %{
-      id: "gr-draft",
-      name: "Новый переплёт",
-      status: :draft,
-      capacity: 7,
-      weight: 1.8,
-      entries: []
-    }
-  ]
-
   @impl true
-  def mount(_params, _session, socket) do
-    # TODO: wire — replace demo character/spells/grimoires with real player data.
-    {:ok,
-     socket
-     |> assign(:page_title, "Гримуар")
-     |> assign(:character, @demo_character)
-     |> assign(:spells, @demo_spells)
-     |> assign(:grimoires, @demo_grimoires)
-     |> assign(:view, :cast)
-     |> assign(:compiling, false)
-     |> assign(:last_spell, nil)
-     |> assign(:compile_error, nil)
-     |> assign(:pending_formula, nil)
-     |> assign(:grimoire_order, nil)}
+  def mount(_params, session, socket) do
+    case session_character(session) do
+      nil ->
+        {:ok, push_navigate(socket, to: ~p"/play/continue")}
+
+      character ->
+        case LocationGate.gate(socket, character, :tower) do
+          {:halt, socket} ->
+            {:ok, socket}
+
+          {:ok, socket} ->
+            {:ok, state} = Play.spellbook_state(character)
+
+            {:ok,
+             socket
+             |> assign(:page_title, "Гримуар")
+             |> assign(:view, :cast)
+             |> assign(:compiling, false)
+             |> assign(:last_spell, nil)
+             |> assign(:compile_error, nil)
+             |> assign(:pending_formula, nil)
+             |> assign(:grimoire_order, nil)
+             |> assign_spellbook_state(state)}
+        end
+    end
   end
 
   @impl true
@@ -185,15 +127,16 @@ defmodule MMGOWeb.SpellbookLive do
       {:noreply, socket}
     else
       formula = build_formula(params)
-      school = params["school"] || "chaos"
-      base_id = params["base"]
 
-      # TODO: wire — send formula/school/base spell to the AI compiler.
-      Process.send_after(
-        self(),
-        {:spell_compiled, %{formula: formula, school: school, base_id: base_id}},
-        3000
-      )
+      attrs = %{
+        "formula" => formula,
+        "school" => params["school"] || "chaos",
+        "base_id" => params["base"]
+      }
+
+      # Give the circle a beat to settle before the server-authoritative
+      # compile lands; the compile itself is deterministic (MMGO.Play).
+      Process.send_after(self(), {:spell_compiled, attrs}, 1200)
 
       {:noreply,
        socket
@@ -207,50 +150,26 @@ defmodule MMGOWeb.SpellbookLive do
   def handle_event("grimoire_create", _params, socket) do
     index = length(socket.assigns.grimoires) + 1
 
-    grimoire = %{
-      id: "gr-demo-#{index}",
-      name: "Чистый переплёт #{index}",
-      status: :draft,
-      capacity: 7,
-      weight: 1.7,
-      entries: []
-    }
-
-    {:noreply,
-     socket |> assign(:grimoires, socket.assigns.grimoires ++ [grimoire]) |> push_shelf()}
+    case Play.create_grimoire(socket.assigns.character.id, "Чистый переплёт #{index}") do
+      {:ok, _grimoire} -> {:noreply, socket |> reload_spellbook() |> push_shelf()}
+      {:error, _reason} -> {:noreply, socket}
+    end
   end
 
   @impl true
   def handle_event("grimoire_activate", %{"id" => id}, socket) do
-    grimoires =
-      Enum.map(socket.assigns.grimoires, fn g ->
-        cond do
-          g.id == id -> %{g | status: :active}
-          g.status == :active -> %{g | status: :sealed}
-          true -> g
-        end
-      end)
-
-    {:noreply, socket |> assign(:grimoires, grimoires) |> push_shelf()}
+    case Play.activate_grimoire(socket.assigns.character.id, id) do
+      {:ok, _result} -> {:noreply, socket |> reload_spellbook() |> push_shelf()}
+      {:error, _reason} -> {:noreply, socket}
+    end
   end
 
   @impl true
   def handle_event("grimoire_inscribe", %{"id" => id}, socket) do
-    grimoires =
-      Enum.map(socket.assigns.grimoires, fn g ->
-        if g.id == id and g.status == :draft and length(g.entries) < g.capacity do
-          inscribed_ids = Enum.map(g.entries, & &1.spell_id)
-
-          case Enum.find(socket.assigns.spells, &(&1.id not in inscribed_ids)) do
-            nil -> g
-            spell -> %{g | entries: g.entries ++ [%{slot: length(g.entries), spell_id: spell.id}]}
-          end
-        else
-          g
-        end
-      end)
-
-    {:noreply, socket |> assign(:grimoires, grimoires) |> push_shelf()}
+    case Play.inscribe_next_spell(socket.assigns.character.id, id) do
+      {:ok, _entry} -> {:noreply, socket |> reload_spellbook() |> push_shelf()}
+      {:error, _reason} -> {:noreply, socket}
+    end
   end
 
   @impl true
@@ -269,16 +188,16 @@ defmodule MMGOWeb.SpellbookLive do
   end
 
   @impl true
-  def handle_info({:spell_compiled, params}, socket) do
-    case scripted_compile(params, socket.assigns.spells) do
+  def handle_info({:spell_compiled, attrs}, socket) do
+    case Play.compile_spell(socket.assigns.character.id, attrs) do
       {:ok, spell} ->
         {:noreply,
          socket
+         |> reload_spellbook()
          |> assign(:compiling, false)
-         |> assign(:last_spell, spell)
+         |> assign(:last_spell, spell_view(spell))
          |> assign(:compile_error, nil)
          |> assign(:pending_formula, nil)
-         |> assign(:spells, socket.assigns.spells ++ [spell])
          |> push_event("spell_result", %{ok: true})}
 
       {:error, reason} ->
@@ -286,7 +205,7 @@ defmodule MMGOWeb.SpellbookLive do
          socket
          |> assign(:compiling, false)
          |> assign(:last_spell, nil)
-         |> assign(:compile_error, reason)
+         |> assign(:compile_error, compile_error_message(reason))
          |> assign(:pending_formula, nil)
          |> push_event("spell_result", %{ok: false})}
     end
@@ -617,48 +536,89 @@ defmodule MMGOWeb.SpellbookLive do
   defp delivery_label(nil), do: "—"
   defp delivery_label(d), do: Map.get(@delivery_label, to_atom(d), to_string(d))
 
-  defp scripted_compile(%{formula: formula, school: school} = params, known_spells) do
-    words = formula |> String.split(" ", trim: true)
+  # ------------------------------------------------------------------
+  # Session + server-authoritative state
+  # ------------------------------------------------------------------
 
-    if scripted_failure?(words, school) do
-      {:error,
-       "Круг вспыхнул слишком резко: слова тянут школу в разные стороны, и формула распалась."}
+  defp session_character(session) do
+    with id when is_binary(id) <- session["demo_character_id"],
+         {:ok, %{character: character}} <- Play.load_demo_state(id) do
+      character
     else
-      {:ok, scripted_spell(params, known_spells, words)}
+      _other -> nil
     end
   end
 
-  defp scripted_failure?(["Sanatio" | _], "fire"), do: true
-  defp scripted_failure?(["Ictus" | _], "life"), do: true
-  defp scripted_failure?(["Scutum" | _], "death"), do: true
-  defp scripted_failure?(_words, _school), do: false
+  defp reload_spellbook(socket) do
+    {:ok, state} = Play.spellbook_state(socket.assigns.character.id)
+    assign_spellbook_state(socket, state)
+  end
 
-  defp scripted_spell(%{formula: formula, school: school, base_id: base_id}, known_spells, words) do
-    base = Enum.find(known_spells, &(&1.id == base_id))
-    id = "demo-spell-#{System.unique_integer([:positive])}"
+  defp assign_spellbook_state(socket, state) do
+    socket
+    |> assign(:character, %{
+      id: state.character.id,
+      name: state.character.name,
+      level: state.character.level
+    })
+    |> assign(:spells, Enum.map(state.spells, &spell_view/1))
+    |> assign(:grimoires, Enum.map(state.grimoires, &grimoire_view/1))
+  end
 
+  # Real Spell/Grimoire structs carry more (and less) than the book UI needs;
+  # these adapters project them onto the flat shapes the templates and the
+  # SpellCircle/GrimoireShelf JS hooks already consume.
+  defp spell_view(spell) do
     %{
-      id: id,
-      name: scripted_name(words, school),
-      formula: formula,
-      school: to_atom(school),
-      description:
-        "AI принял намерение круга и связал его в устойчивую формулу: " <>
-          "заклинание вспыхивает короткой дугой, затем оставляет после себя мерцающий след хаоса.",
-      level_requirement: 12,
-      fatigue_cost: 8 + max(length(words) - 2, 0),
-      mana_cost: 16 + length(words) * 3,
-      cooldown_turns: 3,
-      delivery_form: :sphere,
-      targeting: :enemy,
-      effects: [:burn, :distort],
-      lineage: if(base, do: "на основе #{base.name}", else: "создано без основы")
+      id: spell.id,
+      name: spell.name,
+      formula: spell.formula,
+      school: spell.school,
+      description: spell.description,
+      level_requirement: spell.level_requirement,
+      fatigue_cost: spell.fatigue_cost,
+      mana_cost: derived_mana_cost(spell),
+      cooldown_turns: spell.cooldown_turns,
+      delivery_form: spell.delivery_form,
+      targeting: spell.targeting,
+      effects: spell.effects,
+      lineage: spell_lineage(spell)
     }
   end
 
-  defp scripted_name(["Captio" | _], _school), do: "Captio Lucis"
-  defp scripted_name(["Scutum" | _], _school), do: "Aegis Nocturna"
-  defp scripted_name(["Sanatio" | _], _school), do: "Sanatio Aurea"
-  defp scripted_name(_words, "fire"), do: "Ignis Retortus"
-  defp scripted_name(_words, _school), do: "Vinculum Incertum"
+  defp derived_mana_cost(spell) do
+    case spell.effects do
+      [] -> (spell.fatigue_cost || 0) * 2
+      effects -> Enum.sum(Enum.map(effects, &(&1.intensity || 0)))
+    end
+  end
+
+  defp spell_lineage(%{source_spell_id: id}) when is_binary(id), do: "производное заклинание"
+  defp spell_lineage(_spell), do: "собственная формула"
+
+  defp grimoire_view(grimoire) do
+    %{
+      id: grimoire.id,
+      name: grimoire.name,
+      status: grimoire.status,
+      capacity: grimoire.capacity,
+      weight: grimoire.weight,
+      entries:
+        grimoire.entries
+        |> Enum.sort_by(& &1.slot_index)
+        |> Enum.map(&%{slot: &1.slot_index, spell_id: &1.spell_id})
+    }
+  end
+
+  defp compile_error_message(%Ecto.Changeset{}),
+    do: "Круг не сомкнулся: формула вышла за пределы устойчивого заклинания."
+
+  defp compile_error_message(:formula_too_short),
+    do: "Слишком коротко — начерти хотя бы одно слово действия."
+
+  defp compile_error_message(:invalid_school),
+    do: "Не выбрана школа — круг не с чем связать."
+
+  defp compile_error_message(_reason),
+    do: "Круг вспыхнул слишком резко, и формула распалась. Попробуй иначе."
 end

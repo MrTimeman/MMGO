@@ -66,7 +66,8 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     {:ok, _view, html} = live(conn, ~p"/spellbook")
 
-    assert html =~ "Spellbook"
+    # The spellbook renders in-world (Russian) once the caster is at the Tower.
+    assert html =~ "Создание заклинания"
   end
 
   defp move_to(character, location) do

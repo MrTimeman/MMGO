@@ -103,6 +103,38 @@ defmodule MMGO.PlayTest do
     assert state.routes == []
   end
 
+  test "travel_state/1 composes the journey and survival values for the web", %{
+    character: character,
+    tower: tower
+  } do
+    assert {:ok, %{journey: journey}} = Play.start_journey(character.id, "the-tower")
+
+    assert {:ok, state} = Play.travel_state(character.id)
+
+    assert state.character.id == character.id
+    assert state.current_location.slug == "capital-city"
+    assert state.journey.id == journey.id
+    assert state.journey.to_location.id == tower.id
+    assert state.food_units < 20
+    assert state.carried_weight > 0
+    assert state.carry_capacity > state.carried_weight
+  end
+
+  test "inventory_state/1 composes carried items and capacity for the web", %{
+    character: character
+  } do
+    assert {:ok, state} = Play.inventory_state(character.id)
+
+    assert state.character.id == character.id
+    assert state.current_location.slug == "capital-city"
+    assert [%{item_template: %{code: "travel_ration"}, quantity: 20}] = state.items
+    assert Enum.all?(state.available_quantities, fn {_item_id, quantity} -> quantity >= 0 end)
+    assert state.active_grimoire == nil
+    assert state.food_units == 20
+    assert state.carried_weight == 20
+    assert state.carry_capacity > state.carried_weight
+  end
+
   test "known_spells_and_duel_state/2 summarizes spells and duel state", %{
     character: character,
     opponent: opponent
@@ -130,6 +162,55 @@ defmodule MMGO.PlayTest do
     assert summary.duel.opponent.id == opponent.id
     assert [%{id: duel_id, status: :pending}] = summary.duel.pending_duels
     assert duel_id == pending_duel.id
+  end
+
+  test "the duel facade accepts the local opponent and only casts prepared spells", %{
+    realm: realm,
+    tower: tower,
+    character: character,
+    opponent: opponent
+  } do
+    character = move_to(character, tower)
+    opponent = move_to(opponent, tower)
+    {:ok, _character_funds} = Economy.grant_from_treasury(realm, character, 200)
+    {:ok, _opponent_funds} = Economy.grant_from_treasury(realm, opponent, 200)
+
+    {:ok, spell} =
+      Spells.create_spell(character, %{
+        name: "Facade Ultima",
+        formula: "Ignis Ultima Suprema",
+        school: :fire,
+        description: "A deterministic facade test spell.",
+        targeting: :enemy,
+        delivery_form: :sphere,
+        effects: [
+          %{applies_to: :target, state: "impact", intensity: 100, variance: 0, duration: 0}
+        ],
+        failure_profile: %{
+          difficulty: 5,
+          base_success_rate: 100,
+          partial_success_rate: 0,
+          backlash_damage: 0
+        }
+      })
+
+    {:ok, grimoire} =
+      Grimoires.create_grimoire(character, %{name: "Facade Grimoire", capacity: 5, weight: 1})
+
+    {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+    {:ok, %{activate_grimoire: _grimoire}} = Grimoires.activate_grimoire(character, grimoire)
+
+    assert {:ok, state} = Play.start_demo_duel(character.id, opponent.id)
+    assert state.duel.status == :active
+    assert [%{id: spell_id}] = state.prepared_spells
+    assert spell_id == spell.id
+
+    assert {:error, :spell_not_prepared} =
+             Play.cast_and_resolve_duel_turn(character.id, opponent.id)
+
+    assert {:ok, resolved_state} = Play.cast_and_resolve_duel_turn(character.id, spell.id)
+    assert resolved_state.duel.status == :resolved
+    assert resolved_state.duel.winner_character_id == character.id
   end
 
   test "ensure_demo_character_usable/2 activates and stocks a demo character", %{
@@ -301,6 +382,12 @@ defmodule MMGO.PlayTest do
     %Character{account_id: account.id, realm_id: realm.id}
     |> Character.changeset(%{name: name, status: :active, level: 10})
     |> Repo.insert!()
+    |> Character.travel_changeset(%{current_location_id: location.id})
+    |> Repo.update!()
+  end
+
+  defp move_to(character, location) do
+    character
     |> Character.travel_changeset(%{current_location_id: location.id})
     |> Repo.update!()
   end

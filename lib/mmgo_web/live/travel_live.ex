@@ -1,309 +1,241 @@
 defmodule MMGOWeb.TravelLive do
   @moduledoc """
-  Design-pass screen — a journey in progress (GDD §5.2, §14).
+  The server-authoritative view of the local player's active journey.
 
-  Врата Зари → Башня, rendered as a vertical road of waypoints with the
-  party's current position, supplies burning down at 1 unit/day/head,
-  a danger strip for the PvP wilderness, and a running travel log.
-
-  Reviewable demo states via the "походный дневник" control at the bottom:
-  en route, low on food (§14.1 penalties), an ambush teaser that links to
-  /combat, and arrival that links to /event. See docs/UI_DESIGN_BRIEF.md.
+  Travel advances in `MMGO.Travel` and completes through its scheduled worker;
+  this LiveView only presents that state and refreshes it for the player.
   """
   use MMGOWeb, :live_view
 
-  @waypoints [
-    %{name: "Врата Зари", note: "выход из городских ворот", region: "город"},
-    %{name: "Брод Тихой реки", note: "переправа вброд, вода по колено", region: "тракт"},
-    %{name: "Старый мост", note: "заброшенная застава у моста", region: "тракт"},
-    %{name: "Развилка у кургана", note: "здесь тракт уходит в пустошь", region: "рубеж"},
-    %{name: "Волчья пустошь", note: "открытая земля, разбойные тропы", region: "глушь"},
-    %{name: "Подножие гор", note: "каменистый подъём к утёсам", region: "горы"},
-    %{name: "Башня", note: "цель пути", region: "башня"}
-  ]
+  alias MMGO.Play
 
-  @party ["Альберт", "Гром", "Лисса", "Одо"]
+  @refresh_interval 15_000
 
   @impl true
-  def mount(_params, _session, socket) do
-    # TODO: wire — hydrate from the character's active Travel.Journey and party.
-    {:ok,
-     socket
-     |> assign(:page_title, "В пути")
-     |> assign(:view, :enroute)
-     |> assign(:wp_index, 3)
-     |> assign(:day, 3)
-     |> assign(:total_days, 6)
-     |> assign(:food, 20)
-     |> assign(:food_per_day, length(@party))
-     |> assign(:carry, 38)
-     |> assign(:carry_max, 60)
-     |> assign(:log, initial_log())}
+  def mount(_params, session, socket) do
+    case travel_state(session) do
+      {:ok, %{journey: nil}} ->
+        {:ok,
+         socket
+         |> put_flash(:info, "You do not have an active journey.")
+         |> push_navigate(to: ~p"/map")}
+
+      {:ok, state} ->
+        socket = assign_travel_state(socket, state)
+
+        if connected?(socket) do
+          Process.send_after(self(), :refresh_travel, @refresh_interval)
+        end
+
+        {:ok, socket}
+
+      {:error, _reason} ->
+        {:ok, push_navigate(socket, to: ~p"/play/continue")}
+    end
   end
 
   @impl true
-  def handle_event("advance", _params, socket) do
-    # TODO: wire — this is the client-side echo of a server travel tick.
-    idx = min(socket.assigns.wp_index + 1, length(@waypoints) - 1)
-    wp = Enum.at(@waypoints, idx)
-    day = socket.assigns.day + 1
-    food = max(socket.assigns.food - socket.assigns.food_per_day, 0)
-
-    socket =
-      socket
-      |> assign(:wp_index, idx)
-      |> assign(:day, day)
-      |> assign(:food, food)
-      |> log_entry("День #{day} — вышли к точке «#{wp.name}».")
-
-    socket = if idx == length(@waypoints) - 1, do: assign(socket, :view, :arrival), else: socket
-    {:noreply, socket}
+  def handle_event("refresh", _params, socket) do
+    {:noreply, refresh_travel(socket)}
   end
 
   @impl true
-  def handle_event("scavenge", _params, socket) do
-    socket =
-      socket
-      |> assign(:food, min(socket.assigns.food + 3, 40))
-      |> log_entry(
-        "День #{socket.assigns.day} — привал в перелеске. Лисса набрала кореньев и грибов (+3 ед.)."
-      )
+  def handle_info(:refresh_travel, socket) do
+    socket = refresh_travel(socket)
+
+    if connected?(socket) do
+      Process.send_after(self(), :refresh_travel, @refresh_interval)
+    end
 
     {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("set_view", %{"view" => view}, socket) do
-    view = String.to_existing_atom(view)
-
-    socket =
-      case view do
-        # A dramatised "supplies ran out" snapshot for review of the §14.1 warning.
-        :starving -> assign(socket, food: 2)
-        :enroute -> assign(socket, food: 20)
-        _ -> socket
-      end
-
-    {:noreply, assign(socket, :view, view)}
   end
 
   @impl true
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:waypoints, @waypoints)
-      |> assign(:party, @party)
-      |> assign(:days_left, max(assigns.total_days - assigns.day, 0))
-      |> assign(:food_days, food_days(assigns.food, assigns.food_per_day))
-      |> assign(
-        :food_low?,
-        assigns.view == :starving or
-          food_days(assigns.food, assigns.food_per_day) < assigns.total_days - assigns.day
-      )
-
     ~H"""
-    <div class="trv-scene">
-      <div class="trv-shell">
-        <a href={~p"/map"} class="trv-exit">← На карту</a>
+    <Layouts.app flash={@flash}>
+      <div class="trv-scene">
+        <div id="travel-screen" class="trv-shell">
+          <.link id="travel-back-to-map" navigate={~p"/map"} class="trv-exit">← На карту</.link>
 
-        <header class="trv-head">
-          <p class="trv-eyebrow">Переход · караван</p>
-          <h1 class="trv-route">
-            Врата Зари <span class="trv-route__arrow">→</span> Башня
-          </h1>
-          <div class="trv-stats">
-            <div class="trv-stat">
-              <span class="trv-stat__num">{@day}</span>
-              <span class="trv-stat__cap">день в пути</span>
+          <header class="trv-head">
+            <p class="trv-eyebrow">Переход · в пути</p>
+            <h1 class="trv-route">
+              {@journey.from_location.name} <span class="trv-route__arrow">→</span>
+              {@journey.to_location.name}
+            </h1>
+            <div class="trv-stats">
+              <div class="trv-stat">
+                <span class="trv-stat__num">{@progress.elapsed_game_days}</span>
+                <span class="trv-stat__cap">дней в пути</span>
+              </div>
+              <div class="trv-stat">
+                <span class="trv-stat__num">{@progress.remaining_game_days}</span>
+                <span class="trv-stat__cap">дней осталось</span>
+              </div>
+              <div class="trv-stat">
+                <span class="trv-stat__num">{format_remaining(@progress.remaining_seconds)}</span>
+                <span class="trv-stat__cap">до прибытия</span>
+              </div>
             </div>
-            <div class="trv-stat">
-              <span class="trv-stat__num">{@days_left}</span>
-              <span class="trv-stat__cap">осталось дней</span>
-            </div>
-            <div class="trv-stat">
-              <span class="trv-stat__num">~40м</span>
-              <span class="trv-stat__cap">до прибытия</span>
-            </div>
-          </div>
-        </header>
+          </header>
 
-        <%= if @view == :arrival do %>
-          <div class="trv-arrival">
-            <p class="trv-arrival__kicker">✦ конец пути ✦</p>
-            <h2 class="trv-arrival__title">Вы прибыли к Башне</h2>
-            <p class="trv-arrival__text">
-              Утёсы расступаются, и чёрный шпиль встаёт над морем. Дорога позади,
-              впереди — распахнутые врата и запах магии в стылом воздухе.
-            </p>
-            <.link navigate={~p"/event"} class="trv-btn trv-btn--gold">Войти в локацию</.link>
-          </div>
-        <% else %>
-          <section class="trv-path" aria-label="Маршрут">
-            <ol class="trv-wp">
+          <section class="trv-path" aria-label="Текущий переход">
+            <ol id="travel-waypoints" class="trv-wp">
               <li
-                :for={{wp, i} <- Enum.with_index(@waypoints)}
+                :for={{waypoint, index} <- Enum.with_index(@waypoints)}
+                id={"travel-waypoint-#{index}"}
                 class={[
                   "trv-wp__row",
-                  i < @wp_index && "is-done",
-                  i == @wp_index && "is-here",
-                  i > @wp_index && "is-ahead"
+                  index < @waypoint_index && "is-done",
+                  index == @waypoint_index && "is-here",
+                  index > @waypoint_index && "is-ahead"
                 ]}
               >
                 <span class="trv-wp__mark"></span>
                 <div class="trv-wp__info">
                   <span class="trv-wp__name">
-                    {wp.name}
-                    <span :if={i == @wp_index} class="trv-wp__you">вы здесь</span>
+                    {waypoint.name}
+                    <span :if={index == @waypoint_index} class="trv-wp__you">вы здесь</span>
                   </span>
-                  <span class="trv-wp__note">{wp.note}</span>
+                  <span class="trv-wp__note">{waypoint.note}</span>
                 </div>
               </li>
             </ol>
           </section>
 
-          <section class="trv-panel">
+          <section id="travel-progress-panel" class="trv-panel">
             <div class="trv-panel__head">
-              <h2 class="trv-panel__title">Провизия</h2>
-              <span class="trv-panel__meta">{@food} ед. · расход {@food_per_day} ед./день</span>
+              <h2 class="trv-panel__title">Ход путешествия</h2>
+              <span class="trv-panel__meta">{@progress.percent}% пройдено</span>
             </div>
             <div class="trv-bar">
-              <div
-                class={["trv-bar__fill", @food_low? && "trv-bar__fill--warn"]}
-                style={"width:#{bar_pct(@food, 24)}%"}
-              >
-              </div>
+              <div class="trv-bar__fill" style={"width:#{@progress.percent}%"}></div>
             </div>
             <p class="trv-panel__sub">
-              Хватит на {@food_days} дн. из {@days_left} оставшихся.
+              Прибытие: {format_datetime(@journey.arrival_at)}.
             </p>
+          </section>
 
-            <%= if @food_low? do %>
-              <div class="trv-warn">
-                <span class="trv-warn__glyph">⚠</span>
-                <p>
-                  <strong>Припасы на исходе.</strong>
-                  Первый день без еды — отряд идёт медленнее; со второго дня голод точит
-                  общий котёл здоровья (§14.1). Пополните запас или сверните к привалу.
-                </p>
-              </div>
-            <% end %>
-
+          <section id="travel-supplies-panel" class="trv-panel">
+            <div class="trv-panel__head">
+              <h2 class="trv-panel__title">Провизия и груз</h2>
+              <span class="trv-panel__meta">{@food_units} ед. осталось в котомке</span>
+            </div>
             <div class="trv-carry">
               <div class="trv-carry__head">
-                <span>Груз каравана</span>
-                <span class={["trv-carry__num", @carry > @carry_max && "is-over"]}>
-                  {@carry} / {@carry_max}
+                <span>Груз на отправлении</span>
+                <span class={["trv-carry__num", @carried_weight > @carry_capacity && "is-over"]}>
+                  {@carried_weight} / {@carry_capacity}
                 </span>
               </div>
               <div class="trv-bar trv-bar--slim">
                 <div
                   class="trv-bar__fill trv-bar__fill--stone"
-                  style={"width:#{bar_pct(@carry, @carry_max)}%"}
+                  style={"width:#{bar_pct(@carried_weight, @carry_capacity)}%"}
                 >
                 </div>
               </div>
             </div>
-          </section>
-
-          <section class="trv-danger">
-            <div class="trv-danger__head">
-              <span class="trv-danger__pip"></span>
-              <span class="trv-danger__label">Зона PvP · Волчья пустошь</span>
-            </div>
-            <p class="trv-danger__text">
-              Магия в глуши мертва — только сталь и потроны. По тропам ходят разбойники;
-              гружёный добычей караван — лакомая цель.
+            <p class="trv-panel__sub">
+              На этот переход уже израсходовано {@journey.food_units_consumed} ед. еды.
+              <span :if={@journey.encumbrance_penalty_days > 0}>
+                Перегруз добавил {@journey.encumbrance_penalty_days} дн.
+              </span>
             </p>
-            <div class="trv-chips">
-              <span :for={p <- @party} class="trv-chip">{p}</span>
-            </div>
-
-            <%= if @view == :ambush do %>
-              <div class="trv-ambush">
-                <p class="trv-ambush__text">
-                  На гребне холма мелькнули силуэты. Свистнула тетива — засада!
-                </p>
-                <.link navigate={~p"/combat"} class="trv-btn trv-btn--danger">К бою →</.link>
-              </div>
-            <% end %>
           </section>
 
-          <section class="trv-panel">
+          <section class="trv-panel" aria-label="Дорожный журнал">
             <div class="trv-panel__head">
               <h2 class="trv-panel__title">Дорожный журнал</h2>
             </div>
-            <ul class="trv-log">
-              <li :for={e <- @log} class="trv-log__row">
+            <ul id="travel-log" class="trv-log">
+              <li :for={entry <- @log} class="trv-log__row">
                 <span class="trv-log__dot"></span>
-                <span class="trv-log__text">{e}</span>
+                <span class="trv-log__text">{entry}</span>
               </li>
             </ul>
           </section>
 
           <div class="trv-acts">
-            <button type="button" class="trv-btn" phx-click="scavenge">
-              Разбить привал · искать припасы
-            </button>
-            <button type="button" class="trv-btn trv-btn--gold" phx-click="advance">
-              Продолжить путь →
-            </button>
-          </div>
-        <% end %>
-
-        <div class="trv-review">
-          <span class="trv-review__label">☞ походный дневник · состояния</span>
-          <div class="trv-review__chips">
+            <.link id="travel-open-inventory" navigate={~p"/inventory"} class="trv-btn">
+              Открыть котомку
+            </.link>
             <button
+              id="travel-refresh"
               type="button"
-              class={"trv-rchip#{if @view == :enroute, do: " is-on"}"}
-              phx-click="set_view"
-              phx-value-view="enroute"
+              class="trv-btn trv-btn--gold"
+              phx-click="refresh"
             >
-              В пути
-            </button>
-            <button
-              type="button"
-              class={"trv-rchip#{if @view == :starving, do: " is-on"}"}
-              phx-click="set_view"
-              phx-value-view="starving"
-            >
-              Мало еды
-            </button>
-            <button
-              type="button"
-              class={"trv-rchip#{if @view == :ambush, do: " is-on"}"}
-              phx-click="set_view"
-              phx-value-view="ambush"
-            >
-              Засада
-            </button>
-            <button
-              type="button"
-              class={"trv-rchip#{if @view == :arrival, do: " is-on"}"}
-              phx-click="set_view"
-              phx-value-view="arrival"
-            >
-              Прибытие
+              Обновить переход
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </Layouts.app>
     """
   end
 
-  defp initial_log do
+  defp refresh_travel(socket) do
+    case Play.travel_state(socket.assigns.character.id) do
+      {:ok, %{journey: nil}} ->
+        socket
+        |> put_flash(:info, "You have arrived at your destination.")
+        |> push_navigate(to: ~p"/map")
+
+      {:ok, state} ->
+        assign_travel_state(socket, state)
+
+      {:error, _reason} ->
+        push_navigate(socket, to: ~p"/play/continue")
+    end
+  end
+
+  defp travel_state(%{"demo_character_id" => character_id}) when is_binary(character_id),
+    do: Play.travel_state(character_id)
+
+  defp travel_state(_session), do: {:error, :missing_session}
+
+  defp assign_travel_state(socket, state) do
+    journey = state.journey
+
+    socket
+    |> assign(:page_title, "В пути")
+    |> assign(:character, state.character)
+    |> assign(:journey, journey)
+    |> assign(:progress, state.journey_progress)
+    |> assign(:food_units, state.food_units)
+    |> assign(:carried_weight, journey.carried_weight)
+    |> assign(:carry_capacity, journey.carry_capacity)
+    |> assign(:waypoints, journey_waypoints(journey))
+    |> assign(:waypoint_index, waypoint_index(state.journey_progress))
+    |> assign(:log, journey_log(journey, state.journey_progress))
+  end
+
+  defp journey_waypoints(journey) do
     [
-      "День 3 — прошли брод Тихой реки, обувь ещё сохнет у седла.",
-      "День 2 — заночевали у Старого моста, Гром стоял в дозоре.",
-      "День 1 — вышли из Врат Зари на рассвете, полны провизии."
+      %{name: journey.from_location.name, note: "точка отправления"},
+      %{name: "В пути", note: "переход идёт на серверном времени мира"},
+      %{name: journey.to_location.name, note: "место назначения"}
     ]
   end
 
-  defp log_entry(socket, text), do: assign(socket, :log, [text | socket.assigns.log])
+  defp waypoint_index(%{percent: percent}) when percent >= 100, do: 2
+  defp waypoint_index(_progress), do: 1
 
-  defp food_days(food, per_day) when per_day > 0, do: div(food, per_day)
-  defp food_days(_food, _per_day), do: 0
+  defp journey_log(journey, progress) do
+    [
+      "Отправление: #{format_datetime(journey.started_at)}.",
+      "На переход списано #{journey.food_units_consumed} ед. еды.",
+      "Пройдено #{progress.elapsed_game_days} из #{journey.travel_days} игровых дней."
+    ]
+  end
+
+  defp format_datetime(datetime), do: Calendar.strftime(datetime, "%d.%m · %H:%M UTC")
+
+  defp format_remaining(seconds) when seconds >= 3_600, do: "~#{div(seconds, 3_600)}ч"
+  defp format_remaining(seconds) when seconds >= 60, do: "~#{div(seconds, 60)}м"
+  defp format_remaining(_seconds), do: "сейчас"
 
   defp bar_pct(_value, max) when max <= 0, do: 0
 

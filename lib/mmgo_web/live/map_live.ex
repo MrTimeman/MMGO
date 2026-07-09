@@ -169,6 +169,13 @@ defmodule MMGOWeb.MapLive do
                     {location_name(@current_location)}
                   </strong>
                   <span class="ovl-status__food">Еда {@food_units}</span>
+                  <.link
+                    id="map-inventory-link"
+                    navigate={~p"/inventory"}
+                    class="ovl-status__continue"
+                  >
+                    Котомка
+                  </.link>
                 <% else %>
                   <span class="ovl-status__place">Мир спит</span>
                   <.link
@@ -222,8 +229,9 @@ defmodule MMGOWeb.MapLive do
         <.ovl_sheets open_sheet={@open_sheet} today={@ovl_today} notifications={@notifications} />
 
         <%= if @character && @active_journey do %>
-          <div
+          <.link
             id="active-journey-card"
+            navigate={~p"/travel"}
             class="absolute bottom-3 left-3 z-20 w-[min(20rem,calc(100vw-1.5rem))] rounded-md border border-amber-500/45 bg-stone-950/88 px-3 py-2 text-sm text-stone-100 shadow-xl shadow-black/40 backdrop-blur"
           >
             <p class="font-semibold text-amber-200">
@@ -234,7 +242,7 @@ defmodule MMGOWeb.MapLive do
             <p class="mt-0.5 text-xs text-stone-400">
               Arrival {format_datetime(@active_journey.arrival_at)} · food {@active_journey.food_units_consumed}
             </p>
-          </div>
+          </.link>
         <% end %>
       </div>
     </Layouts.app>

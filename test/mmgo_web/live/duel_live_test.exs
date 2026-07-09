@@ -4,7 +4,6 @@ defmodule MMGOWeb.DuelLiveTest do
   import Phoenix.LiveViewTest
 
   alias MMGO.Accounts.{Account, Character}
-  alias MMGO.Combat
   alias MMGO.Economy
   alias MMGO.Grimoires
   alias MMGO.PVP
@@ -87,7 +86,7 @@ defmodule MMGOWeb.DuelLiveTest do
     assert flash["error"] =~ "Magic only works at the Tower"
   end
 
-  test "accepting a duel on the web can be resolved to settle the wager, no Telegram involved",
+  test "the local bot duel is accepted, resolved, and settled entirely on the web",
        %{conn: conn, challenger: challenger, opponent: opponent, killing_blow: killing_blow} do
     conn =
       conn
@@ -97,46 +96,26 @@ defmodule MMGOWeb.DuelLiveTest do
 
     {:ok, view, _html} = live(conn, ~p"/pvp")
 
-    view |> element("button", "Challenge #{opponent.name}") |> render_click()
+    view |> element("#duel-challenge-bot") |> render_click()
 
-    duel =
-      PVP.get_duel!(PVP.pending_duels_for_character(challenger.id) |> hd() |> Map.fetch!(:id))
-
-    assert duel.status == :pending
-
-    # Simulates the opponent accepting from their own session — the escrow
-    # funding and combat creation is identical to what duel_live's own
-    # "duel_accept" event triggers.
-    {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
-    assert accepted_duel.status == :active
-    assert accepted_duel.combat_id
-
-    # Before this fix, there was no way to get from here (escrow funded,
-    # combat active) to a settled duel except through the Telegram bot.
-    # Remount so the LiveView's assigns reflect the now-active duel.
-    {:ok, view, _html} = live(conn, ~p"/pvp")
-    assert has_element?(view, "button", "Resolve Combat Turn")
-
-    combat = Combat.get_combat!(accepted_duel.combat_id)
-    challenger_participant = Enum.find(combat.participants, &(&1.character_id == challenger.id))
-
-    assert {:ok, _turn} =
-             Combat.submit_action(combat, challenger_participant.id, %{
-               action_type: :cast_spell,
-               spell_id: killing_blow.id,
-               target_side: "defenders"
-             })
+    active_duel = PVP.active_duel_for_character(challenger.id)
+    active_duel = PVP.get_duel!(active_duel.id)
+    assert active_duel.status == :active
+    assert active_duel.combat_id
+    assert has_element?(view, "#duel-combat-state")
+    assert has_element?(view, "#duel-cast-#{killing_blow.id}")
 
     view
-    |> element("button", "Resolve Combat Turn")
+    |> element("#duel-cast-#{killing_blow.id}")
     |> render_click()
 
     # Read the duel back fresh from the DB (not the socket's cached assign)
     # to prove the win was actually persisted, not just reflected in an
     # in-memory struct.
-    resolved_duel = PVP.get_duel!(accepted_duel.id)
+    resolved_duel = PVP.get_duel!(active_duel.id)
     assert resolved_duel.status == :resolved
     assert resolved_duel.winner_character_id == challenger.id
+    assert has_element?(view, "#duel-outcome")
 
     {:ok, challenger_account} = Economy.ensure_character_account(challenger)
     {:ok, opponent_account} = Economy.ensure_character_account(opponent)
