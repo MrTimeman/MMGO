@@ -24,7 +24,7 @@ defmodule MMGOWeb.StudyDeskLive do
 
           {:ok,
            socket
-           |> assign(:page_title, "Study Desk")
+           |> assign(:page_title, "Учебный стол")
            |> assign(:character, character)
            |> assign(:enrollment, enrollment)
            |> assign(:terms, terms)
@@ -55,64 +55,67 @@ defmodule MMGOWeb.StudyDeskLive do
   def render(assigns) do
     ~H"""
     <div class="study-desk">
-      <a href={~p"/map"} class="map-back-link">← World map</a>
-      <h1>Study Desk</h1>
+      <a href={~p"/academy"} class="map-back-link">← В холл Академии</a>
+      <h1>Учебный стол</h1>
 
       <%= if @enrollment do %>
         <section class="desk-enrollment">
-          <h2>Current Enrollment</h2>
-          <p>Program: <strong>{@enrollment.program_type}</strong></p>
-          <p>Track: <strong>{@enrollment.track || "—"}</strong></p>
-          <p>Status: <strong>{@enrollment.status}</strong></p>
-          <p>GPA: <strong>{@gpa || "No exams yet"}</strong></p>
-          <p>Failed terms: <strong>{@failed_count}</strong></p>
+          <h2>Зачётная запись</h2>
+          <p>Программа: <strong>{program_label(@enrollment.program_type)}</strong></p>
+          <p>Путь: <strong>{track_label(@enrollment.track)}</strong></p>
+          <p>Статус: <strong>{status_label(@enrollment.status)}</strong></p>
+          <p>Средний балл: <strong>{@gpa || "экзаменов ещё нет"}</strong></p>
+          <p>Проваленные термины: <strong>{@failed_count}</strong></p>
           <p>
-            Expected completion:
-            <strong>{Calendar.strftime(@enrollment.expected_completion_at, "%Y-%m-%d")}</strong>
+            Ожидаемое завершение:
+            <strong>{Calendar.strftime(@enrollment.expected_completion_at, "%d.%m.%Y")}</strong>
           </p>
         </section>
 
         <section class="desk-terms">
-          <h2>Terms</h2>
+          <h2>Термины</h2>
           <table class="terms-table">
             <thead>
               <tr>
                 <th>#</th>
-                <th>Status</th>
-                <th>Exam Score</th>
-                <th>Action</th>
+                <th>Состояние</th>
+                <th>Экзамен</th>
+                <th>Действие</th>
               </tr>
             </thead>
             <tbody>
               <%= for term <- @terms do %>
                 <tr>
                   <td>{term.term_number}</td>
-                  <td>{term.status}</td>
+                  <td>{status_label(term.status)}</td>
                   <td>{term.exam_score || "—"}</td>
                   <td>
                     <%= if term.status == :active do %>
-                      <.link navigate={~p"/academy/exam/#{term.id}"}>Take Exam</.link>
+                      <.link navigate={~p"/academy/exam/#{term.id}"}>сдать экзамен</.link>
                     <% end %>
                   </td>
                 </tr>
               <% end %>
               <%= if @terms == [] do %>
                 <tr>
-                  <td colspan="4">No terms started yet.</td>
+                  <td colspan="4">
+                    <div class="acd-empty">
+                      Ни один термин не открыт. На столе лежит чистая ведомость.
+                    </div>
+                  </td>
                 </tr>
               <% end %>
             </tbody>
           </table>
 
           <%= if Academy.current_term(@enrollment.id) == nil do %>
-            <button phx-click="begin_term">Begin Next Term</button>
+            <button phx-click="begin_term">Начать следующий термин</button>
           <% end %>
         </section>
       <% else %>
         <p>
-          You are not currently enrolled. Visit the
-          <.link navigate={~p"/academy/bulletin-board"}>Bulletin Board</.link>
-          for enrollment info.
+          Вы пока не числитесь на программе. Посмотрите <.link navigate={~p"/academy/bulletin-board"}>доску объявлений</.link>,
+          где писарь вывешивает набор и расписание.
         </p>
       <% end %>
     </div>
@@ -132,4 +135,22 @@ defmodule MMGOWeb.StudyDeskLive do
     |> Enum.map(fn {field, {msg, _}} -> "#{field}: #{msg}" end)
     |> Enum.join(", ")
   end
+
+  defp program_label(:basic), do: "Базовое образование"
+  defp program_label(:academy_core), do: "Academy Core"
+  defp program_label(:extended_study), do: "Расширенный курс"
+  defp program_label(:academia), do: "Академия наук"
+  defp program_label(other), do: other || "—"
+
+  defp track_label(nil), do: "—"
+  defp track_label(:wizardry), do: "Чародейство"
+  defp track_label(:alchemy), do: "Алхимия"
+  defp track_label(:mastery), do: "Мастерство"
+  defp track_label(other), do: other
+
+  defp status_label(:active), do: "идёт"
+  defp status_label(:completed), do: "завершён"
+  defp status_label(:failed), do: "провален"
+  defp status_label(:scheduled), do: "назначен"
+  defp status_label(other), do: other || "—"
 end

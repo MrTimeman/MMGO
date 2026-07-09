@@ -1,5 +1,19 @@
-@import url('https://fonts.googleapis.com/css2?family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&family=PT+Sans:ital,wght@0,400;0,700;1,400&family=Great+Vibes&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=PT+Serif:ital,wght@0,400;0,700;1,400;1,700&family=PT+Sans:ital,wght@0,400;0,700;1,400&family=Great+Vibes&family=Caveat:wght@500;700&display=swap');
 @import "tailwindcss" source(none);
+
+/* Design-pass screen styles — one file per screen family (docs/UI_DESIGN_BRIEF.md).
+   Each batch of screens owns exactly one of these files; app.css owns the tokens. */
+@import "./screens/uikit.css";
+@import "./screens/world.css";
+@import "./screens/combat.css";
+@import "./screens/base.css";
+@import "./screens/economy.css";
+@import "./screens/crafting.css";
+@import "./screens/dungeon.css";
+@import "./screens/org.css";
+@import "./screens/academy.css";
+@import "./screens/overlays.css";
+
 @source "../css";
 @source "../js";
 @source "../../lib/mmgo_web";
@@ -21,7 +35,9 @@
   --color-bg:          #0c0a09;   /* near-black warm */
   --color-surface:     #1c1917;   /* stone-900 */
   --color-surface-2:   #292524;   /* stone-800 */
-  --color-border:      #44403c;   /* stone-700 */
+  /* Lineart: one step brighter + warmer than stone-700 so panel borders
+     read as drawn lines, not seams. Revert to #44403c for the quieter look. */
+  --color-border:      #6b5d4a;   /* warm brass-stone */
   --color-text:        #e7e5e4;   /* stone-200 */
   --color-text-muted:  #a8a29e;   /* stone-400 */
   --color-accent:      #f59e0b;   /* amber-500 — magic gold */
@@ -37,6 +53,34 @@
   /* Spacing scale used for game panels */
   --panel-padding: 1rem;
   --panel-radius:  0.5rem;
+
+  /* Parchment palette — used by the book/page chrome and any "physical
+     document" surface (spellbook, letters, ledgers). Kept separate from
+     the dark game-shell tokens above so screens can migrate one at a time. */
+  --parch-paper:       #ece0bd;
+  --parch-paper-light: #f5ecd2;
+  --parch-paper-dark:  #cdb787;
+  --parch-vignette:    #a98f5c;
+  --parch-ink:         #372b19;
+  --parch-ink-faint:   #6b5a3a;
+  --parch-red:         #7c2b22;
+  --parch-gold:        #a9791f;
+  --parch-gold-bright: #d9a936;
+  --parch-gold-ink:    #b8862b; /* burnished gold a filled word settles into */
+  --parch-gold-glow:   #e8c56a; /* warm halo around gold ink, not neon */
+  --parch-caption:     #8a6f4d; /* faded sepia for slot captions */
+  --parch-leather:     #4a2f1c;
+  --parch-leather-dark:#301d10;
+  --parch-stitch:      #c7a874;
+  --font-hand: 'Caveat', 'Segoe Script', cursive;
+
+  /* Arcane blue — reserved for "a word just caught magic" moments (spell
+     slot lighting/sparks). Kept distinct from the gold used for "the
+     whole working is complete" so the two events read differently. */
+  --arc-blue:        #2f8fdb;
+  --arc-blue-bright: #7ecbff;
+  --arc-blue-glow:   rgba(58,158,255,0.75);
+  --arc-blue-deep:   #0d3a63;
 }
 
 /* ============================================================
@@ -51,6 +95,259 @@ body {
 
 code {
   font-family: var(--font-mono);
+}
+
+/* ============================================================
+   Physical document chrome — book / page / ribbon-tabs
+   A reusable "real object on a table" shell: leather-bound cover,
+   grained parchment page, ribbon bookmarks you click to flip section.
+   Reference implementation: SpellbookLive. Reuse for any screen that
+   is conceptually a bound document (ledgers, letters, journals).
+   ============================================================ */
+
+.scene-desk {
+  position: absolute;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background:
+    radial-gradient(ellipse at 50% -10%, #2a1f14 0%, #170f09 55%, #0c0805 100%);
+  padding: 2.5rem 1rem 3rem;
+}
+
+.book {
+  position: relative;
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  filter: drop-shadow(0 22px 30px rgba(0,0,0,0.55));
+}
+
+.book__spine {
+  flex: 0 0 22px;
+  background:
+    repeating-linear-gradient(180deg,
+      var(--parch-stitch) 0 2px,
+      transparent 2px 16px),
+    linear-gradient(90deg, var(--parch-leather-dark), var(--parch-leather) 60%, #2a1a0f);
+  border-radius: 6px 0 0 6px;
+  box-shadow: inset -3px 0 6px rgba(0,0,0,0.5);
+}
+
+.book__page {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  background:
+    radial-gradient(ellipse at 30% 15%, var(--parch-paper-light) 0%, var(--parch-paper) 55%, var(--parch-vignette) 100%);
+  border-radius: 0 6px 6px 0;
+  padding: 1.5rem 1.65rem 1.75rem;
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  box-shadow:
+    inset 10px 0 18px -12px rgba(0,0,0,0.35),
+    inset 0 0 60px rgba(120,95,50,0.12);
+}
+
+/* Ritual-room blackout — as the spell circle's ring slots fill, the
+   whole room goes dark, like a summoning done behind shuttered windows:
+   everything except the lit circle itself should become hard to see.
+   Driven by the SpellCircle hook setting --sc-dim (0..1) on this
+   container; a no-op 0 by default so pages without the circle are
+   untouched. Sits ABOVE ribbons/title/back-link (z-index 2) so those
+   go dark too — only #spell-circle-root punches back above this via
+   its own higher z-index, so the circle is the one thing still lit. */
+.book__page::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0 6px 6px 0;
+  pointer-events: none;
+  z-index: 5;
+  background:
+    radial-gradient(circle at 50% 42%, rgba(6,5,3,0.74), rgba(4,3,2,0.96) 72%),
+    rgba(6,5,3,0.88);
+  opacity: var(--sc-dim, 0);
+  transition: opacity 1.1s ease;
+}
+
+.book__page:has(#spell-circle-root.sc--casting)::after {
+  opacity: 1;
+}
+
+.book__page::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 0 6px 6px 0;
+  pointer-events: none;
+  opacity: 0.5;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/><feColorMatrix type='matrix' values='0 0 0 0 0.2  0 0 0 0 0.16  0 0 0 0 0.08  0 0 0 0.5 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+}
+
+.book__ribbons {
+  position: absolute;
+  top: 0.75rem;
+  right: -1px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 0.4rem;
+  z-index: 2;
+}
+
+.book__ribbon {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  line-height: 1;
+  color: var(--parch-paper-light);
+  background: var(--parch-red);
+  border: none;
+  border-radius: 3px 0 0 3px;
+  padding: 0.4rem 0.9rem 0.4rem 0.75rem;
+  cursor: pointer;
+  box-shadow: -2px 3px 6px rgba(0,0,0,0.35);
+  transform: translateX(0.9rem);
+  transition: transform 0.18s ease, background 0.18s ease;
+}
+
+.book__ribbon:hover { transform: translateX(0.3rem); }
+
+.book__ribbon--active {
+  transform: translateX(-0.1rem);
+  background: var(--parch-gold);
+  color: var(--parch-ink);
+  box-shadow: -2px 3px 8px rgba(0,0,0,0.45);
+}
+
+.book__leaf {
+  position: relative;
+  animation: book-leaf-turn 0.35s ease both;
+}
+
+.book__page--ritual .book__leaf,
+.book__page:has(#spell-circle-root.sc--casting) .book__leaf {
+  position: relative;
+  z-index: 6;
+}
+
+.book__page--ritual .book__leaf > :not(#spell-circle-root),
+.book__page:has(#spell-circle-root.sc--casting) .book__leaf > :not(#spell-circle-root) {
+  opacity: 0.24;
+  filter: brightness(0.22);
+  transition: opacity 0.65s ease, filter 0.65s ease;
+}
+
+/* The circle needs a stable elevation target because the blackout is a
+   .book__page pseudo-element. During ritual mode the leaf is lifted, then
+   non-circle children are subdued separately so the lit geometry stays
+   readable without bringing the rest of the page back to full brightness. */
+#spell-circle-root {
+  position: relative;
+  z-index: 7;
+}
+
+.book__page--ritual #spell-circle-root .sc__footer,
+.book__page:has(#spell-circle-root.sc--casting) #spell-circle-root .sc__footer {
+  opacity: 0.38;
+  filter: brightness(0.42);
+  transition: opacity 0.65s ease, filter 0.65s ease;
+}
+
+/* While the ritual holds, the freshly-written result stays out of sight —
+   the server usually answers faster than the ceremony, and the reveal
+   should land after the flash, not during the blackout. */
+.book__page:has(#spell-circle-root.sc--casting) .sc-result {
+  opacity: 0;
+  filter: brightness(0.3);
+  transform: translateY(10px);
+  transition: opacity 0.4s ease, filter 0.4s ease, transform 0.4s ease;
+}
+
+.book__page:has(#spell-circle-root.sc--casting) .sc-result--working {
+  opacity: 0.68;
+  filter: brightness(0.62);
+  transform: none;
+}
+
+.book__page:has(#spell-circle-root.sc--result-success)::after {
+  transition: opacity 1.8s ease;
+}
+
+.book__page:has(#spell-circle-root.sc--result-failure)::after {
+  transition: opacity 0.14s ease;
+}
+
+@keyframes book-leaf-turn {
+  /* End on the literal keyword "none", not an identity transform like
+     rotateY(0) — a computed transform value of anything other than the
+     none keyword permanently opens a stacking context on .book__leaf
+     (even one that visually does nothing), which would trap
+     #spell-circle-root's z-index inside it forever after the animation
+     finishes, making it impossible for the circle to out-rank the
+     ritual-room blackout overlay. */
+  from { opacity: 0; transform: rotateY(-6deg) translateX(-10px); }
+  to   { opacity: 1; transform: none; }
+}
+
+.book__title {
+  font-size: 1.5rem;
+  font-weight: 700;
+  color: var(--parch-red);
+  text-shadow: 0 1px 0 rgba(255,255,255,0.25);
+  margin: 0 0 0.15rem;
+}
+
+.book__subtitle {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  color: var(--parch-ink-faint);
+  margin: 0 0 1rem;
+}
+
+.book__back {
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  color: var(--parch-ink-faint);
+  text-decoration: none;
+}
+.book__back:hover { color: var(--parch-red); }
+
+@media (max-width: 430px) {
+  .book {
+    max-width: 100%;
+    filter: drop-shadow(0 14px 18px rgba(0,0,0,0.5));
+  }
+
+  .book__spine {
+    flex-basis: 14px;
+  }
+
+  .book__page {
+    padding: 1.15rem 1rem 1.3rem;
+  }
+
+  .book__ribbons {
+    top: 0.55rem;
+    gap: 0.28rem;
+  }
+
+  .book__ribbon {
+    font-size: 0.98rem;
+    padding: 0.34rem 0.7rem 0.34rem 0.55rem;
+    transform: translateX(0.72rem);
+  }
+
+  .book__title {
+    max-width: 12rem;
+    font-size: 1.28rem;
+  }
+
+  .book__subtitle {
+    max-width: 12rem;
+    font-size: 1.02rem;
+  }
 }
 
 /* ============================================================
@@ -1664,56 +1961,295 @@ code {
 }
 
 /* ============================================================
-   SpellCircle (.sc) — orbital slots + rune rings
+   SpellCircle (.sc) — ink-drawn casting circle on the page.
+   Words catch gold leaf as slots fill; the whole circle settles
+   into place and breathes with candlelight once charged; casting
+   stamps a wax seal.
    ============================================================ */
 
 .sc {
   font-family: var(--font-serif);
-  color: var(--color-text);
+  color: var(--parch-ink);
   display: flex;
   flex-direction: column;
   align-items: center;
   gap: 0.75rem;
-  --sc-cyan: #00D4FF;
 }
 
-/* Circle container — square via aspect-ratio */
+.sc__shatter {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10001;
+  overflow: hidden;
+}
+
+.sc__shader {
+  position: fixed;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  z-index: 9999;
+  mix-blend-mode: screen;
+  animation: sc-shader-in 0.45s ease both;
+}
+
+.sc__shader--fallback {
+  display: none;
+}
+
+@keyframes sc-shader-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sc__whiteout {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 10000;
+  background: white;
+}
+
+.sc__whiteout--success {
+  animation: sc-whiteout-success 2.8s ease-in-out both;
+}
+
+.sc__whiteout--failure {
+  animation: sc-whiteout-failure 3.6s ease-in-out both;
+}
+
+@keyframes sc-whiteout-success {
+  0%, 60% { opacity: 0; }
+  72% { opacity: 0.85; }
+  86% { opacity: 0.45; }
+  100% { opacity: 0; }
+}
+
+@keyframes sc-whiteout-failure {
+  0%, 48% { opacity: 0; }
+  60% { opacity: 0.9; }
+  76% { opacity: 0.5; }
+  88%, 100% { opacity: 0; }
+}
+
+.sc__shard {
+  position: absolute;
+  display: block;
+  background:
+    linear-gradient(135deg, white 0%, white 54%, rgb(246 246 246) 100%);
+  border: 1px solid rgb(255 255 255 / 0.72);
+  box-shadow: 0 0 10px rgb(255 255 255 / 0.42);
+  transform-origin: 50% 52%;
+  animation: sc-shard-fall 1.45s cubic-bezier(.18,.72,.18,1) both;
+}
+
+@keyframes sc-shard-fall {
+  0% {
+    opacity: 0;
+    transform: translate3d(0,0,0) rotate(0deg) scale(1);
+  }
+  1% {
+    opacity: 1;
+    transform: translate3d(0,0,0) rotate(0deg) scale(1);
+  }
+  28% {
+    opacity: 1;
+    transform: translate3d(calc(var(--dx) * 0.12), 3vh, 0) rotate(calc(var(--r) * 0.18)) scale(0.995);
+  }
+  100% {
+    opacity: 0;
+    transform: translate3d(var(--dx), var(--dy), 0) rotate(var(--r)) scale(0.86);
+  }
+}
+
+/* Circle container — square via aspect-ratio. A disc of paper set into
+   the page, inked with a diagram, lighting from within once charged. */
 .sc__circle {
   position: relative;
   width: 100%;
   max-width: 340px;
   aspect-ratio: 1;
-  background: #0b0d1a;
+  background: radial-gradient(circle at 35% 30%, var(--parch-paper-light), var(--parch-paper-dark) 80%);
   border-radius: 50%;
-  border: 1px solid rgba(0,212,255,0.1);
+  border: 2px solid var(--parch-ink-faint);
+  box-shadow: inset 0 2px 10px rgba(0,0,0,0.25), 0 3px 10px rgba(0,0,0,0.3);
+  transition: box-shadow 0.5s ease;
 }
 
 .sc__circle--charged {
-  border-color: rgba(0,212,255,0.4);
-  box-shadow: 0 0 32px rgba(0,212,255,0.14), inset 0 0 32px rgba(0,212,255,0.05);
+  border-color: hsl(var(--sc-hue, 45), 69%, 39%);
+  box-shadow:
+    inset 0 2px 10px rgba(0,0,0,0.2),
+    0 0 26px hsl(var(--sc-hue, 45) 68% 53% / 0.55),
+    0 0 60px hsl(var(--sc-hue, 45) 68% 53% / 0.25);
+  animation: sc-breathe 4s ease-in-out infinite;
 }
 
+.sc__circle--charged .sc__geometry-line,
+.sc__circle--charged .sc__geometry-star,
+.sc__circle--charged .sc__geometry-ring {
+  stroke: hsl(var(--sc-hue, 45) 68% 46% / 0.48);
+}
+
+.sc__circle--charged .sc__core-ring {
+  fill: hsl(var(--sc-hue, 45) 72% 58% / 0.1);
+  stroke: hsl(var(--sc-hue, 45) 72% 44% / 0.78);
+}
+
+/* Slow candlelit breathing on the outer glow once charged — no rotation,
+   no rhythmic "charging" pulse, just a faint inhale/exhale. Tinted by the
+   chosen school's hue (--sc-hue), defaulting to gold. */
+@keyframes sc-breathe {
+  0%, 100% {
+    box-shadow:
+      inset 0 2px 10px rgba(0,0,0,0.2),
+      0 0 22px hsl(var(--sc-hue, 45) 68% 53% / 0.45),
+      0 0 50px hsl(var(--sc-hue, 45) 68% 53% / 0.18);
+  }
+  50% {
+    box-shadow:
+      inset 0 2px 10px rgba(0,0,0,0.2),
+      0 0 30px hsl(var(--sc-hue, 45) 68% 53% / 0.62),
+      0 0 68px hsl(var(--sc-hue, 45) 68% 53% / 0.28);
+  }
+}
+
+/* A key turning into place — brief, one-shot, never repeats or spins on. */
 .sc__circle--ignite {
-  animation: sc-ignite 1s ease both;
+  animation: sc-settle 0.2s ease-out both, sc-breathe 4s ease-in-out infinite;
 }
 
-@keyframes sc-ignite {
-  0%  { box-shadow: 0 0 0 rgba(0,212,255,0); }
-  30% { box-shadow: 0 0 60px rgba(0,212,255,0.5), inset 0 0 50px rgba(0,212,255,0.15); }
-  100%{ box-shadow: 0 0 32px rgba(0,212,255,0.14), inset 0 0 32px rgba(0,212,255,0.05); }
+@keyframes sc-settle {
+  from { transform: rotate(-6deg); }
+  to   { transform: rotate(0deg); }
 }
 
-.sc__circle--cast {
-  animation: sc-cast 0.6s ease both !important;
+/* Casting — the incantation has been spoken and the room has gone dark.
+   The disc and medallions hold still; only the drawn geometry inside the
+   circle moves, like light travelling through inked channels. */
+.sc__circle--casting {
+  --sc-cast-light: color-mix(in srgb, hsl(var(--sc-hue, 45), 100%, 68%) 72%, white);
+  background:
+    radial-gradient(circle at 50% 50%, hsl(var(--sc-hue, 45) 92% 62% / 0.18), transparent 30%),
+    radial-gradient(circle at 35% 30%, #15120d, #050403 82%);
+  border-color: hsl(var(--sc-hue, 45), 74%, 52%);
+  box-shadow:
+    inset 0 0 36px rgba(0,0,0,0.82),
+    0 0 30px hsl(var(--sc-hue, 45) 82% 56% / 0.62),
+    0 0 90px hsl(var(--sc-hue, 45) 82% 56% / 0.28);
+  animation: sc-cast-glow 2s ease-in-out infinite;
 }
 
-@keyframes sc-cast {
-  0%   { transform: scale(1); filter: brightness(1); }
-  40%  { transform: scale(1.04); filter: brightness(1.8); }
-  100% { transform: scale(1); filter: brightness(1); }
+.sc__circle--finishing {
+  --sc-cast-light: color-mix(in srgb, hsl(var(--sc-hue, 45), 100%, 74%) 48%, white);
+  animation: sc-finish-burst 1.7s ease-out both;
 }
 
-/* SVG rings overlay */
+.sc__circle--finishing.sc__circle--success {
+  animation: sc-success-fill 2.2s ease-in-out both;
+}
+
+.sc__circle--finishing.sc__circle--failure {
+  --sc-cast-light: color-mix(in srgb, hsl(22, 100%, 72%) 42%, white);
+  animation: sc-failure-shatter 1.7s ease-in-out both;
+}
+
+@keyframes sc-cast-glow {
+  0%, 100% { filter: brightness(1); }
+  50%      { filter: brightness(1.22) saturate(1.12); }
+}
+
+@keyframes sc-finish-burst {
+  0% {
+    filter: brightness(1.12) saturate(1.1);
+    box-shadow:
+      inset 0 0 36px rgba(0,0,0,0.78),
+      0 0 30px hsl(var(--sc-hue, 45) 82% 56% / 0.62),
+      0 0 90px hsl(var(--sc-hue, 45) 82% 56% / 0.28);
+  }
+  42% {
+    filter: brightness(1.55) saturate(1.25);
+    box-shadow:
+      inset 0 0 28px hsl(var(--sc-hue, 45) 100% 72% / 0.24),
+      0 0 44px hsl(var(--sc-hue, 45) 100% 68% / 0.92),
+      0 0 130px hsl(var(--sc-hue, 45) 100% 62% / 0.58);
+  }
+  100% {
+    filter: brightness(1.22) saturate(1.14);
+    box-shadow:
+      inset 0 0 34px rgba(0,0,0,0.64),
+      0 0 34px hsl(var(--sc-hue, 45) 100% 66% / 0.7),
+      0 0 105px hsl(var(--sc-hue, 45) 100% 60% / 0.38);
+  }
+}
+
+@keyframes sc-success-fill {
+  0% {
+    filter: brightness(1.05) saturate(1.08);
+    box-shadow:
+      inset 0 0 36px rgba(0,0,0,0.74),
+      0 0 30px hsl(var(--sc-hue, 45) 82% 56% / 0.62),
+      0 0 90px hsl(var(--sc-hue, 45) 82% 56% / 0.28);
+  }
+  56% {
+    filter: brightness(1.5) saturate(1.18);
+    box-shadow:
+      inset 0 0 42px hsl(var(--sc-hue, 45) 100% 78% / 0.36),
+      0 0 54px hsl(var(--sc-hue, 45) 100% 72% / 0.96),
+      0 0 150px hsl(var(--sc-hue, 45) 100% 66% / 0.72);
+  }
+  78% {
+    filter: brightness(1.7) saturate(1.06);
+    box-shadow:
+      inset 0 0 56px hsl(var(--sc-hue, 45) 100% 88% / 0.5),
+      0 0 80px hsl(var(--sc-hue, 45) 100% 80% / 0.9),
+      0 0 170px hsl(var(--sc-hue, 45) 100% 72% / 0.65);
+  }
+  100% {
+    filter: brightness(1.24) saturate(1.08);
+    box-shadow:
+      inset 0 0 34px rgba(0,0,0,0.44),
+      0 0 34px hsl(var(--sc-hue, 45) 100% 66% / 0.7),
+      0 0 105px hsl(var(--sc-hue, 45) 100% 60% / 0.38);
+  }
+}
+
+@keyframes sc-failure-shatter {
+  0% {
+    filter: brightness(1.15) saturate(1.08);
+    transform: scale(1);
+    box-shadow:
+      inset 0 0 36px rgba(0,0,0,0.78),
+      0 0 30px hsl(var(--sc-hue, 45) 82% 56% / 0.62),
+      0 0 90px hsl(var(--sc-hue, 45) 82% 56% / 0.28);
+  }
+  46% {
+    filter: brightness(1.7) saturate(1.02);
+    transform: scale(1.02);
+    box-shadow:
+      inset 0 0 52px hsl(var(--sc-hue, 45) 100% 90% / 0.7),
+      0 0 54px hsl(var(--sc-hue, 45) 100% 86% / 0.9),
+      0 0 140px hsl(var(--sc-hue, 45) 100% 74% / 0.7);
+  }
+  66% {
+    filter: brightness(0.78) saturate(0.62) contrast(1.12);
+    transform: scale(0.985) rotate(-0.5deg);
+    box-shadow:
+      inset 0 0 42px rgba(0,0,0,0.88),
+      0 0 36px hsl(var(--sc-hue, 45) 100% 64% / 0.48);
+  }
+  100% {
+    filter: brightness(0.68) saturate(0.72);
+    transform: scale(1);
+    box-shadow:
+      inset 0 0 42px rgba(0,0,0,0.88),
+      0 0 18px hsl(18 100% 58% / 0.42);
+  }
+}
+
+/* SVG rings overlay — hand-inked diagram lines */
 .sc__rings {
   position: absolute;
   inset: 0;
@@ -1723,42 +2259,495 @@ code {
   overflow: visible;
 }
 
-/* Rune text rings — rotate via CSS transform around SVG center */
 .sc__ring-text {
-  font-family: monospace;
+  font-family: var(--font-serif);
   font-size: 10px;
-  fill: rgba(0,212,255,0.18);
+  fill: rgba(55,43,25,0.35);
   transform-box: view-box;
   transform-origin: 50% 50%;
   letter-spacing: 1px;
 }
-.sc__ring-text--0 { animation: sc-ring-cw  60s linear infinite; }
-.sc__ring-text--1 { animation: sc-ring-ccw 42s linear infinite; font-size: 9px; }
-.sc__ring-text--2 { animation: sc-ring-cw  34s linear infinite; font-size: 8px; }
+.sc__ring-text--1 { font-size: 9px; }
+.sc__ring-text--2 { font-size: 8px; }
 
-.sc__circle--charged .sc__ring-text { fill: rgba(0,212,255,0.6); }
+.sc__circle--charged .sc__ring-text {
+  fill: hsl(var(--sc-hue, 45) 54% 42% / 0.82);
+}
 
-@keyframes sc-ring-cw  { to { transform: rotate(360deg); } }
-@keyframes sc-ring-ccw { to { transform: rotate(-360deg); } }
+.sc__circle--casting .sc__ring-text {
+  fill: hsl(var(--sc-hue, 45) 42% 70% / 0.78);
+  filter:
+    drop-shadow(0 0 3px hsl(var(--sc-hue, 45) 100% 64% / 0.42))
+    drop-shadow(0 0 10px hsl(var(--sc-hue, 45) 100% 58% / 0.22));
+}
 
-/* Orbital slot buttons */
-.sc__slot {
+.sc__circle--finishing .sc__ring-text {
+  fill: var(--sc-cast-light);
+  filter:
+    drop-shadow(0 0 4px hsl(var(--sc-hue, 45) 100% 76% / 0.86))
+    drop-shadow(0 0 14px hsl(var(--sc-hue, 45) 100% 62% / 0.58));
+}
+
+.sc__geometry-line,
+.sc__geometry-star,
+.sc__geometry-ring,
+.sc__core-ring,
+.sc__active-link,
+.sc__active-weave,
+.sc__active-core,
+.sc__flow-link,
+.sc__flow-weave {
+  vector-effect: non-scaling-stroke;
+  transition: stroke 0.45s ease, opacity 0.45s ease;
+}
+
+.sc__circle--casting .sc__geometry-line,
+.sc__circle--casting .sc__geometry-star,
+.sc__circle--casting .sc__geometry-ring,
+.sc__circle--casting .sc__core-ring {
+  stroke: hsl(var(--sc-hue, 45) 58% 70% / 0.18);
+  opacity: 0.38;
+  stroke-dasharray: none;
+  animation: none;
+  filter: none;
+}
+
+.sc__active-link,
+.sc__active-weave,
+.sc__active-core {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 2.4px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  opacity: 0;
+}
+
+.sc__flow-link,
+.sc__flow-weave {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 3.2px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-dasharray: 0 100;
+  stroke-dashoffset: 0;
+  opacity: 0;
+}
+
+.sc__flow-core {
+  fill: transparent;
+  opacity: 0;
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sc__active-node {
+  fill: transparent;
+  opacity: 0;
+  /* Scale animations must pivot on the node itself — the SVG default
+     (view-box origin) would fling the dot toward the top-left corner. */
+  transform-box: fill-box;
+  transform-origin: center;
+}
+
+.sc__circle--charged .sc__active-link,
+.sc__circle--charged .sc__active-weave,
+.sc__circle--charged .sc__active-core {
+  stroke: hsl(var(--sc-hue, 45) 68% 48% / 0.28);
+  opacity: 0.42;
+}
+
+.sc__circle--charged .sc__active-node {
+  fill: hsl(var(--sc-hue, 45) 68% 48% / 0.32);
+  opacity: 0.48;
+}
+
+/* The circuit stays fully drawn while the spell resolves — solid inked
+   channels breathing with light, not disembodied dashes travelling in
+   the dark (a short dash on an invisible line reads as a random glowing
+   pill, not as energy flow). */
+.sc__circle--casting .sc__active-link,
+.sc__circle--casting .sc__active-weave,
+.sc__circle--casting .sc__active-core {
+  stroke: var(--sc-cast-light);
+  stroke-width: 2.6px;
+  filter:
+    drop-shadow(0 0 3px hsl(var(--sc-hue, 45) 100% 78% / 0.9))
+    drop-shadow(0 0 10px hsl(var(--sc-hue, 45) 100% 68% / 0.7))
+    drop-shadow(0 0 26px hsl(var(--sc-hue, 45) 100% 58% / 0.4));
+  opacity: 1;
+  animation: sc-line-breathe 1.8s ease-in-out infinite;
+}
+
+.sc__circle--casting .sc__active-weave {
+  stroke-width: 2.2px;
+  animation-duration: 2.4s;
+}
+
+.sc__circle--casting .sc__active-core {
+  stroke-width: 3px;
+  animation-duration: 2.1s;
+}
+
+.sc__circle--casting .sc__active-node {
+  fill: var(--sc-cast-light);
+  opacity: 1;
+  filter:
+    drop-shadow(0 0 4px hsl(var(--sc-hue, 45) 100% 72% / 0.9))
+    drop-shadow(0 0 13px hsl(var(--sc-hue, 45) 100% 58% / 0.68));
+  animation: sc-node-pulse 1.25s ease-in-out infinite;
+}
+
+.sc__circle--casting .sc__flow-link,
+.sc__circle--casting .sc__flow-weave {
+  stroke: white;
+  stroke-dasharray: 9 91;
+  stroke-dashoffset: 0;
+  filter:
+    drop-shadow(0 0 4px hsl(var(--sc-hue, 45) 100% 80% / 0.9))
+    drop-shadow(0 0 13px hsl(var(--sc-hue, 45) 100% 66% / 0.74));
+  opacity: 0.9;
+  animation: sc-flow-run 1.55s linear infinite;
+}
+
+.sc__circle--casting .sc__flow-weave {
+  stroke-dasharray: 7 93;
+  animation-duration: 2.05s;
+  animation-direction: reverse;
+}
+
+.sc__circle--casting .sc__flow-core {
+  fill: var(--sc-cast-light);
+  opacity: 0.45;
+  filter:
+    drop-shadow(0 0 6px hsl(var(--sc-hue, 45) 100% 74% / 0.82))
+    drop-shadow(0 0 18px hsl(var(--sc-hue, 45) 100% 62% / 0.5));
+  animation: sc-flow-core 1.8s ease-in-out infinite;
+}
+
+.sc__active-link--1,
+.sc__active-node--1,
+.sc__flow-link--1 { animation-delay: 0.12s; }
+.sc__active-link--2,
+.sc__active-node--2,
+.sc__flow-link--2 { animation-delay: 0.24s; }
+.sc__active-link--3,
+.sc__active-node--3,
+.sc__flow-link--3 { animation-delay: 0.36s; }
+.sc__active-link--4,
+.sc__active-node--4,
+.sc__flow-link--4 { animation-delay: 0.48s; }
+.sc__active-link--5,
+.sc__active-node--5,
+.sc__flow-link--5 { animation-delay: 0.6s; }
+.sc__active-link--6,
+.sc__active-node--6,
+.sc__flow-link--6 { animation-delay: 0.72s; }
+
+/* Building: each channel draws itself in from the center outward
+   (dashoffset sweep over the full pathLength), staggered per slot. */
+.sc__circle--building .sc__active-link,
+.sc__circle--building .sc__active-weave,
+.sc__circle--building .sc__active-core {
+  stroke-dasharray: 100;
+  stroke-dashoffset: 100;
+  animation: sc-line-draw 1.35s ease-out both;
+}
+
+.sc__circle--building .sc__active-node {
+  animation: sc-node-awaken 0.72s ease-out both;
+}
+
+/* The core ring is a closed circle — drawing it in as a dash arc reads
+   as a glowing "O" fragment floating at the center, so it fades in whole
+   instead. */
+.sc__circle--building .sc__active-core {
+  stroke-dasharray: none;
+  stroke-dashoffset: 0;
+  animation: sc-core-fade 1.35s ease-out both;
+}
+
+@keyframes sc-core-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sc__circle--finishing .sc__active-link,
+.sc__circle--finishing .sc__active-weave,
+.sc__circle--finishing .sc__active-core {
+  stroke-dasharray: 100 0;
+  stroke-width: 3px;
+  animation: sc-finish-line 1.7s ease-out both;
+}
+
+.sc__circle--success .sc__active-link,
+.sc__circle--success .sc__active-weave,
+.sc__circle--success .sc__active-core {
+  stroke: white;
+  stroke-width: 4px;
+  animation: sc-success-line 2.2s ease-in-out both;
+}
+
+.sc__circle--failure .sc__active-link,
+.sc__circle--failure .sc__active-weave,
+.sc__circle--failure .sc__active-core {
+  stroke: white;
+  stroke-width: 4px;
+  animation: sc-failure-line 1.7s ease-in-out both;
+}
+
+.sc__circle--finishing .sc__active-weave,
+.sc__circle--finishing .sc__active-core {
+  stroke-width: 3.4px;
+}
+
+.sc__circle--finishing .sc__active-node {
+  fill: var(--sc-cast-light);
+  opacity: 1;
+  animation: sc-node-finish 1.7s ease-out both;
+}
+
+.sc__circle--success .sc__active-node {
+  fill: white;
+  animation: sc-node-success 2.2s ease-in-out both;
+}
+
+.sc__circle--failure .sc__active-node {
+  fill: white;
+  animation: sc-node-failure 1.7s ease-in-out both;
+}
+
+.sc__circle--success .sc__rings,
+.sc__circle--failure .sc__rings {
+  overflow: visible;
+  filter:
+    drop-shadow(0 0 6px white)
+    drop-shadow(0 0 20px hsl(var(--sc-hue, 45) 100% 76% / 0.85))
+    drop-shadow(0 0 52px hsl(var(--sc-hue, 45) 100% 72% / 0.5));
+}
+
+@keyframes sc-line-breathe {
+  0%, 100% { opacity: 0.62; }
+  50%      { opacity: 1; }
+}
+
+@keyframes sc-flow-run {
+  from { stroke-dashoffset: 0; }
+  to   { stroke-dashoffset: -100; }
+}
+
+@keyframes sc-flow-core {
+  0%, 100% {
+    opacity: 0.28;
+    transform: scale(0.82);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(1.18);
+  }
+}
+
+@keyframes sc-line-draw {
+  0% {
+    opacity: 0;
+    stroke-dashoffset: 100;
+  }
+  35% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    stroke-dashoffset: 0;
+  }
+}
+
+@keyframes sc-finish-line {
+  0% {
+    opacity: 0.82;
+  }
+  38% {
+    opacity: 1;
+    filter:
+      drop-shadow(0 0 5px hsl(var(--sc-hue, 45) 100% 76% / 1))
+      drop-shadow(0 0 18px hsl(var(--sc-hue, 45) 100% 64% / 0.92))
+      drop-shadow(0 0 36px hsl(var(--sc-hue, 45) 100% 60% / 0.58));
+  }
+  100% {
+    opacity: 0.95;
+  }
+}
+
+@keyframes sc-success-line {
+  0% {
+    opacity: 0.9;
+    stroke-width: 3px;
+    filter:
+      drop-shadow(0 0 5px hsl(var(--sc-hue, 45) 100% 76% / 1))
+      drop-shadow(0 0 18px hsl(var(--sc-hue, 45) 100% 64% / 0.92));
+  }
+  34% {
+    opacity: 1;
+    stroke-width: 4.4px;
+    filter:
+      drop-shadow(0 0 6px white)
+      drop-shadow(0 0 20px hsl(var(--sc-hue, 45) 100% 68% / 0.9))
+      drop-shadow(0 0 44px hsl(var(--sc-hue, 45) 100% 68% / 0.6));
+  }
+  56% {
+    opacity: 1;
+    stroke-width: 7px;
+    filter:
+      drop-shadow(0 0 8px white)
+      drop-shadow(0 0 26px white)
+      drop-shadow(0 0 60px hsl(var(--sc-hue, 45) 100% 72% / 0.8));
+  }
+  100% {
+    opacity: 0;
+    stroke-width: 8px;
+    filter:
+      drop-shadow(0 0 10px white)
+      drop-shadow(0 0 40px hsl(var(--sc-hue, 45) 100% 72% / 0.7));
+  }
+}
+
+@keyframes sc-failure-line {
+  0% {
+    opacity: 0.9;
+    stroke-width: 3px;
+    filter:
+      drop-shadow(0 0 5px hsl(var(--sc-hue, 45) 100% 76% / 1))
+      drop-shadow(0 0 18px hsl(var(--sc-hue, 45) 100% 64% / 0.92));
+  }
+  46% {
+    opacity: 1;
+    stroke-width: 8px;
+    filter:
+      drop-shadow(0 0 8px white)
+      drop-shadow(0 0 28px white)
+      drop-shadow(0 0 64px hsl(var(--sc-hue, 45) 100% 74% / 0.75));
+  }
+  64% {
+    opacity: 0.82;
+    stroke-width: 9px;
+    filter:
+      drop-shadow(0 0 10px white)
+      drop-shadow(0 0 44px hsl(var(--sc-hue, 45) 100% 76% / 0.7));
+  }
+  100% {
+    opacity: 0;
+    stroke-width: 10px;
+    filter:
+      drop-shadow(0 0 10px white)
+      drop-shadow(0 0 60px hsl(var(--sc-hue, 45) 100% 74% / 0.5));
+  }
+}
+
+@keyframes sc-node-awaken {
+  0% {
+    opacity: 0;
+    transform: scale(0.35);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+@keyframes sc-node-pulse {
+  0%, 100% {
+    opacity: 0.72;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+@keyframes sc-node-finish {
+  0% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  38% {
+    opacity: 1;
+    transform: scale(1.85);
+  }
+  100% {
+    opacity: 0.9;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes sc-node-success {
+  0% {
+    opacity: 0.85;
+    transform: scale(1);
+  }
+  58% {
+    opacity: 1;
+    transform: scale(1.6);
+  }
+  100% {
+    opacity: 0;
+    transform: scale(1.15);
+  }
+}
+
+@keyframes sc-node-failure {
+  0% {
+    opacity: 0.9;
+    transform: scale(1);
+  }
+  46% {
+    opacity: 1;
+    transform: scale(1.9);
+  }
+  100% {
+    opacity: 0.16;
+    transform: scale(0.55);
+  }
+}
+
+/* Slot wrapper — positions the medallion and its outside caption as one
+   unit; the medallion itself stays perfectly round so the caption has
+   a consistent place to sit (below it, like a diagram label). */
+.sc__slot-wrap {
   position: absolute;
-  width: 16.25%;
-  aspect-ratio: 1;
-  border-radius: 50%;
-  background: hsl(225, 30%, 11%);
-  border: 1px solid rgba(0,212,255,0.14);
-  cursor: pointer;
   display: flex;
   flex-direction: column;
   align-items: center;
+  justify-content: flex-start;
+  z-index: 1;
+}
+
+/* Hand-inked medallion — a double-ring seal. Resting = dashed/faint
+   inner ring, carved into the page. Required slots (actio, schola) get
+   a heavier, slightly larger ring: hierarchy via line weight only. */
+.sc__slot {
+  position: relative;
+  width: 100%;
+  aspect-ratio: 1;
+  flex: 0 0 auto;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--parch-paper-light), var(--parch-paper-dark));
+  border: 2px dashed rgba(55,43,25,0.35);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.25),
+    inset 0 0 0 3px transparent;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
   justify-content: center;
-  gap: 1px;
   padding: 2px;
-  transition: border-color 0.2s, background 0.2s, box-shadow 0.2s;
+  transition: border-color 0.7s ease-in-out, border-style 0.01s, box-shadow 0.7s ease-in-out, transform 0.12s;
   overflow: hidden;
 }
+
+.sc__slot--required {
+  border-width: 3px;
+}
+
+.sc__slot:active { transform: scale(0.92); }
 
 .sc__slot--enter {
   animation: sc-slot-in 0.35s ease both;
@@ -1770,151 +2759,409 @@ code {
 }
 
 .sc__slot:hover {
-  border-color: rgba(0,212,255,0.45);
-  background: hsl(225, 35%, 16%);
+  border-color: hsl(var(--sc-hue, 45), 72%, 44%);
 }
 
+/* Filled: the dashed faint ring has fully cross-faded to a solid fine
+   line — tinted by the chosen school's hue (--sc-hue), gold by default —
+   and settled into a quiet ambient flicker — candlelight nearby, not a
+   rhythmic "charging" pulse. */
 .sc__slot--filled {
-  border-color: rgba(0,212,255,0.45);
-  background: hsl(210, 38%, 13%);
-  box-shadow: 0 0 7px rgba(0,212,255,0.2);
+  border-style: solid;
+  border-color: hsl(var(--sc-hue, 45), 62%, 44%);
+  box-shadow:
+    0 2px 4px rgba(0,0,0,0.25),
+    0 0 8px hsl(var(--sc-hue, 45) 73% 66% / 0.45);
+  animation: sc-flicker 3.2s ease-in-out infinite;
+}
+
+/* Irregular-feeling candle flicker — small opacity/glow drift on the
+   ring glow, deliberately not a clean symmetric pulse. */
+@keyframes sc-flicker {
+  0%, 100% { box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 8px hsl(var(--sc-hue, 45) 73% 66% / 0.42); }
+  30%      { box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 9px hsl(var(--sc-hue, 45) 73% 66% / 0.5); }
+  55%      { box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 7px hsl(var(--sc-hue, 45) 73% 66% / 0.38); }
+  80%      { box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 9px hsl(var(--sc-hue, 45) 73% 66% / 0.48); }
+}
+
+/* The fill moment — a genuine one-shot ignition: a quick brightness/glow
+   flare that overshoots the resting glow then settles back down, like a
+   candle catching flame or wax catching a seal's heat. Layered under the
+   continuing ambient sc-flicker (started at the same time, both apply). */
+.sc__slot--catch {
+  animation:
+    sc-ignite 0.6s ease-out,
+    sc-flicker 3.2s ease-in-out infinite;
+}
+
+@keyframes sc-ignite {
+  0%   { filter: brightness(1);   box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 8px hsl(var(--sc-hue, 45) 73% 66% / 0.42); }
+  35%  { filter: brightness(1.6); box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 22px hsl(var(--sc-hue, 45) 85% 66% / 0.9); }
+  100% { filter: brightness(1);   box-shadow: 0 2px 4px rgba(0,0,0,0.25), 0 0 8px hsl(var(--sc-hue, 45) 73% 66% / 0.42); }
 }
 
 .sc__slot--active {
-  border-color: var(--sc-cyan) !important;
-  background: hsl(200, 45%, 17%) !important;
-  box-shadow: 0 0 12px rgba(0,212,255,0.45) !important;
+  border-color: hsl(var(--sc-hue, 45), 82%, 52%) !important;
+  border-style: solid !important;
+  box-shadow: 0 0 12px hsl(var(--sc-hue, 45) 92% 62% / 0.68) !important;
+  animation: none !important;
 }
 
-.sc__slot--optional { border-style: dashed; }
+.sc__slot--optional { border-width: 2px; }
 
+/* Caption — a small-caps Latin label under the medallion, like a
+   diagram caption. Faded sepia, letterspaced serif, never competing
+   with the handwritten word inside. */
 .sc__slot-label {
-  font-size: 9px;
-  color: rgba(0,212,255,0.5);
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  font-family: var(--font-sans);
+  margin-top: 3px;
+  font-size: clamp(8px, 2.25vw, 10px);
+  font-family: var(--font-serif);
+  font-variant: small-caps;
+  letter-spacing: 0.07em;
+  color: var(--parch-caption);
+  opacity: 0.7;
   pointer-events: none;
-  white-space: nowrap;
-  overflow: hidden;
-  max-width: 90%;
-  text-overflow: ellipsis;
+  width: max-content;
+  max-width: 7.4em;
+  white-space: normal;
+  text-align: center;
+  line-height: 1;
 }
 
 .sc__slot-value {
-  font-size: 10px;
-  color: rgba(255,255,255,0.75);
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 16px;
+  line-height: 1.1;
+  color: var(--parch-ink);
   pointer-events: none;
   white-space: nowrap;
   overflow: hidden;
-  max-width: 90%;
+  max-width: 92%;
   text-overflow: ellipsis;
+  transition: color 0.6s ease-out, text-shadow 0.6s ease-out;
 }
 
-.sc__slot--filled .sc__slot-label { color: rgba(0,212,255,0.72); }
-.sc__slot--filled .sc__slot-value { color: var(--sc-cyan); font-weight: 700; }
+.sc__slot--filled .sc__slot-value {
+  color: hsl(var(--sc-hue, 45), 62%, 44%);
+  text-shadow: 0 0 6px hsl(var(--sc-hue, 45), 73%, 66%);
+}
 
-/* Center circle */
+.sc__circle--casting .sc__slot {
+  background: #191512;
+  border-color: hsl(var(--sc-hue, 45) 28% 48% / 0.34);
+  box-shadow:
+    0 0 0 2px rgba(0,0,0,0.74),
+    0 0 5px hsl(var(--sc-hue, 45) 100% 62% / 0.14);
+  animation: none;
+}
+
+.sc__circle--casting .sc__slot--filled {
+  background: #332f3d;
+  border-color: hsl(var(--sc-hue, 45), 82%, 53%);
+  box-shadow:
+    0 0 0 2px rgba(0,0,0,0.74),
+    0 0 16px hsl(var(--sc-hue, 45) 100% 62% / 0.74),
+    inset 0 0 14px hsl(var(--sc-hue, 45) 100% 68% / 0.12);
+}
+
+/* The ritual belongs to the lit circuit — empty medallions bow out
+   entirely so they don't sit as dark discs over the light. They come
+   back with the reset render once the outcome has played. */
+.sc__circle--casting .sc__slot-wrap:not(:has(.sc__slot--filled)),
+.sc__circle--casting .sc__center--slot:not(:has(.sc__slot--filled)) {
+  animation: sc-slot-vanish 0.45s ease both;
+  pointer-events: none;
+}
+
+/* The finishing phase re-renders the circle (the server's answer lands
+   then), which would replay the vanish fade from opacity 1 — a visible
+   blip of every empty medallion right during the burst. Hold them hidden
+   outright instead. */
+.sc__circle--finishing .sc__slot-wrap:not(:has(.sc__slot--filled)),
+.sc__circle--finishing .sc__center--slot:not(:has(.sc__slot--filled)) {
+  animation: none;
+  opacity: 0;
+  visibility: hidden;
+}
+
+.sc__circle--casting .sc__particle {
+  display: none;
+}
+
+@keyframes sc-slot-vanish {
+  to { opacity: 0; visibility: hidden; }
+}
+
+.sc__circle--building .sc__slot--filled {
+  animation: sc-slot-awaken 0.72s ease-out both;
+  animation-delay: calc(var(--sc-i, 0) * 0.12s);
+}
+
+.sc__circle--finishing .sc__slot--filled {
+  background:
+    radial-gradient(circle at 45% 42%, hsl(var(--sc-hue, 45) 100% 74% / 0.22), transparent 48%),
+    #3a3442;
+  border-color: var(--sc-cast-light);
+  box-shadow:
+    0 0 0 2px rgba(0,0,0,0.58),
+    0 0 18px hsl(var(--sc-hue, 45) 100% 66% / 0.84),
+    inset 0 0 16px hsl(var(--sc-hue, 45) 100% 70% / 0.18);
+  animation: sc-slot-finish 1.7s ease-out both;
+}
+
+.sc__circle--success .sc__slot--filled {
+  animation: sc-slot-success 2.2s ease-in-out both;
+}
+
+.sc__circle--failure .sc__slot--filled {
+  border-color: hsl(var(--sc-hue, 45) 100% 82% / 0.9);
+  animation: sc-slot-failure 1.7s ease-in-out both;
+}
+
+@keyframes sc-slot-awaken {
+  0% {
+    filter: brightness(0.58);
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,0.74),
+      0 0 4px hsl(var(--sc-hue, 45) 100% 62% / 0.18);
+  }
+  58% {
+    filter: brightness(1.35);
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,0.74),
+      0 0 18px hsl(var(--sc-hue, 45) 100% 62% / 0.72);
+  }
+  100% {
+    filter: brightness(1);
+    box-shadow:
+      0 0 0 2px rgba(0,0,0,0.74),
+      0 0 12px hsl(var(--sc-hue, 45) 100% 62% / 0.52);
+  }
+}
+
+@keyframes sc-slot-finish {
+  0% { transform: scale(1); }
+  38% { transform: scale(1.08); }
+  100% { transform: scale(1); }
+}
+
+@keyframes sc-slot-success {
+  0% { transform: scale(1); filter: brightness(1); }
+  58% { transform: scale(1.08); filter: brightness(1.3); }
+  100% { transform: scale(1); filter: brightness(1.05); }
+}
+
+@keyframes sc-slot-failure {
+  0% { transform: scale(1); filter: brightness(1); }
+  46% { transform: scale(1.1); filter: brightness(1.6) saturate(1); }
+  100% { transform: scale(0.94); filter: brightness(0.58) saturate(0.75); }
+}
+
+.sc__circle--casting .sc__slot-value,
+.sc__circle--casting .sc__slot-label,
+.sc__circle--casting .sc__center-label {
+  color: hsl(var(--sc-hue, 45), 22%, 42%);
+  text-shadow: none;
+}
+
+.sc__circle--casting .sc__slot--filled .sc__slot-value,
+.sc__circle--casting .sc__slot-wrap:has(.sc__slot--filled) .sc__slot-label,
+.sc__circle--casting .sc__center--slot:has(.sc__slot--filled) .sc__center-label {
+  color: hsl(var(--sc-hue, 45), 38%, 64%);
+  text-shadow: 0 0 7px hsl(var(--sc-hue, 45), 100%, 62%);
+}
+
+/* Gold dust settling — a few tiny motes drift down and fade as a slot
+   finishes filling. Falling, not rising; dust, not sparks. */
+.sc__motes {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.sc__mote {
+  position: absolute;
+  top: 45%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: hsl(var(--sc-hue, 45), 68%, 53%);
+  box-shadow: 0 0 4px hsl(var(--sc-hue, 45), 73%, 66%);
+  animation: sc-mote-fall 0.6s ease-out both;
+}
+
+@keyframes sc-mote-fall {
+  0%   { opacity: 0.9; transform: translateY(0); }
+  100% { opacity: 0; transform: translateY(10px); }
+}
+
+/* Center — either the still, empty sigil dish (lights a rune once charged)
+   or, when the caster has a Fundamen slot, a foundation-stone button
+   sitting fixed in the middle. The wrapper just positions things; when it
+   holds a real slot button (.sc__slot--center) the button supplies its
+   own dish/border via .sc__slot, so this wrapper stays transparent. */
 .sc__center {
   position: absolute;
-  left: calc(50% - 13%);
-  top:  calc(50% - 13%);
+  left: 50%;
+  top:  50%;
   width: 26%;
-  aspect-ratio: 1;
-  border-radius: 50%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  background: hsl(220, 25%, 7%);
-  border: 1px solid rgba(0,212,255,0.1);
-  pointer-events: none;
+  transform: translate(-50%, -50%);
   transition: all 0.5s;
 }
 
-.sc__circle--charged .sc__center {
-  border-color: rgba(0,212,255,0.55);
-  box-shadow: 0 0 18px rgba(0,212,255,0.3);
+.sc__center--slot {
+  justify-content: flex-start;
+  aspect-ratio: 1;
+}
+
+/* Empty-center dish (untrained circle, or before charge) */
+.sc__center:not(.sc__center--slot) {
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--parch-paper-light), var(--parch-paper-dark));
+  border: 2px solid var(--parch-ink-faint);
+  pointer-events: none;
+}
+
+.sc__circle--charged .sc__center:not(.sc__center--slot) {
+  border-color: hsl(var(--sc-hue, 45), 69%, 39%);
+  box-shadow: 0 0 20px hsl(var(--sc-hue, 45) 68% 53% / 0.5);
 }
 
 .sc__center-rune {
   font-size: 1.3em;
-  color: var(--sc-cyan);
-  text-shadow: 0 0 10px var(--sc-cyan);
+  color: var(--parch-red);
   animation: sc-pulse 2s ease-in-out infinite;
-  font-family: monospace;
+  font-family: var(--font-serif);
 }
 
 @keyframes sc-pulse {
-  0%, 100% { opacity: 0.65; }
+  0%, 100% { opacity: 0.7; }
   50%       { opacity: 1; }
 }
 
-/* Charged particles */
+/* Foundation stone — the Fundamen (base spell) slot button, reusing
+   .sc__slot's dashed-to-solid border/fill language but sitting still and
+   slightly larger than a ring medallion, since it never orbits. Fundamen
+   is always optional, so it keeps the same lighter optional border weight
+   as any other optional slot (.sc__slot--optional) — being centered isn't
+   a "this matters more" signal. */
+.sc__slot--center {
+  width: 100%;
+  height: auto;
+}
+
+.sc__center-label {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: clamp(8px, 2.25vw, 10px);
+  font-family: var(--font-serif);
+  font-variant: small-caps;
+  letter-spacing: 0.07em;
+  color: var(--parch-caption);
+  opacity: 0.7;
+  pointer-events: none;
+  max-width: 8em;
+  line-height: 1;
+  text-align: center;
+}
+
+/* Charged motes — warm dust drifting off the sigil, not neon sparks */
 .sc__particle {
   position: absolute;
   transform: translate(-50%, -50%);
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--sc-cyan);
-  box-shadow: 0 0 8px var(--sc-cyan);
+  background: hsl(var(--sc-hue, 45), 68%, 53%);
+  box-shadow: 0 0 6px hsl(var(--sc-hue, 45), 69%, 39%);
   pointer-events: none;
   animation: sc-particle 3s ease-in-out infinite;
 }
 
 @keyframes sc-particle {
-  0%, 100% { opacity: 0.35; transform: translate(-50%, -50%) scale(0.8); }
-  50%       { opacity: 1;    transform: translate(-50%, -50%) scale(1.6); }
+  0%, 100% { opacity: 0.3; transform: translate(-50%, -50%) scale(0.8); }
+  50%       { opacity: 0.9; transform: translate(-50%, -60%) scale(1.4); }
 }
 
-/* Input sheet */
+/* Input sheet — a torn scrap tucked onto the page */
 .sc__sheet {
   width: 100%;
   max-width: 340px;
-  background: hsl(224, 22%, 10%);
-  border: 1px solid rgba(0,212,255,0.2);
-  border-radius: var(--panel-radius);
+  background: var(--parch-paper-light);
+  border: 1px solid var(--parch-ink-faint);
+  border-radius: 2px;
   padding: 0.65rem 0.75rem;
   display: flex;
   flex-direction: column;
   gap: 0.5rem;
+  box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+  transform: rotate(-1deg);
   animation: sc-sheet-in 0.18s ease;
 }
 
 @keyframes sc-sheet-in {
-  from { opacity: 0; transform: translateY(-6px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: rotate(-4deg) translateY(-8px); }
+  to   { opacity: 1; transform: rotate(-1deg) translateY(0); }
 }
 
 .sc__sheet-title {
   font-size: 0.72rem;
   text-transform: uppercase;
   letter-spacing: 0.1em;
-  color: rgba(0,212,255,0.65);
+  color: var(--parch-red);
   font-family: var(--font-sans);
 }
 
 .sc__sheet-input {
-  background: hsl(220, 28%, 8%);
-  border: 1px solid rgba(0,212,255,0.25);
-  border-radius: 3px;
-  padding: 0.5rem 0.65rem;
-  color: rgba(255,255,255,0.85);
-  font-family: var(--font-serif);
-  font-size: 0.9rem;
+  background: transparent;
+  border: none;
+  border-bottom: 1px dashed var(--parch-ink-faint);
+  border-radius: 0;
+  padding: 0.4rem 0.1rem;
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
   outline: none;
-  transition: all 0.15s;
+  transition: border-color 0.15s;
 }
 
 .sc__sheet-input:focus {
-  border-color: rgba(0,212,255,0.7);
-  box-shadow: 0 0 6px rgba(0,212,255,0.2);
-  background: hsl(215, 32%, 10%);
+  border-bottom-color: var(--parch-red);
+  border-bottom-style: solid;
 }
 
 .sc__sheet-input::placeholder {
-  color: rgba(0,212,255,0.35);
+  color: var(--parch-ink-faint);
   font-style: italic;
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+}
+
+.sc__sheet-select {
+  background: var(--parch-paper);
+  border: 1px solid var(--parch-ink-faint);
+  border-radius: 3px;
+  padding: 0.45rem 0.5rem;
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1.1rem;
+  outline: none;
+}
+.sc__sheet-select:focus { border-color: var(--parch-red); }
+
+.sc__sheet-empty {
+  font-style: italic;
+  color: var(--parch-ink-faint);
+  font-size: 0.85rem;
+  margin: 0;
 }
 
 .sc__sheet-actions {
@@ -1926,30 +3173,31 @@ code {
   flex: 1;
   padding: 0.4rem 0.6rem;
   border-radius: 3px;
-  border: 1px solid rgba(0,212,255,0.25);
-  background: hsl(224, 24%, 12%);
-  color: rgba(0,212,255,0.65);
+  border: 1px solid var(--parch-ink-faint);
+  background: var(--parch-paper);
+  color: var(--parch-ink-faint);
   font-family: var(--font-serif);
   font-size: 0.8rem;
   cursor: pointer;
   transition: all 0.15s;
 }
+.sc__sheet-btn:active { transform: scale(0.95); }
 
 .sc__sheet-btn:hover {
-  background: hsl(215, 32%, 15%);
-  border-color: rgba(0,212,255,0.5);
-  color: rgba(0,212,255,0.85);
+  border-color: var(--parch-red);
+  color: var(--parch-red);
 }
 
 .sc__sheet-btn--ok {
-  background: hsl(200, 40%, 12%);
-  border-color: rgba(0,212,255,0.4);
-  color: var(--sc-cyan);
+  background: var(--parch-paper-light);
+  border-color: var(--parch-gold);
+  color: var(--parch-gold);
+  font-weight: 700;
 }
 
 .sc__sheet-btn--ok:hover {
-  background: hsl(200, 40%, 16%);
-  box-shadow: 0 0 4px rgba(0,212,255,0.2);
+  color: var(--parch-gold-bright);
+  border-color: var(--parch-gold-bright);
 }
 
 /* Footer */
@@ -1961,115 +3209,230 @@ code {
   gap: 0.5rem;
 }
 
-.sc__name-input {
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--panel-radius);
-  padding: 0.5rem 0.75rem;
-  color: var(--color-text);
-  font-family: var(--font-serif);
-  font-size: 0.9rem;
-  width: 100%;
-  outline: none;
-  transition: border-color 0.15s;
-}
-.sc__name-input:focus { border-color: var(--sc-cyan); }
-.sc__name-input::placeholder { color: var(--color-text-muted); font-style: italic; }
-
+/* Compile button — a wax seal you press down to stamp. Dull/unlit at
+   rest; warms up to a lit crimson with a gold rim as the circle
+   charges — a slow transition, not a flash switching on. */
 .sc__compile {
   width: 100%;
-  padding: 0.6rem 1rem;
-  background: var(--color-surface-2);
-  border: 1px solid var(--color-border);
-  border-radius: var(--panel-radius);
-  color: var(--color-text-muted);
+  padding: 0.65rem 1rem;
+  background: var(--parch-paper-dark);
+  border: 2px solid var(--parch-ink-faint);
+  border-radius: 6px;
+  color: var(--parch-ink-faint);
   font-family: var(--font-serif);
-  font-size: 0.9rem;
+  font-size: 0.95rem;
   cursor: not-allowed;
-  transition: all 0.2s;
+  transition: background 0.9s ease-in-out, border-color 0.9s ease-in-out, color 0.9s ease-in-out, box-shadow 0.9s ease-in-out;
 }
 
 .sc__compile--ready {
-  background: hsl(200, 40%, 12%);
-  border-color: rgba(0,212,255,0.4);
-  color: var(--sc-cyan);
+  background: hsl(var(--sc-hue, 45), 58%, 29%);
+  border-color: hsl(var(--sc-hue, 45), 69%, 39%);
+  color: var(--parch-paper-light);
   cursor: pointer;
-  box-shadow: 0 0 10px rgba(0,212,255,0.2);
+  box-shadow:
+    0 3px 0 hsl(var(--sc-hue, 45), 58%, 17%),
+    0 5px 10px rgba(0,0,0,0.35),
+    0 0 12px hsl(var(--sc-hue, 45) 73% 66% / 0.3);
 }
 .sc__compile--ready:hover {
-  background: hsl(200, 40%, 16%);
-  box-shadow: 0 0 18px rgba(0,212,255,0.35);
+  filter: brightness(1.08);
+}
+.sc__compile--ready:active {
+  transform: translateY(3px);
+  box-shadow: 0 0 0 hsl(var(--sc-hue, 45), 58%, 17%), 0 2px 4px rgba(0,0,0,0.35);
 }
 
-@keyframes sc-flash {
-  0%   { box-shadow: 0 0 0px transparent; }
-  50%  { box-shadow: 0 0 28px rgba(0,212,255,0.7); }
-  100% { box-shadow: 0 0 0px transparent; }
+/* Working — the incantation has been spoken and the seal stays pressed
+   down while the AI resolves it, glowing steadily rather than inviting
+   another click. */
+.sc__compile--casting {
+  cursor: wait;
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 hsl(var(--sc-hue, 45), 58%, 17%),
+    0 2px 6px rgba(0,0,0,0.35),
+    0 0 16px hsl(var(--sc-hue, 45) 73% 66% / 0.4);
+  animation: sc-cast-glow 2s ease-in-out infinite;
 }
-.sc__compile--flash { animation: sc-flash 0.4s ease; }
+
+.sc-result {
+  margin-top: 1rem;
+  padding: 0.8rem 0.9rem;
+  border: 1px solid rgba(55,43,25,0.24);
+  border-radius: 3px;
+  background:
+    linear-gradient(90deg, rgba(124,43,34,0.08), transparent 28%),
+    var(--parch-paper-light);
+  box-shadow: 0 4px 12px rgba(55,43,25,0.14);
+  /* Slow settle-in when the ritual ends and the card is finally shown. */
+  transition: opacity 0.8s ease 0.25s, filter 0.8s ease 0.25s, transform 0.8s ease 0.25s;
+}
+
+.sc-result--working {
+  position: relative;
+  overflow: hidden;
+}
+
+.sc-result--working::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(217,169,54,0.18), transparent);
+  animation: sc-result-scan 1.6s ease-in-out infinite;
+}
+
+@keyframes sc-result-scan {
+  from { transform: translateX(-100%); }
+  to   { transform: translateX(100%); }
+}
+
+.sc-result__kicker {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--parch-ink-faint);
+}
+
+.sc-result__name {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-hand);
+  font-size: 1.55rem;
+  line-height: 1.05;
+  color: var(--parch-red);
+}
+
+.sc-result__formula {
+  margin: 0.2rem 0 0.45rem;
+  font-style: italic;
+  color: var(--parch-ink-faint);
+}
+
+.sc-result__desc {
+  margin: 0;
+  font-size: 0.92rem;
+  line-height: 1.45;
+}
+
+.sc-result__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.65rem;
+}
+
+.sc-result__meta span {
+  padding: 0.14rem 0.42rem;
+  border-radius: 999px;
+  background: var(--parch-paper-dark);
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
 
 /* ============================================================
-   GrimoireShelf (.grim)
+   GrimoireShelf (.grim) — a real wooden bookshelf. Books are cloth/
+   leather spines you drag along the plank to reorder, click to pull
+   forward and open flat.
    ============================================================ */
 
 .grim {
   font-family: var(--font-serif);
-  color: var(--color-text);
+  color: var(--parch-ink);
   display: flex;
   flex-direction: column;
-  gap: 0.75rem;
+  gap: 0.9rem;
+}
+
+/* A tall bookcase, not one row — once a shelf's books fill its width
+   (measured in JS from the actual container), a new tier starts below
+   it, each with its own plank. */
+.grim__shelves {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 
 .grim__shelf {
   position: relative;
-  padding-bottom: 10px;
+  padding: 0 6px 14px;
+  background: linear-gradient(180deg, transparent 0%, transparent 82%, rgba(0,0,0,0.08) 82%);
 }
 
 .grim__books {
   display: flex;
   align-items: flex-end;
-  gap: 4px;
-  padding: 0 4px;
+  gap: 3px;
+  padding: 10px 6px 0;
+  min-height: 90px;
 }
 
 .grim__book {
   border: 1px solid;
-  border-radius: 3px 1px 1px 3px;
-  cursor: pointer;
+  border-radius: 4px 2px 2px 4px;
+  cursor: grab;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   transition: transform 0.2s ease, box-shadow 0.2s ease;
   flex-shrink: 0;
+  box-shadow: 1px 0 0 rgba(255,255,255,0.08) inset, 2px 3px 4px rgba(0,0,0,0.35);
 }
 
-.grim__book:hover { transform: translateY(-4px); }
+/* leather-band texture across every spine */
+.grim__book::before {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; top: 14%;
+  height: 3px;
+  background: rgba(0,0,0,0.22);
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+.grim__book::after {
+  content: '';
+  position: absolute;
+  left: 0; right: 0; bottom: 14%;
+  height: 3px;
+  background: rgba(0,0,0,0.22);
+  border-top: 1px solid rgba(255,255,255,0.1);
+}
+
+.grim__book:hover { transform: translateY(-6px) rotate(-1deg); }
+.grim__book:active { cursor: grabbing; }
 
 .grim__book--open {
-  transform: translateY(-10px) !important;
-  outline: 1px solid var(--color-accent);
+  transform: translateY(-14px) rotate(0deg) !important;
+  outline: 2px solid var(--parch-gold);
+  outline-offset: 1px;
 }
 
-.grim__book--sealed { opacity: 0.65; }
-.grim__book--locked { opacity: 0.4; cursor: not-allowed; }
-.grim__book--dragging { opacity: 0.4; cursor: grabbing; }
+.grim__book--sealed { opacity: 0.7; }
+.grim__book--locked { opacity: 0.45; cursor: not-allowed; }
+.grim__book--dragging { opacity: 0.35; cursor: grabbing; }
 .grim__book--drop-before {
-  outline: 2px solid var(--color-accent);
-  outline-offset: 2px;
+  outline: 2px dashed var(--parch-gold-bright);
+  outline-offset: 3px;
 }
 
 .grim__book-title {
   writing-mode: vertical-rl;
   text-orientation: mixed;
   transform: rotate(180deg);
-  font-size: 0.62rem;
-  color: rgba(255,255,255,0.45);
+  font-family: var(--font-hand);
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: rgba(245,236,210,0.8);
+  text-shadow: 0 1px 1px rgba(0,0,0,0.4);
   overflow: hidden;
   max-height: 90%;
   white-space: nowrap;
   text-overflow: ellipsis;
-  padding: 4px 0;
+  padding: 5px 0;
   user-select: none;
   pointer-events: none;
 }
@@ -2077,108 +3440,121 @@ code {
 .grim__book-badge {
   position: absolute;
   top: 4px;
-  font-size: 0.6rem;
-  opacity: 0.7;
+  font-size: 0.65rem;
+  opacity: 0.85;
+  filter: drop-shadow(0 1px 1px rgba(0,0,0,0.5));
 }
 
 .grim__plank {
-  height: 10px;
-  background: hsl(30,20%,18%);
-  border-top: 2px solid hsl(30,25%,25%);
-  border-radius: 0 0 2px 2px;
-  box-shadow: 0 3px 6px rgba(0,0,0,0.4);
+  height: 14px;
+  background: linear-gradient(180deg, #6b4526 0%, #4a2f1a 60%, #3a2414 100%);
+  border-top: 2px solid #8a6136;
+  border-radius: 0 0 3px 3px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.45), inset 0 -3px 3px rgba(0,0,0,0.4);
 }
 
 .grim__empty {
-  font-size: 0.9rem;
-  color: var(--color-text-muted);
+  font-size: 0.95rem;
+  color: var(--parch-ink-faint);
   font-style: italic;
+  font-family: var(--font-hand);
 }
 
-/* Grimoire open panel */
+/* Grimoire open panel — the book laid flat, open to its written pages */
 .grim__panel {
-  border: 1px solid var(--color-border);
-  border-radius: var(--panel-radius);
+  border: 2px solid var(--parch-ink-faint);
+  border-radius: 4px;
   overflow: hidden;
-  animation: grim-panel-in 0.2s ease;
+  background: var(--parch-paper);
+  box-shadow: 0 6px 14px rgba(0,0,0,0.3);
+}
+
+.grim__panel--enter {
+  animation: grim-panel-in 0.25s ease;
 }
 
 @keyframes grim-panel-in {
-  from { opacity: 0; transform: translateY(-4px); }
-  to   { opacity: 1; transform: translateY(0); }
+  from { opacity: 0; transform: rotateX(-8deg) translateY(-6px); }
+  to   { opacity: 1; transform: rotateX(0) translateY(0); }
 }
 
 .grim__panel-head {
-  padding: 0.6rem 0.75rem;
-  border-bottom: 1px solid var(--color-border);
+  padding: 0.65rem 0.8rem;
+  border-bottom: 2px solid var(--parch-ink-faint);
   display: flex;
   align-items: center;
   gap: 0.75rem;
   flex-wrap: wrap;
-  background: var(--color-surface-2);
+  background: var(--parch-paper-dark);
 }
 
 .grim__panel-name {
+  font-family: var(--font-hand);
   font-weight: 700;
-  font-size: 0.95rem;
+  font-size: 1.3rem;
+  color: var(--parch-red);
 }
 
 .grim__panel-meta {
   font-size: 0.75rem;
-  color: var(--color-text-muted);
+  color: var(--parch-ink-faint);
   font-family: var(--font-sans);
   flex: 1;
 }
 
 .grim__panel-btn {
-  background: hsl(140,35%,12%);
-  border: 1px solid hsl(140,35%,22%);
-  color: hsl(140,55%,60%);
+  background: var(--parch-gold);
+  border: 1px solid #7a5814;
+  color: #2a1c05;
   border-radius: 3px;
-  padding: 0.2rem 0.55rem;
+  padding: 0.25rem 0.6rem;
   font-family: var(--font-serif);
+  font-weight: 700;
   font-size: 0.8rem;
   cursor: pointer;
   margin-left: auto;
+  box-shadow: 0 2px 0 #7a5814;
 }
-.grim__panel-btn:hover { background: hsl(140,35%,16%); }
+.grim__panel-btn:hover { filter: brightness(1.08); }
+.grim__panel-btn:active { transform: translateY(2px); box-shadow: none; }
 
 .grim__slots {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 1px;
-  background: var(--color-border);
+  background: var(--parch-ink-faint);
 }
 
 .grim__slot {
-  background: var(--color-surface);
-  padding: 0.45rem 0.6rem;
+  background: var(--parch-paper-light);
+  padding: 0.5rem 0.65rem;
   display: flex;
   align-items: center;
-  gap: 0.45rem;
-  font-size: 0.83rem;
+  gap: 0.5rem;
+  font-size: 0.9rem;
 }
 
 .grim__slot--empty {
   cursor: pointer;
-  opacity: 0.5;
-  transition: opacity 0.15s;
+  opacity: 0.6;
+  transition: opacity 0.15s, background 0.15s;
 }
-.grim__slot--empty:hover { opacity: 0.85; }
+.grim__slot--empty:hover { opacity: 1; background: var(--parch-paper); }
 
 .grim__slot-num {
-  font-size: 0.68rem;
-  color: var(--color-text-muted);
+  font-size: 0.7rem;
+  color: var(--parch-ink-faint);
   font-family: var(--font-sans);
   font-variant-numeric: tabular-nums;
   min-width: 1.2em;
 }
 
 .grim__slot-dot {
-  width: 6px;
-  height: 6px;
+  width: 7px;
+  height: 7px;
   border-radius: 50%;
   flex-shrink: 0;
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.25);
 }
 
 .grim__slot-name {
@@ -2186,19 +3562,21 @@ code {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
 }
 
 .grim__slot-cd {
   font-size: 0.7rem;
-  color: var(--color-text-muted);
+  color: var(--parch-ink-faint);
   font-family: var(--font-sans);
   white-space: nowrap;
 }
 
 .grim__slot-empty-lbl {
-  color: var(--color-text-muted);
+  color: var(--parch-ink-faint);
   font-style: italic;
-  font-size: 0.78rem;
+  font-size: 0.82rem;
 }
 
 .grim__book--enter {
@@ -2219,10 +3597,145 @@ code {
   to   { opacity: 1; transform: translateX(0); }
 }
 
-.grim__panel-btn {
-  transition: transform 0.15s ease, background 0.15s ease;
+/* ============================================================
+   SpellLedger (.splist) — known spells as ruled ledger rows.
+   Native <details>/<summary> so each row unfurls without JS;
+   the marker is a wax seal blot rather than a chevron.
+   ============================================================ */
+
+.splist {
+  display: flex;
+  flex-direction: column;
+  border-top: 1px solid var(--parch-ink-faint);
 }
-.grim__panel-btn:active { transform: scale(0.95); }
+
+.splist__row {
+  border-bottom: 1px solid var(--parch-ink-faint);
+}
+
+.splist__row[open] {
+  background: rgba(124,43,34,0.05);
+}
+
+.splist__row summary {
+  list-style: none;
+  cursor: pointer;
+  padding: 0.65rem 0.2rem;
+  display: flex;
+  align-items: baseline;
+  gap: 0.6rem;
+  font-family: var(--font-hand);
+}
+
+.splist__row summary::-webkit-details-marker { display: none; }
+
+.splist__mark {
+  flex: 0 0 auto;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--parch-red);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.2);
+  transition: transform 0.2s ease;
+}
+
+.splist__row[open] .splist__mark {
+  transform: scale(1.3);
+  box-shadow: 0 0 0 3px rgba(217,169,54,0.35);
+}
+
+.splist__name {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--parch-ink);
+}
+
+.splist__school {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--parch-ink-faint);
+  margin-left: auto;
+}
+
+.splist__body {
+  padding: 0 0.2rem 0.9rem 1.4rem;
+  animation: splist-unfurl 0.22s ease both;
+}
+
+@keyframes splist-unfurl {
+  from { opacity: 0; transform: translateY(-4px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.splist__formula {
+  font-style: italic;
+  color: var(--parch-ink-faint);
+  font-size: 0.85rem;
+  margin: 0 0 0.4rem;
+}
+
+.splist__desc {
+  font-size: 0.95rem;
+  margin: 0 0 0.7rem;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--parch-vignette);
+  color: var(--parch-ink);
+}
+
+.splist__desc::first-letter {
+  font-family: var(--font-serif);
+  font-size: 1.6em;
+  font-weight: 700;
+  color: var(--parch-red);
+}
+
+.splist__stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(90px, 1fr));
+  gap: 0.6rem 0.9rem;
+  padding-top: 0.5rem;
+  border-top: 1px dashed var(--parch-ink-faint);
+}
+
+.splist__stat {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.splist__stat-label {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--parch-ink-faint);
+}
+
+.splist__stat-value {
+  font-family: var(--font-hand);
+  font-weight: 700;
+  font-size: 1.2rem;
+  color: var(--parch-ink);
+}
+
+.splist__lineage {
+  margin: 0.65rem 0 0;
+  padding-top: 0.45rem;
+  border-top: 1px dashed var(--parch-ink-faint);
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+}
+
+.splist__empty {
+  padding: 1.5rem 0.5rem;
+  text-align: center;
+  font-family: var(--font-hand);
+  font-size: 1.2rem;
+  color: var(--parch-ink-faint);
+}
 
 
 /* -- Map editor (dev-only, /editor) --------------------------------------- */
@@ -2543,20 +4056,27 @@ code {
 }
 
 /* Map filter overlays (EVE/HOI4-style) — button + legend, mobile-first */
+/* Map-filter toggle (рельеф ↔ владения) — same pill family as .ovl-chip */
 .hex-map__filter {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
   right: 0.75rem;
   z-index: 25;
   min-height: 44px;
-  padding: 0.5rem 0.9rem;
+  padding: 0.5rem 1rem;
   border-radius: 999px;
-  border: 1px solid rgba(214, 166, 67, 0.5);
-  background: rgba(12, 10, 8, 0.82);
-  color: #f2eee8;
-  font-size: 0.8rem;
-  letter-spacing: 0.03em;
-  backdrop-filter: blur(6px);
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  background:
+    radial-gradient(circle at 35% 0%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 56%),
+    color-mix(in srgb, var(--color-bg) 78%, transparent);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
 }
 
 .hex-map__filter:active {

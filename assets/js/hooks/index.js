@@ -12,6 +12,7 @@ import { GuildHallHook }      from './guild-hall'
 import { SpellCircleHook }    from './spell-circle'
 import { GrimoireShelfHook }  from './grimoire-shelf'
 import { MapEditorHook }      from './map-editor'
+import { CombatLogHook }      from './combat-log'
 
 export const Hooks = {
   Map:            MapHook,
@@ -28,4 +29,5 @@ export const Hooks = {
   SpellCircle:    SpellCircleHook,
   GrimoireShelf:  GrimoireShelfHook,
   MapEditor:      MapEditorHook,
+  CombatLog:      CombatLogHook,
 }

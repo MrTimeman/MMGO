@@ -15,6 +15,12 @@ export const GrimoireShelfHook = {
     this._open       = null
     this._dragId     = null
     this._dropTarget = null
+    // Snapshots from the previous render — used so a server round-trip
+    // after e.g. inscribing one spell doesn't replay every entrance
+    // animation on the whole shelf, only on what actually changed.
+    this._prevIds     = new Set()
+    this._prevOpenId  = null
+    this._prevEntries = new Map() // grimoireId -> Set("slot:spellId")
     this.handleEvent('shelf_update', ({ grimoires }) => {
       this._grimoires = grimoires
       this.render()
@@ -28,50 +34,85 @@ export const GrimoireShelfHook = {
     root.className = 'grim'
 
     if (!this._grimoires?.length) {
-      root.appendChild(h('div', { class: 'grim__empty' }, 'Grimoire не найдены'))
+      root.appendChild(h('div', { class: 'grim__empty' }, 'Гримуары не найдены'))
       return
     }
 
-    const shelf = h('div', { class: 'grim__shelf' })
-    const booksRow = h('div', { class: 'grim__books' })
-
-    for (let i = 0; i < this._grimoires.length; i++) {
-      const bookEl = this._book(this._grimoires[i])
-      bookEl.classList.add('grim__book--enter')
-      bookEl.style.animationDelay = `${i * 0.08}s`
-      booksRow.appendChild(bookEl)
+    // A real shelf has a fixed width per tier — once one row of spines is
+    // full, the rest sit on another shelf below it, not squeezed into the
+    // same row or spilling off the edge. Group books into rows by their
+    // actual (known-in-advance) spine width before rendering anything.
+    const shelvesWrap = h('div', { class: 'grim__shelves' })
+    const rowWidth = Math.max((this.el.clientWidth || 320) - 12, 100)
+    const gap = 3
+    const rows = [[]]
+    let rowFill = 0
+    for (const g of this._grimoires) {
+      const bw = this._bookWidth(g)
+      const addition = rowFill === 0 ? bw : bw + gap
+      if (rowFill > 0 && rowFill + addition > rowWidth) {
+        rows.push([])
+        rowFill = 0
+      }
+      rows[rows.length - 1].push(g)
+      rowFill += rowFill === 0 ? bw : bw + gap
     }
 
-    // Allow drop on empty shelf area
-    booksRow.addEventListener('dragover', e => e.preventDefault())
-    booksRow.addEventListener('drop', e => {
-      e.preventDefault()
-      // Drop after last book if not on a specific book
-      if (this._dragId && !this._dropTarget) {
-        const fromIdx = this._grimoires.findIndex(b => b.id === this._dragId)
-        if (fromIdx !== -1 && fromIdx !== this._grimoires.length - 1) {
-          const moved = this._grimoires.splice(fromIdx, 1)[0]
-          this._grimoires.push(moved)
-          this.pushEvent('grimoire_reorder', { id: this._dragId, before_id: null })
-        }
-        this._dragId = null
-        this._dropTarget = null
-        this.render()
-      }
-    })
+    let bookIndex = 0
+    for (const rowGrimoires of rows) {
+      const shelf = h('div', { class: 'grim__shelf' })
+      const booksRow = h('div', { class: 'grim__books' })
 
-    shelf.appendChild(booksRow)
-    shelf.appendChild(h('div', { class: 'grim__plank' }))
-    root.appendChild(shelf)
+      for (const g of rowGrimoires) {
+        const bookEl = this._book(g)
+        if (!this._prevIds.has(g.id)) {
+          bookEl.classList.add('grim__book--enter')
+          bookEl.style.animationDelay = `${bookIndex * 0.08}s`
+        }
+        booksRow.appendChild(bookEl)
+        bookIndex += 1
+      }
+
+      // Allow drop on empty shelf area
+      booksRow.addEventListener('dragover', e => e.preventDefault())
+      booksRow.addEventListener('drop', e => {
+        e.preventDefault()
+        // Drop after last book if not on a specific book
+        if (this._dragId && !this._dropTarget) {
+          const fromIdx = this._grimoires.findIndex(b => b.id === this._dragId)
+          if (fromIdx !== -1 && fromIdx !== this._grimoires.length - 1) {
+            const moved = this._grimoires.splice(fromIdx, 1)[0]
+            this._grimoires.push(moved)
+            this.pushEvent('grimoire_reorder', { id: this._dragId, before_id: null })
+          }
+          this._dragId = null
+          this._dropTarget = null
+          this.render()
+        }
+      })
+
+      shelf.appendChild(booksRow)
+      shelf.appendChild(h('div', { class: 'grim__plank' }))
+      shelvesWrap.appendChild(shelf)
+    }
+
+    root.appendChild(shelvesWrap)
 
     const openGrim = this._grimoires.find(g => g.id === this._open)
     if (openGrim) root.appendChild(this._panel(openGrim))
+
+    this._prevIds = new Set(this._grimoires.map(g => g.id))
+    this._prevOpenId = this._open
+  },
+
+  _bookWidth(g) {
+    return 32 + (strHash(g.name) % 20)
   },
 
   _book(g) {
     const hash = strHash(g.name)
     const hue  = hash % 360
-    const w    = 32 + (hash % 20)
+    const w    = this._bookWidth(g)
     const h_px = 64 + ((g.capacity ?? 6) * 5)
 
     const book = h('div', {
@@ -165,8 +206,14 @@ export const GrimoireShelfHook = {
   _panel(g) {
     const hash = strHash(g.name)
     const hue  = hash % 360
+    const justOpened = this._prevOpenId !== g.id
+    const prevEntries = this._prevEntries.get(g.id) ?? new Set()
+    const nextEntries = new Set(
+      (g.entries ?? []).filter(e => e.spell).map(e => `${e.slot}:${e.spell.id}`)
+    )
+    this._prevEntries.set(g.id, nextEntries)
 
-    const panel = h('div', { class: 'grim__panel' })
+    const panel = h('div', { class: `grim__panel${justOpened ? ' grim__panel--enter' : ''}` })
     panel.style.borderColor = `hsl(${hue},30%,22%)`
 
     const head = h('div', { class: 'grim__panel-head' })
@@ -193,9 +240,13 @@ export const GrimoireShelfHook = {
     for (let i = 0; i < (g.capacity ?? 8); i++) {
       const entry = g.entries?.find(e => e.slot === i)
       const spell = entry?.spell
+      const entryKey = spell ? `${i}:${spell.id}` : null
+      const isNew = justOpened || (entryKey && !prevEntries.has(entryKey))
 
-      const slot = h('div', { class: `grim__slot${spell ? '' : ' grim__slot--empty'} grim__slot--enter` })
-      slot.style.animationDelay = `${i * 0.04}s`
+      const slot = h('div', {
+        class: `grim__slot${spell ? '' : ' grim__slot--empty'}${isNew ? ' grim__slot--enter' : ''}`,
+      })
+      if (isNew) slot.style.animationDelay = `${i * 0.04}s`
       slot.appendChild(h('span', { class: 'grim__slot-num' }, String(i + 1)))
 
       if (spell) {

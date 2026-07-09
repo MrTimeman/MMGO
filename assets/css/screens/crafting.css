@@ -1,0 +1,934 @@
+/* MMGO design-pass styles: crafting (see docs/UI_DESIGN_BRIEF.md)
+   Two sibling ritual screens sharing one ceremony arc (fill → charge →
+   dim → work → reveal), split by medium:
+     .alc-*  Alchemy  — green-glass / vapor accents
+     .crf-*  Craft    — ember / iron accents
+   Both live in the dark world shell. New tokens below are derived from the
+   warm palette in app.css :root (no raw invented hues escape this file). */
+
+:root {
+  /* Alchemy — a warm-leaning jade: poison green pulled toward the amber
+     world so it still reads as one world, not neon. */
+  --alc-glass:     #6bbf8a;   /* brew liquid */
+  --alc-glass-dim: #2f5f45;   /* settled / unlit glass */
+  --alc-vapor:     #a8e6c1;   /* rising highlight */
+  --alc-ink:       #d7efe0;   /* readable pale glass text */
+  --alc-chip-ink:  #dff3e7;
+  --alc-button-ink: #06180f;  /* dark label on lit glass */
+  --alc-smoke-paper-light: #d9cfc0;
+  --alc-smoke-paper: #b9ae9d;
+  --alc-smoke-paper-dark: #8f8474;
+  --alc-smoke-ink: #5a4a3a;
+  --alc-smoke-gold: #6b5a3a;
+  --alc-glow:      rgba(107, 191, 138, 0.45);
+
+  /* Craft — forge ember on cold iron. Ember borrows the amber accent's
+     warmth; iron is the stone shell greyed. */
+  --crf-ember-light: #f6a24d;
+  --crf-ember-spark: #ffd9a0;
+  --crf-ember-spark-soft: #ffe6bf;
+  --crf-ember:      #e8863a;  /* hot metal */
+  --crf-ember-deep: #b5471a;  /* forge core */
+  --crf-iron:       #726c66;  /* cold steel */
+  --crf-iron-dark:  #3a3632;
+  --crf-iron-edge:  #4a453f;
+  --crf-charcoal:   #2b2622;
+  --crf-charcoal-deep: #1c1815;
+  --crf-button-ink: #1a0d05;
+  --crf-chip-ink:   #f0dcc8;
+  --crf-glow:       rgba(232, 134, 58, 0.5);
+}
+
+/* ==================================================================== */
+/*  Shared layout scaffolding                                            */
+/* ==================================================================== */
+
+.alc-screen,
+.crf-screen {
+  padding: 0;
+}
+
+.alc-root,
+.crf-root {
+  max-width: 28rem;
+  margin: 0 auto;
+  padding: 2.75rem 1.1rem 3.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 1.15rem;
+  transition: filter 0.5s ease, opacity 0.5s ease;
+}
+
+/* When the ritual runs, the bench recedes behind the blackout. */
+.alc-root--dim,
+.crf-root--dim {
+  filter: brightness(0.32) saturate(0.7) blur(1px);
+  pointer-events: none;
+}
+
+.alc-exit,
+.crf-exit {
+  position: absolute;
+  top: 0.85rem;
+  left: 0.9rem;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  text-decoration: none;
+  opacity: 0.8;
+  z-index: 2;
+}
+.alc-exit:hover { color: var(--alc-vapor); }
+.crf-exit:hover { color: var(--crf-ember); }
+
+.alc-art,
+.crf-art {
+  border-radius: 6px;
+  margin-top: 0.4rem;
+}
+
+.alc-head,
+.crf-head { text-align: center; }
+
+.alc-title,
+.crf-title {
+  font-family: var(--font-serif);
+  font-size: 1.55rem;
+  line-height: 1.15;
+  color: var(--color-text);
+  margin: 0;
+}
+.alc-title { color: var(--alc-ink); }
+
+.alc-sub,
+.crf-sub {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0.3rem 0 0;
+}
+
+.alc-label,
+.crf-label {
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0 0 0.5rem;
+}
+
+.alc-hint,
+.crf-hint {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.85rem;
+  color: var(--color-text-muted);
+  opacity: 0.7;
+  margin: 0;
+  line-height: 1.4;
+}
+
+/* ==================================================================== */
+/*  ALCHEMY — the vessel centrepiece                                     */
+/* ==================================================================== */
+
+.alc-vessel {
+  position: relative;
+  align-self: center;
+  width: 132px;
+  height: 150px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+}
+
+/* Round-bottomed flask: narrow neck via a top pseudo-element. */
+.alc-vessel__flask {
+  position: relative;
+  width: 108px;
+  height: 108px;
+  border-radius: 50% 50% 48% 48%;
+  background:
+    radial-gradient(ellipse at 38% 30%, rgba(255,255,255,0.14), transparent 55%),
+    rgba(20, 30, 26, 0.55);
+  border: 1.5px solid rgba(107, 191, 138, 0.32);
+  box-shadow:
+    inset 0 -10px 22px rgba(0,0,0,0.5),
+    0 8px 20px rgba(0,0,0,0.45);
+  overflow: hidden;
+  transition: border-color 0.4s ease, box-shadow 0.4s ease;
+}
+.alc-vessel__flask::before {
+  content: "";
+  position: absolute;
+  top: -18px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 26px;
+  height: 22px;
+  background: rgba(20, 30, 26, 0.55);
+  border: 1.5px solid rgba(107, 191, 138, 0.32);
+  border-bottom: none;
+  border-radius: 4px 4px 0 0;
+}
+
+/* Liquid rises with ingredient count (--fill). */
+.alc-vessel__brew {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--fill, 0%);
+  min-height: 0;
+  background:
+    linear-gradient(180deg, var(--alc-glass) 0%, var(--alc-glass-dim) 100%);
+  box-shadow: 0 -6px 16px var(--alc-glow);
+  transition: height 0.55s cubic-bezier(0.4, 0, 0.2, 1);
+}
+.alc-vessel__brew::before {
+  content: "";
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 8px;
+  background: var(--alc-vapor);
+  opacity: 0.55;
+  filter: blur(2px);
+}
+
+.alc-vessel__count {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  font-family: var(--font-serif);
+  font-size: 1.6rem;
+  color: rgba(215, 239, 224, 0.85);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+  z-index: 2;
+}
+
+.alc-vessel__flame {
+  width: 46px;
+  height: 12px;
+  margin-top: 5px;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgba(232,134,58,0.6), transparent 70%);
+  filter: blur(1px);
+}
+
+/* Bubbles — only when live, sped up when ready. */
+.alc-bubble {
+  position: absolute;
+  bottom: 6%;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--alc-vapor);
+  opacity: 0;
+}
+.alc-vessel--live .alc-bubble { animation: alc-rise 2.6s ease-in infinite; }
+.alc-bubble--1 { left: 30%; animation-delay: 0s; }
+.alc-bubble--2 { left: 52%; animation-delay: 0.9s; }
+.alc-bubble--3 { left: 68%; animation-delay: 1.7s; }
+
+@keyframes alc-rise {
+  0%   { transform: translateY(0) scale(0.6); opacity: 0; }
+  25%  { opacity: 0.8; }
+  100% { transform: translateY(-64px) scale(1); opacity: 0; }
+}
+
+/* Charged state — the flask lights gold-green when ready to brew. */
+.alc-vessel--ready .alc-vessel__flask {
+  border-color: var(--alc-vapor);
+  box-shadow:
+    inset 0 -10px 22px rgba(0,0,0,0.4),
+    0 0 26px var(--alc-glow),
+    0 8px 20px rgba(0,0,0,0.45);
+  animation: alc-pulse 2.4s ease-in-out infinite;
+}
+.alc-vessel--ready .alc-bubble { animation-duration: 1.4s; }
+
+@keyframes alc-pulse {
+  0%, 100% { box-shadow: inset 0 -10px 22px rgba(0,0,0,0.4), 0 0 22px var(--alc-glow), 0 8px 20px rgba(0,0,0,0.45); }
+  50%      { box-shadow: inset 0 -10px 22px rgba(0,0,0,0.4), 0 0 38px var(--alc-glow), 0 8px 20px rgba(0,0,0,0.45); }
+}
+
+/* ==================================================================== */
+/*  ALCHEMY — bench, ingredients, chips                                  */
+/* ==================================================================== */
+
+.alc-table__row,
+.crf-bench__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  min-height: 2.2rem;
+  align-items: center;
+}
+
+.alc-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.7rem;
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  color: var(--alc-chip-ink);
+  background: rgba(47, 95, 69, 0.35);
+  border: 1px solid rgba(107, 191, 138, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+  animation: alc-chip-in 0.25s ease;
+}
+.alc-chip:hover { background: rgba(47, 95, 69, 0.55); }
+.alc-chip__x {
+  font-size: 1rem;
+  line-height: 1;
+  color: var(--alc-vapor);
+  opacity: 0.75;
+}
+@keyframes alc-chip-in {
+  from { transform: scale(0.85); opacity: 0; }
+  to   { transform: scale(1); opacity: 1; }
+}
+
+/* Horizontal scrolling ingredient strip. */
+.alc-strip,
+.crf-strip {
+  display: flex;
+  gap: 0.6rem;
+  overflow-x: auto;
+  padding-bottom: 0.4rem;
+  scrollbar-width: thin;
+  -webkit-overflow-scrolling: touch;
+}
+
+.alc-ing,
+.crf-mat {
+  flex: 0 0 auto;
+  width: 8.2rem;
+  min-height: 44px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.12rem;
+  padding: 0.6rem 0.7rem;
+  text-align: left;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.2s ease, box-shadow 0.2s ease, background 0.2s ease;
+}
+.alc-ing:active,
+.crf-mat:active { transform: scale(0.97); }
+
+.alc-ing--on {
+  border-color: var(--alc-vapor);
+  background: rgba(47, 95, 69, 0.28);
+  box-shadow: 0 0 16px var(--alc-glow);
+}
+
+.alc-ing__glyph {
+  font-size: 0.9rem;
+  color: var(--alc-glass);
+  opacity: 0.6;
+}
+.alc-ing--on .alc-ing__glyph { color: var(--alc-vapor); opacity: 1; }
+
+.alc-ing__name,
+.crf-mat__name {
+  font-family: var(--font-serif);
+  font-size: 0.85rem;
+  color: var(--color-text);
+  line-height: 1.2;
+}
+.alc-ing__note,
+.crf-mat__note {
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.03em;
+  color: var(--color-text-muted);
+}
+
+/* Intent textarea. */
+.alc-intent,
+.crf-intent {
+  width: 100%;
+  resize: vertical;
+  padding: 0.7rem 0.8rem;
+  font-family: var(--font-serif);
+  font-size: 0.95rem;
+  line-height: 1.5;
+  color: var(--color-text);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: 8px;
+  outline: none;
+  transition: border-color 0.2s ease, box-shadow 0.2s ease;
+}
+.alc-intent::placeholder,
+.crf-intent::placeholder {
+  color: var(--color-text-muted);
+  font-style: italic;
+  opacity: 0.7;
+}
+.alc-intent:focus {
+  border-color: var(--alc-vapor);
+  box-shadow: 0 0 0 3px var(--alc-glow);
+}
+.crf-intent:focus {
+  border-color: var(--crf-ember);
+  box-shadow: 0 0 0 3px var(--crf-glow);
+}
+
+/* ==================================================================== */
+/*  Ceremonial action buttons                                           */
+/* ==================================================================== */
+
+.alc-brew,
+.crf-do {
+  width: 100%;
+  min-height: 52px;
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  letter-spacing: 0.02em;
+  color: var(--color-text-muted);
+  background: var(--color-surface-2);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  cursor: not-allowed;
+  transition: all 0.25s ease;
+}
+
+.alc-brew--ready {
+  cursor: pointer;
+  color: var(--alc-button-ink);
+  background: linear-gradient(180deg, var(--alc-vapor), var(--alc-glass));
+  border-color: var(--alc-vapor);
+  box-shadow: 0 0 22px var(--alc-glow);
+  animation: alc-btn-breathe 2.6s ease-in-out infinite;
+}
+.crf-do--ready {
+  cursor: pointer;
+  color: var(--crf-button-ink);
+  background: linear-gradient(180deg, var(--crf-ember-light), var(--crf-ember));
+  border-color: var(--crf-ember);
+  box-shadow: 0 0 22px var(--crf-glow);
+  animation: crf-btn-breathe 2.6s ease-in-out infinite;
+}
+.alc-brew--ready:hover,
+.crf-do--ready:hover { filter: brightness(1.08); }
+
+@keyframes alc-btn-breathe {
+  0%, 100% { box-shadow: 0 0 16px var(--alc-glow); }
+  50%      { box-shadow: 0 0 30px var(--alc-glow); }
+}
+@keyframes crf-btn-breathe {
+  0%, 100% { box-shadow: 0 0 16px var(--crf-glow); }
+  50%      { box-shadow: 0 0 30px var(--crf-glow); }
+}
+
+.alc-notes,
+.crf-notes {
+  margin-top: 0.2rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  text-align: center;
+}
+.alc-note,
+.crf-note {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  color: var(--color-text-muted);
+  margin: 0;
+}
+.alc-note--req { color: var(--alc-glass); opacity: 0.85; }
+.crf-note--req { color: var(--crf-ember); opacity: 0.85; }
+
+/* ==================================================================== */
+/*  ALCHEMY — brewing overlay + potion reveal                           */
+/* ==================================================================== */
+
+.alc-ritual,
+.crf-ritual {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 1.4rem;
+  background: radial-gradient(ellipse at 50% 45%, rgba(6,10,8,0.85), rgba(2,3,3,0.97));
+  animation: fade-in 0.5s ease;
+}
+
+@keyframes fade-in { from { opacity: 0; } to { opacity: 1; } }
+
+.alc-ritual__orb {
+  position: relative;
+  width: 120px;
+  height: 120px;
+  border-radius: 50%;
+  background: radial-gradient(circle at 40% 35%, var(--alc-vapor), var(--alc-glass) 45%, var(--alc-glass-dim) 100%);
+  box-shadow: 0 0 60px var(--alc-glow), inset 0 -12px 30px rgba(0,0,0,0.5);
+  animation: alc-orb 1.3s ease-in-out infinite;
+}
+@keyframes alc-orb {
+  0%, 100% { transform: scale(0.94); box-shadow: 0 0 45px var(--alc-glow), inset 0 -12px 30px rgba(0,0,0,0.5); }
+  50%      { transform: scale(1.06); box-shadow: 0 0 80px var(--alc-glow), inset 0 -12px 30px rgba(0,0,0,0.5); }
+}
+.alc-ritual__bubble {
+  position: absolute;
+  bottom: 12%;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.7);
+  animation: alc-rise 1.6s ease-in infinite;
+}
+.alc-ritual__bubble:nth-child(1) { left: 32%; animation-delay: 0s; }
+.alc-ritual__bubble:nth-child(2) { left: 52%; animation-delay: 0.5s; }
+.alc-ritual__bubble:nth-child(3) { left: 66%; animation-delay: 1s; }
+
+.alc-ritual__caption,
+.crf-ritual__caption {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1.15rem;
+  letter-spacing: 0.05em;
+  color: var(--alc-vapor);
+  animation: caption-pulse 1.6s ease-in-out infinite;
+}
+.crf-ritual__caption { color: var(--crf-ember); }
+@keyframes caption-pulse { 0%,100% { opacity: 0.55; } 50% { opacity: 1; } }
+
+/* Reveal overlays. */
+.alc-reveal,
+.crf-reveal {
+  position: fixed;
+  inset: 0;
+  z-index: 45;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: radial-gradient(ellipse at 50% 40%, rgba(8,12,10,0.8), rgba(2,3,3,0.95));
+  animation: fade-in 0.4s ease;
+}
+
+/* Potion card — a parchment recipe slip laid over the dark bench: the
+   world-contains-a-document signature look. */
+.alc-potion {
+  width: 100%;
+  max-width: 21rem;
+  padding: 1.5rem 1.4rem 1.3rem;
+  border-radius: 6px;
+  text-align: center;
+  background:
+    radial-gradient(ellipse at 40% 12%, var(--parch-paper-light) 0%, var(--parch-paper) 60%, var(--parch-paper-dark) 100%);
+  border: 1px solid var(--parch-vignette);
+  box-shadow: 0 24px 50px rgba(0,0,0,0.6), inset 0 0 30px rgba(74,47,28,0.2);
+  color: var(--parch-ink);
+  animation: reveal-up 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.alc-potion--fail {
+  background:
+    radial-gradient(ellipse at 40% 12%, var(--alc-smoke-paper-light) 0%, var(--alc-smoke-paper) 60%, var(--alc-smoke-paper-dark) 100%);
+  filter: saturate(0.6);
+}
+
+@keyframes reveal-up {
+  from { transform: translateY(22px) scale(0.96); opacity: 0; }
+  to   { transform: translateY(0) scale(1); opacity: 1; }
+}
+
+.alc-potion__eyebrow {
+  font-family: var(--font-hand);
+  font-size: 1.25rem;
+  color: var(--parch-red);
+  margin: 0 0 0.35rem;
+}
+.alc-potion--fail .alc-potion__eyebrow { color: var(--alc-smoke-ink); }
+
+.alc-potion__latin {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 1.5rem;
+  color: var(--parch-gold);
+  margin: 0;
+  line-height: 1.1;
+}
+.alc-potion--fail .alc-potion__latin { color: var(--alc-smoke-gold); }
+
+.alc-potion__name {
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  color: var(--parch-ink);
+  margin: 0.2rem 0 0.8rem;
+}
+.alc-potion__desc {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--parch-ink);
+  margin: 0 0 0.9rem;
+  text-align: left;
+}
+.alc-potion__fx {
+  list-style: none;
+  margin: 0 0 1rem;
+  padding: 0.7rem 0.8rem;
+  text-align: left;
+  border-top: 1px solid rgba(74,47,28,0.25);
+  border-bottom: 1px solid rgba(74,47,28,0.25);
+}
+.alc-potion__fx-item {
+  font-family: var(--font-serif);
+  font-size: 0.86rem;
+  color: var(--parch-ink);
+  padding: 0.12rem 0;
+}
+
+.alc-potion__again,
+.crf-item__again {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 0.4rem;
+}
+.alc-potion__again { color: var(--parch-ink-faint); }
+.alc-potion__again:hover { color: var(--parch-red); }
+
+/* ==================================================================== */
+/*  CRAFT — the forge centrepiece                                        */
+/* ==================================================================== */
+
+.crf-forge {
+  position: relative;
+  align-self: center;
+  width: 150px;
+  height: 132px;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+/* Anvil silhouette. */
+.crf-forge__anvil {
+  position: relative;
+  width: 130px;
+  height: 92px;
+  border-radius: 8px 8px 6px 6px;
+  background: linear-gradient(180deg, var(--crf-iron) 0%, var(--crf-iron-dark) 100%);
+  border: 1.5px solid var(--crf-iron-edge);
+  box-shadow: inset 0 -8px 18px rgba(0,0,0,0.5), 0 8px 18px rgba(0,0,0,0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.crf-forge__anvil::after {
+  content: "";
+  position: absolute;
+  bottom: -12px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 58px;
+  height: 12px;
+  background: var(--crf-iron-dark);
+  border-radius: 0 0 4px 4px;
+}
+
+/* Ingot heats with material count (--heat drives glow strength). */
+.crf-forge__ingot {
+  position: relative;
+  width: 74px;
+  height: 26px;
+  border-radius: 4px;
+  background:
+    linear-gradient(180deg,
+      color-mix(in srgb, var(--crf-ember) calc(var(--heat, 0%)), var(--crf-charcoal)) 0%,
+      color-mix(in srgb, var(--crf-ember-deep) calc(var(--heat, 0%)), var(--crf-charcoal-deep)) 100%);
+  box-shadow: 0 0 14px var(--crf-glow);
+  transition: background 0.5s ease;
+}
+
+.crf-forge__count {
+  position: absolute;
+  top: -18px;
+  right: 6px;
+  font-family: var(--font-serif);
+  font-size: 1.15rem;
+  color: rgba(232, 134, 58, 0.9);
+  text-shadow: 0 1px 4px rgba(0,0,0,0.6);
+}
+
+.crf-spark {
+  position: absolute;
+  top: 40%;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--crf-ember-spark);
+  opacity: 0;
+}
+.crf-forge--live .crf-spark { animation: crf-spark 1.8s ease-out infinite; }
+.crf-spark--1 { animation-delay: 0s; }
+.crf-spark--2 { animation-delay: 0.6s; }
+.crf-spark--3 { animation-delay: 1.2s; }
+@keyframes crf-spark {
+  0%   { transform: translate(0, 0) scale(1); opacity: 0; }
+  20%  { opacity: 1; }
+  100% { transform: translate(calc(-18px + 36px * var(--dir, 0.5)), -34px) scale(0.3); opacity: 0; }
+}
+.crf-spark--1 { --dir: 0.1; }
+.crf-spark--2 { --dir: 0.9; }
+.crf-spark--3 { --dir: 0.5; }
+
+.crf-forge--ready .crf-forge__anvil {
+  border-color: var(--crf-ember);
+  box-shadow: inset 0 -8px 18px rgba(0,0,0,0.4), 0 0 26px var(--crf-glow), 0 8px 18px rgba(0,0,0,0.45);
+  animation: crf-pulse 2.4s ease-in-out infinite;
+}
+.crf-forge--ready .crf-spark { animation-duration: 1s; }
+@keyframes crf-pulse {
+  0%, 100% { box-shadow: inset 0 -8px 18px rgba(0,0,0,0.4), 0 0 20px var(--crf-glow), 0 8px 18px rgba(0,0,0,0.45); }
+  50%      { box-shadow: inset 0 -8px 18px rgba(0,0,0,0.4), 0 0 36px var(--crf-glow), 0 8px 18px rgba(0,0,0,0.45); }
+}
+
+/* ==================================================================== */
+/*  CRAFT — tools, chips, materials                                      */
+/* ==================================================================== */
+
+.crf-tools__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.crf-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  border-radius: 6px;
+  border: 1px solid var(--color-border);
+}
+.crf-tool--owned {
+  color: var(--color-text);
+  background: rgba(114, 108, 102, 0.16);
+}
+.crf-tool--owned .crf-tool__mark { color: var(--color-safe); }
+.crf-tool--missing {
+  color: var(--color-text-muted);
+  background: transparent;
+  border-style: dashed;
+  opacity: 0.7;
+}
+.crf-tool--missing .crf-tool__mark { color: var(--color-danger); }
+.crf-tool__mark { font-size: 0.8rem; }
+.crf-tool__hint {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--color-danger);
+  opacity: 0.8;
+}
+
+.crf-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.55rem 0.35rem 0.7rem;
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  color: var(--crf-chip-ink);
+  background: rgba(181, 71, 26, 0.22);
+  border: 1px solid rgba(232, 134, 58, 0.5);
+  border-radius: 999px;
+  cursor: pointer;
+  animation: alc-chip-in 0.25s ease;
+}
+.crf-chip:hover { background: rgba(181, 71, 26, 0.35); }
+.crf-chip__x { font-size: 1rem; line-height: 1; color: var(--crf-ember); opacity: 0.8; }
+
+.crf-mat--on {
+  border-color: var(--crf-ember);
+  background: rgba(181, 71, 26, 0.18);
+  box-shadow: 0 0 16px var(--crf-glow);
+}
+.crf-mat__glyph { font-size: 0.8rem; color: var(--crf-iron); }
+.crf-mat--on .crf-mat__glyph { color: var(--crf-ember); }
+
+/* ==================================================================== */
+/*  CRAFT — forge overlay + item reveal                                 */
+/* ==================================================================== */
+
+.crf-ritual {
+  background: radial-gradient(ellipse at 50% 55%, rgba(30,10,4,0.85), rgba(3,2,2,0.97));
+}
+.crf-ritual__anvil {
+  position: relative;
+  width: 150px;
+  height: 60px;
+  border-radius: 8px;
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+  box-shadow: 0 10px 30px rgba(0,0,0,0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.crf-ritual__bar {
+  width: 90px;
+  height: 20px;
+  border-radius: 4px;
+  background: linear-gradient(180deg, var(--crf-ember-spark), var(--crf-ember) 50%, var(--crf-ember-deep));
+  box-shadow: 0 0 40px var(--crf-glow);
+  animation: crf-heat 0.9s ease-in-out infinite;
+}
+@keyframes crf-heat {
+  0%, 100% { filter: brightness(0.85); box-shadow: 0 0 26px var(--crf-glow); }
+  50%      { filter: brightness(1.2); box-shadow: 0 0 55px var(--crf-glow); }
+}
+.crf-ritual__spark {
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--crf-ember-spark-soft);
+  animation: crf-spark 0.9s ease-out infinite;
+}
+.crf-ritual__spark:nth-child(2) { --dir: 0.1; animation-delay: 0s; }
+.crf-ritual__spark:nth-child(3) { --dir: 0.9; animation-delay: 0.3s; }
+.crf-ritual__spark:nth-child(4) { --dir: 0.5; animation-delay: 0.6s; }
+
+/* Item card — dark etched spec plate (crafting reads precise, not
+   mystical), a deliberate contrast to alchemy's parchment recipe slip. */
+.crf-item {
+  width: 100%;
+  max-width: 21rem;
+  padding: 1.5rem 1.4rem 1.3rem;
+  border-radius: 8px;
+  text-align: center;
+  background: linear-gradient(180deg, var(--color-surface-2), var(--color-surface));
+  border: 1px solid var(--crf-ember);
+  box-shadow: 0 24px 50px rgba(0,0,0,0.6), 0 0 26px var(--crf-glow);
+  color: var(--color-text);
+  animation: reveal-up 0.5s cubic-bezier(0.2, 0.7, 0.3, 1);
+}
+.crf-item--fail {
+  border-color: var(--color-border);
+  box-shadow: 0 24px 50px rgba(0,0,0,0.6);
+}
+
+.crf-item__eyebrow {
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--crf-ember);
+  margin: 0 0 0.5rem;
+}
+.crf-item--fail .crf-item__eyebrow { color: var(--color-danger); }
+
+.crf-item__name {
+  font-family: var(--font-serif);
+  font-size: 1.35rem;
+  color: var(--color-text);
+  margin: 0;
+  line-height: 1.15;
+}
+.crf-item__kind {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+  margin: 0.25rem 0 0.8rem;
+}
+.crf-item__desc {
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  line-height: 1.55;
+  color: var(--color-text);
+  text-align: left;
+  margin: 0 0 1rem;
+}
+
+.crf-item__stats {
+  margin: 0 0 1rem;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1px;
+  background: var(--color-border);
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.crf-item__stat {
+  background: var(--color-surface);
+  padding: 0.5rem 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  text-align: left;
+}
+.crf-item__stat-k {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+.crf-item__stat-v {
+  font-family: var(--font-serif);
+  font-size: 0.98rem;
+  color: var(--crf-ember);
+}
+.crf-item--fail .crf-item__stat-v { color: var(--color-text-muted); }
+
+.crf-item__again { color: var(--color-text-muted); }
+.crf-item__again:hover { color: var(--crf-ember); }
+
+/* ==================================================================== */
+/*  Reduced motion — kill the long/looping animations, keep reveals      */
+/* ==================================================================== */
+
+@media (prefers-reduced-motion: reduce) {
+  .alc-bubble,
+  .crf-spark,
+  .alc-ritual__bubble,
+  .crf-ritual__spark,
+  .alc-vessel--ready .alc-vessel__flask,
+  .crf-forge--ready .crf-forge__anvil,
+  .alc-brew--ready,
+  .crf-do--ready,
+  .alc-ritual__orb,
+  .crf-ritual__bar,
+  .alc-ritual__caption,
+  .crf-ritual__caption {
+    animation: none !important;
+  }
+  .alc-potion,
+  .crf-item { animation-duration: 0.001s; }
+}

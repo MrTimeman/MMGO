@@ -1,0 +1,133 @@
+/* MMGO design-pass styles: shared UI kit (see docs/UI_DESIGN_BRIEF.md) */
+
+/* ------------------------------------------------------------------
+   .game-screen — full-viewport scrollable shell for any game screen.
+   Covers the marketing header from Layouts.app-era templates; use it
+   INSTEAD of <Layouts.app> as the outermost element of a LiveView.
+   ------------------------------------------------------------------ */
+
+.game-screen {
+  position: fixed;
+  inset: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  background-color: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-serif);
+}
+
+/* ------------------------------------------------------------------
+   .art-slot — placeholder frame for future hand-drawn artwork.
+   Displays at half the export size (dimensions are @2x pixels).
+   Two variants: --dark (world screens) and --parchment (documents).
+   ------------------------------------------------------------------ */
+
+.art-slot {
+  margin: 0;
+  width: 100%;
+}
+
+.art-slot__frame {
+  position: relative;
+  aspect-ratio: var(--art-ratio, 3 / 2);
+  border-radius: 4px;
+  overflow: hidden;
+}
+
+.art-slot--dark .art-slot__frame {
+  background:
+    radial-gradient(ellipse at 50% 35%, #241d15 0%, #171310 60%, #100d0b 100%);
+  border: 1px solid var(--color-border);
+  box-shadow: inset 0 0 40px rgba(0, 0, 0, 0.55);
+}
+
+.art-slot--parchment .art-slot__frame {
+  background:
+    radial-gradient(ellipse at 50% 35%, var(--parch-paper-light) 0%, var(--parch-paper) 65%, var(--parch-paper-dark) 100%);
+  border: 1px solid var(--parch-vignette);
+  box-shadow: inset 0 0 30px rgba(74, 47, 28, 0.25);
+}
+
+.art-slot__inner {
+  position: absolute;
+  inset: 7px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.15rem;
+  border-radius: 2px;
+  text-align: center;
+  padding: 0.5rem;
+  overflow: hidden;
+}
+
+.art-slot--dark .art-slot__inner {
+  border: 1px dashed rgba(245, 158, 11, 0.28);
+}
+
+.art-slot--parchment .art-slot__inner {
+  border: 1px dashed rgba(169, 121, 31, 0.45);
+}
+
+.art-slot__sigil {
+  font-size: 1.15rem;
+  line-height: 1;
+  opacity: 0.75;
+}
+
+.art-slot--dark .art-slot__sigil { color: var(--color-accent); }
+.art-slot--parchment .art-slot__sigil { color: var(--parch-gold); }
+
+.art-slot__label {
+  font-family: var(--font-serif);
+  font-style: italic;
+  font-size: 0.85rem;
+  line-height: 1.25;
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow-wrap: break-word;
+}
+
+/* Small frames (portraits in member cards etc.) get a tighter label */
+.art-slot--portrait .art-slot__label {
+  font-size: 0.7rem;
+  -webkit-line-clamp: 3;
+}
+
+.art-slot--dark .art-slot__label { color: var(--color-text-muted); }
+.art-slot--parchment .art-slot__label { color: var(--parch-ink-faint); }
+
+.art-slot__dims {
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  opacity: 0.55;
+}
+
+.art-slot--dark .art-slot__dims { color: var(--color-text-muted); }
+.art-slot--parchment .art-slot__dims { color: var(--parch-ink-faint); }
+
+.art-slot__corner {
+  position: absolute;
+  width: 14px;
+  height: 14px;
+  z-index: 1;
+}
+
+.art-slot__corner--tl { top: 2px; left: 2px; border-top: 2px solid; border-left: 2px solid; border-top-left-radius: 3px; }
+.art-slot__corner--tr { top: 2px; right: 2px; border-top: 2px solid; border-right: 2px solid; border-top-right-radius: 3px; }
+.art-slot__corner--bl { bottom: 2px; left: 2px; border-bottom: 2px solid; border-left: 2px solid; border-bottom-left-radius: 3px; }
+.art-slot__corner--br { bottom: 2px; right: 2px; border-bottom: 2px solid; border-right: 2px solid; border-bottom-right-radius: 3px; }
+
+.art-slot--dark .art-slot__corner { color: rgba(245, 158, 11, 0.45); }
+.art-slot--parchment .art-slot__corner { color: var(--parch-gold); }
+
+/* Compact variant: icons sit inline in item grids */
+.art-slot--icon .art-slot__label,
+.art-slot--icon .art-slot__dims { display: none; }
+.art-slot--icon .art-slot__inner { inset: 4px; }
+.art-slot--icon .art-slot__corner { width: 8px; height: 8px; }

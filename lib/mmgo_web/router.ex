@@ -32,14 +32,43 @@ defmodule MMGOWeb.Router do
     live "/map", MapLive
     live "/spellbook", SpellbookLive
     live "/pvp", DuelLive
+    live "/screens", ScreensIndexLive
 
     live "/academy/bulletin-board", BulletinBoardLive
     live "/academy/study-desk", StudyDeskLive
     live "/academy/exam/:term_id", ExamLive
     live "/academy/club-events/:event_id", ClubEventLive
 
-    live "/orgs", OrganizationsLive
-    live "/orgs/:id", OrganizationsLive
+    live "/orgs", OrganizationsLive, :index
+    live "/orgs/new", OrganizationsLive, :new
+    live "/orgs/:id", OrganizationsLive, :show
+    live "/orgs/:id/:tab", OrganizationsLive, :show
+
+    # --- Design-pass screens (demo data, backend wiring pending) ---
+    live "/event", ActionHubLive
+    live "/travel", TravelLive
+    live "/party", PartyLive
+    live "/combat", CombatLive
+    live "/defeat", DefeatLive
+    live "/base", BaseLive
+    live "/trade", TradeLive
+    live "/inventory", InventoryLive
+    live "/alchemy", AlchemyLive
+    live "/craft", CraftLive
+    live "/finance", FinanceLive
+    live "/dungeon", DungeonLive, :depths
+    live "/dungeon/level/:level", DungeonLive, :level
+
+    live "/academy", AcademyLive, :overview
+    live "/academy/timetable", AcademyLive, :timetable
+    live "/academy/grades", AcademyLive, :grades
+    live "/academy/library", AcademyLive, :library
+    live "/academy/courses", AcademyLive, :courses
+    live "/academy/progress", AcademyLive, :progress
+    live "/academy/clubs", ClubsLive, :index
+    live "/academy/clubs/:id", ClubsLive, :show
+    live "/academy/clubs/:id/manage", ClubsLive, :manage
+    live "/academy/thesis/:id", ThesisDefenseLive
   end
 
   scope "/", MMGOWeb do
@@ -79,6 +108,7 @@ defmodule MMGOWeb.Router do
 
       live_dashboard "/dashboard", metrics: MMGOWeb.Telemetry
       live "/hooks", HooksDemoLive
+      live "/screens", ScreensIndexLive
     end
 
     scope "/", MMGOWeb do

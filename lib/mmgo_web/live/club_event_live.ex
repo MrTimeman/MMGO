@@ -22,7 +22,7 @@ defmodule MMGOWeb.ClubEventLive do
 
           {:ok,
            socket
-           |> assign(:page_title, "Club Event — #{event.kind}")
+           |> assign(:page_title, "Клубное событие — #{event_kind_label(event.kind)}")
            |> assign(:event, event)
            |> assign(:character, character)
            |> assign(:attended, attended)}
@@ -56,16 +56,16 @@ defmodule MMGOWeb.ClubEventLive do
   def render(assigns) do
     ~H"""
     <div class="club-event">
-      <a href={~p"/map"} class="map-back-link">← World map</a>
-      <h1>Club Event</h1>
+      <a href={~p"/academy/bulletin-board"} class="map-back-link">← К доске</a>
+      <h1>Клубное событие</h1>
 
       <section class="event-details">
-        <p>Type: <strong>{@event.kind}</strong></p>
-        <p>Club: <strong>{@event.club && @event.club.name}</strong></p>
+        <p>Вид: <strong>{event_kind_label(@event.kind)}</strong></p>
+        <p>Клуб: <strong>{@event.club && @event.club.name}</strong></p>
         <p>
-          Scheduled: <strong>{Calendar.strftime(@event.scheduled_at, "%Y-%m-%d %H:%M UTC")}</strong>
+          Назначено: <strong>{Calendar.strftime(@event.scheduled_at, "%d.%m %H:%M UTC")}</strong>
         </p>
-        <p>Status: <strong>{@event.status}</strong></p>
+        <p>Состояние: <strong>{status_label(@event.status)}</strong></p>
       </section>
 
       <section class="event-description">
@@ -74,18 +74,18 @@ defmodule MMGOWeb.ClubEventLive do
 
       <section class="event-action">
         <%= if @attended do %>
-          <p>You have attended this event. <strong>+XP awarded.</strong></p>
+          <p>Вы отмечены в протоколе клуба. <strong>Знания и престиж начислены.</strong></p>
         <% else %>
           <%= if @event.status in [:scheduled, :active] do %>
-            <button phx-click="attend">Attend Event</button>
+            <button phx-click="attend">Присутствовать</button>
           <% else %>
-            <p>This event has ended.</p>
+            <p>Событие уже завершено, протокол закрыт.</p>
           <% end %>
         <% end %>
       </section>
 
       <div class="event-nav">
-        <.link navigate={~p"/academy/bulletin-board"}>Back to Bulletin Board</.link>
+        <.link navigate={~p"/academy/bulletin-board"}>Вернуться к объявлениям</.link>
       </div>
     </div>
     """
@@ -104,16 +104,32 @@ defmodule MMGOWeb.ClubEventLive do
   defp load_character(_session), do: nil
 
   defp event_description(:general_meeting),
-    do: "A lore circle gathering. Share knowledge and build friendships."
+    do:
+      "Круг преданий: студенты читают заметки, спорят о хрониках и заводят связи для будущих партий."
 
   defp event_description(:duel_tournament),
-    do: "Friendly PvP — no wager, no loot transfer. Test your skills on the ladder."
+    do:
+      "Дружеский бой без ставок и потери добычи. Победы идут в лестницу клуба, поражения остаются учебными."
 
   defp event_description(:research_session),
-    do: "Collaborative notes session. Contributions count toward future Academia XP."
+    do:
+      "Общие заметки. Вклад сохранится и позже вернётся долей опыта, когда исследование дойдёт до Академии наук."
 
   defp event_description(:expedition_briefing),
-    do: "Study a simulated dungeon map. Good plans boost your next real run."
+    do:
+      "Разбор учебной карты подземелья. Хороший план усилит следующий настоящий поход участников."
 
   defp event_description(_), do: ""
+
+  defp event_kind_label(:general_meeting), do: "общий круг"
+  defp event_kind_label(:duel_tournament), do: "дуэльный турнир"
+  defp event_kind_label(:research_session), do: "исследовательская встреча"
+  defp event_kind_label(:expedition_briefing), do: "экспедиционный разбор"
+  defp event_kind_label(other), do: other || "событие"
+
+  defp status_label(:scheduled), do: "назначено"
+  defp status_label(:active), do: "идёт"
+  defp status_label(:completed), do: "завершено"
+  defp status_label(:cancelled), do: "отменено"
+  defp status_label(other), do: other || "—"
 end

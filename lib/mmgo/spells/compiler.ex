@@ -3,7 +3,7 @@ defmodule MMGO.Spells.Compiler do
   alias MMGO.AI.Prompts.SpellCompilePrompt
   alias MMGO.Accounts.Character
   alias MMGO.Spells
-  alias MMGO.Spells.{Incantation, Spell}
+  alias MMGO.Spells.{Incantation, Spell, SpellFailure}
 
   def compile_and_store(%Character{} = character, attrs, opts \\ []) when is_map(attrs) do
     with {:ok, request} <- normalize_request(attrs) do
@@ -31,12 +31,32 @@ defmodule MMGO.Spells.Compiler do
         })
 
       with {:ok, %{compiled_spell: compiled_spell, ai_request: ai_request}} <-
-             AI.compile_spell(prompt_payload, ai_opts),
-           spell_attrs <- merge_spell_attrs(request, compiled_spell),
-           {:ok, spell} <- Spells.create_spell(character, spell_attrs),
-           {:ok, updated_request} <- AI.update_request(ai_request, %{spell_id: spell.id}) do
-        {:ok, %{spell: spell, ai_request: updated_request, compiled_spell: compiled_spell}}
+             AI.compile_spell(prompt_payload, ai_opts) do
+        case compile_outcome(compiled_spell) do
+          :created ->
+            with spell_attrs <- merge_spell_attrs(request, compiled_spell),
+                 {:ok, spell} <- Spells.create_spell(character, spell_attrs),
+                 {:ok, updated_request} <- AI.update_request(ai_request, %{spell_id: spell.id}) do
+              {:ok, %{spell: spell, ai_request: updated_request, compiled_spell: compiled_spell}}
+            end
+
+          :failed ->
+            {:error, spell_failure(request, compiled_spell, ai_request)}
+
+          :invalid ->
+            {:error, compiler_request_changeset(:outcome, "is invalid")}
+        end
       end
+    end
+  end
+
+  defp compile_outcome(compiled_spell) do
+    case Map.get(compiled_spell, "outcome") || Map.get(compiled_spell, :outcome) || "created" do
+      "created" -> :created
+      :created -> :created
+      "failed" -> :failed
+      :failed -> :failed
+      _other -> :invalid
     end
   end
 
@@ -76,6 +96,23 @@ defmodule MMGO.Spells.Compiler do
         Map.get(compiled_spell, "delivery_form") || Map.get(request, "delivery_form") || "sphere",
       "source_spell_id" => Map.get(request, "base_spell_id")
     })
+  end
+
+  defp spell_failure(request, compiled_spell, ai_request) do
+    %SpellFailure{
+      reason:
+        Map.get(compiled_spell, "rejection_reason") ||
+          Map.get(compiled_spell, :rejection_reason) ||
+          "The incantation did not cohere into a stable spell.",
+      formula: Map.get(request, "formula"),
+      school: Map.get(request, "school"),
+      ai_request: ai_request,
+      instability_markers:
+        Map.get(compiled_spell, "instability_markers") ||
+          Map.get(compiled_spell, :instability_markers) ||
+          [],
+      details: Map.get(compiled_spell, "details") || Map.get(compiled_spell, :details) || %{}
+    }
   end
 
   defp normalize_formula(request) do

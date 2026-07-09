@@ -12,6 +12,7 @@ defmodule MMGO.AI.Providers.Mock do
 
     {:ok,
      %{
+       "outcome" => "created",
        "name" => name,
        "formula" => formula,
        "school" => school,

@@ -4,7 +4,7 @@ defmodule MMGO.Spells.CompilerTest do
   alias MMGO.AI.Request
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Repo
-  alias MMGO.Spells.Compiler
+  alias MMGO.Spells.{Compiler, Spell, SpellFailure}
   alias MMGO.Worlds
 
   defmodule InvalidSpellProvider do
@@ -38,6 +38,23 @@ defmodule MMGO.Spells.CompilerTest do
     def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
   end
 
+  defmodule FailedSpellProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(_prompt_payload, _schema, _opts) do
+      {:ok,
+       %{
+         "outcome" => "failed",
+         "rejection_reason" =>
+           "The words pull the fire school toward healing and collapse before a stable circle forms.",
+         "instability_markers" => ["school_mismatch", "unstable_lineage"],
+         "details" => %{"severity" => "ordinary_failure"}
+       }}
+    end
+
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
+  end
+
   setup do
     {:ok, realm} =
       Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
@@ -63,6 +80,31 @@ defmodule MMGO.Spells.CompilerTest do
     assert ai_request.status == :succeeded
     assert ai_request.spell_id == spell.id
     assert Repo.aggregate(Request, :count, :id) == 1
+  end
+
+  test "compile_and_store/3 can fail spell creation without storing a spell", %{
+    character: character
+  } do
+    assert {:error, %SpellFailure{} = failure} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Sanatio Incendium",
+                 formula: "Sanatio Incendium",
+                 school: "fire"
+               },
+               provider: FailedSpellProvider,
+               model: "failed-test-model"
+             )
+
+    assert failure.formula == "Sanatio Incendium"
+    assert failure.school == "fire"
+    assert failure.reason =~ "collapse"
+    assert failure.instability_markers == ["school_mismatch", "unstable_lineage"]
+    assert failure.ai_request.status == :succeeded
+    assert failure.ai_request.spell_id == nil
+    assert Repo.aggregate(Request, :count, :id) == 1
+    assert Repo.aggregate(Spell, :count, :id) == 0
   end
 
   test "compile_and_store/3 returns a changeset error for invalid compiled output", %{

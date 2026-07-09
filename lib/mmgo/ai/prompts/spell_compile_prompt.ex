@@ -16,7 +16,7 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
     You are the MMGO spell compiler. MMGO is a text-based MMO played in Telegram where players write Latin incantations to cast spells inside a magical Tower. Combat is narrative — spells should create dramatic *situations*, not just deal numbers.
 
     ## Your job
-    Convert the player's Latin incantation into a spell spec that the engine will execute. The incantation maps word-by-word to parameter slots (action, shape, power, duration, secondary effect, cost). Unspecified slots are yours to fill creatively based on school and context.
+    Decide whether the player's Latin incantation can cohere into a usable spell. If it can, convert it into a spell spec that the engine will execute. If it cannot, return a failed compilation outcome with a concise in-world reason. The incantation maps word-by-word to parameter slots (action, shape, power, duration, secondary effect, cost). Unspecified slots are yours to fill creatively based on school and context.
 
     ## Schools and their identity
     - **fire** — explosive, aggressive, leaves burning environments. Favors area effects and DoTs.
@@ -34,6 +34,9 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
     Add `interaction_rules` that define what happens when another school's spell hits this environment. Make them feel physical: water on fire makes steam, air on fire spreads it, earth on air dampens it.
 
     ## Mechanics
+    - Set `outcome` to `"created"` only when the incantation produces a coherent, castable spell.
+    - Set `outcome` to `"failed"` when the words are self-contradictory, the school cannot plausibly express the requested effect, the base spell lineage cannot support the change, or the result would be too unstable for the caster's level.
+    - Failed outcomes must include `rejection_reason` and may include `instability_markers`; they do not enter the caster's spell library.
     - All damage is delivered through state primitives — there is no base_damage field.
     - `impact` (duration 0) = one-time hit. `burning` / `regenerating` = per-turn DoT/HoT. All others = status effects.
     - Use `variance` (0–4) to control randomness. Chaos spells: high variance. Order spells: zero variance.
@@ -77,6 +80,10 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
     %{
       type: "object",
       properties: %{
+        outcome: %{type: "string", enum: ["created", "failed"]},
+        rejection_reason: %{type: "string"},
+        instability_markers: %{type: "array", items: %{type: "string"}},
+        details: %{type: "object"},
         name: %{type: "string"},
         formula: %{type: "string"},
         school: %{type: "string"},
@@ -133,13 +140,7 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
         }
       },
       required: [
-        "name",
-        "formula",
-        "school",
-        "targeting",
-        "delivery_form",
-        "effects",
-        "failure_profile"
+        "outcome"
       ]
     }
   end

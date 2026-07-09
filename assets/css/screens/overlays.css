@@ -1,0 +1,1094 @@
+/* MMGO design-pass styles: personal map overlays (see docs/UI_DESIGN_BRIEF.md).
+   Classes are intentionally scoped to .ovl-* because these widgets live only
+   above MapLive's world canvas. */
+
+@property --ovl-day-progress {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+.ovl-chip {
+  position: relative;
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 0%, color-mix(in srgb, var(--color-accent) 18%, transparent), transparent 56%),
+    color-mix(in srgb, var(--color-bg) 78%, transparent);
+  color: var(--color-text);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  backdrop-filter: blur(12px);
+  transition: transform 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.ovl-chip:hover,
+.ovl-chip:focus-visible {
+  border-color: color-mix(in srgb, var(--color-accent) 72%, var(--color-border));
+  transform: translateY(-1px);
+  outline: none;
+}
+
+.ovl-clock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  padding: 0.35rem 0.75rem 0.35rem 0.4rem;
+}
+
+.ovl-clock__dial {
+  position: relative;
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 74%, transparent);
+  box-shadow: inset 0 0 0 1px var(--color-accent-dim);
+}
+
+.ovl-clock__arc {
+  position: absolute;
+  inset: -2px;
+  border-radius: inherit;
+  background: conic-gradient(var(--color-accent) var(--ovl-day-progress, 0deg), transparent 0);
+  filter: drop-shadow(0 0 7px color-mix(in srgb, var(--color-accent) 62%, transparent));
+  mask: radial-gradient(farthest-side, transparent calc(100% - 4px), black calc(100% - 3px));
+  animation: ovl-day-arc 240s linear infinite;
+}
+
+.ovl-clock__glyph {
+  font-size: 0.98rem;
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.ovl-clock__text {
+  display: grid;
+  line-height: 1.05;
+  text-align: left;
+}
+
+.ovl-clock__date {
+  font-family: var(--font-serif);
+  font-size: 0.86rem;
+  font-weight: 700;
+  color: var(--color-text);
+}
+
+.ovl-clock__year {
+  margin-top: 0.1rem;
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-text-muted);
+}
+
+.ovl-bell {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  flex: 0 0 auto;
+}
+
+.ovl-bell__icon {
+  width: 23px;
+  height: 23px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.ovl-bell__count {
+  position: absolute;
+  top: -5px;
+  right: -3px;
+  min-width: 20px;
+  height: 20px;
+  padding: 0 0.28rem;
+  border: 1px solid color-mix(in srgb, var(--color-accent) 65%, var(--color-bg));
+  border-radius: 999px;
+  background: var(--color-accent-dim);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 0 15px color-mix(in srgb, var(--color-accent) 70%, transparent);
+  animation: ovl-ember 2.8s ease-in-out infinite;
+}
+
+.ovl-portrait {
+  position: absolute;
+  right: max(0.75rem, env(safe-area-inset-right));
+  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  z-index: 22;
+  display: grid;
+  width: 72px;
+  height: 72px;
+  place-items: center;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-text);
+  filter: drop-shadow(0 18px 22px rgba(0, 0, 0, 0.44));
+  transition: transform 180ms ease;
+}
+
+.ovl-portrait:hover,
+.ovl-portrait:focus-visible {
+  transform: translateY(-2px);
+  outline: none;
+}
+
+.ovl-portrait__ring,
+.ovl-acct__portrait::before {
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: conic-gradient(var(--color-accent) var(--ovl-xp), color-mix(in srgb, var(--color-border) 70%, transparent) 0);
+  box-shadow: 0 0 18px color-mix(in srgb, var(--color-accent) 28%, transparent);
+}
+
+.ovl-portrait__art {
+  position: relative;
+  display: grid;
+  width: 62px;
+  height: 62px;
+  place-items: center;
+  overflow: hidden;
+  border: 2px solid var(--color-bg);
+  border-radius: inherit;
+  background: var(--color-surface);
+}
+
+.ovl-portrait__slot,
+.ovl-acct__slot {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+}
+
+.ovl-portrait__slot .art-slot__frame,
+.ovl-acct__slot .art-slot__frame {
+  min-height: 100%;
+  border-radius: inherit;
+}
+
+.ovl-portrait__slot .art-slot__inner,
+.ovl-acct__slot .art-slot__inner {
+  padding: 0.2rem;
+}
+
+.ovl-portrait__slot .art-slot__label,
+.ovl-portrait__slot .art-slot__dims,
+.ovl-acct__slot .art-slot__label,
+.ovl-acct__slot .art-slot__dims {
+  display: none;
+}
+
+.ovl-portrait__slot .art-slot__sigil,
+.ovl-acct__slot .art-slot__sigil {
+  font-size: 1.1rem;
+}
+
+.ovl-portrait__level,
+.ovl-acct__lvl {
+  position: absolute;
+  right: -3px;
+  bottom: -2px;
+  display: grid;
+  min-width: 23px;
+  height: 23px;
+  place-items: center;
+  border: 1px solid var(--color-accent);
+  border-radius: 999px;
+  background: var(--color-bg);
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.ovl-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: auto;
+}
+
+.ovl-scrim {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background:
+    radial-gradient(circle at 50% 100%, transparent 0 28%, rgba(0, 0, 0, 0.36) 70%),
+    rgba(0, 0, 0, 0.36);
+  animation: ovl-fade 180ms ease both;
+}
+
+.ovl-sheet {
+  position: relative;
+  width: min(375px, calc(100vw - 1rem));
+  max-height: min(86vh, 690px);
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  border: 1px solid color-mix(in srgb, var(--color-border) 84%, transparent);
+  border-radius: 18px 18px 0 0;
+  background:
+    radial-gradient(ellipse at 50% -8%, color-mix(in srgb, var(--color-accent) 12%, transparent), transparent 52%),
+    linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 82%, var(--color-bg)), var(--color-bg) 76%);
+  color: var(--color-text);
+  box-shadow: 0 -26px 52px rgba(0, 0, 0, 0.48);
+  padding: 0.72rem 0.85rem max(1rem, env(safe-area-inset-bottom));
+  animation: ovl-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
+}
+
+.ovl-sheet__grip {
+  display: block;
+  width: 42px;
+  height: 4px;
+  margin: 0 auto 0.7rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-text-muted) 42%, transparent);
+}
+
+.ovl-sheet__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.85rem;
+}
+
+.ovl-sheet__eyebrow {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.ovl-sheet__title {
+  margin: 0.12rem 0 0;
+  font-family: var(--font-serif);
+  font-size: 1.18rem;
+  font-weight: 700;
+  line-height: 1.15;
+  color: var(--color-text);
+}
+
+.ovl-sheet__close {
+  display: grid;
+  width: 44px;
+  height: 44px;
+  place-items: center;
+  flex: 0 0 auto;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-surface) 78%, transparent);
+  color: var(--color-text-muted);
+  transition: color 160ms ease, border-color 160ms ease;
+}
+
+.ovl-sheet__close:hover,
+.ovl-sheet__close:focus-visible {
+  border-color: var(--color-accent-dim);
+  color: var(--color-accent);
+  outline: none;
+}
+
+.ovl-cal__seasons {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 0.35rem;
+  margin-bottom: 0.45rem;
+}
+
+.ovl-cal__season {
+  display: grid;
+  gap: 0.12rem;
+  min-height: 42px;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 72%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+}
+
+.ovl-cal__season.is-now {
+  border-color: var(--color-accent-dim);
+  color: var(--color-text);
+  background: color-mix(in srgb, var(--color-accent-dim) 36%, var(--color-surface));
+}
+
+.ovl-cal__season-glyph {
+  font-family: var(--font-serif);
+  color: var(--color-accent);
+  line-height: 1;
+}
+
+.ovl-cal__position {
+  margin: 0.2rem 0 0.65rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.ovl-cal__grid {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 0.28rem;
+  margin: 0 0 0.85rem;
+}
+
+.ovl-cal__day {
+  position: relative;
+  display: grid;
+  aspect-ratio: 1;
+  min-width: 0;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--color-border) 60%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--color-bg) 48%, transparent);
+  color: var(--color-text-muted);
+}
+
+.ovl-cal__day.is-today {
+  border-color: var(--color-accent);
+  color: var(--color-text);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--color-accent) 24%, transparent), 0 0 16px color-mix(in srgb, var(--color-accent) 20%, transparent);
+}
+
+.ovl-cal__day.has-event {
+  background: color-mix(in srgb, var(--color-surface) 72%, transparent);
+}
+
+.ovl-cal__num {
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  font-weight: 700;
+}
+
+.ovl-cal__dot {
+  position: absolute;
+  right: 5px;
+  bottom: 5px;
+  width: 5px;
+  height: 5px;
+  border-radius: 999px;
+  background: var(--color-accent);
+}
+
+.ovl-cal__pins {
+  border: 1px solid color-mix(in srgb, var(--color-border) 68%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 56%, transparent);
+  padding: 0.65rem;
+}
+
+.ovl-cal__pins ul {
+  display: grid;
+  gap: 0.45rem;
+  margin: 0.5rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ovl-cal__pin {
+  display: flex;
+  gap: 0.55rem;
+  align-items: center;
+}
+
+.ovl-cal__pin-glyph {
+  display: grid;
+  width: 27px;
+  height: 27px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-accent-dim) 58%, var(--color-bg));
+  color: var(--color-accent);
+}
+
+.ovl-cal__pin-body {
+  display: grid;
+  min-width: 0;
+}
+
+.ovl-cal__pin-label {
+  overflow: hidden;
+  color: var(--color-text);
+  font-size: 0.86rem;
+  font-weight: 700;
+  line-height: 1.25;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ovl-cal__pin-when {
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+}
+
+.ovl-cal__note {
+  display: flex;
+  gap: 0.45rem;
+  align-items: center;
+  margin: 0.75rem 0 0;
+  border: 1px solid var(--color-accent-dim);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-accent-dim) 22%, transparent);
+  padding: 0.55rem 0.65rem;
+  color: var(--color-text);
+  font-size: 0.78rem;
+  line-height: 1.35;
+}
+
+.ovl-cal__note-glyph {
+  color: var(--color-accent);
+}
+
+.ovl-notif__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+  margin-bottom: 0.65rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.ovl-notif__readall {
+  min-height: 34px;
+  border: 0;
+  background: transparent;
+  color: var(--color-accent);
+  font: inherit;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.ovl-notif__list {
+  display: grid;
+  gap: 0.65rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.ovl-note {
+  position: relative;
+  display: flex;
+  gap: 0.65rem;
+  align-items: flex-start;
+  border: 1px solid color-mix(in srgb, var(--parch-ink-faint) 60%, transparent);
+  border-radius: 8px;
+  background:
+    radial-gradient(circle at 12% 0%, color-mix(in srgb, var(--parch-paper-light) 72%, transparent), transparent 44%),
+    linear-gradient(135deg, var(--parch-paper-light), var(--parch-paper) 62%, var(--parch-paper-dark));
+  color: var(--parch-ink);
+  box-shadow: 0 9px 18px rgba(0, 0, 0, 0.2);
+  padding: 0.72rem 0.68rem;
+  transform: rotate(-0.3deg);
+  transition: transform 160ms ease, box-shadow 160ms ease;
+}
+
+.ovl-note:nth-child(even) {
+  transform: rotate(0.25deg);
+}
+
+.ovl-note:hover {
+  transform: translateY(-1px) rotate(0deg);
+  box-shadow: 0 13px 22px rgba(0, 0, 0, 0.24);
+}
+
+.ovl-note.is-unread {
+  border-color: var(--parch-gold);
+}
+
+.ovl-note.is-accepted {
+  animation: ovl-seal-press 260ms ease both;
+}
+
+.ovl-note__seal {
+  display: grid;
+  width: 36px;
+  height: 36px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--parch-red) 22%, var(--parch-paper-light)), var(--parch-red));
+  color: var(--parch-paper-light);
+  box-shadow: inset 0 -3px 4px rgba(0, 0, 0, 0.22), 0 3px 8px rgba(0, 0, 0, 0.18);
+  font-size: 0.95rem;
+}
+
+.ovl-note__body {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
+.ovl-note__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.ovl-note__title {
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.ovl-note__unread-dot {
+  width: 8px;
+  height: 8px;
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--parch-gold-bright);
+  box-shadow: 0 0 10px var(--parch-gold-bright);
+}
+
+.ovl-note__from {
+  margin: 0.16rem 0 0;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.ovl-note__text {
+  margin: 0.38rem 0 0;
+  font-size: 0.86rem;
+  line-height: 1.42;
+}
+
+.ovl-note__actions {
+  display: flex;
+  gap: 0.45rem;
+  margin-top: 0.62rem;
+}
+
+.ovl-btn {
+  min-height: 36px;
+  border: 1px solid var(--parch-ink-faint);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--parch-paper-light) 68%, transparent);
+  color: var(--parch-ink);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  padding: 0 0.72rem;
+  text-transform: uppercase;
+}
+
+.ovl-btn--accept {
+  border-color: var(--parch-red);
+  color: var(--parch-red);
+}
+
+.ovl-btn--decline {
+  color: var(--parch-ink-faint);
+}
+
+.ovl-note__stamp {
+  display: inline-block;
+  margin: 0.6rem 0 0;
+  border: 2px solid currentColor;
+  border-radius: 4px;
+  padding: 0.12rem 0.42rem;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  transform: rotate(-4deg);
+}
+
+.ovl-note__stamp--accept {
+  color: var(--parch-red);
+}
+
+.ovl-note__stamp--decline {
+  color: var(--parch-ink-faint);
+}
+
+.ovl-acct__hero {
+  display: flex;
+  gap: 0.85rem;
+  align-items: center;
+  margin-bottom: 0.85rem;
+}
+
+.ovl-acct__portrait {
+  position: relative;
+  display: grid;
+  width: 86px;
+  height: 86px;
+  place-items: center;
+  flex: 0 0 auto;
+  border-radius: 999px;
+}
+
+.ovl-acct__slot {
+  position: relative;
+  width: 76px;
+  height: 76px;
+  overflow: hidden;
+  border: 2px solid var(--color-bg);
+  border-radius: inherit;
+  background: var(--color-surface);
+}
+
+.ovl-acct__ident {
+  min-width: 0;
+}
+
+.ovl-acct__class,
+.ovl-acct__realm,
+.ovl-acct__coins {
+  margin: 0;
+}
+
+.ovl-acct__class {
+  color: var(--color-text);
+  font-size: 0.98rem;
+  font-weight: 700;
+  line-height: 1.25;
+}
+
+.ovl-acct__realm {
+  margin-top: 0.24rem;
+  color: var(--color-text-muted);
+  font-size: 0.8rem;
+  line-height: 1.35;
+}
+
+.ovl-acct__coins {
+  margin-top: 0.36rem;
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.ovl-acct__xp,
+.ovl-acct__section {
+  border: 1px solid color-mix(in srgb, var(--color-border) 70%, transparent);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-surface) 58%, transparent);
+  padding: 0.68rem;
+}
+
+.ovl-acct__section,
+.ovl-acct__settings,
+.ovl-acct__leave {
+  margin-top: 0.65rem;
+}
+
+.ovl-acct__xp-top {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.6rem;
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.ovl-acct__xp-bar {
+  height: 9px;
+  margin-top: 0.45rem;
+  overflow: hidden;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: var(--color-bg);
+}
+
+.ovl-acct__xp-bar span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--color-accent-dim), var(--color-accent));
+  box-shadow: 0 0 12px color-mix(in srgb, var(--color-accent) 34%, transparent);
+}
+
+.ovl-acct__xp-note,
+.ovl-acct__donor-note {
+  margin: 0.48rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.76rem;
+  line-height: 1.42;
+}
+
+.ovl-acct__chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.48rem;
+}
+
+.ovl-acct__chip,
+.ovl-acct__title {
+  display: inline-flex;
+  min-height: 32px;
+  align-items: center;
+  border: 1px solid var(--color-border);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--color-bg) 46%, transparent);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  padding: 0 0.62rem;
+}
+
+.ovl-acct__chip[data-school="fire"] {
+  border-color: var(--color-accent-dim);
+  color: var(--color-accent);
+}
+
+.ovl-acct__chip[data-school="chaos"] {
+  border-color: color-mix(in srgb, var(--arc-blue) 50%, var(--color-border));
+  color: var(--arc-blue-bright);
+}
+
+.ovl-acct__title--donor {
+  border-color: var(--parch-gold);
+  color: var(--parch-gold-bright);
+  box-shadow: inset 0 0 12px color-mix(in srgb, var(--parch-gold) 18%, transparent);
+}
+
+.ovl-acct__settings {
+  display: grid;
+  gap: 0.42rem;
+}
+
+.ovl-acct__row {
+  display: flex;
+  min-height: 44px;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid color-mix(in srgb, var(--color-border) 66%, transparent);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--color-bg) 35%, transparent);
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  padding: 0 0.68rem;
+}
+
+.ovl-acct__val {
+  color: var(--color-accent);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.ovl-acct__leave {
+  width: 100%;
+  min-height: 44px;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 46%, var(--color-border));
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--color-danger) 10%, transparent);
+  color: color-mix(in srgb, var(--color-danger) 74%, var(--color-text));
+  font-family: var(--font-sans);
+  font-weight: 700;
+}
+
+/* ------------------------------------------------------------------
+   .ovl-status — the location/food readout, same pill family as the
+   clock chip so the top row reads as one set of instruments.
+   ------------------------------------------------------------------ */
+
+.ovl-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  min-width: 0;
+  max-width: calc(100vw - 12.5rem);
+  padding: 0.35rem 0.9rem;
+  font-size: 0.86rem;
+}
+
+.ovl-status__place {
+  overflow: hidden;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ovl-status__food {
+  flex: 0 0 auto;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.ovl-status__continue {
+  flex: 0 0 auto;
+  border-radius: 999px;
+  background: var(--color-accent);
+  color: var(--color-bg);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.3rem 0.7rem;
+}
+
+/* ------------------------------------------------------------------
+   Mail-like notes: each notification is a sealed letter — envelope
+   flap, wax seal on the fold, handwritten sender line. Unread letters
+   keep their wax bright; opened ones lie flatter with a cracked seal.
+   ------------------------------------------------------------------ */
+
+.ovl-note {
+  position: relative;
+  display: block;
+  border-radius: 2px;
+  border: 1px solid color-mix(in srgb, var(--parch-ink-faint) 55%, transparent);
+  padding: 2.6rem 0.8rem 0.75rem;
+}
+
+/* Envelope flap: a soft V-fold shadow across the letter's head */
+.ovl-note::before {
+  content: '';
+  position: absolute;
+  inset: 0 0 auto;
+  height: 2.1rem;
+  background: linear-gradient(180deg, color-mix(in srgb, var(--parch-paper-dark) 82%, transparent), transparent);
+  clip-path: polygon(0 0, 100% 0, 50% 100%);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* Wax seal sits on the flap's point, like real sealing wax */
+.ovl-note__seal {
+  position: absolute;
+  top: 0.7rem;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 34px;
+  height: 34px;
+  border-radius: 999px;
+  box-shadow:
+    inset 0 -3px 4px rgba(0, 0, 0, 0.24),
+    inset 0 2px 3px rgba(255, 255, 255, 0.18),
+    0 3px 8px rgba(0, 0, 0, 0.2);
+}
+
+.ovl-note:not(.is-unread) .ovl-note__seal {
+  filter: grayscale(0.55) brightness(0.92);
+  opacity: 0.75;
+}
+
+.ovl-note:not(.is-unread)::before {
+  opacity: 0.22;
+}
+
+.ovl-note.is-unread {
+  box-shadow:
+    0 9px 18px rgba(0, 0, 0, 0.2),
+    0 0 0 1px color-mix(in srgb, var(--parch-gold) 45%, transparent);
+}
+
+/* Sender reads as a handwritten address line */
+.ovl-note__from {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+  letter-spacing: 0;
+  text-transform: none;
+}
+
+.ovl-note__from::before {
+  content: 'от: ';
+}
+
+/* ------------------------------------------------------------------
+   Paper calendar: the almanac page is a physical parchment sheet.
+   Scoped re-inking of the shared sheet chrome + calendar internals.
+   ------------------------------------------------------------------ */
+
+.ovl-cal {
+  border-color: color-mix(in srgb, var(--parch-vignette) 75%, transparent);
+  background:
+    radial-gradient(ellipse at 50% -8%, var(--parch-paper-light), transparent 55%),
+    linear-gradient(180deg, var(--parch-paper-light), var(--parch-paper) 58%, var(--parch-paper-dark));
+  color: var(--parch-ink);
+}
+
+.ovl-cal .ovl-sheet__grip {
+  background: color-mix(in srgb, var(--parch-ink-faint) 45%, transparent);
+}
+
+.ovl-cal .ovl-sheet__eyebrow {
+  color: var(--parch-red);
+}
+
+.ovl-cal .ovl-sheet__title {
+  color: var(--parch-ink);
+}
+
+.ovl-cal .ovl-sheet__close {
+  border-color: color-mix(in srgb, var(--parch-ink-faint) 50%, transparent);
+  background: color-mix(in srgb, var(--parch-paper-light) 70%, transparent);
+  color: var(--parch-ink-faint);
+}
+
+.ovl-cal .ovl-sheet__close:hover,
+.ovl-cal .ovl-sheet__close:focus-visible {
+  border-color: var(--parch-red);
+  color: var(--parch-red);
+}
+
+.ovl-cal__season {
+  border-color: color-mix(in srgb, var(--parch-ink-faint) 40%, transparent);
+  background: transparent;
+  color: var(--parch-ink-faint);
+}
+
+.ovl-cal__season.is-now {
+  border-color: var(--parch-gold);
+  background: color-mix(in srgb, var(--parch-gold) 16%, transparent);
+  color: var(--parch-ink);
+}
+
+.ovl-cal__season-glyph {
+  color: var(--parch-gold);
+}
+
+.ovl-cal__position {
+  color: var(--parch-ink-faint);
+}
+
+.ovl-cal__day {
+  border-color: color-mix(in srgb, var(--parch-ink-faint) 28%, transparent);
+  background: transparent;
+  color: var(--parch-ink-faint);
+}
+
+/* Today: circled in red ink, the way you'd mark an almanac */
+.ovl-cal__day.is-today {
+  border: 2px solid var(--parch-red);
+  border-radius: 999px;
+  color: var(--parch-ink);
+  box-shadow: none;
+}
+
+.ovl-cal__day.has-event {
+  background: color-mix(in srgb, var(--parch-gold) 12%, transparent);
+}
+
+.ovl-cal__dot {
+  background: var(--parch-red);
+}
+
+.ovl-cal__pins {
+  border-color: color-mix(in srgb, var(--parch-ink-faint) 38%, transparent);
+  background: color-mix(in srgb, var(--parch-paper-light) 60%, transparent);
+}
+
+.ovl-cal__pin-glyph {
+  background: color-mix(in srgb, var(--parch-gold) 22%, transparent);
+  color: var(--parch-red);
+}
+
+.ovl-cal__pin-label {
+  color: var(--parch-ink);
+}
+
+.ovl-cal__pin-when {
+  color: var(--parch-ink-faint);
+}
+
+.ovl-cal__note {
+  border-color: var(--parch-gold);
+  background: color-mix(in srgb, var(--parch-gold) 12%, transparent);
+  color: var(--parch-ink);
+}
+
+.ovl-cal__note-glyph {
+  color: var(--parch-red);
+}
+
+@keyframes ovl-day-arc {
+  from { --ovl-day-progress: 0deg; }
+  to { --ovl-day-progress: 360deg; }
+}
+
+@keyframes ovl-ember {
+  0%, 100% { box-shadow: 0 0 11px color-mix(in srgb, var(--color-accent) 46%, transparent); }
+  50% { box-shadow: 0 0 20px color-mix(in srgb, var(--color-accent) 82%, transparent); }
+}
+
+@keyframes ovl-fade {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes ovl-sheet-in {
+  from { opacity: 0; transform: translateY(18px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes ovl-seal-press {
+  0% { transform: scale(0.985) rotate(-0.3deg); }
+  64% { transform: scale(1.018) rotate(-0.3deg); }
+  100% { transform: scale(1) rotate(-0.3deg); }
+}
+
+@media (max-width: 374px) {
+  .ovl-clock__year {
+    display: none;
+  }
+
+  .ovl-clock {
+    padding-right: 0.55rem;
+  }
+
+  .ovl-portrait {
+    width: 66px;
+    height: 66px;
+  }
+
+  .ovl-portrait__art {
+    width: 56px;
+    height: 56px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ovl-clock__arc,
+  .ovl-bell__count,
+  .ovl-scrim,
+  .ovl-sheet,
+  .ovl-note.is-accepted {
+    animation: none;
+  }
+
+  .ovl-chip,
+  .ovl-portrait,
+  .ovl-sheet__close,
+  .ovl-note {
+    transition: none;
+  }
+}

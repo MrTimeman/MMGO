@@ -18,7 +18,7 @@ const LOD_MID = 0.16
 // Map filters (EVE/HOI4-style overlays). Each filter is a registry entry so
 // new overlays (economic, diplomacy, ...) slot in without touching render().
 const FILTERS = ["terrain", "political"]
-const FILTER_LABELS = { terrain: "Terrain", political: "Political" }
+const FILTER_LABELS = { terrain: "Рельеф", political: "Владения" }
 
 const KIND = {
   city: { r: 16, fill: "#d6a643", stroke: "#fff1a8" },
@@ -105,7 +105,7 @@ export const HexMapHook = {
     this.el.classList.add("hex-map")
     this.el.innerHTML = `
       <canvas class="hex-map__canvas"></canvas>
-      <button class="hex-map__filter" type="button" aria-label="Map filter">Terrain</button>
+      <button class="hex-map__filter" type="button" aria-label="Фильтр карты — рельеф или владения">Рельеф</button>
       <div class="hex-map__legend" hidden></div>
       <section class="hex-map__sheet" hidden></section>
     `

@@ -112,23 +112,24 @@ defmodule MMGOWeb.ExamLive do
   def render(assigns) do
     ~H"""
     <div class="exam-room">
-      <a href={~p"/map"} class="map-back-link">← World map</a>
-      <h1>Term {@term.term_number} Exam</h1>
+      <a href={~p"/academy/study-desk"} class="map-back-link">← К учебному столу</a>
+      <h1>Экзамен термина {@term.term_number}</h1>
 
       <%= if @submitted do %>
         <div class="exam-result">
-          <h2>Exam submitted</h2>
-          <p>Your score: <strong>{@score} / 100</strong></p>
-          <.link navigate={~p"/academy/study-desk"}>Back to Study Desk</.link>
+          <h2>Ведомость закрыта</h2>
+          <p>Ваш результат: <strong>{@score} / 100</strong></p>
+          <p>Секретарь уносит лист к кафедре. Средний балл пересчитают после проверки.</p>
+          <.link navigate={~p"/academy/study-desk"}>Вернуться к столу</.link>
         </div>
       <% else %>
         <div class="exam-timer">
-          Time remaining: <strong>{@seconds_remaining}s</strong>
+          Осталось времени: <strong>{@seconds_remaining} с</strong>
         </div>
 
         <form phx-submit="submit">
           <fieldset>
-            <legend>Question 1: What is the capital of the Realm?</legend>
+            <legend>Вопрос 1. Как зовётся столица княжества?</legend>
             <label>
               <input
                 type="radio"
@@ -137,7 +138,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q1"
                 phx-value-answer="a"
-              /> Ironhold
+              /> Железная Крепь
             </label>
             <label>
               <input
@@ -147,7 +148,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q1"
                 phx-value-answer="b"
-              /> Ashgate
+              /> Врата Зари
             </label>
             <label>
               <input
@@ -157,12 +158,12 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q1"
                 phx-value-answer="c"
-              /> Emberveil
+              /> Пепельная Завеса
             </label>
           </fieldset>
 
           <fieldset>
-            <legend>Question 2: Which element is associated with healing?</legend>
+            <legend>Вопрос 2. Какая школа связана с исцелением?</legend>
             <label>
               <input
                 type="radio"
@@ -171,7 +172,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q2"
                 phx-value-answer="a"
-              /> Life
+              /> Жизнь
             </label>
             <label>
               <input
@@ -181,7 +182,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q2"
                 phx-value-answer="b"
-              /> Fire
+              /> Огонь
             </label>
             <label>
               <input
@@ -191,12 +192,12 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q2"
                 phx-value-answer="c"
-              /> Chaos
+              /> Хаос
             </label>
           </fieldset>
 
           <fieldset>
-            <legend>Question 3: The Charity Fund is administered by which body?</legend>
+            <legend>Вопрос 3. Кто ведает Фондом Просвещения?</legend>
             <label>
               <input
                 type="radio"
@@ -205,7 +206,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q3"
                 phx-value-answer="a"
-              /> The Merchant Guild
+              /> Торговая гильдия
             </label>
             <label>
               <input
@@ -215,7 +216,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q3"
                 phx-value-answer="b"
-              /> The Dungeon Council
+              /> Совет Подземелья
             </label>
             <label>
               <input
@@ -225,12 +226,12 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q3"
                 phx-value-answer="c"
-              /> The Academy
+              /> Академия
             </label>
           </fieldset>
 
           <fieldset>
-            <legend>Question 4: How many schools of magic exist?</legend>
+            <legend>Вопрос 4. Сколько школ магии признаёт Академия?</legend>
             <label>
               <input
                 type="radio"
@@ -264,7 +265,7 @@ defmodule MMGOWeb.ExamLive do
           </fieldset>
 
           <fieldset>
-            <legend>Question 5: What triggers Expulsion from Basic Education?</legend>
+            <legend>Вопрос 5. Что ведёт к отчислению с базового образования?</legend>
             <label>
               <input
                 type="radio"
@@ -273,7 +274,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q5"
                 phx-value-answer="a"
-              /> Missing 3 terms
+              /> Пропуск 3 терминов
             </label>
             <label>
               <input
@@ -283,7 +284,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q5"
                 phx-value-answer="b"
-              /> Missing 5 terms
+              /> Пропуск 5 терминов
             </label>
             <label>
               <input
@@ -293,7 +294,7 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q5"
                 phx-value-answer="c"
-              /> Missing 6 terms
+              /> Пропуск 6 терминов
             </label>
             <label>
               <input
@@ -303,11 +304,11 @@ defmodule MMGOWeb.ExamLive do
                 phx-click="answer"
                 phx-value-question="q5"
                 phx-value-answer="d"
-              /> Missing 7 or more terms
+              /> Пропуск 7 и более терминов
             </label>
           </fieldset>
 
-          <button type="submit">Submit Exam</button>
+          <button type="submit">Сдать работу</button>
         </form>
       <% end %>
     </div>
