@@ -32,6 +32,10 @@ uniform float uWhiteout;
 const float ppi = 96.0;
 const float tau = 6.28318530718;
 
+float angularDistance(float a, float b) {
+  return abs(atan(sin(a - b), cos(a - b)));
+}
+
 void main() {
   vec2 fragCoord = vUv * uSize;
   vec2 center = uSize * 0.5;
@@ -40,27 +44,34 @@ void main() {
 
   float a = atan(p.x, p.y);
   float r = length(p);
-  vec2 uv = vec2(a / tau, r);
 
   float time = uTime / 200.0;
-  float xCol = mod((uv.x - time) * 3.0, 3.0);
   vec3 tint = vec3(0.25);
   tint.r += 1.0 * uLegendaryTint;
   tint.g += 0.6 * uLegendaryTint;
   tint.b += 0.25 * (1.0 - uLegendaryTint);
 
-  uv = (2.0 * uv) - 1.0;
-  float wave = 1.0 + 0.5 * cos(uv.x * 3.5 * tau + time * 1.8);
-  float beamWidth = (1.0 + uExcitation * 2.0 + wave) * abs((1.0 + sin(time) * 0.25) / (30.0 * max(abs(uv.y), 0.012)));
-  float spokes = pow(clamp(beamWidth, 0.0, 1.0), 0.72);
-  float halo = smoothstep(1.15, 0.0, r) * (0.1 + 0.45 * uExcitation);
+  float radialFade = smoothstep(1.35, 0.06, r);
+  float outerFade = 1.0 - smoothstep(1.05, 1.46, r);
+  float beamA = angularDistance(a, time * 2.6);
+  float beamB = angularDistance(a, time * -1.7 + 2.18);
+  float beamC = angularDistance(a, time * 1.2 + 4.35);
+  float spokes =
+    pow(1.0 - smoothstep(0.0, 0.095, beamA), 2.4) +
+    pow(1.0 - smoothstep(0.0, 0.075, beamB), 2.0) * 0.72 +
+    pow(1.0 - smoothstep(0.0, 0.06, beamC), 1.8) * 0.52;
+  spokes *= radialFade * outerFade * (0.35 + uExcitation * 0.9);
+
+  float core = smoothstep(0.34, 0.0, r) * (0.35 + uExcitation * 0.85);
+  float halo = smoothstep(1.2, 0.0, r) * (0.08 + 0.28 * uExcitation);
   float white = smoothstep(0.68, 1.0, uWhiteout);
 
-  vec3 color = tint * (spokes * 1.35 + halo * 0.8);
+  vec3 color = tint * (spokes * 1.25 + halo * 0.65 + core * 0.9);
   color += vec3(1.0) * pow(clamp(spokes, 0.0, 1.0), 2.0) * uExcitation;
+  color += vec3(1.0, 0.94, 0.76) * core * uExcitation;
   color = mix(color, vec3(1.0), white);
 
-  float alpha = clamp(spokes + halo * 0.4 + white * 0.85, 0.0, 1.0);
+  float alpha = clamp(spokes + core * 0.82 + halo * 0.3 + white * 0.85, 0.0, 1.0);
   gl_FragColor = vec4(color, alpha);
 }
 `
