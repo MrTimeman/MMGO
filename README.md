@@ -1,95 +1,97 @@
-# MMGO
+# MMGO — Ministry of MaGic Online
 
-MMGO is a Phoenix-based foundation for Ministry of MaGic Online.
+A server-authoritative magic MMO roleplay engine built with Elixir/Phoenix, Telegram Mini App frontend, and AI-compiled spells.
 
-This repository currently includes:
+> **Status:** foundation complete — core game systems, Telegram bot integration, and first frontend surfaces are live.
 
-- Phoenix + LiveView application scaffold
-- PostgreSQL + Ecto setup
-- Oban background jobs
-- Telegram Bot API client and webhook endpoint
-- foundational game data models for realms, accounts, Telegram identities, and characters
-- grimoires and prepared spell loadouts
-- compiled spell schemas and runtime validation
-- deterministic combat state, turn, action, and event foundations
-- inventory items, item templates, and deterministic tool-user combat actions
-- append-only economy accounts, treasury, and ledger transfers
-- world locations, routes, and scheduled journey completion
-- parties, memberships, and expedition state snapshots
-- dungeon graphs, run progression, and expedition node state
-- dungeon encounter, resource, and loot state tied to runs
-- dungeon encounters can now spawn real combat instances and resolve back into run state
-- expedition XP reward shares tied to encounters and run completion
-- academy enrollments, completion scheduling, and specialization state
-- academia research, publications, and professor progression
-- alchemy workspaces, recipes, and timed brew jobs
-- bases, storage transfer, and timed construction completion
-- academy clubs, memberships, and invitation flows
-- generic organizations with cult-style hierarchy and fast-travel permissions
-- progression milestones and reward grants
-- actor templates and concrete enemy spawns for PvE combats
-- NPC shops, tuition, and charity-fund economy hooks
-- inter-realm discovery, exchange rates, and migration workflow
-- dungeon macro AI for link pressure, anomalies, and node/resource drift
-- overworld encounter events and ambush escalation into combat
-- non-combat text event templates and per-character event instances
-- overworld scavenging, resource caches, and scheduled harvest completion
-- notification outbox and Telegram delivery hooks for timed system completions
-- food consumption, carry capacity, and encumbrance-aware travel planning
-- legal market listings, taxed purchases, and inventory escrow reservations
-- black market offers and unsafe untaxed delivery deals
-- duel wagers, escrow, and taxed PvP settlement
-- reputation, crime records, fines, and market sanctions
-- Telegram command handlers for exercising backend systems without the frontend
-- operator reports and maintenance sweeps for observability and recovery
-- AI request logging plus spell compiler and turn narrator interfaces
-- automated tests for core account provisioning and webhook behavior
+## Architecture
+
+MMGO is a deterministic, event-sourced game server. Spells are compiled from player descriptions into validated schemas at authoring time (not LLM-at-runtime). All game state is persisted via Ecto/PostgreSQL, with Oban for deferred job scheduling.
+
+```
+┌──────────────────────┐     ┌──────────────────────┐
+│  Telegram Bot (MVP)  │     │  Phoenix LiveView    │
+│  /travel /duel /shop │────▶│  Map, Spellbook, ... │
+│  /party /dungeon ... │     │  Mobile-first (375px)│
+└──────────────────────┘     └──────────────────────┘
+         │                            │
+         ▼                            ▼
+┌──────────────────────────────────────────────┐
+│              Game Engine                      │
+│  Combat · Economy · Travel · Dungeons · PvP  │
+│  Spells · Grimoires · Academy · Alchemy       │
+│  Scavenging · Reputation · Black Market       │
+│  Parties · Clubs · Organizations              │
+└──────────────────────────────────────────────┘
+         │                            │
+         ▼                            ▼
+┌────────────────┐          ┌────────────────┐
+│  PostgreSQL    │          │  Oban Workers  │
+│  (Ecto/ETS)    │          │  Journeys,     │
+│                │          │  Brewing,      │
+│                │          │  Construction  │
+└────────────────┘          └────────────────┘
+```
+
+## Domain map
+
+- **Accounts** — account, identity, character provisioning with Telegram linking
+- **World** — realms, locations, routes, scheduled journey completions
+- **Combat** — deterministic turn engine with tool-user actions, AI narration
+- **Spells** — compiled schemas from player-authored descriptions, runtime validation
+- **Grimoires** — loadouts of prepared spells per character
+- **Economy** — append-only ledgers, treasury accounts, exchange rates, migration
+- **Inventory** — item templates, carry capacity, encumbrance
+- **Market & Black Market** — taxed listings, escrow, untaxed deals with default risk
+- **Dungeons** — graph-based runs with links, nodes, encounters, resources, loot
+- **PvP** — duel challenges, wager escrow, settlement
+- **Academy** — enrollments, specializations, timed completion
+- **Academia** — research, publications, professor progression
+- **Alchemy** — workspaces, recipes, brewing jobs
+- **Bases** — ownership, construction, protection
+- **Academy Clubs & Organizations** — social groups, hierarchies, travel networks
+- **Overworld** — road encounters, ambushes, scavenging
+- **Survival** — food consumption, carry capacity
+- **Reputation** — crime records, fines, market sanctions
+- **Notifications** — outbox delivery via Telegram
+- **AI** — provider abstraction (Gemini + Mock), prompt pipelines, audit logs
+- **Operator** — live reports, maintenance sweeps, observability
 
 ## Requirements
 
-- Elixir 1.19+
-- Erlang/OTP 28+
-- Docker Desktop or another local PostgreSQL instance
+- **Elixir** 1.19+ (1.20.0 used in dev)
+- **Erlang/OTP** 28+
+- **PostgreSQL** 16 (Docker compose provided)
+- **Docker Desktop** or local PostgreSQL
 
-## Local setup
-
-1. Install Elixir 1.19+ and Erlang/OTP 28+ (or use your preferred version manager).
-
-2. Start PostgreSQL (requires Docker):
-
-   ```bash
-   docker compose up -d postgres
-   ```
-
-3. Copy local environment values if you want to override defaults:
-
-   ```bash
-   cp .env.example .env
-   ```
-
-4. Install dependencies and set up the database:
-
-   ```bash
-   mix setup
-   ```
-
-5. Start the Phoenix server:
-
-   ```bash
-   mix phx.server
-   ```
-
-6. Open `http://localhost:4000` in your browser.
-
-## Useful commands
+## Quick start
 
 ```bash
-mix test
-mix precommit
-iex -S mix phx.server
+# Start PostgreSQL
+docker compose up -d postgres
+
+# Optionally copy and edit local env
+cp .env.example .env
+
+# Install deps, create DB, run migrations
+mix setup
+
+# Start the Phoenix server
+mix phx.server
 ```
 
-Realm manifest tools:
+Then open **http://localhost:4000**.
+
+### Useful commands
+
+| Command | What it does |
+|---|---|
+| `mix test` | Run the test suite |
+| `mix precommit` | Full check: compile, format, test |
+| `mix format` | Format all Elixir sources |
+| `iex -S mix phx.server` | Dev server with IEx shell |
+
+### Realm manifest tools
 
 ```bash
 mix mmgo.realm.validate priv/realms/starter_realm_manifest.json
@@ -99,63 +101,73 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 
 ## Key endpoints
 
-- `GET /healthz`
-- `POST /api/telegram/webhook`
+| Endpoint | Purpose |
+|---|---|
+| `GET /healthz` | Health check |
+| `POST /api/telegram/webhook` | Telegram bot webhook handler |
+| `GET /` | Phoenix LiveView frontend |
 
 ## AI configuration
 
-- default local development uses the mock AI provider
-- set `GEMINI_API_KEY` to switch the runtime to the Gemini provider automatically
-- optional overrides:
-  - `GEMINI_API_BASE_URL`
-  - `GEMINI_SPELL_MODEL`
-  - `GEMINI_NARRATION_MODEL`
+By default the app uses a mock AI provider for local dev. Set `GEMINI_API_KEY` to switch to the Gemini provider at runtime.
+
+| Env var | Default |
+|---|---|
+| `GEMINI_API_KEY` | _(unset — uses mock)_ |
+| `GEMINI_API_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
+| `GEMINI_SPELL_MODEL` | `gemini-3-flash` |
+| `GEMINI_NARRATION_MODEL` | `g3f-lite` |
 
 ## Project structure
 
-- `lib/mmgo/accounts` - account, identity, and character domain logic
-- `lib/mmgo/grimoires` - prepared spellbooks and combat loadouts
-- `lib/mmgo/inventory` - item templates, inventory state, and tool action definitions
-- `lib/mmgo/economy` - treasury accounts, cached balances, and append-only ledger entries
-- `lib/mmgo/academy` - education progression, timed enrollments, and specialization state
-- `lib/mmgo/academia` - research projects, publications, and professor state
-- `lib/mmgo/alchemy` - workspaces, recipes, and brewing jobs for potion crafting
-- `lib/mmgo/bases` - property ownership, construction, and protected base storage
-- `lib/mmgo/clubs` - academy/social clubs, memberships, and invitation workflows
-- `lib/mmgo/organizations` - general-purpose hierarchies, roles, and cult-style travel networks
-- `lib/mmgo/progression` - XP leveling, milestone definitions, and reward grants
-- `lib/mmgo/actors` - reusable enemy/NPC actor templates and encounter spawns
-- `lib/mmgo/dungeons` - macro maintenance, link states, node overrides, extraction, and run state
-- `lib/mmgo/overworld` - road encounters, social choices, and ambush escalation
-- `lib/mmgo/events` - generic non-combat text event templates, options, and instances
-- `lib/mmgo/npc_shops` - shop listings, NPC buy/sell, tuition, and charity flows
-- `lib/mmgo/federation` - remote realm registry, rulesets, exchange, and migration mechanics
-- `priv/realms/starter_realm_manifest.json` - starter realm file for non-code realm tweaking
-- `lib/mmgo/survival` - food consumption, carry capacity, and supply calculations
-- `lib/mmgo/market` - legal listings, escrowed inventory, and taxed settlement
-- `lib/mmgo/black_market` - untaxed unsafe deals with manual delivery and scam/default risk
-- `lib/mmgo/reputation` - crime records, fines, and market access sanctions
-- `lib/mmgo/pvp` - duel challenges, wager escrow, and PvP settlement workflows
-- `lib/mmgo/notifications` - notification queueing, formatting, and Telegram delivery
-- `lib/mmgo/operator` - live reports, maintenance sweeps, and operator audit events
-- `lib/mmgo/telegram/commands.ex` - command-driven access to travel, academy, party, dungeon, and combat loops
-- `lib/mmgo/scavenging` - location resource caches and timed scavenging attempts
-- `lib/mmgo/parties` - party formation, active memberships, and expeditions
-- `lib/mmgo/dungeons` - dungeon graphs, runs, links, and per-node expedition state
-- `lib/mmgo/dungeons` - encounter, resource, and loot state for dungeon runs
-- `lib/mmgo/travel` - compressed-time helpers, journeys, and completion workers
-- `lib/mmgo/spells` - compiled spells and runtime rules
-- `lib/mmgo/combat` - deterministic combat engine and persistence
-- `lib/mmgo/ai` - provider abstraction, prompts, Gemini client, and audit logs
-- `lib/mmgo/worlds` - realms, locations, and route graph bootstrap
-- `lib/mmgo/telegram` - Telegram client and webhook update handling
-- `lib/mmgo_web` - web controllers, router, layouts, and HTTP entrypoints
-- `docs/TECH_ARCHITECTURE.md` - current technical direction
+```text
+lib/
+├── mmgo/              # Core domain logic
+│   ├── accounts/      # Accounts, identities, characters
+│   ├── academy/       # Education, specializations
+│   ├── academia/      # Research, publications
+│   ├── actors/        # Enemy/NPC templates
+│   ├── ai/            # AI provider abstraction
+│   ├── alchemy/       # Potion brewing
+│   ├── bases/         # Property, construction
+│   ├── black_market/  # Untaxed deals
+│   ├── clubs/         # Social clubs
+│   ├── combat/        # Deterministic combat engine
+│   ├── dungeons/      # Dungeon graph & runs
+│   ├── economy/       # Treasury, ledgers
+│   ├── events/        # Non-combat text events
+│   ├── federation/    # Inter-realm travel
+│   ├── grimoires/     # Spell loadouts
+│   ├── inventory/     # Items, templates
+│   ├── market/        # Taxed listings
+│   ├── notifications/ # Telegram delivery
+│   ├── npc_shops/     # Shop, tuition
+│   ├── operator/      # Reports, sweeps
+│   ├── organizations/ # Hierarchy, roles
+│   ├── overworld/     # Road encounters
+│   ├── parties/       # Party system
+│   ├── progression/   # XP, milestones
+│   ├── pvp/           # Duels, wagers
+│   ├── reputation/    # Crime, sanctions
+│   ├── scavenging/    # Resource caches
+│   ├── spells/        # Compiled spell schemas
+│   ├── survival/      # Food, carry capacity
+│   ├── telegram/      # Bot commands & webhook
+│   ├── travel/        # Journey engine
+│   └── worlds/        # Realms, locations, routes
+└── mmgo_web/          # Phoenix web layer
+    ├── controllers/   # HTTP controllers
+    └── live/          # LiveView pages & components
+```
 
-## Current conventions
+## Design conventions
 
-- server-authoritative simulation
-- compiled deterministic spells later, not LLM-driven runtime combat
-- append-only combat and ledger systems planned from the start
-- `Req` for outbound HTTP requests
-- `mix precommit` as the main local verification command
+- **Server-authoritative** — all game logic runs on the server; the frontend is a thin client
+- **Deterministic spells** — spells are compiled from author descriptions into validated schemas, not run through an LLM at combat time
+- **Append-only** — combat logs and economy ledgers are append-only for auditability
+- **Mobile-first** — the LiveView frontend targets Telegram Mini App at ~375px touch viewport
+- **Location-gated** — actions live at physical map locations, not in global nav bars
+
+## License
+
+See [`LICENSE`](LICENSE) (if present) or contact the project owner.
