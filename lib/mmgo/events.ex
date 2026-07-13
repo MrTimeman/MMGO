@@ -11,134 +11,210 @@ defmodule MMGO.Events do
   @default_templates %{
     city_arrival: %{
       location_kind: :city,
-      title: "City Arrival",
+      title: "Прибытие в город",
       body:
-        "You arrive in a city and can decide what kind of civic or economic activity to pursue.",
+        "Городские стены дают передышку: здесь можно учиться, готовиться к пути и искать полезные связи.",
       options: [
         %{
           code: "shops",
-          label: "Visit shops",
+          label: "Осмотреть лавки",
           action_key: "npc_shops",
-          result_text: "Use /npc shops to see the merchants here."
+          result_text: "Торговая книга открыта: сравните предложения и выставьте свой товар."
         },
         %{
           code: "academy",
-          label: "Visit academy",
+          label: "Посетить Академию",
           action_key: "academy",
-          result_text: "Use /academy status or /academy start ... to work with the Academy."
+          result_text: "Академия ждёт вас."
         },
         %{
           code: "tavern",
-          label: "Visit tavern",
+          label: "Найти спутников",
           action_key: "party_hub",
-          result_text: "Use /party, /club, or /org commands to organize socially."
+          result_text: "В таверне уже собирают группы: найдите или создайте отряд."
         },
         %{
           code: "housing",
-          label: "Check housing",
+          label: "Проверить жильё",
           action_key: "base",
-          result_text: "Use /base buy or /base status to work with city property."
+          result_text: "Проверьте владение, припасы и доступные работы базы."
         }
       ]
     },
     tower_arrival: %{
       location_kind: :tower,
-      title: "Tower Arrival",
+      title: "У подножия Башни",
       body:
-        "The Tower hums with magical pressure. Delvers, duelists, and scholars cluster around the entrance.",
+        "Башня гудит от магического давления. У входа собираются исследователи, дуэлянты и искатели глубин.",
       options: [
         %{
           code: "party",
-          label: "Form party",
+          label: "Собрать отряд",
           action_key: "party",
-          result_text: "Use /party create or /expedition start to prepare a run."
+          result_text: "Соберите отряд, пригласите спутников и согласуйте маршрут."
         },
         %{
           code: "dungeon",
-          label: "Approach dungeon",
+          label: "Подойти к глубинам",
           action_key: "dungeon",
-          result_text: "Use /dungeon enter when your expedition is ready."
+          result_text: "Для спуска нужен подготовленный отряд."
         },
         %{
           code: "library",
-          label: "Visit library",
+          label: "Открыть гримуар",
           action_key: "spells",
-          result_text: "Use /spells or /academia commands to work with magical knowledge."
+          result_text: "Магические знания доступны в гримуаре."
         }
       ]
     },
     base_arrival: %{
       location_kind: :base,
-      title: "Base Arrival",
+      title: "Возвращение на базу",
       body:
-        "You are home. Storage, workshops, and recovery routines are all available from here.",
+        "Вы дома. Здесь хранят припасы, готовят инструменты и восстанавливаются после дороги.",
       options: [
         %{
           code: "storage",
-          label: "Manage storage",
+          label: "Открыть хранилище",
           action_key: "base_storage",
-          result_text: "Use /base storage, /base deposit, and /base withdraw to manage items."
+          result_text: "Склад базы открыт: здесь лежат припасы и снаряжение."
         },
         %{
           code: "craft",
-          label: "Craft tools",
+          label: "Работать в мастерской",
           action_key: "craft",
-          result_text: "Use /craft workspace or /craft build ... to craft equipment."
+          result_text: "Верстак готов: создавайте и чините снаряжение."
         },
         %{
           code: "alchemy",
-          label: "Brew potions",
+          label: "Заняться алхимией",
           action_key: "alchemy",
-          result_text: "Use /alchemy workspace or /alchemy brew ... to brew potions."
+          result_text: "Лаборатория готова: выбирайте доступные рецепты."
         },
         %{
           code: "rest",
-          label: "Rest",
+          label: "Отдохнуть",
           action_key: "rest",
-          result_text:
-            "Rest is currently abstracted; this is where recovery systems can later connect."
+          result_text: "Отдохните у запасов базы и восстановите силы."
         }
       ]
     },
     wilderness_arrival: %{
       location_kind: :wilderness,
-      title: "Roadside Pause",
+      title: "Остановка в глуши",
       body:
-        "The road is dangerous. Other travelers might approach, and the terrain offers limited scavenging options.",
+        "Дорога опасна. Здесь могут встретиться другие путники, а местность иногда отдаёт скудные ресурсы.",
       options: [
         %{
           code: "scavenge",
-          label: "Scavenge area",
+          label: "Обыскать местность",
           action_key: "scavenge",
-          result_text: "Use /scavenge <resource> to search the local area."
+          result_text: "Осмотрите доступные ниже источники ресурсов."
         },
         %{
           code: "watch",
-          label: "Stay alert",
+          label: "Следить за дорогой",
           action_key: "road",
-          result_text: "Use /road status or /road encounter <handle> to handle road interactions."
+          result_text: "Следите за путниками поблизости."
         },
         %{
           code: "move",
-          label: "Continue travel",
+          label: "Продолжить путь",
           action_key: "routes",
-          result_text: "Use /routes and /travel <slug> to continue on the road."
+          result_text: "Проложите следующий маршрут на карте."
+        }
+      ]
+    },
+    dungeon_arrival: %{
+      location_kind: :dungeon_entrance,
+      title: "Перед вратами подземелья",
+      body:
+        "За древними вратами начинается опасная глубина. Спускаться туда в одиночку неразумно — сначала подготовьте отряд и припасы.",
+      options: [
+        %{
+          code: "dungeon",
+          label: "Готовиться к спуску",
+          action_key: "dungeon",
+          result_text: "Для спуска нужен подготовленный отряд."
+        },
+        %{
+          code: "party",
+          label: "Искать спутников",
+          action_key: "party",
+          result_text: "Соберите отряд и подготовьте его к спуску."
+        },
+        %{
+          code: "move",
+          label: "Вернуться на карту",
+          action_key: "routes",
+          result_text: "Проложите следующий маршрут на карте."
         }
       ]
     }
   }
 
+  # These strings shipped with the seeded templates before the corresponding
+  # browser routes existed. They are only used to refresh exact old defaults;
+  # custom realm writing is deliberately left untouched.
+  @stale_default_result_texts %{
+    "city_arrival" => %{
+      "shops" => "Торговая книга этой локации ещё готовится.",
+      "tavern" => "Здесь скоро появится сбор отрядов.",
+      "housing" => "Дела базы доступны после обустройства владения."
+    },
+    "tower_arrival" => %{
+      "party" => "Сбор отрядов скоро станет доступен здесь."
+    },
+    "base_arrival" => %{
+      "storage" => "Хранилище базы ещё готовится к работе.",
+      "craft" => "Мастерская откроется после обустройства базы.",
+      "alchemy" => "Алхимическая лаборатория ещё закрыта.",
+      "rest" => "Здесь можно передохнуть, когда появится отдых базы."
+    },
+    "dungeon_arrival" => %{
+      "party" => "Сбор отрядов скоро станет доступен здесь."
+    }
+  }
+
   def current_event(%Character{} = character) do
-    character = Repo.preload(character, :current_location)
+    Repo.transaction(fn ->
+      character = character |> lock_character!() |> Repo.preload(:current_location)
 
-    case active_instance_for_character(character.id) do
-      %Instance{} = instance when instance.location_id == character.current_location_id ->
-        preload_instance(instance)
+      case active_instance_for_character(character.id) do
+        %Instance{} = instance when instance.location_id == character.current_location_id ->
+          preload_instance(instance)
 
-      _other ->
-        create_current_event(character)
+        %Instance{} = stale_instance ->
+          stale_instance
+          |> Instance.changeset(%{
+            status: :resolved,
+            selected_option_code: "departed",
+            resolved_at: DateTime.utc_now()
+          })
+          |> Repo.update!()
+
+          create_current_event(character)
+
+        nil ->
+          create_current_event(character)
+      end
+    end)
+    |> case do
+      {:ok, event} -> event
+      {:error, reason} -> raise "could not load current event: #{inspect(reason)}"
     end
   end
+
+  def get_instance(id) when is_binary(id) do
+    Instance
+    |> Repo.get(id)
+    |> case do
+      nil -> nil
+      instance -> preload_instance(instance)
+    end
+  end
+
+  def get_instance(_id), do: nil
 
   def resolve_option(%Instance{} = instance, option_code) when is_binary(option_code) do
     Repo.transaction(fn ->
@@ -213,9 +289,31 @@ defmodule MMGO.Events do
           end)
 
         template ->
-          Repo.preload(template, :options)
+          template
+          |> Repo.preload(:options)
+          |> refresh_stale_default_options!(attrs.options)
       end
     end)
+  end
+
+  defp refresh_stale_default_options!(%Template{} = template, option_attrs) do
+    Enum.each(option_attrs, fn attrs ->
+      stale_result_text = get_in(@stale_default_result_texts, [template.code, attrs.code])
+
+      case Enum.find(template.options, &(&1.code == attrs.code)) do
+        %Option{} = option ->
+          if option.action_key == attrs.action_key and option.result_text == stale_result_text do
+            option
+            |> Option.changeset(%{result_text: attrs.result_text})
+            |> Repo.update!()
+          end
+
+        nil ->
+          :ok
+      end
+    end)
+
+    Repo.preload(template, :options, force: true)
   end
 
   defp create_current_event(%Character{} = character) do
@@ -251,13 +349,26 @@ defmodule MMGO.Events do
     cond do
       not is_nil(Bases.active_base_at_location(character.id, location.id)) -> "base_arrival"
       location.kind == :tower -> "tower_arrival"
+      location.kind == :dungeon_entrance -> "dungeon_arrival"
       location.kind == :city -> "city_arrival"
       true -> "wilderness_arrival"
     end
   end
 
   defp active_instance_for_character(character_id) do
-    Repo.get_by(Instance, character_id: character_id, status: :active)
+    Repo.one(
+      from instance in Instance,
+        where: instance.character_id == ^character_id and instance.status == :active,
+        order_by: [desc: instance.inserted_at],
+        limit: 1
+    )
+  end
+
+  defp lock_character!(%Character{id: character_id}) do
+    Character
+    |> where([character], character.id == ^character_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one!()
   end
 
   defp preload_instance(%Instance{} = instance) do

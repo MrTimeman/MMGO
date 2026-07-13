@@ -1,427 +1,587 @@
 defmodule MMGOWeb.TradeLive do
   @moduledoc """
-  Trade counter — buy & sell at a shop, plus owner price-setting and the
-  black-market re-skin (GDD §12.2 taxation, §12.3 illegal P2P).
+  Scoped NPC, legal-market, and black-market transactions.
 
-  Design pass: hardcoded demo data, no backend wiring. See
-  docs/UI_DESIGN_BRIEF.md. All state lives in assigns and mutates via
-  phx-click so the screen is fully explorable.
+  Prices, item ownership, tax, escrow, and delivery are all validated by the
+  owning domain contexts. This screen only presents real selections from the
+  current player's server-built trade read model.
   """
   use MMGOWeb, :live_view
 
-  import MMGOWeb.UIKit
-
-  @tax_rate 0.08
-
-  # Shop stock — what the merchant sells you (buy mode). Prices are the
-  # merchant's ask; tax is shown separately per GDD §12.2.
-  @goods [
-    %{
-      id: "heal",
-      name: "Зелье исцеления",
-      cat: "зелья",
-      weight: 0.5,
-      price: 45,
-      note: "затягивает раны в бою"
-    },
-    %{
-      id: "mana",
-      name: "Флакон маны",
-      cat: "зелья",
-      weight: 0.4,
-      price: 60,
-      note: "восполняет запас силы"
-    },
-    %{
-      id: "grim7",
-      name: "Малый гримуар · 7 печатей",
-      cat: "гримуары",
-      weight: 2.0,
-      price: 320,
-      note: "лёгкий том для вылазок"
-    },
-    %{
-      id: "dagger",
-      name: "Стальной кинжал",
-      cat: "оружие",
-      weight: 1.5,
-      price: 110,
-      note: "надёжная сталь Врат Зари"
-    },
-    %{
-      id: "bread",
-      name: "Дорожные хлебы · 5 шт",
-      cat: "провизия",
-      weight: 2.5,
-      price: 30,
-      note: "на пять дней пути"
-    },
-    %{
-      id: "torch",
-      name: "Факел · 3 шт",
-      cat: "инструменты",
-      weight: 1.0,
-      price: 12,
-      note: "свет в подземельях Башни"
-    }
-  ]
-
-  # What you can offer the shop (sell mode) — the merchant's buy-back price.
-  @wares [
-    %{
-      id: "fang",
-      name: "Клык теневого волка",
-      cat: "ингредиенты",
-      weight: 0.2,
-      price: 85,
-      note: "редкая добыча из Башни"
-    },
-    %{
-      id: "ash",
-      name: "Пепел саламандры",
-      cat: "ингредиенты",
-      weight: 0.1,
-      price: 40,
-      note: "тлеет, не остывая"
-    },
-    %{
-      id: "oldgrim",
-      name: "Потёртый гримуар · 5 печатей",
-      cat: "гримуары",
-      weight: 1.6,
-      price: 60,
-      note: "первый ваш том"
-    },
-    %{
-      id: "heal_used",
-      name: "Зелье исцеления",
-      cat: "зелья",
-      weight: 0.5,
-      price: 22,
-      note: "початый флакон"
-    }
-  ]
+  alias MMGO.Play
 
   @impl true
   def mount(_params, _session, socket) do
-    # TODO: wire — load shop, stock, and character purse from context.
-    {:ok,
-     socket
-     |> assign(:page_title, "Лавка торговца")
-     |> assign(:tax_rate, @tax_rate)
-     |> assign(:purse, 2_340)
-     |> assign(:mode, :buy)
-     |> assign(:owner?, false)
-     |> assign(:black?, false)
-     |> assign(:confirm?, false)
-     |> assign(:cart, %{})
-     # owner-set chalk prices, keyed by good id, seeded from base price
-     |> assign(:chalk, Map.new(@goods, &{&1.id, &1.price}))}
+    load_trade(socket, socket.assigns.current_scope.character)
   end
 
   @impl true
-  def handle_event("mode", %{"mode" => mode}, socket) do
-    {:noreply, assign(socket, :mode, String.to_existing_atom(mode))}
+  def handle_event("buy_shop", %{"offer-id" => offer_id}, socket) do
+    transact(
+      socket,
+      fn -> Play.buy_shop_item(socket.assigns.character, offer_id, 1) end,
+      "Покупка совершена."
+    )
   end
 
   @impl true
-  def handle_event("toggle_owner", _params, socket) do
-    {:noreply, socket |> assign(:owner?, !socket.assigns.owner?) |> assign(:confirm?, false)}
+  def handle_event("buy_grimoire", %{"tier" => tier}, socket) do
+    transact(
+      socket,
+      fn -> Play.purchase_trade_grimoire(socket.assigns.character, tier) end,
+      "Новый гримуар выкуплен и ждёт записи формул."
+    )
   end
 
   @impl true
-  def handle_event("toggle_black", _params, socket) do
-    {:noreply, socket |> assign(:black?, !socket.assigns.black?) |> assign(:confirm?, false)}
+  def handle_event("sell_shop", %{"shop_sell" => params}, socket) do
+    with {:ok, quantity} <- parse_positive(params["quantity"]),
+         {:ok, _state} <-
+           Play.sell_shop_item(
+             socket.assigns.character,
+             params["offer_id"],
+             params["inventory_item_id"],
+             quantity
+           ) do
+      {:noreply, socket |> put_flash(:info, "Лавочник принял товар.") |> refresh_trade()}
+    else
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("add", %{"id" => id}, socket) do
-    cart = Map.update(socket.assigns.cart, id, 1, &(&1 + 1))
-    {:noreply, assign(socket, :cart, cart)}
+  def handle_event("create_listing", %{"market_listing" => params}, socket) do
+    with {:ok, quantity} <- parse_positive(params["quantity"]),
+         {:ok, unit_price} <- parse_positive(params["unit_price"]),
+         {:ok, _state} <-
+           Play.create_market_listing(
+             socket.assigns.character,
+             params["inventory_item_id"],
+             quantity,
+             unit_price
+           ) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Объявление опубликовано с казённым налогом.")
+       |> refresh_trade()}
+    else
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("drop", %{"id" => id}, socket) do
-    cart =
-      case Map.get(socket.assigns.cart, id, 0) do
-        n when n <= 1 -> Map.delete(socket.assigns.cart, id)
-        n -> Map.put(socket.assigns.cart, id, n - 1)
-      end
-
-    {:noreply, assign(socket, :cart, cart)}
+  def handle_event("buy_listing", %{"listing-id" => listing_id}, socket) do
+    transact(
+      socket,
+      fn -> Play.purchase_market_listing(socket.assigns.character, listing_id) end,
+      "Сделка записана в книгу рынка."
+    )
   end
 
   @impl true
-  def handle_event("chalk", %{"id" => id, "value" => value}, socket) do
-    price =
-      case Integer.parse(value) do
-        {n, _} when n >= 0 -> n
-        _ -> Map.get(socket.assigns.chalk, id, 0)
-      end
-
-    {:noreply, assign(socket, :chalk, Map.put(socket.assigns.chalk, id, price))}
+  def handle_event("cancel_listing", %{"listing-id" => listing_id}, socket) do
+    transact(
+      socket,
+      fn -> Play.cancel_market_listing(socket.assigns.character, listing_id) end,
+      "Объявление снято; резерв предмета освобождён."
+    )
   end
 
   @impl true
-  def handle_event("confirm", _params, socket) do
-    {:noreply, assign(socket, :confirm?, true)}
+  def handle_event("create_black_offer", %{"black_offer" => params}, socket) do
+    with {:ok, quantity} <- parse_positive(params["quantity"]),
+         {:ok, unit_price} <- parse_positive(params["unit_price"]),
+         {:ok, _state} <-
+           Play.create_black_market_offer(
+             socket.assigns.character,
+             params["inventory_item_id"],
+             quantity,
+             unit_price
+           ) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Тайное предложение оставлено без налоговой защиты.")
+       |> refresh_trade()}
+    else
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("close_receipt", _params, socket) do
-    {:noreply, assign(socket, :confirm?, false)}
+  def handle_event("accept_black_offer", %{"offer-id" => offer_id}, socket) do
+    transact(
+      socket,
+      fn -> Play.accept_black_market_offer(socket.assigns.character, offer_id) end,
+      "Оплата прошла. Теперь продавец обязан доставить товар."
+    )
   end
 
   @impl true
-  def handle_event("seal_deal", _params, socket) do
-    # TODO: wire — post transaction, apply tax to Treasury, move items.
-    {:noreply, socket |> assign(:cart, %{}) |> assign(:confirm?, false)}
+  def handle_event("fulfill_black_deal", %{"deal-id" => deal_id}, socket) do
+    transact(
+      socket,
+      fn -> Play.fulfill_black_market_deal(socket.assigns.character, deal_id) end,
+      "Тайная сделка исполнена."
+    )
   end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, refresh_trade(socket)}
 
   @impl true
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:rows, if(assigns.mode == :buy, do: @goods, else: @wares))
-      |> assign(:cart_lines, cart_lines(assigns))
-
-    subtotal = Enum.sum(Enum.map(assigns.cart_lines, & &1.line))
-    tax = if assigns.black?, do: 0, else: round(subtotal * @tax_rate)
-
-    assigns =
-      assigns
-      |> assign(:subtotal, subtotal)
-      |> assign(:tax, tax)
-      |> assign(:total, subtotal + tax)
-      |> assign(:cart_count, Enum.sum(Map.values(assigns.cart)))
-
     ~H"""
-    <div class="game-screen">
-      <div class={["trd-root", @black? && "trd-root--black"]}>
-        <a href={~p"/map"} class="trd-exit">&larr; на площадь</a>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="trade-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
+        <div class="mx-auto w-full max-w-4xl space-y-5">
+          <.link id="trade-back-to-map" navigate={~p"/map"} class="map-back-link">← Карта мира</.link>
 
-        <div class="trd-shell">
-          <header class="trd-head">
-            <.art_slot
-              kind="hero"
-              variant="dark"
-              label={
-                if @black?, do: "Задворки · сделка в тени", else: "Лавка торговца во Вратах Зари"
-              }
-              class="trd-hero"
-            />
-            <div class="trd-head__bar">
-              <div class="trd-head__who">
-                <span class="trd-head__shop">
-                  {if @black?, do: "Тёмный угол", else: "Лавка торговца"}
-                </span>
-                <span class="trd-head__keeper">
-                  {if @black?, do: "торгует Некто в капюшоне", else: "хозяин — Горан Медовар"}
-                </span>
-              </div>
-              <div class="trd-purse" title="ваш кошель">
-                <span class="trd-coin">◈</span>
-                <span class="trd-purse__n">{fmt(@purse)}</span>
-              </div>
+          <header class="rounded-xl border border-amber-500/25 bg-stone-900/80 p-6 shadow-xl">
+            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">
+              торговая книга · {@location.name}
+            </p>
+            <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
+              <h1 class="font-serif text-3xl text-amber-100">Торговля</h1>
+              <p
+                id="trade-balance"
+                class="rounded-full border border-amber-300/35 px-3 py-1 text-amber-100"
+              >
+                {@balance} ◈
+              </p>
             </div>
           </header>
 
-          <div class="trd-toggles">
-            <button
-              type="button"
-              class={["trd-toggle", @owner? && "trd-toggle--on"]}
-              phx-click="toggle_owner"
-            >
-              <span class="trd-toggle__dot"></span> Вы владелец
-            </button>
-            <button
-              type="button"
-              class={["trd-toggle trd-toggle--shady", @black? && "trd-toggle--on"]}
-              phx-click="toggle_black"
-            >
-              <span class="trd-toggle__dot"></span> Тайный стук
-            </button>
+          <div
+            :if={@error}
+            id="trade-error"
+            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+          >
+            {@error}
           </div>
 
-          <%= if @black? do %>
-            <p class="trd-warn">⚠ сделка без защиты — вас могут обмануть</p>
-          <% end %>
-
-          <%= if @owner? do %>
-            <div class="trd-revenue">
-              <span class="trd-revenue__label">выручка за день</span>
-              <div class="trd-revenue__grid">
-                <div><b>1 240</b><span>продано, монет</span></div>
-                <div><b>99</b><span>налог казне</span></div>
-                <div><b>17</b><span>сделок</span></div>
-              </div>
-              <p class="trd-revenue__hint">Впиши свою цену мелом в строке товара.</p>
-            </div>
-          <% end %>
-
-          <nav class="trd-tabs" role="tablist">
-            <button
-              type="button"
-              class={["trd-tab", @mode == :buy && "trd-tab--on"]}
-              phx-click="mode"
-              phx-value-mode="buy"
-            >
-              Купить
-            </button>
-            <button
-              type="button"
-              class={["trd-tab", @mode == :sell && "trd-tab--on"]}
-              phx-click="mode"
-              phx-value-mode="sell"
-            >
-              Продать
-            </button>
-          </nav>
-
-          <ul class="trd-goods">
-            <li :for={row <- @rows} class="trd-good">
-              <.art_slot kind="icon" variant="dark" label={row.name} class="trd-good__icon" />
-              <div class="trd-good__body">
-                <span class="trd-good__name">{row.name}</span>
-                <span class="trd-good__note">{row.note}</span>
-                <div class="trd-good__meta">
-                  <span class="trd-chip">{row.cat}</span>
-                  <span class="trd-good__weight">{fmt_w(row.weight)} стоуна</span>
-                </div>
-              </div>
-              <div class="trd-good__deal">
-                <%= if @owner? and @mode == :buy do %>
-                  <label class="trd-chalk">
-                    <input
-                      type="text"
-                      inputmode="numeric"
-                      value={Map.get(@chalk, row.id, row.price)}
-                      phx-blur="chalk"
-                      phx-value-id={row.id}
-                      class="trd-chalk__in"
-                    />
-                    <span class="trd-chalk__unit">◈</span>
-                  </label>
-                  <span class="trd-good__tax">фикс. цена</span>
-                <% else %>
-                  <span class="trd-good__price">
-                    <span class="trd-coin">◈</span>{price_of(row, @chalk)}
-                  </span>
-                  <span class="trd-good__tax">
-                    {if @black?,
-                      do: "без налога",
-                      else: "+ #{round(price_of(row, @chalk) * @tax_rate)} налог"}
-                  </span>
-                  <button type="button" class="trd-add" phx-click="add" phx-value-id={row.id}>
-                    {if @mode == :buy, do: "＋ в корзину", else: "＋ продать"}
-                  </button>
-                <% end %>
-              </div>
-            </li>
-          </ul>
-        </div>
-
-        <%= if @cart_count > 0 and not @owner? do %>
-          <div class="trd-cartbar">
-            <div class="trd-cartbar__sum">
-              <span class="trd-cartbar__n">{@cart_count} поз.</span>
-              <span class="trd-cartbar__coin"><span class="trd-coin">◈</span>{fmt(@total)}</span>
-            </div>
-            <button type="button" class="trd-cartbar__go" phx-click="confirm">
-              {if @mode == :buy, do: "Ударить по рукам", else: "Сбыть товар"}
-            </button>
-          </div>
-        <% end %>
-
-        <%= if @confirm? do %>
-          <div class="trd-receipt-scrim" phx-click="close_receipt">
+          <section id="trade-npc-shops" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
+            <h2 class="font-serif text-2xl text-stone-100">Лавки рядом</h2>
+            <p :if={@shops == []} id="trade-shops-empty" class="mt-3 text-sm text-stone-400">
+              В этом месте нет открытых лавок.
+            </p>
             <div
-              class={["trd-receipt", @black? && "trd-receipt--black"]}
-              phx-click-away="close_receipt"
+              :for={shop <- @shops}
+              id={"trade-shop-#{shop.id}"}
+              class="mt-5 rounded-lg border border-stone-700 bg-stone-950/45 p-4"
             >
-              <div class="trd-receipt__deckle"></div>
-              <h2 class="trd-receipt__title">
-                {if @black?, do: "Тайная сделка", else: "Торговая расписка"}
-              </h2>
-              <p class="trd-receipt__place">Врата Зари · 14-е Месяца Жатвы, 847</p>
-
-              <ul class="trd-receipt__lines">
-                <li :for={l <- @cart_lines} class="trd-receipt__line">
-                  <span class="trd-receipt__item">{l.name} <em>×{l.qty}</em></span>
-                  <span class="trd-receipt__amt">{fmt(l.line)}</span>
+              <h3 class="font-serif text-lg text-amber-100">{shop.name}</h3>
+              <p :if={shop.description} class="mt-1 text-sm text-stone-400">{shop.description}</p>
+              <ul class="mt-3 divide-y divide-stone-800">
+                <li
+                  :for={offer <- shop.offers}
+                  id={"trade-shop-offer-#{offer.id}"}
+                  class="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
+                >
+                  <span>{offer.item_template.name}</span>
+                  <span class="text-stone-400">
+                    купить {offer.buy_price} ◈ · продать {offer.sell_price} ◈
+                  </span>
+                  <button
+                    :if={offer.buy_price > 0}
+                    id={"trade-buy-#{offer.id}"}
+                    type="button"
+                    phx-click="buy_shop"
+                    phx-value-offer-id={offer.id}
+                    class="rounded border border-amber-300/50 px-3 py-1.5 text-amber-100 hover:bg-amber-300/10"
+                  >
+                    Купить 1
+                  </button>
                 </li>
               </ul>
-
-              <div class="trd-receipt__foot">
-                <div class="trd-receipt__row">
-                  <span>подытог</span><span>{fmt(@subtotal)}</span>
-                </div>
-                <%= if @black? do %>
-                  <div class="trd-receipt__row trd-receipt__row--muted">
-                    <span>без налога</span><span>—</span>
-                  </div>
-                <% else %>
-                  <div class="trd-receipt__row">
-                    <span>налог казне 8%</span><span>{fmt(@tax)}</span>
-                  </div>
-                <% end %>
-                <div class="trd-receipt__row trd-receipt__row--total">
-                  <span>итого</span><span><span class="trd-coin">◈</span> {fmt(@total)}</span>
-                </div>
-              </div>
-
-              <div class="trd-receipt__stamp">
-                {if @black?, do: "без печати", else: "казна Эленвира"}
-              </div>
-
-              <button type="button" class="trd-receipt__seal" phx-click="seal_deal">
-                {if @black?, do: "Разойтись по-тихому", else: "Приложить печать"}
-              </button>
-              <button type="button" class="trd-receipt__cancel" phx-click="close_receipt">
-                передумать
-              </button>
             </div>
-          </div>
-        <% end %>
-      </div>
-    </div>
+
+            <.form
+              :if={@sell_offer_options != [] and @inventory_options != []}
+              for={@sell_form}
+              id="trade-sell-form"
+              phx-submit="sell_shop"
+              class="mt-5 grid gap-3 md:grid-cols-4 md:items-end"
+            >
+              <.input
+                field={@sell_form[:offer_id]}
+                type="select"
+                label="Лавка покупает"
+                prompt="Выберите расценку"
+                options={@sell_offer_options}
+              />
+              <.input
+                field={@sell_form[:inventory_item_id]}
+                type="select"
+                label="Ваша вещь"
+                prompt="Выберите предмет"
+                options={@inventory_options}
+              />
+              <.input
+                field={@sell_form[:quantity]}
+                type="number"
+                label="Количество"
+                min="1"
+                inputmode="numeric"
+              />
+              <button
+                id="trade-sell"
+                type="submit"
+                class="mb-4 rounded-md border border-amber-300/50 px-4 py-3 font-semibold text-amber-100 hover:bg-amber-300/10"
+              >
+                Продать
+              </button>
+            </.form>
+          </section>
+
+          <section
+            id="trade-grimoire-catalog"
+            class="rounded-xl border border-amber-400/25 bg-amber-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-amber-100">Переплётная лавка</h2>
+            <p class="mt-2 text-sm leading-6 text-stone-400">
+              Гримуар покупается один раз: вместимость и вес переплёта не меняются. Новый том можно заполнить в кабинете формул, а запечатанный заменить только другой книгой.
+            </p>
+            <div class="mt-5 grid gap-3 md:grid-cols-2">
+              <article
+                :for={tier <- @grimoire_tiers}
+                id={"trade-grimoire-tier-#{tier.key}"}
+                class="rounded-lg border border-amber-200/15 bg-stone-950/45 p-4"
+              >
+                <div class="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 class="font-serif text-lg text-amber-100">{tier.name}</h3>
+                    <p class="mt-1 text-sm text-stone-400">
+                      {tier.capacity} формул · вес {tier.weight}
+                    </p>
+                  </div>
+                  <span class="shrink-0 rounded-full border border-amber-300/25 px-2.5 py-1 text-sm text-amber-100">
+                    {tier.price} ◈
+                  </span>
+                </div>
+                <button
+                  id={"trade-buy-grimoire-#{tier.key}"}
+                  type="button"
+                  phx-click="buy_grimoire"
+                  phx-value-tier={tier.key}
+                  class="mt-4 rounded border border-amber-300/50 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/10"
+                >
+                  Купить переплёт
+                </button>
+              </article>
+            </div>
+          </section>
+
+          <section
+            :if={@legal_market_enabled?}
+            id="trade-legal-market"
+            class="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-emerald-100">Официальный рынок</h2>
+            <p class="mt-2 text-sm text-stone-400">
+              Налог при продаже: {@legal_market_tax_rate_bps / 100}% — он идёт в казну автоматически.
+            </p>
+
+            <.form
+              :if={@inventory_options != []}
+              for={@listing_form}
+              id="trade-listing-form"
+              phx-submit="create_listing"
+              class="mt-5 grid gap-3 md:grid-cols-4 md:items-end"
+            >
+              <.input
+                field={@listing_form[:inventory_item_id]}
+                type="select"
+                label="Ваш предмет"
+                prompt="Выберите предмет"
+                options={@inventory_options}
+              />
+              <.input
+                field={@listing_form[:quantity]}
+                type="number"
+                label="Количество"
+                min="1"
+                inputmode="numeric"
+              />
+              <.input
+                field={@listing_form[:unit_price]}
+                type="number"
+                label="Цена за единицу"
+                min="1"
+                inputmode="numeric"
+              />
+              <button
+                id="trade-create-listing"
+                type="submit"
+                class="mb-4 rounded-md bg-emerald-300 px-4 py-3 font-semibold text-stone-950 hover:bg-emerald-200"
+              >
+                Выставить
+              </button>
+            </.form>
+
+            <p
+              :if={@market_listings == []}
+              id="trade-listings-empty"
+              class="mt-5 text-sm text-stone-400"
+            >
+              На рынке пока нет объявлений.
+            </p>
+            <ul id="trade-market-listings" class="mt-4 space-y-2">
+              <li
+                :for={listing <- @market_listings}
+                id={"trade-listing-#{listing.id}"}
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+              >
+                <span>
+                  {listing.item_template.name} ×{listing.quantity} · {listing.total_price} ◈
+                </span>
+                <div class="flex gap-2">
+                  <button
+                    :if={listing.seller_character_id != @character.id}
+                    id={"trade-buy-listing-#{listing.id}"}
+                    type="button"
+                    phx-click="buy_listing"
+                    phx-value-listing-id={listing.id}
+                    class="rounded border border-emerald-300/50 px-3 py-1.5 text-emerald-100"
+                  >
+                    Купить
+                  </button>
+                  <button
+                    :if={listing.seller_character_id == @character.id}
+                    id={"trade-cancel-listing-#{listing.id}"}
+                    type="button"
+                    phx-click="cancel_listing"
+                    phx-value-listing-id={listing.id}
+                    class="rounded border border-stone-500 px-3 py-1.5 text-stone-200"
+                  >
+                    Снять
+                  </button>
+                </div>
+              </li>
+            </ul>
+          </section>
+
+          <section
+            :if={@black_market_enabled?}
+            id="trade-black-market"
+            class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-violet-100">Чёрный рынок</h2>
+            <p class="mt-2 text-sm text-stone-400">
+              Здесь нет налога и нет гарантии доставки: после оплаты товар остаётся обещанием продавца.
+            </p>
+
+            <.form
+              :if={@inventory_options != []}
+              for={@black_offer_form}
+              id="trade-black-offer-form"
+              phx-submit="create_black_offer"
+              class="mt-5 grid gap-3 md:grid-cols-4 md:items-end"
+            >
+              <.input
+                field={@black_offer_form[:inventory_item_id]}
+                type="select"
+                label="Ваш предмет"
+                prompt="Выберите предмет"
+                options={@inventory_options}
+              />
+              <.input
+                field={@black_offer_form[:quantity]}
+                type="number"
+                label="Количество"
+                min="1"
+                inputmode="numeric"
+              />
+              <.input
+                field={@black_offer_form[:unit_price]}
+                type="number"
+                label="Цена за единицу"
+                min="1"
+                inputmode="numeric"
+              />
+              <button
+                id="trade-create-black-offer"
+                type="submit"
+                class="mb-4 rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 hover:bg-violet-200"
+              >
+                Предложить
+              </button>
+            </.form>
+
+            <p
+              :if={@black_market_offers == []}
+              id="trade-black-offers-empty"
+              class="mt-5 text-sm text-stone-400"
+            >
+              Тайных предложений пока нет.
+            </p>
+            <ul id="trade-black-offers" class="mt-4 space-y-2">
+              <li
+                :for={offer <- @black_market_offers}
+                id={"trade-black-offer-#{offer.id}"}
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+              >
+                <span>{offer.item_template.name} ×{offer.quantity} · {offer.total_price} ◈</span>
+                <button
+                  :if={offer.seller_character_id != @character.id}
+                  id={"trade-accept-black-offer-#{offer.id}"}
+                  type="button"
+                  phx-click="accept_black_offer"
+                  phx-value-offer-id={offer.id}
+                  class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
+                >
+                  Оплатить
+                </button>
+              </li>
+            </ul>
+
+            <div :if={@black_market_deals != []} id="trade-black-deals" class="mt-5 space-y-2">
+              <h3 class="font-serif text-lg text-violet-100">Ваши обязательства</h3>
+              <article
+                :for={deal <- @black_market_deals}
+                id={"trade-black-deal-#{deal.id}"}
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+              >
+                <span>{deal.item_template.name} ×{deal.quantity} · {deal.status}</span>
+                <button
+                  :if={
+                    deal.seller_character_id == @character.id and deal.status == :awaiting_delivery
+                  }
+                  id={"trade-fulfill-black-deal-#{deal.id}"}
+                  type="button"
+                  phx-click="fulfill_black_deal"
+                  phx-value-deal-id={deal.id}
+                  class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
+                >
+                  Доставить
+                </button>
+              </article>
+            </div>
+          </section>
+
+          <button
+            id="trade-refresh"
+            type="button"
+            phx-click="refresh"
+            class="text-sm text-amber-200 underline decoration-amber-500/40 underline-offset-4"
+          >
+            Обновить торговую книгу
+          </button>
+        </div>
+      </main>
+    </Layouts.app>
     """
   end
 
-  # --- helpers -------------------------------------------------------------
+  defp transact(socket, command, message) do
+    case command.() do
+      {:ok, _state} -> {:noreply, socket |> put_flash(:info, message) |> refresh_trade()}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
 
-  defp cart_lines(assigns) do
-    rows = if assigns.mode == :buy, do: @goods, else: @wares
-    index = Map.new(rows, &{&1.id, &1})
+  defp load_trade(socket, character) do
+    case Play.trade_state(character) do
+      {:ok, state} ->
+        {:ok,
+         socket |> assign(:page_title, "Торговля") |> assign(:error, nil) |> assign_trade(state)}
 
-    assigns.cart
-    |> Enum.map(fn {id, qty} ->
-      case index[id] do
-        nil ->
-          nil
+      {:error, :travelling} ->
+        {:ok, push_navigate(socket, to: ~p"/travel")}
 
-        row ->
-          unit = price_of(row, assigns.chalk)
-          %{id: id, name: row.name, qty: qty, unit: unit, line: unit * qty}
-      end
+      {:error, _reason} ->
+        {:ok, push_navigate(socket, to: ~p"/map")}
+    end
+  end
+
+  defp refresh_trade(socket) do
+    case Play.trade_state(socket.assigns.character) do
+      {:ok, state} -> socket |> assign(:error, nil) |> assign_trade(state)
+      {:error, :travelling} -> push_navigate(socket, to: ~p"/travel")
+      {:error, _reason} -> assign(socket, :error, "Торговая книга сейчас недоступна.")
+    end
+  end
+
+  defp assign_trade(socket, state) do
+    shop_offers = Enum.flat_map(state.shops, &(&1.offers || []))
+    inventory_options = item_options(state.inventory)
+
+    socket
+    |> assign(:character, state.character)
+    |> assign(:location, state.location)
+    |> assign(:balance, state.balance)
+    |> assign(:shops, state.shops)
+    |> assign(:inventory_options, inventory_options)
+    |> assign(:sell_offer_options, offer_options(shop_offers, :sell_price))
+    |> assign(:legal_market_enabled?, state.legal_market_enabled?)
+    |> assign(:black_market_enabled?, state.black_market_enabled?)
+    |> assign(:market_listings, state.market_listings)
+    |> assign(:black_market_offers, state.black_market_offers)
+    |> assign(:black_market_deals, state.black_market_deals)
+    |> assign(:grimoire_tiers, state.grimoire_tiers)
+    |> assign(:legal_market_tax_rate_bps, state.legal_market_tax_rate_bps)
+    |> assign(
+      :sell_form,
+      to_form(%{"offer_id" => "", "inventory_item_id" => "", "quantity" => "1"}, as: :shop_sell)
+    )
+    |> assign(
+      :listing_form,
+      to_form(%{"inventory_item_id" => "", "quantity" => "1", "unit_price" => "1"},
+        as: :market_listing
+      )
+    )
+    |> assign(
+      :black_offer_form,
+      to_form(%{"inventory_item_id" => "", "quantity" => "1", "unit_price" => "1"},
+        as: :black_offer
+      )
+    )
+  end
+
+  defp item_options(items) do
+    items
+    |> Enum.filter(&(&1.quantity > &1.reserved_quantity))
+    |> Enum.map(fn item ->
+      {"#{item.item_template.name} ×#{item.quantity - item.reserved_quantity}", item.id}
     end)
-    |> Enum.reject(&is_nil/1)
   end
 
-  defp price_of(row, chalk), do: Map.get(chalk, row.id, row.price)
-
-  defp fmt(n) do
-    n
-    |> Integer.to_string()
-    |> String.graphemes()
-    |> Enum.reverse()
-    |> Enum.chunk_every(3)
-    |> Enum.map(&Enum.reverse/1)
-    |> Enum.reverse()
-    |> Enum.map(&Enum.join/1)
-    |> Enum.join(" ")
+  defp offer_options(offers, field) do
+    offers
+    |> Enum.filter(&(Map.fetch!(&1, field) > 0))
+    |> Enum.map(fn offer ->
+      {"#{offer.item_template.name} · #{Map.fetch!(offer, field)} ◈", offer.id}
+    end)
   end
 
-  defp fmt_w(w) when is_float(w), do: :erlang.float_to_binary(w, decimals: 1)
-  defp fmt_w(w), do: to_string(w)
+  defp parse_positive(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} when number > 0 -> {:ok, number}
+      _other -> {:error, :invalid_quantity}
+    end
+  end
+
+  defp parse_positive(_value), do: {:error, :invalid_quantity}
+
+  defp error_message(:invalid_quantity), do: "Укажите положительное количество и цену."
+  defp error_message(:inventory_item_not_found), do: "Выбранного предмета нет в вашей котомке."
+  defp error_message(:shop_offer_not_found), do: "Эта расценка больше не действует здесь."
+
+  defp error_message(:shop_inventory_not_found),
+    do: "Лавочник не может принять этот набор предметов."
+
+  defp error_message(:market_listing_not_found), do: "Это объявление больше не доступно."
+  defp error_message(:black_market_offer_not_found), do: "Тайное предложение больше не доступно."
+  defp error_message(:black_market_deal_not_found), do: "Эта тайная сделка больше не доступна."
+
+  defp error_message(:legal_market_disabled),
+    do: "В этом королевстве официальный рынок закрыт правилами мира."
+
+  defp error_message(:black_market_disabled),
+    do: "В этом королевстве чёрный рынок запрещён правилами мира."
+
+  defp error_message(:travelling), do: "Нельзя торговать во время пути."
+  defp error_message(:invalid_grimoire_tier), do: "Такого переплёта нет в каталоге лавки."
+
+  defp error_message(_reason),
+    do: "Сделка не выполнена: проверьте баланс, предмет и условия рынка."
 end

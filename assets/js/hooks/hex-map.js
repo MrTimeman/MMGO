@@ -17,8 +17,14 @@ const LOD_MID = 0.16
 
 // Map filters (EVE/HOI4-style overlays). Each filter is a registry entry so
 // new overlays (economic, diplomacy, ...) slot in without touching render().
-const FILTERS = ["terrain", "political"]
-const FILTER_LABELS = { terrain: "Рельеф", political: "Владения" }
+const FILTERS = ["terrain", "political", "infrastructure", "economic", "diplomacy"]
+const FILTER_LABELS = {
+  terrain: "Рельеф",
+  political: "Владения",
+  infrastructure: "Сети",
+  economic: "Экономика",
+  diplomacy: "Дипломатия",
+}
 
 const KIND = {
   city: { r: 16, fill: "#d6a643", stroke: "#fff1a8" },
@@ -57,6 +63,8 @@ export const HexMapHook = {
     this.pathPreview = null
     this.activeFilter = "terrain"
     this.orgs = []
+    this.economic = []
+    this.diplomacy = []
     this.orgOverlay = null
 
     this.build()
@@ -67,6 +75,8 @@ export const HexMapHook = {
       this.locations = payload.locations || []
       this.player = payload.player || null
       this.orgs = payload.filters?.orgs || []
+      this.economic = payload.filters?.economic || []
+      this.diplomacy = payload.filters?.diplomacy || []
       this.orgOverlay = null
       this.selected = null
       this.pathPreview = null
@@ -105,7 +115,7 @@ export const HexMapHook = {
     this.el.classList.add("hex-map")
     this.el.innerHTML = `
       <canvas class="hex-map__canvas"></canvas>
-      <button class="hex-map__filter" type="button" aria-label="Фильтр карты — рельеф или владения">Рельеф</button>
+      <button class="hex-map__filter" type="button" aria-label="Фильтр карты" aria-pressed="false">Рельеф</button>
       <div class="hex-map__legend" hidden></div>
       <section class="hex-map__sheet" hidden></section>
     `
@@ -124,25 +134,71 @@ export const HexMapHook = {
     const index = FILTERS.indexOf(this.activeFilter)
     this.activeFilter = FILTERS[(index + 1) % FILTERS.length]
     this.filterButton.textContent = FILTER_LABELS[this.activeFilter]
+    this.filterButton.setAttribute("aria-pressed", this.activeFilter !== "terrain")
     this.updateLegend()
     this.scheduleRender()
   },
 
   updateLegend() {
-    if (this.activeFilter !== "political" || this.orgs.length === 0) {
+    if (this.activeFilter === "diplomacy") {
+      if (this.diplomacy.length === 0) {
+        this.legend.hidden = true
+        this.legend.innerHTML = ""
+        return
+      }
+
+      this.legend.hidden = false
+      this.legend.innerHTML = `
+        <strong class="hex-map__legend-title">Дипломатия</strong>
+        <span class="hex-map__legend-chip"><i style="background:#69d3ff"></i>Союз</span>
+        <span class="hex-map__legend-chip"><i style="background:#ef6767"></i>Соперничество</span>
+        <span class="hex-map__legend-chip"><i style="background:#ffae45"></i>Война</span>
+      `
+      return
+    }
+
+    if (this.activeFilter === "economic") {
+      if (this.economic.length === 0) {
+        this.legend.hidden = true
+        this.legend.innerHTML = ""
+        return
+      }
+
+      const organizationsById = new Map(this.orgs.map(org => [org.id, org]))
+      this.legend.hidden = false
+      this.legend.innerHTML = [`<strong class="hex-map__legend-title">Экономическая активность</strong>`]
+        .concat(
+          this.economic.map(activity => {
+            const org = organizationsById.get(activity.organization_id)
+            const color = org?.color || "#e6bb58"
+            return `
+              <span class="hex-map__legend-chip">
+                <i style="background:${color}"></i>${escapeHtml(activity.organization_name)} · ${economicActivityLabel(activity.activity_level)}
+              </span>
+            `
+          })
+        )
+        .join("")
+      return
+    }
+
+    if (!["political", "infrastructure"].includes(this.activeFilter) || this.orgs.length === 0) {
       this.legend.hidden = true
       this.legend.innerHTML = ""
       return
     }
 
     this.legend.hidden = false
-    this.legend.innerHTML = this.orgs
-      .map(
-        org => `
-          <span class="hex-map__legend-chip">
-            <i style="background:${org.color}"></i>${escapeHtml(org.name)}
-          </span>
-        `
+    const label = this.activeFilter === "political" ? "Владения" : "Инфраструктура"
+    this.legend.innerHTML = [`<strong class="hex-map__legend-title">${label}</strong>`]
+      .concat(
+        this.orgs.map(
+          org => `
+            <span class="hex-map__legend-chip">
+              <i style="background:${org.color}"></i>${escapeHtml(org.name)}
+            </span>
+          `
+        )
       )
       .join("")
   },
@@ -666,6 +722,10 @@ export const HexMapHook = {
         this.renderPoliticalCells(this.l0Cells, "l0")
       }
 
+      this.renderInfrastructure()
+      this.renderEconomic()
+      this.renderDiplomacy()
+
       ctx.restore()
     }
 
@@ -1067,6 +1127,162 @@ export const HexMapHook = {
       ctx.stroke(cell.path)
     }
   },
+
+  // Infrastructure is distinct from political control: it draws the actual
+  // organization-linked network between locations. Each organization is a
+  // small spanning tree rooted at its first linked location, which keeps the
+  // map legible even when a network has many destinations.
+  renderInfrastructure() {
+    if (this.activeFilter !== "infrastructure") return
+
+    const locationsBySlug = new Map(this.locations.map(location => [location.slug, location]))
+    const ctx = this.ctx
+
+    ctx.save()
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+    ctx.setLineDash([12 / this.scale, 9 / this.scale])
+
+    for (const org of this.orgs) {
+      const nodes = (org.location_slugs || [])
+        .map(slug => locationsBySlug.get(slug))
+        .filter(Boolean)
+        .map(location => ({ slug: location.slug, pos: this.locationWorldPos(location) }))
+
+      if (nodes.length === 0) continue
+
+      ctx.strokeStyle = withAlpha(org.color, 0.88)
+      ctx.fillStyle = withAlpha(org.color, 0.36)
+      ctx.lineWidth = 5 / this.scale
+
+      const root = nodes[0]
+
+      for (const node of nodes.slice(1)) {
+        ctx.beginPath()
+        ctx.moveTo(root.pos.x, root.pos.y)
+        ctx.lineTo(node.pos.x, node.pos.y)
+        ctx.stroke()
+      }
+
+      for (const node of nodes) {
+        ctx.beginPath()
+        ctx.arc(node.pos.x, node.pos.y, 13 / this.scale, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    ctx.restore()
+  },
+
+  // Economic activity reflects real, recent organization-ledger movements at
+  // linked locations. The payload contains a tier only—not a balance or a
+  // transaction amount—so collective finances stay private on the world map.
+  renderEconomic() {
+    if (this.activeFilter !== "economic" || this.economic.length === 0) return
+
+    const locationsBySlug = new Map(this.locations.map(location => [location.slug, location]))
+    const organizationsById = new Map(this.orgs.map(org => [org.id, org]))
+    const ctx = this.ctx
+
+    ctx.save()
+
+    for (const activity of this.economic) {
+      const org = organizationsById.get(activity.organization_id)
+      const color = org?.color || "#e6bb58"
+      const tier = clamp(Number(activity.activity_level) || 1, 1, 4)
+      const radius = (8 + tier * 4) / this.scale
+
+      for (const slug of activity.location_slugs || []) {
+        const location = locationsBySlug.get(slug)
+        if (!location) continue
+
+        const position = this.locationWorldPos(location)
+
+        ctx.fillStyle = withAlpha(color, 0.22 + tier * 0.07)
+        ctx.strokeStyle = withAlpha(color, 0.9)
+        ctx.lineWidth = 2.5 / this.scale
+
+        ctx.beginPath()
+        ctx.arc(position.x, position.y, radius, 0, Math.PI * 2)
+        ctx.fill()
+        ctx.stroke()
+
+        ctx.beginPath()
+        ctx.arc(position.x, position.y, radius + 6 / this.scale, 0, Math.PI * 2)
+        ctx.strokeStyle = withAlpha(color, 0.42)
+        ctx.lineWidth = 1.25 / this.scale
+        ctx.stroke()
+      }
+    }
+
+    ctx.restore()
+  },
+
+  // Diplomatic overlays are drawn only after both organizations have stored a
+  // reciprocal relationship. Each line joins the real linked-location network
+  // centers, so an organization with no visible infrastructure cannot claim a
+  // made-up territorial link on the client.
+  renderDiplomacy() {
+    if (this.activeFilter !== "diplomacy" || this.diplomacy.length === 0) return
+
+    const locationsBySlug = new Map(this.locations.map(location => [location.slug, location]))
+    const organizationsById = new Map(this.orgs.map(organization => [organization.id, organization]))
+    const ctx = this.ctx
+
+    ctx.save()
+    ctx.lineCap = "round"
+    ctx.lineJoin = "round"
+
+    for (const relationship of this.diplomacy) {
+      const source = organizationsById.get(relationship.source_organization_id)
+      const target = organizationsById.get(relationship.target_organization_id)
+      const sourceAnchor = this.organizationAnchor(source, locationsBySlug)
+      const targetAnchor = this.organizationAnchor(target, locationsBySlug)
+
+      if (!sourceAnchor || !targetAnchor) continue
+
+      const alliance = relationship.kind === "alliance"
+      const war = relationship.kind === "war"
+      const color = alliance ? "#69d3ff" : war ? "#ffae45" : "#ef6767"
+
+      ctx.strokeStyle = withAlpha(color, 0.9)
+      ctx.fillStyle = withAlpha(color, 0.36)
+      ctx.lineWidth = 5 / this.scale
+      ctx.setLineDash(
+        alliance ? [18 / this.scale, 9 / this.scale] : war ? [] : [5 / this.scale, 9 / this.scale]
+      )
+
+      ctx.beginPath()
+      ctx.moveTo(sourceAnchor.x, sourceAnchor.y)
+      ctx.lineTo(targetAnchor.x, targetAnchor.y)
+      ctx.stroke()
+
+      for (const anchor of [sourceAnchor, targetAnchor]) {
+        ctx.beginPath()
+        ctx.arc(anchor.x, anchor.y, 11 / this.scale, 0, Math.PI * 2)
+        ctx.fill()
+      }
+    }
+
+    ctx.restore()
+  },
+
+  organizationAnchor(organization, locationsBySlug) {
+    if (!organization) return null
+
+    const nodes = (organization.location_slugs || [])
+      .map(slug => locationsBySlug.get(slug))
+      .filter(Boolean)
+
+    if (nodes.length === 0) return null
+
+    return nodes
+      .map(location => this.locationWorldPos(location))
+      .reduce(
+        (center, position) => ({ x: center.x + position.x / nodes.length, y: center.y + position.y / nodes.length }),
+        { x: 0, y: 0 }
+      )
+  },
 }
 
 function clamp(value, lo, hi) {
@@ -1079,6 +1295,13 @@ function distance(a, b) {
 
 function midpoint(a, b) {
   return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 }
+}
+
+function economicActivityLabel(level) {
+  if (level >= 4) return "узел"
+  if (level >= 3) return "центр"
+  if (level >= 2) return "оживление"
+  return "след"
 }
 
 function majorityKey(counts) {

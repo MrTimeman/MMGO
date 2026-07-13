@@ -4,6 +4,7 @@ defmodule MMGO.FederationRemoteTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Economy
   alias MMGO.Federation
+  alias MMGO.Federation.RemoteRealm
   alias MMGO.Repo
   alias MMGO.Worlds
   alias MMGO.Worlds.Realm
@@ -124,6 +125,79 @@ defmodule MMGO.FederationRemoteTest do
     assert migration.destination_external_ref == "remote-ref-1"
     assert frozen_origin.status == :frozen
     assert response["destination_character_ref"] == "remote-ref-1"
+  end
+
+  test "a remote realm without an import credential cannot freeze a migrating character", %{
+    character: character,
+    bypass: bypass
+  } do
+    {:ok, remote_realm} =
+      Federation.register_remote_realm("http://localhost:#{bypass.port}/manifest", "remote-token")
+
+    remote_realm =
+      remote_realm
+      |> RemoteRealm.changeset(%{access_token: nil})
+      |> Repo.update!()
+
+    assert {:error, changeset} = Federation.start_migration(character, remote_realm, 100)
+
+    assert %{status: ["remote realm import authorization is unavailable"]} = errors_on(changeset)
+    assert Repo.get!(Character, character.id).status == :active
+    assert is_nil(Federation.active_migration_for_character(character.id))
+  end
+
+  test "a failed remote handoff stays recoverable with the same durable reference", %{
+    character: character,
+    bypass: bypass
+  } do
+    failing_bypass = Bypass.open()
+
+    Bypass.stub(failing_bypass, "POST", "/api/federation/import-migration", fn conn ->
+      Plug.Conn.resp(conn, 503, Jason.encode!(%{"ok" => false}))
+    end)
+
+    {:ok, remote_realm} =
+      Federation.register_remote_realm("http://localhost:#{bypass.port}/manifest", "remote-token")
+
+    remote_realm =
+      remote_realm
+      |> RemoteRealm.changeset(%{public_endpoint: "http://localhost:#{failing_bypass.port}"})
+      |> Repo.update!()
+
+    assert {:ok,
+            %{
+              migration: migration,
+              origin_character: frozen_origin,
+              remote_response: nil,
+              remote_import_error: _reason
+            }} =
+             Federation.start_migration(character, remote_realm, 100,
+               started_at: ~U[2026-03-28 12:00:00Z],
+               freeze_game_days: 1
+             )
+
+    assert frozen_origin.status == :frozen
+    assert Federation.remote_import_status(migration) == :pending
+    assert is_binary(migration.metadata["migration_reference"])
+
+    assert {:error, changeset} =
+             Federation.complete_migration_by_id(migration.id,
+               now: migration.freeze_ends_at,
+               force: true
+             )
+
+    assert %{status: ["destination import has not been confirmed yet"]} = errors_on(changeset)
+
+    remote_realm
+    |> RemoteRealm.changeset(%{public_endpoint: "http://localhost:#{bypass.port}"})
+    |> Repo.update!()
+
+    assert {:ok, %{migration: retried_migration, remote_response: response}} =
+             Federation.retry_remote_migration_import(migration.id)
+
+    assert Federation.remote_import_status(retried_migration) == :accepted
+    assert retried_migration.destination_external_ref == "remote-ref-1"
+    assert response["destination_character_name"] == "Migrant Remote"
   end
 
   defp character_fixture(realm, location, handle, name) do

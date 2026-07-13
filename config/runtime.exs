@@ -24,13 +24,32 @@ config :mmgo, MMGOWeb.Endpoint, http: [port: String.to_integer(System.get_env("P
 
 telegram_config = Application.get_env(:mmgo, MMGO.Telegram, [])
 
+allow_insecure_webhook? =
+  config_env() != :prod and
+    (System.get_env("TELEGRAM_ALLOW_INSECURE_WEBHOOK") == "true" or
+       telegram_config[:allow_insecure_webhook?] == true)
+
+web_app_auth_max_age_seconds =
+  System.get_env("TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS") ||
+    to_string(telegram_config[:web_app_auth_max_age_seconds] || 300)
+
 config :mmgo, MMGO.Telegram,
   api_base_url:
     System.get_env("TELEGRAM_API_BASE_URL") || telegram_config[:api_base_url] ||
       "https://api.telegram.org",
   bot_token: System.get_env("TELEGRAM_BOT_TOKEN") || telegram_config[:bot_token],
   webhook_secret: System.get_env("TELEGRAM_WEBHOOK_SECRET") || telegram_config[:webhook_secret],
-  webhook_path: telegram_config[:webhook_path] || "/api/telegram/webhook"
+  webhook_path: telegram_config[:webhook_path] || "/api/telegram/webhook",
+  allow_insecure_webhook?: allow_insecure_webhook?,
+  web_app_auth_max_age_seconds: String.to_integer(web_app_auth_max_age_seconds)
+
+# Keep the deterministic local demo useful while developing or running the
+# browser-loop tests, but never expose it as a production authentication path.
+# Developers may explicitly turn it off with MMGO_LOCAL_DEMO_ENABLED=false.
+local_demo_enabled? =
+  config_env() in [:dev, :test] and System.get_env("MMGO_LOCAL_DEMO_ENABLED") != "false"
+
+config :mmgo, local_demo_enabled: local_demo_enabled?
 
 ai_config = Application.get_env(:mmgo, MMGO.AI, [])
 gemini_config = Application.get_env(:mmgo, MMGO.AI.Providers.Gemini, [])
@@ -50,6 +69,8 @@ config :mmgo, MMGO.AI,
   default_provider: default_provider,
   models: %{
     spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
+    combat_orchestration:
+      System.get_env("GEMINI_COMBAT_MODEL") || ai_config[:models][:combat_orchestration],
     turn_narration:
       System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration]
   },

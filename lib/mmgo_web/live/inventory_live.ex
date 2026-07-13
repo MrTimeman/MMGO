@@ -15,8 +15,8 @@ defmodule MMGOWeb.InventoryLive do
   @categories ~w(все оружие зелья ингредиенты инструменты провизия гримуары)
 
   @impl true
-  def mount(_params, session, socket) do
-    case inventory_state(session) do
+  def mount(_params, _session, socket) do
+    case Play.inventory_state(socket.assigns.current_scope.character) do
       {:ok, state} ->
         {:ok,
          socket
@@ -30,7 +30,7 @@ defmodule MMGOWeb.InventoryLive do
          |> assign_inventory_state(state)}
 
       {:error, _reason} ->
-        {:ok, push_navigate(socket, to: ~p"/play/continue")}
+        {:ok, push_navigate(socket, to: ~p"/play")}
     end
   end
 
@@ -74,7 +74,7 @@ defmodule MMGOWeb.InventoryLive do
   def handle_event("refresh", _params, socket) do
     case Play.inventory_state(socket.assigns.character.id) do
       {:ok, state} -> {:noreply, assign_inventory_state(socket, state)}
-      {:error, _reason} -> {:noreply, push_navigate(socket, to: ~p"/play/continue")}
+      {:error, _reason} -> {:noreply, push_navigate(socket, to: ~p"/play")}
     end
   end
 
@@ -89,7 +89,7 @@ defmodule MMGOWeb.InventoryLive do
       |> assign(:pct, bar_pct(assigns.carry, assigns.carry_max))
 
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="game-screen">
         <div id="inventory-screen" class="inv-root">
           <.link id="inventory-back-to-map" navigate={~p"/map"} class="inv-exit">
@@ -116,6 +116,12 @@ defmodule MMGOWeb.InventoryLive do
                 {if @pct >= 90,
                   do: "На пределе — из боя не сбежать",
                   else: "Есть ещё место под трофеи"}
+              </p>
+              <p id="inventory-overload-state" class="inv-carry__hint">
+                {overload_status(@survival)}
+              </p>
+              <p id="inventory-survival-state" class="inv-carry__hint">
+                {survival_status(@survival)}
               </p>
             </div>
           </header>
@@ -255,11 +261,6 @@ defmodule MMGOWeb.InventoryLive do
     """
   end
 
-  defp inventory_state(%{"demo_character_id" => character_id}) when is_binary(character_id),
-    do: Play.inventory_state(character_id)
-
-  defp inventory_state(_session), do: {:error, :missing_session}
-
   defp assign_inventory_state(socket, state) do
     socket
     |> assign(:character, state.character)
@@ -268,6 +269,7 @@ defmodule MMGOWeb.InventoryLive do
     |> assign(:food_units, state.food_units)
     |> assign(:carry, state.carried_weight)
     |> assign(:carry_max, state.carry_capacity)
+    |> assign(:survival, state.survival)
   end
 
   defp item_rows(items, available_quantities, active_grimoire) do
@@ -333,6 +335,21 @@ defmodule MMGOWeb.InventoryLive do
 
   defp location_name(nil), do: "в пути"
   defp location_name(location), do: location.name
+
+  defp overload_status(%{encumbered?: true, carried_weight: weight, carry_capacity: capacity}) do
+    "Перегруз: #{weight} / #{capacity} стоунов. Отступление в бою недоступно."
+  end
+
+  defp overload_status(%{carried_weight: weight, carry_capacity: capacity}) do
+    "Перегруза нет: #{weight} / #{capacity} стоунов."
+  end
+
+  defp survival_status(%{starving?: true, starvation_days: days, health_drain: health_drain}) do
+    "Голод #{days} дн. · не-смертельный урон #{health_drain}. Еда снимет последствия."
+  end
+
+  defp survival_status(%{recovered?: true}), do: "Силы восстановлены после еды."
+  defp survival_status(%{food_units: food_units}), do: "Провизия: #{food_units} ед. еды."
 
   defp bar_pct(_value, max) when max <= 0, do: 0
 

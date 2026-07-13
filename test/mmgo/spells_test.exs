@@ -4,6 +4,7 @@ defmodule MMGO.SpellsTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Repo
   alias MMGO.Spells
+  alias MMGO.Spells.SpellEffect
   alias MMGO.Worlds
 
   setup do
@@ -38,6 +39,33 @@ defmodule MMGO.SpellsTest do
     assert spell.creator_character_id == character.id
     assert Enum.map(spell.effects, & &1.state) == ["impact", "burning"]
     assert spell.failure_profile.difficulty == 20
+  end
+
+  test "spell effects accept only the bounded break-condition vocabulary" do
+    valid_changeset =
+      SpellEffect.changeset(%SpellEffect{}, %{
+        applies_to: :target,
+        state: "frozen",
+        intensity: 3,
+        variance: 0,
+        duration: 2,
+        break_conditions: ["fire_spell", "physical_hit"]
+      })
+
+    assert valid_changeset.valid?
+
+    invalid_changeset =
+      SpellEffect.changeset(%SpellEffect{}, %{
+        applies_to: :target,
+        state: "frozen",
+        intensity: 3,
+        variance: 0,
+        duration: 2,
+        break_conditions: ["unknown_break"]
+      })
+
+    refute invalid_changeset.valid?
+    assert Keyword.has_key?(invalid_changeset.errors, :break_conditions)
   end
 
   defp account_fixture(handle) do

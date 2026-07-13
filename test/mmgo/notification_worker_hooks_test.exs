@@ -75,7 +75,14 @@ defmodule MMGO.NotificationWorkerHooksTest do
       Travel.start_journey(character, route, started_at: ~U[2026-03-27 12:00:00Z])
 
     assert :ok = CompleteJourneyWorker.perform(%Oban.Job{args: %{"journey_id" => journey.id}})
-    notification = Repo.get_by!(Notification, character_id: character.id, kind: "journey_arrived")
+
+    notification =
+      Repo.get_by!(Notification,
+        character_id: character.id,
+        kind: "journey_arrived",
+        channel: :telegram
+      )
+
     assert notification.status == :pending
   end
 
@@ -89,7 +96,11 @@ defmodule MMGO.NotificationWorkerHooksTest do
              })
 
     notification =
-      Repo.get_by!(Notification, character_id: character.id, kind: "academy_completed")
+      Repo.get_by!(Notification,
+        character_id: character.id,
+        kind: "academy_completed",
+        channel: :telegram
+      )
 
     assert notification.status == :pending
   end
@@ -111,7 +122,11 @@ defmodule MMGO.NotificationWorkerHooksTest do
     assert :ok = CompleteAttemptWorker.perform(%Oban.Job{args: %{"attempt_id" => attempt.id}})
 
     notification =
-      Repo.get_by!(Notification, character_id: character.id, kind: "scavenge_completed")
+      Repo.get_by!(Notification,
+        character_id: character.id,
+        kind: "scavenge_completed",
+        channel: :telegram
+      )
 
     assert notification.status == :pending
   end
@@ -194,7 +209,13 @@ defmodule MMGO.NotificationWorkerHooksTest do
     assert :ok =
              CompleteCraftJobWorker.perform(%Oban.Job{args: %{"craft_job_id" => craft_job.id}})
 
-    notification = Repo.get_by!(Notification, character_id: character.id, kind: "craft_completed")
+    notification =
+      Repo.get_by!(Notification,
+        character_id: character.id,
+        kind: "craft_completed",
+        channel: :telegram
+      )
+
     assert notification.status == :pending
   end
 
@@ -214,7 +235,13 @@ defmodule MMGO.NotificationWorkerHooksTest do
 
     assert :ok = CompleteBaseBuildWorker.perform(%Oban.Job{args: %{"base_id" => base.id}})
 
-    notification = Repo.get_by!(Notification, character_id: character.id, kind: "base_ready")
+    notification =
+      Repo.get_by!(Notification,
+        character_id: character.id,
+        kind: "base_ready",
+        channel: :telegram
+      )
+
     assert notification.status == :pending
   end
 

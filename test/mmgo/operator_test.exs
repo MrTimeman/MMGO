@@ -141,7 +141,7 @@ defmodule MMGO.OperatorTest do
     assert Repo.aggregate(AuditEvent, :count, :id) == 1
 
     assert Travel.get_journey!(journey.id).status == :arrived
-    assert Repo.get!(Academy.Enrollment, enrollment.id).status == :completed
+    assert Repo.get!(Academy.Enrollment, enrollment.id).status == :failed
     assert Repo.get!(Scavenging.Attempt, attempt.id).status == :completed
   end
 

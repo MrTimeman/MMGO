@@ -2,9 +2,9 @@
 
 *Game Design Document*
 
-Version 0.8 — Complete Draft
+Version 0.9 — Complete Draft
 
-March 2026
+July 2026
 
 ## Table of Contents
 
@@ -411,9 +411,9 @@ The overworld is fully PvP-enabled outside of cities. A player carrying loot fro
 
 Every player needs a base for storage, crafting, spell composition, and alchemy. There are two ways to get one:
 
-- **Buy in a city** — cheap, safe, close to trade and Academy. Far from the Tower. Best for crafters and traders.
+- **Buy in a city** — cheap, safe, close to trade and Academy. Far from the Tower. Best for crafters and traders. Purchased outright with coins at a listed property price (taxed as a property transaction).
 
-- **Build anywhere** — expensive, requires materials and time. Can be built near the Tower for quick dungeon access, but the location may be dangerous (PvP, monsters). Best for dedicated dungeon runners.
+- **Build anywhere** — expensive, requires materials and time. Construction costs coins **plus** gathered materials (wood, stone — scavenged or bought) and takes game-days to complete; the site is vulnerable until finished. Can be built near the Tower for quick dungeon access, but the location may be dangerous (PvP, monsters). Best for dedicated dungeon runners.
 
 Your base is where your loot is stored. Raiding player bases is NOT possible (the base is instanced/protected), but getting your loot TO your base safely is the challenge.
 
@@ -521,13 +521,17 @@ A grimoire is a physical item — a book that holds a subset of spells from your
 
 # 8. Alchemy & Workshops
 
-- Fixed set of ingredients and tools with predefined effects
+Alchemy mirrors the spell system: bounded AI interpretation on top of deterministic primitives.
 
-- Effects change depending on ingredient combinations
+- **Item primitives** — every ingredient and item carries a fixed set of alchemical primitives (constant properties stored on the item definition: e.g. heat, toxicity, binding, volatility). Primitives never change at brew time — the system is constant, not improvised per request.
+
+- **Brewing flow** — the player selects (pings) ingredients directly from their inventory at the workshop. The selected combination plus its primitives is sent to the AI, which interprets the intended result **within** those primitives — same design as the spell compiler: the AI composes from a fixed vocabulary of effect states, it cannot invent properties the ingredients don't have.
+
+- **Deterministic boundary** — the AI output is schema-constrained to the same state primitives used by combat (burning, frozen, regenerating, blinded, …), so brewed potions resolve identically to spells and tool actions in the engine. Identical ingredient combinations produce consistent results.
 
 - Requires a dedicated workshop at your base
 
-*Alchemy details are covered under Academy tracks (section 9.3.2). The crafting system will be expanded in a future revision.*
+*Alchemy training is covered under Academy tracks (section 9.3.2).*
 
 # 9. Academy
 
@@ -860,7 +864,7 @@ Treasury → NPC payments, quest rewards, Academy funding → Players → purcha
 
 - Tax applies to: NPC shop purchases, legal P2P trades, property transactions, Academy tuition, duel wager payouts
 
-- Tax rate: flat percentage (exact rate TBD, tuned for economic health)
+- Tax rate: flat percentage, configurable per realm by the realm operator (§6.1). The canonical realm's default is **5%**.
 
 ## 12.3 Black Market (Illegal P2P)
 
@@ -868,9 +872,9 @@ Players can conduct trades outside the legal system to avoid taxes. This is the 
 
 - **Advantage** — no tax, potentially better prices
 
-- **Risk** — no buyer/seller protection (scams possible), potential penalties if caught (fines, reputation loss, NPC hostility)
+- **Risk** — no buyer/seller protection (scams possible), and probabilistic NPC detection: every untaxed deal carries a catch chance that scales with the deal size. Getting caught costs a fine (a multiple of the evaded tax, paid to the Treasury), a reputation hit, and possible NPC hostility.
 
-*The black market is an intended emergent mechanic, not an exploit. It creates a risk/reward decision and a role for player-run enforcement or thieves’ guilds.*
+*The black market is an intended emergent mechanic, not an exploit. It creates a risk/reward decision and a role for player-run enforcement or thieves’ guilds (which layer on top of, not replace, NPC detection).*
 
 ## 12.4 Money Sinks & Faucets
 

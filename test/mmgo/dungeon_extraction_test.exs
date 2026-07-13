@@ -7,6 +7,7 @@ defmodule MMGO.DungeonExtractionTest do
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Parties
+  alias MMGO.Play
   alias MMGO.Repo
   alias MMGO.Spells
   alias MMGO.Worlds
@@ -65,7 +66,7 @@ defmodule MMGO.DungeonExtractionTest do
 
     character = character_fixture(realm, tower, "delver", "Delver")
     spell = spell_fixture(character)
-    _grimoire = grimoire_fixture(character, spell)
+    grimoire = grimoire_fixture(character, spell)
 
     {:ok, herb_template} =
       Inventory.create_item_template(%{
@@ -100,9 +101,13 @@ defmodule MMGO.DungeonExtractionTest do
 
     %{
       tower: tower,
+      dungeon: dungeon,
+      floor: floor,
       entrance_node: entrance_node,
       deep_node: deep_node,
       character: character,
+      spell: spell,
+      grimoire: grimoire,
       run: run,
       expedition: expedition
     }
@@ -123,12 +128,20 @@ defmodule MMGO.DungeonExtractionTest do
     character: character,
     run: run,
     deep_node: deep_node,
+    spell: spell,
     tower: tower
   } do
     {:ok, %{run: moved_run}} = Dungeons.move_run(run, deep_node.id)
 
     assert {:ok, %{extraction: extraction}} = Dungeons.start_return_ritual(moved_run, character)
     assert extraction.status == :active
+    assert extraction.metadata["origin_floor_number"] == 1
+    assert extraction.metadata["origin_node_id"] == deep_node.id
+    assert extraction.metadata["prepared_spell_id"] == spell.id
+
+    assert {:ok, state} = Play.dungeon_state(character)
+    assert state.return_ritual.prepared?
+    assert state.return_ritual.prepared_spell_id == spell.id
 
     assert {:ok, %{run: extracted_run, extraction: completed_extraction}} =
              Dungeons.complete_extraction_by_id(extraction.id, force: true)
@@ -136,6 +149,101 @@ defmodule MMGO.DungeonExtractionTest do
     assert completed_extraction.status == :completed
     assert extracted_run.status == :completed
     assert Repo.get!(Character, character.id).current_location_id == tower.id
+  end
+
+  test "return ritual requires an active grimoire", %{
+    character: character,
+    grimoire: grimoire,
+    run: run
+  } do
+    grimoire
+    |> Ecto.Changeset.change(status: :sealed)
+    |> Repo.update!()
+
+    assert {:error, changeset} = Dungeons.start_return_ritual(run, character)
+
+    assert %{status: ["ritual caster must have an active grimoire"]} = errors_on(changeset)
+  end
+
+  test "return ritual requires an active wizardry specialization", %{
+    character: character,
+    run: run
+  } do
+    Specialization
+    |> Repo.get_by!(character_id: character.id, status: :active)
+    |> Ecto.Changeset.change(status: :retired, ended_at: DateTime.utc_now())
+    |> Repo.update!()
+
+    assert {:error, changeset} = Dungeons.start_return_ritual(run, character)
+
+    assert %{status: ["initiator must be a wizardry specialist to perform the return ritual"]} =
+             errors_on(changeset)
+  end
+
+  test "return ritual requires its explicit prepared spell tag", %{
+    character: character,
+    run: run,
+    spell: spell
+  } do
+    spell
+    |> Ecto.Changeset.change(tags: ["ritual"])
+    |> Repo.update!()
+
+    assert {:error, changeset} = Dungeons.start_return_ritual(run, character)
+
+    assert %{status: ["active grimoire must contain a prepared return ritual"]} =
+             errors_on(changeset)
+  end
+
+  test "return ritual requires the run's recorded current node", %{
+    character: character,
+    dungeon: dungeon,
+    run: run
+  } do
+    {:ok, detached_floor} = Dungeons.create_floor(dungeon, %{number: 2, name: "Lower Halls"})
+
+    {:ok, detached_node} =
+      Dungeons.create_node(detached_floor, %{
+        slug: "detached",
+        name: "Detached Room",
+        kind: :room,
+        x: 0,
+        y: 0,
+        threat_level: 0
+      })
+
+    corrupted_run =
+      run
+      |> Ecto.Changeset.change(current_node_id: detached_node.id)
+      |> Repo.update!()
+
+    assert {:error, changeset} = Dungeons.start_return_ritual(corrupted_run, character)
+    assert %{status: ["run has no valid current dungeon node"]} = errors_on(changeset)
+  end
+
+  test "return ritual cannot start through an unresolved current encounter", %{
+    character: character,
+    deep_node: deep_node,
+    run: run
+  } do
+    {:ok, %{run: moved_run}} = Dungeons.move_run(run, deep_node.id)
+
+    assert {:ok, %{encounter: encounter}} =
+             Dungeons.materialize_node_content(moved_run, deep_node.id, %{
+               "encounter" => %{
+                 "encounter_kind" => "ambush",
+                 "status" => "pending",
+                 "threat_level" => 1,
+                 "started_at" => DateTime.utc_now(),
+                 "metadata" => %{}
+               }
+             })
+
+    assert encounter.status == :pending
+    assert {:error, changeset} = Dungeons.start_return_ritual(moved_run, character)
+
+    assert %{status: ["current encounter must be resolved before extraction"]} =
+             errors_on(changeset)
   end
 
   test "fail_run_with_sacrifice/2 drops inventory and active grimoire", %{
@@ -169,13 +277,14 @@ defmodule MMGO.DungeonExtractionTest do
   defp spell_fixture(character) do
     {:ok, spell} =
       Spells.create_spell(character, %{
-        name: "Return Bolt",
-        formula: "Ignis Minor",
+        name: "Return Ritual",
+        formula: "Via Domum",
         school: :fire,
-        targeting: :enemy,
-        delivery_form: :sphere,
+        targeting: :self,
+        delivery_form: :self,
+        tags: ["return_ritual"],
         effects: [
-          %{applies_to: :target, state: "impact", intensity: 20, variance: 0, duration: 0}
+          %{applies_to: :caster, state: "shielded", intensity: 20, variance: 0, duration: 1}
         ],
         failure_profile: %{
           difficulty: 5,

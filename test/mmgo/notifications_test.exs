@@ -4,6 +4,7 @@ defmodule MMGO.NotificationsTest do
   alias MMGO.Accounts.{Account, Character, TelegramIdentity}
   alias MMGO.Notifications
   alias MMGO.Notifications.DeliveryWorker
+  alias MMGO.Notifications.Formatter
   alias MMGO.Notifications.Notification
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -32,7 +33,7 @@ defmodule MMGO.NotificationsTest do
 
     character = character_fixture(realm, "notifier", "Notifier", 555_001)
 
-    %{bypass: bypass, character: character}
+    %{bypass: bypass, realm: realm, character: character}
   end
 
   test "enqueue/4 stores a pending Telegram notification and schedules delivery", %{
@@ -62,6 +63,42 @@ defmodule MMGO.NotificationsTest do
              )
 
     assert %{status: ["notification has already been queued"]} = errors_on(changeset)
+  end
+
+  test "domain notifications create an in-app record even without a Telegram identity", %{
+    realm: realm
+  } do
+    character = character_without_identity_fixture(realm, "in-app-only", "In App Only")
+
+    assert {:ok, %Notification{} = notification} =
+             Notifications.notify_journey_arrived(character, %{
+               id: "in-app-journey",
+               to_location_id: "city-gate",
+               status: :arrived
+             })
+
+    assert notification.channel == :in_app
+    assert notification.status == :sent
+    assert notification.delivered_at
+    assert Repo.aggregate(Notification, :count, :id) == 1
+    assert Repo.aggregate(Oban.Job, :count, :id) == 0
+  end
+
+  test "domain notifications retain a Telegram delivery outbox alongside the in-app record", %{
+    character: character
+  } do
+    assert {:ok, %Notification{channel: :in_app}} =
+             Notifications.notify_journey_arrived(character, %{
+               id: "dual-channel-journey",
+               to_location_id: "city-gate",
+               status: :arrived
+             })
+
+    assert Notifications.list_notifications(character.id)
+           |> Enum.map(& &1.channel)
+           |> Enum.sort() == [:in_app, :telegram]
+
+    assert Repo.aggregate(Oban.Job, :count, :id) == 1
   end
 
   test "deliver_notification_by_id/1 sends a Telegram message and marks notification sent", %{
@@ -120,6 +157,22 @@ defmodule MMGO.NotificationsTest do
     assert Repo.get!(Notification, notification.id).status == :failed
   end
 
+  test "academy formatter does not describe a failed capstone as graduation" do
+    assert {:ok, %{text: text}} =
+             Formatter.render(%Notification{
+               kind: "academy_completed",
+               payload: %{
+                 "program_type" => "academy_core",
+                 "track" => "wizardry",
+                 "status" => "failed",
+                 "outcome_tier" => "capstone_incomplete"
+               }
+             })
+
+    assert text =~ "ended without graduation"
+    assert text =~ "capstone was not passed"
+  end
+
   defp character_fixture(realm, handle, name, telegram_user_id) do
     account =
       %Account{}
@@ -134,6 +187,17 @@ defmodule MMGO.NotificationsTest do
       last_seen_at: DateTime.utc_now()
     })
     |> Repo.insert!()
+
+    %Character{account_id: account.id, realm_id: realm.id}
+    |> Character.changeset(%{name: name, status: :active, level: 5})
+    |> Repo.insert!()
+  end
+
+  defp character_without_identity_fixture(realm, handle, name) do
+    account =
+      %Account{}
+      |> Account.registration_changeset(%{display_name: name, handle: handle})
+      |> Repo.insert!()
 
     %Character{account_id: account.id, realm_id: realm.id}
     |> Character.changeset(%{name: name, status: :active, level: 5})

@@ -147,6 +147,27 @@ defmodule MMGO.SurvivalTest do
     assert plan.required_food_units == plan.total_game_days
   end
 
+  test "realm food and carry rules shape the authoritative survival plan", %{
+    realm: realm,
+    character: character
+  } do
+    assert {:ok, _realm} =
+             realm
+             |> Worlds.change_realm(%{
+               ruleset: %{
+                 "travel_food_units_per_day" => 2,
+                 "carry_capacity_scale_bps" => 500
+               }
+             })
+             |> Repo.update()
+
+    plan = Survival.travel_plan(character, 2)
+
+    assert Survival.carry_capacity(character) == 20
+    assert plan.daily_food_units == 2
+    assert plan.required_food_units == plan.total_game_days * 2
+  end
+
   test "consume_food/3 deducts food from inventory", %{
     character: character,
     ration_template: ration_template

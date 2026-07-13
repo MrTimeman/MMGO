@@ -4,6 +4,7 @@ defmodule MMGOWeb.DuelLiveTest do
   import Phoenix.LiveViewTest
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Combat
   alias MMGO.Economy
   alias MMGO.Grimoires
   alias MMGO.PVP
@@ -17,10 +18,7 @@ defmodule MMGOWeb.DuelLiveTest do
 
     {:ok, _treasury} = Economy.ensure_treasury_account(realm, 1_000)
 
-    # A "tower" location so combat magic isn't suppressed by the default
-    # ruleset (magic_scope: "tower_and_dungeon") — a plain city would block
-    # spellcasting entirely and the duel combat could never finish.
-    {:ok, location} =
+    {:ok, tower} =
       Worlds.create_location(realm, %{
         slug: "duel-tower",
         name: "Duel Tower",
@@ -30,8 +28,9 @@ defmodule MMGOWeb.DuelLiveTest do
         safe_zone: false
       })
 
-    challenger = character_fixture(realm, location, "challenger", "Challenger")
-    opponent = character_fixture(realm, location, "opponent", "Opponent")
+    challenger = character_fixture(realm, tower, "challenger", "Challenger")
+    opponent = character_fixture(realm, tower, "opponent", "Opponent")
+
     {:ok, _challenger_funds} = Economy.grant_from_treasury(realm, challenger, 200)
     {:ok, _opponent_funds} = Economy.grant_from_treasury(realm, opponent, 200)
 
@@ -58,7 +57,7 @@ defmodule MMGOWeb.DuelLiveTest do
     %{realm: realm, challenger: challenger, opponent: opponent, killing_blow: killing_blow}
   end
 
-  test "a challenger outside the Tower is redirected to the map with an in-world flash", %{
+  test "a protected city renders a safe-zone explanation instead of exposing a duel form", %{
     conn: conn,
     realm: realm,
     challenger: challenger
@@ -77,54 +76,132 @@ defmodule MMGOWeb.DuelLiveTest do
     |> Character.travel_changeset(%{current_location_id: city.id})
     |> Repo.update!()
 
-    conn =
-      conn
-      |> Plug.Test.init_test_session(%{})
-      |> Plug.Conn.put_session(:demo_character_id, challenger.id)
+    {:ok, view, _html} = live(session_conn(conn, challenger), ~p"/pvp")
 
-    assert {:error, {:live_redirect, %{to: "/map", flash: flash}}} = live(conn, ~p"/pvp")
-    assert flash["error"] =~ "Magic only works at the Tower"
+    assert has_element?(view, "#duel-safe-zone")
+    refute has_element?(view, "#duel-challenge-form")
   end
 
-  test "the local bot duel is accepted, resolved, and settled entirely on the web",
-       %{conn: conn, challenger: challenger, opponent: opponent, killing_blow: killing_blow} do
-    conn =
-      conn
-      |> Plug.Test.init_test_session(%{})
-      |> Plug.Conn.put_session(:demo_character_id, challenger.id)
-      |> Plug.Conn.put_session(:demo_opponent_id, opponent.id)
+  test "two scoped players create and accept a pending duel through the browser", %{
+    conn: conn,
+    challenger: challenger,
+    opponent: opponent,
+    killing_blow: killing_blow
+  } do
+    {:ok, challenger_view, _html} = live(session_conn(conn, challenger), ~p"/pvp")
 
-    {:ok, view, _html} = live(conn, ~p"/pvp")
+    challenger_view
+    |> form("#duel-challenge-form", %{
+      "duel_challenge" => %{"opponent_id" => opponent.id, "stake" => "100"}
+    })
+    |> render_submit()
 
-    view |> element("#duel-challenge-bot") |> render_click()
+    [pending_duel] = PVP.pending_duels_for_character(challenger.id)
+    assert pending_duel.status == :pending
+    assert has_element?(challenger_view, "#duel-outgoing-#{pending_duel.id}")
+    assert PVP.active_duel_for_character(challenger.id) == nil
+
+    {:ok, opponent_view, _html} = live(session_conn(conn, opponent), ~p"/pvp")
+    assert has_element?(opponent_view, "#duel-incoming-#{pending_duel.id}")
+
+    assert {:error, {:live_redirect, %{to: combat_path}}} =
+             opponent_view |> element("#duel-accept-#{pending_duel.id}") |> render_click()
 
     active_duel = PVP.active_duel_for_character(challenger.id)
-    active_duel = PVP.get_duel!(active_duel.id)
     assert active_duel.status == :active
-    assert active_duel.combat_id
-    assert has_element?(view, "#duel-combat-state")
-    assert has_element?(view, "#duel-cast-#{killing_blow.id}")
+    assert combat_path == "/combat/#{active_duel.combat_id}"
 
-    view
-    |> element("#duel-cast-#{killing_blow.id}")
-    |> render_click()
+    {:ok, combat_view, _html} = live(session_conn(conn, challenger), combat_path)
+    assert has_element?(combat_view, "#combat-screen")
+    assert has_element?(combat_view, "#combat-action-form")
+    assert has_element?(combat_view, "#combat-cast-spell option[value=\"#{killing_blow.id}\"]")
+  end
 
-    # Read the duel back fresh from the DB (not the socket's cached assign)
-    # to prove the win was actually persisted, not just reflected in an
-    # in-memory struct.
+  test "the sealed combat worker resolves and settles the wager", %{
+    conn: conn,
+    challenger: challenger,
+    opponent: opponent,
+    killing_blow: killing_blow
+  } do
+    active_duel = accept_duel(challenger, opponent)
+    combat = Combat.get_combat!(active_duel.combat_id)
+    defender_participant = Enum.find(combat.participants, &(&1.character_id == opponent.id))
+
+    assert {:ok, _wait} =
+             Combat.submit_action(combat, defender_participant.id, %{action_type: :wait})
+
+    {:ok, combat_view, _html} = live(session_conn(conn, challenger), ~p"/combat/#{combat.id}")
+
+    combat_view
+    |> form("#combat-action-form", %{
+      "combat_action" => %{
+        "action_type" => "cast_spell",
+        "spell_id" => killing_blow.id,
+        "incantation" => killing_blow.formula,
+        "inventory_item_id" => "",
+        "tool_action" => "",
+        "target_side" => "defenders",
+        "target_participant_id" => defender_participant.id
+      }
+    })
+    |> render_submit()
+
+    perform_all_actions_worker(active_duel.combat_id)
+
     resolved_duel = PVP.get_duel!(active_duel.id)
     assert resolved_duel.status == :resolved
     assert resolved_duel.winner_character_id == challenger.id
-    assert has_element?(view, "#duel-outcome")
 
     {:ok, challenger_account} = Economy.ensure_character_account(challenger)
     {:ok, opponent_account} = Economy.ensure_character_account(opponent)
-
-    # duel_live's "challenge_bot" stakes 100 gold each side (200 pot, taxed).
-    # The challenger wins: their balance ends up above their post-stake floor
-    # of 100, while the opponent's 100 stake is gone for good.
     assert Economy.get_account!(challenger_account.id).current_balance > 100
     assert Economy.get_account!(opponent_account.id).current_balance == 100
+  end
+
+  test "fleeing an active duel forfeits the wager instead of cancelling it", %{
+    conn: conn,
+    challenger: challenger,
+    opponent: opponent
+  } do
+    active_duel = accept_duel(challenger, opponent)
+    combat = Combat.get_combat!(active_duel.combat_id)
+    defender_participant = Enum.find(combat.participants, &(&1.character_id == opponent.id))
+
+    assert {:ok, _wait} =
+             Combat.submit_action(combat, defender_participant.id, %{action_type: :wait})
+
+    {:ok, combat_view, _html} = live(session_conn(conn, challenger), ~p"/combat/#{combat.id}")
+    combat_view |> element("#combat-flee") |> render_click()
+
+    perform_all_actions_worker(active_duel.combat_id)
+
+    resolved_duel = PVP.get_duel!(active_duel.id)
+    assert resolved_duel.status == :resolved
+    assert resolved_duel.winner_character_id == opponent.id
+
+    {:ok, challenger_account} = Economy.ensure_character_account(challenger)
+    {:ok, opponent_account} = Economy.ensure_character_account(opponent)
+    assert Economy.get_account!(challenger_account.id).current_balance == 100
+    assert Economy.get_account!(opponent_account.id).current_balance > 100
+  end
+
+  defp accept_duel(challenger, opponent) do
+    {:ok, duel} = PVP.challenge_duel(challenger, opponent, 100)
+    {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
+    accepted_duel
+  end
+
+  defp perform_all_actions_worker(combat_id) do
+    job =
+      Oban.Job
+      |> Repo.all()
+      |> Enum.find(fn job ->
+        job.worker == "MMGO.Combat.ResolveTurnWorker" and
+          job.args["combat_id"] == combat_id and job.args["trigger"] == "all_actions"
+      end)
+
+    assert job
+    assert :ok = MMGO.Combat.ResolveTurnWorker.perform(%Oban.Job{args: job.args})
   end
 
   defp character_fixture(realm, location, handle, name) do
@@ -138,6 +215,15 @@ defmodule MMGOWeb.DuelLiveTest do
     |> Repo.insert!()
     |> Character.travel_changeset(%{current_location_id: location.id})
     |> Repo.update!()
+  end
+
+  defp session_conn(conn, character) do
+    account = Repo.get!(Account, character.account_id)
+
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> Plug.Conn.put_session(:current_account_id, account.id)
+    |> Plug.Conn.put_session(:current_character_id, character.id)
   end
 
   defp spell_fixture(character, attrs) do

@@ -21,19 +21,27 @@ config :mmgo, MMGO.Repo,
 
 config :mmgo, Oban, testing: :manual
 
+# The fixed local demo remains available to focused browser-loop tests. Production
+# and the base configuration keep it disabled.
+config :mmgo, local_demo_enabled: true
+
 config :mmgo, MMGO.Telegram,
   api_base_url: "http://localhost:8081",
   bot_token: "test-bot-token",
-  webhook_secret: "test-webhook-secret"
+  webhook_secret: "test-webhook-secret",
+  allow_insecure_webhook?: false,
+  web_app_auth_max_age_seconds: 300
 
 config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
   models: %{
     spell_compile: "gemini-3-flash-test",
+    combat_orchestration: "g3f-lite-test",
     turn_narration: "g3f-lite-test"
   },
   prompt_versions: %{
     spell_compile: "test.spell-compile.v1",
+    combat_orchestration: "test.combat-orchestration.v1",
     turn_narration: "test.turn-narration.v1"
   }
 

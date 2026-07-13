@@ -4,11 +4,115 @@ defmodule MMGO.Accounts do
   alias Ecto.Multi
   alias MMGO.Accounts.{Account, Character, TelegramIdentity}
   alias MMGO.Repo
+  alias MMGO.Travel.Journey
   alias MMGO.Worlds
   alias MMGO.Worlds.Realm
 
   def get_account!(id), do: Repo.get!(Account, id)
   def get_character!(id), do: Repo.get!(Character, id)
+
+  @doc """
+  Returns an active character only when it belongs to the active account whose
+  identifier came from the browser session.
+
+  Keeping the ownership check here prevents web callers from authorizing a
+  character merely because they know its UUID.
+  """
+  def get_active_character_for_account(account_id, character_id)
+      when is_binary(account_id) and is_binary(character_id) do
+    character =
+      from(character in Character,
+        join: account in Account,
+        on: account.id == character.account_id,
+        where: character.id == ^character_id and account.id == ^account_id
+      )
+      |> Repo.one()
+
+    case character do
+      nil ->
+        {:error, :not_found}
+
+      %Character{} = character ->
+        character = Repo.preload(character, [:account, :current_location])
+
+        if character.account.status == :active and character.status == :active do
+          {:ok, character}
+        else
+          {:error, :inactive}
+        end
+    end
+  end
+
+  def get_active_character_for_account(_account_id, _character_id), do: {:error, :not_found}
+
+  @doc """
+  Returns an account-owned character that may view the narrowly scoped realm
+  migration surface. A frozen character remains excluded from ordinary game
+  actions, but can inspect and retry its own durable migration handoff.
+  """
+  def get_migration_character_for_account(account_id, character_id)
+      when is_binary(account_id) and is_binary(character_id) do
+    character =
+      from(character in Character,
+        join: account in Account,
+        on: account.id == character.account_id,
+        where: character.id == ^character_id and account.id == ^account_id
+      )
+      |> Repo.one()
+
+    case character do
+      nil ->
+        {:error, :not_found}
+
+      %Character{} = character ->
+        character = Repo.preload(character, [:account, :current_location])
+
+        if character.account.status == :active and character.status in [:active, :frozen] do
+          {:ok, character}
+        else
+          {:error, :inactive}
+        end
+    end
+  end
+
+  def get_migration_character_for_account(_account_id, _character_id), do: {:error, :not_found}
+
+  @doc """
+  Lists other active, stationary characters at one realm location.
+
+  This is presence data for the current player's world view, not authority to
+  operate those characters.
+  """
+  def list_active_characters_at_location(realm_id, location_id, opts \\ [])
+
+  def list_active_characters_at_location(realm_id, location_id, opts)
+      when is_binary(realm_id) and is_binary(location_id) and is_list(opts) do
+    exclude_character_id = Keyword.get(opts, :exclude_character_id)
+
+    query =
+      from(character in Character,
+        join: account in Account,
+        on: account.id == character.account_id,
+        left_join: journey in Journey,
+        on: journey.character_id == character.id and journey.status == :active,
+        where:
+          character.realm_id == ^realm_id and character.current_location_id == ^location_id and
+            character.status == :active and account.status == :active and is_nil(journey.id),
+        order_by: [asc: character.name],
+        preload: [:account, :current_location]
+      )
+
+    query =
+      if is_binary(exclude_character_id) do
+        from character in query, where: character.id != ^exclude_character_id
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  def list_active_characters_at_location(_realm_id, _location_id, _opts), do: []
 
   def get_character_by_handle(realm_id, handle) when is_binary(realm_id) and is_binary(handle) do
     from(character in Character,

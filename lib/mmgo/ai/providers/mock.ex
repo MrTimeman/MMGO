@@ -3,39 +3,11 @@ defmodule MMGO.AI.Providers.Mock do
 
   def structured_completion(prompt_payload, _schema, _opts) do
     decoded_payload = decode_prompt_payload(prompt_payload)
-    request = decoded_payload["request"] || %{}
-    character = decoded_payload["character"] || %{}
-    school = request["school"] || request[:school] || "fire"
-    formula = request["formula"] || request[:formula] || "Incantatio"
-    name = request["name"] || request[:name] || humanize_formula(formula)
-    caster_level = character["level"] || character[:level] || 1
 
-    {:ok,
-     %{
-       "outcome" => "created",
-       "name" => name,
-       "formula" => formula,
-       "school" => school,
-       "description" => "Mock-compiled spell for local development and tests.",
-       "level_requirement" => max(div(caster_level, 2), 1),
-       "fatigue_cost" => 6,
-       "cooldown_turns" => 1,
-       "targeting" => request["targeting"] || request[:targeting] || "enemy",
-       "delivery_form" => request["delivery_form"] || request[:delivery_form] || "sphere",
-       "tags" => [school, "compiled"],
-       "narrative_tags" => [school, "arcane"],
-       "environment_tags" => ["charged-#{school}"],
-       "environment_mode" => "add",
-       "effects" => default_effects(school),
-       "interaction_rules" => default_interactions(school),
-       "failure_profile" => %{
-         "difficulty" => max(div(caster_level, 2), 1),
-         "base_success_rate" => 90,
-         "partial_success_rate" => 7,
-         "backlash_damage" => 2,
-         "volatility" => 8
-       }
-     }}
+    case decoded_payload["task"] do
+      "orchestrate_combat_turn" -> {:ok, mock_orchestration(decoded_payload)}
+      _other -> {:ok, mock_compiled_spell(decoded_payload)}
+    end
   end
 
   def text_completion(prompt_payload, _opts) do
@@ -84,6 +56,59 @@ defmodule MMGO.AI.Providers.Mock do
         "duration" => 2
       }
     ]
+  end
+
+  defp mock_orchestration(payload) do
+    casts =
+      payload
+      |> Map.get("casters", [])
+      |> Enum.map(fn caster ->
+        %{
+          "participant_id" => caster["participant_id"],
+          "target_participant_id" => caster["target_participant_id"],
+          "effects" => caster["allowed_effects"] || []
+        }
+      end)
+
+    %{
+      "casts" => casts,
+      "narrative_ru" => "Запечатанные формулы находят дозволенные движком проявления."
+    }
+  end
+
+  defp mock_compiled_spell(decoded_payload) do
+    request = decoded_payload["request"] || %{}
+    character = decoded_payload["character"] || %{}
+    school = request["school"] || request[:school] || "fire"
+    formula = request["formula"] || request[:formula] || "Incantatio"
+    name = request["name"] || request[:name] || humanize_formula(formula)
+    caster_level = character["level"] || character[:level] || 1
+
+    %{
+      "outcome" => "created",
+      "name" => name,
+      "formula" => formula,
+      "school" => school,
+      "description" => "Mock-compiled spell for local development and tests.",
+      "level_requirement" => max(div(caster_level, 2), 1),
+      "fatigue_cost" => 6,
+      "cooldown_turns" => 1,
+      "targeting" => request["targeting"] || request[:targeting] || "enemy",
+      "delivery_form" => request["delivery_form"] || request[:delivery_form] || "sphere",
+      "tags" => [school, "compiled"],
+      "narrative_tags" => [school, "arcane"],
+      "environment_tags" => ["charged-#{school}"],
+      "environment_mode" => "add",
+      "effects" => default_effects(school),
+      "interaction_rules" => default_interactions(school),
+      "failure_profile" => %{
+        "difficulty" => max(div(caster_level, 2), 1),
+        "base_success_rate" => 90,
+        "partial_success_rate" => 7,
+        "backlash_damage" => 2,
+        "volatility" => 8
+      }
+    }
   end
 
   defp default_interactions("water") do

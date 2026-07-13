@@ -8,6 +8,7 @@ defmodule MMGO.BasesTest do
   alias MMGO.Inventory
   alias MMGO.Repo
   alias MMGO.Spells
+  alias MMGO.Survival
   alias MMGO.Worlds
 
   setup do
@@ -73,6 +74,20 @@ defmodule MMGO.BasesTest do
     {:ok, ore_item} = Inventory.grant_item(character, ore_template, %{quantity: 5})
     {:ok, sword_item} = Inventory.grant_item(character, sword_template)
 
+    {:ok, ration_template} =
+      Inventory.create_item_template(%{
+        code: "base_ration",
+        name: "Base Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
+
+    {:ok, ration_item} = Inventory.grant_item(character, ration_template, %{quantity: 2})
+
     spell =
       spell_fixture(character, %{
         name: "Base Spell",
@@ -93,7 +108,8 @@ defmodule MMGO.BasesTest do
       city: city,
       wilderness: wilderness,
       ore_item: ore_item,
-      sword_item: sword_item
+      sword_item: sword_item,
+      ration_item: ration_item
     }
   end
 
@@ -146,6 +162,83 @@ defmodule MMGO.BasesTest do
 
     assert sword_back.character_id == character.id
     assert sword_back.durability == 10
+  end
+
+  test "rest_at_base/2 consumes stored food and clears persistent hunger consequences", %{
+    character: character,
+    city: city,
+    ration_item: ration_item
+  } do
+    {:ok, base} = Bases.purchase_city_base(character, city)
+    {:ok, %{storage_item: stored_ration}} = Bases.deposit_item(character, base, ration_item, 2)
+
+    assert {:ok, starved_character} =
+             Survival.apply_starvation_consequences(Repo, character, %{
+               "food_shortage_days" => 3,
+               "movement_penalty_days" => 1
+             })
+
+    assert Survival.summary(starved_character).starving?
+
+    assert {:ok, %{character: recovered_character, food_units_consumed: 1}} =
+             Bases.rest_at_base(character, base)
+
+    refute Survival.summary(recovered_character).starving?
+    assert Survival.summary(recovered_character).recovered?
+    assert Bases.get_storage_item!(stored_ration.id).quantity == 1
+  end
+
+  test "rest_at_base/2 leaves hunger intact when the base has no stored food", %{
+    character: character,
+    city: city
+  } do
+    {:ok, base} = Bases.purchase_city_base(character, city)
+
+    assert {:ok, starved_character} =
+             Survival.apply_starvation_consequences(Repo, character, %{
+               "food_shortage_days" => 2,
+               "movement_penalty_days" => 1
+             })
+
+    assert {:error, _changeset} = Bases.rest_at_base(character, base)
+    assert Survival.summary(Repo.get!(Character, starved_character.id)).starving?
+  end
+
+  test "rest_at_base/2 chooses one ration when multiple food stacks are stored", %{
+    character: character,
+    city: city,
+    ration_item: ration_item
+  } do
+    {:ok, base} = Bases.purchase_city_base(character, city)
+
+    {:ok, second_ration_template} =
+      Inventory.create_item_template(%{
+        code: "base_second_ration",
+        name: "Second Base Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
+
+    {:ok, second_ration_item} =
+      Inventory.grant_item(character, second_ration_template, %{quantity: 1})
+
+    assert {:ok, _stored_first} = Bases.deposit_item(character, base, ration_item, 1)
+    assert {:ok, _stored_second} = Bases.deposit_item(character, base, second_ration_item, 1)
+
+    assert {:ok, starved_character} =
+             Survival.apply_starvation_consequences(Repo, character, %{
+               "food_shortage_days" => 2,
+               "movement_penalty_days" => 1
+             })
+
+    assert {:ok, %{character: recovered_character, food_units_consumed: 1}} =
+             Bases.rest_at_base(starved_character, base)
+
+    refute Survival.summary(recovered_character).starving?
   end
 
   defp character_fixture(realm, location, handle, name) do

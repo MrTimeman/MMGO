@@ -5,8 +5,16 @@ defmodule MMGO.Spells.Compiler do
   alias MMGO.Spells
   alias MMGO.Spells.{Incantation, Spell, SpellFailure}
 
+  @library_context_limit 24
+  @max_spell_name_bytes 120
+  @max_spell_description_bytes 1_200
+  @control_character_pattern ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u
+  @targeting_modes ~w(self ally enemy zone)
+  @delivery_forms ~w(single_target beam cone sphere wall zone self link delayed_trigger)
+
   def compile_and_store(%Character{} = character, attrs, opts \\ []) when is_map(attrs) do
-    with {:ok, request} <- normalize_request(attrs) do
+    with {:ok, request} <- normalize_request(attrs),
+         {:ok, base_spell} <- resolve_owned_base_spell(character, request) do
       schools = Keyword.get(opts, :schools, %{})
       environment_tags = Keyword.get(opts, :environment_tags, [])
 
@@ -21,6 +29,8 @@ defmodule MMGO.Spells.Compiler do
           },
           environment_tags: environment_tags,
           request: request,
+          base_spell: base_spell_summary(base_spell),
+          library: owned_library_summary(character),
           states: Spell.effect_states()
         })
 
@@ -34,7 +44,7 @@ defmodule MMGO.Spells.Compiler do
              AI.compile_spell(prompt_payload, ai_opts) do
         case compile_outcome(compiled_spell) do
           :created ->
-            with spell_attrs <- merge_spell_attrs(request, compiled_spell),
+            with spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell),
                  {:ok, spell} <- Spells.create_spell(character, spell_attrs),
                  {:ok, updated_request} <- AI.update_request(ai_request, %{spell_id: spell.id}) do
               {:ok, %{spell: spell, ai_request: updated_request, compiled_spell: compiled_spell}}
@@ -74,7 +84,20 @@ defmodule MMGO.Spells.Compiler do
         "base_spell_id"
       ])
 
-    with {:ok, normalized_formula} <- normalize_formula(request),
+    with {:ok, request} <-
+           normalize_optional_text(request, "name", :name, @max_spell_name_bytes),
+         {:ok, request} <-
+           normalize_optional_text(
+             request,
+             "description",
+             :description,
+             @max_spell_description_bytes
+           ),
+         {:ok, request} <-
+           normalize_optional_enum(request, "targeting", :targeting, @targeting_modes),
+         {:ok, request} <-
+           normalize_optional_enum(request, "delivery_form", :delivery_form, @delivery_forms),
+         {:ok, normalized_formula} <- normalize_formula(request),
          {:ok, normalized_school} <- normalize_school(request) do
       {:ok,
        request
@@ -83,18 +106,18 @@ defmodule MMGO.Spells.Compiler do
     end
   end
 
-  defp merge_spell_attrs(request, compiled_spell) do
+  defp merge_spell_attrs(request, base_spell, compiled_spell) do
     compiled_spell
     |> Map.merge(%{
       "name" => Map.get(compiled_spell, "name") || Map.get(request, "name"),
-      "formula" => Map.get(compiled_spell, "formula") || Map.get(request, "formula"),
-      "school" => Map.get(compiled_spell, "school") || Map.get(request, "school"),
+      "formula" => Map.fetch!(request, "formula"),
+      "school" => Map.fetch!(request, "school"),
       "description" => Map.get(compiled_spell, "description") || Map.get(request, "description"),
       "targeting" =>
         Map.get(compiled_spell, "targeting") || Map.get(request, "targeting") || "enemy",
       "delivery_form" =>
         Map.get(compiled_spell, "delivery_form") || Map.get(request, "delivery_form") || "sphere",
-      "source_spell_id" => Map.get(request, "base_spell_id")
+      "source_spell_id" => base_spell.id
     })
   end
 
@@ -131,12 +154,77 @@ defmodule MMGO.Spells.Compiler do
           {:error, :too_many_words} ->
             {:error, compiler_request_changeset(:formula, "must contain at most 6 words")}
 
+          {:error, :formula_too_long} ->
+            {:error, compiler_request_changeset(:formula, "must be at most 180 bytes")}
+
+          {:error, :word_too_long} ->
+            {:error, compiler_request_changeset(:formula, "words must be at most 32 bytes")}
+
+          {:error, :invalid_encoding} ->
+            {:error, compiler_request_changeset(:formula, "must be valid text")}
+
           {:error, :invalid_word} ->
             {:error,
              compiler_request_changeset(
                :formula,
                "must contain only alphabetic words and hyphens"
              )}
+
+          {:error, :invalid_formula} ->
+            {:error, compiler_request_changeset(:formula, "must be text")}
+        end
+    end
+  end
+
+  defp normalize_optional_text(request, field, error_field, max_bytes) do
+    case Map.get(request, field) do
+      nil ->
+        {:ok, request}
+
+      text when is_binary(text) ->
+        cond do
+          byte_size(text) > max_bytes ->
+            {:error, compiler_request_changeset(error_field, "is too long")}
+
+          not String.valid?(text) ->
+            {:error, compiler_request_changeset(error_field, "must be valid text")}
+
+          true ->
+            normalized_text =
+              text
+              |> String.trim()
+              |> String.replace(~r/\s+/u, " ")
+
+            if Regex.match?(@control_character_pattern, normalized_text) do
+              {:error,
+               compiler_request_changeset(
+                 error_field,
+                 "contains unsupported control characters"
+               )}
+            else
+              {:ok,
+               if(normalized_text == "",
+                 do: Map.delete(request, field),
+                 else: Map.put(request, field, normalized_text)
+               )}
+            end
+        end
+
+      _other ->
+        {:error, compiler_request_changeset(error_field, "must be text")}
+    end
+  end
+
+  defp normalize_optional_enum(request, field, error_field, allowed_values) do
+    case Map.get(request, field) do
+      nil ->
+        {:ok, request}
+
+      value ->
+        if value in allowed_values do
+          {:ok, request}
+        else
+          {:error, compiler_request_changeset(error_field, "is invalid")}
         end
     end
   end
@@ -155,8 +243,83 @@ defmodule MMGO.Spells.Compiler do
     end
   end
 
+  defp resolve_owned_base_spell(character, request) do
+    case Map.get(request, "base_spell_id") do
+      spell_id when is_binary(spell_id) ->
+        if String.trim(spell_id) == "" do
+          {:error, compiler_request_changeset(:base_spell_id, "can't be blank")}
+        else
+          case Spells.get_owned_spell(character, spell_id) do
+            nil -> {:error, compiler_request_changeset(:base_spell_id, "is invalid")}
+            spell -> {:ok, spell}
+          end
+        end
+
+      _missing ->
+        {:error, compiler_request_changeset(:base_spell_id, "can't be blank")}
+    end
+  end
+
+  defp owned_library_summary(character) do
+    character.id
+    |> Spells.list_spells_for_character()
+    |> Enum.take(@library_context_limit)
+    |> Enum.map(&library_spell_summary/1)
+  end
+
+  defp library_spell_summary(spell) do
+    %{
+      id: spell.id,
+      name: spell.name,
+      formula: spell.formula,
+      school: spell.school,
+      source_spell_id: spell.source_spell_id
+    }
+  end
+
+  defp base_spell_summary(spell) do
+    %{
+      id: spell.id,
+      name: spell.name,
+      formula: spell.formula,
+      school: spell.school,
+      description: bounded_prompt_text(spell.description, @max_spell_description_bytes),
+      effects: Enum.map(spell.effects, &effect_summary/1)
+    }
+  end
+
+  defp effect_summary(effect) do
+    %{
+      applies_to: effect.applies_to,
+      state: effect.state,
+      intensity: effect.intensity,
+      variance: effect.variance,
+      duration: effect.duration,
+      tags: effect.tags
+    }
+  end
+
+  defp bounded_prompt_text(text, max_bytes) when is_binary(text) do
+    if byte_size(text) <= max_bytes and String.valid?(text) do
+      text
+    else
+      ""
+    end
+  end
+
+  defp bounded_prompt_text(_text, _max_bytes), do: ""
+
   defp compiler_request_changeset(field, message) do
-    {%{}, %{formula: :string, school: :string}}
+    {%{},
+     %{
+       name: :string,
+       description: :string,
+       formula: :string,
+       school: :string,
+       base_spell_id: :string,
+       targeting: :string,
+       delivery_form: :string
+     }}
     |> Ecto.Changeset.cast(%{}, [])
     |> Ecto.Changeset.add_error(field, message)
   end

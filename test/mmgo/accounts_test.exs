@@ -67,4 +67,46 @@ defmodule MMGO.AccountsTest do
   test "provision_from_telegram/1 rejects invalid payloads" do
     assert {:error, :invalid_update} = Accounts.provision_from_telegram(%{"username" => "no-id"})
   end
+
+  test "get_active_character_for_account/2 enforces ownership and active statuses", %{
+    realm: realm
+  } do
+    owner = account_fixture("scope-owner")
+    stranger = account_fixture("scope-stranger")
+    inactive_owner = account_fixture("inactive-owner")
+    active_character = character_fixture(owner, realm, "Scope Owner", :active)
+    stranger_character = character_fixture(stranger, realm, "Scope Stranger", :active)
+    inactive_character = character_fixture(inactive_owner, realm, "Sleeping Owner", :new)
+
+    assert {:ok, scoped_character} =
+             Accounts.get_active_character_for_account(owner.id, active_character.id)
+
+    assert scoped_character.account.id == owner.id
+
+    assert {:error, :not_found} =
+             Accounts.get_active_character_for_account(owner.id, stranger_character.id)
+
+    assert {:error, :inactive} =
+             Accounts.get_active_character_for_account(inactive_owner.id, inactive_character.id)
+
+    suspended_owner =
+      owner
+      |> Ecto.Changeset.change(status: :suspended)
+      |> Repo.update!()
+
+    assert {:error, :inactive} =
+             Accounts.get_active_character_for_account(suspended_owner.id, active_character.id)
+  end
+
+  defp account_fixture(handle) do
+    %Account{}
+    |> Account.registration_changeset(%{display_name: handle, handle: handle})
+    |> Repo.insert!()
+  end
+
+  defp character_fixture(account, realm, name, status) do
+    %Character{account_id: account.id, realm_id: realm.id}
+    |> Character.changeset(%{name: name, status: status})
+    |> Repo.insert!()
+  end
 end

@@ -7,10 +7,9 @@ defmodule MMGOWeb.LocationGate do
   character has physically travelled to a location of the right kind. This
   module is the single place that enforces that rule.
 
-  Usage from a LiveView's `mount/3`, *after* the character has been loaded and
-  confirmed to exist (views that require a character already redirect to
-  `/play/continue` when there isn't one — that check must run first; this gate
-  only concerns itself with *where* an existing character currently is):
+  Usage from a LiveView's `mount/3`, *after* the shared `GameAuth` boundary has
+  loaded and confirmed the current scope. This gate only concerns itself with
+  *where* that authenticated character currently is:
 
       case LocationGate.gate(socket, character, :tower) do
         {:ok, socket} -> {:ok, assign(socket, :character, character)}

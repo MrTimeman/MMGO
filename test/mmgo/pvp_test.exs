@@ -17,12 +17,12 @@ defmodule MMGO.PVPTest do
 
     {:ok, location} =
       Worlds.create_location(realm, %{
-        slug: "duel-yard",
-        name: "Duel Yard",
-        kind: :city,
+        slug: "duel-tower",
+        name: "Duel Tower",
+        kind: :tower,
         x: 10,
         y: 10,
-        safe_zone: true
+        safe_zone: false
       })
 
     challenger = character_fixture(realm, location, "challenger", "Challenger")
@@ -42,6 +42,30 @@ defmodule MMGO.PVPTest do
     assert duel.status == :pending
     assert duel.stake_amount == 25
     assert duel.pot_amount == 50
+  end
+
+  test "challenge_duel/4 rejects protected safe-zone duels", %{
+    realm: realm,
+    challenger: challenger
+  } do
+    {:ok, city} =
+      Worlds.create_location(realm, %{
+        slug: "protected-city",
+        name: "Protected City",
+        kind: :city,
+        x: 20,
+        y: 20,
+        safe_zone: true
+      })
+
+    protected_opponent = character_fixture(realm, city, "protected-rival", "Protected Rival")
+
+    challenger
+    |> Character.travel_changeset(%{current_location_id: city.id})
+    |> Repo.update!()
+
+    assert {:error, changeset} = PVP.challenge_duel(challenger, protected_opponent, 25)
+    assert "duels cannot start in a safe zone" in errors_on(changeset).status
   end
 
   test "accept_duel/2 creates escrow and combat", %{
@@ -194,7 +218,7 @@ defmodule MMGO.PVPTest do
     assert unchanged_duel.status == :active
   end
 
-  test "cancel_duel/2 refunds active duel escrow", %{
+  test "cancel_duel/2 rejects an active duel so its wager cannot be refunded", %{
     realm: _realm,
     challenger: challenger,
     opponent: opponent
@@ -202,16 +226,17 @@ defmodule MMGO.PVPTest do
     {:ok, duel} = PVP.challenge_duel(challenger, opponent, 15)
     {:ok, accepted_duel} = PVP.accept_duel(duel, opponent)
 
-    assert {:ok, cancelled_duel} = PVP.cancel_duel(accepted_duel, challenger)
-    assert cancelled_duel.status == :cancelled
+    assert {:error, changeset} = PVP.cancel_duel(accepted_duel, challenger)
+    assert "active duels must be resolved through combat or flee" in errors_on(changeset).status
 
     {:ok, challenger_account} = Economy.ensure_character_account(challenger)
     {:ok, opponent_account} = Economy.ensure_character_account(opponent)
     escrow = Economy.get_account!(accepted_duel.escrow_account_id)
 
-    assert Economy.get_account!(challenger_account.id).current_balance == 100
-    assert Economy.get_account!(opponent_account.id).current_balance == 100
-    assert escrow.current_balance == 0
+    assert Economy.get_account!(challenger_account.id).current_balance == 85
+    assert Economy.get_account!(opponent_account.id).current_balance == 85
+    assert escrow.current_balance == 30
+    assert PVP.get_duel!(duel.id).status == :active
   end
 
   defp character_fixture(realm, location, handle, name) do

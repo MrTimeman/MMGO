@@ -15,6 +15,10 @@ defmodule MMGOWeb.Layouts do
     default: nil,
     doc: "the current [scope](https://hexdocs.pm/phoenix/scopes.html)"
 
+  attr :atmosphere, :map,
+    default: nil,
+    doc: "optional server-derived semantic audio state for an in-world screen"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -64,7 +68,58 @@ defmodule MMGOWeb.Layouts do
       </main>
 
       <.flash_group flash={@flash} />
+      <.atmosphere_audio :if={@atmosphere} cue={@atmosphere} />
     </div>
+    """
+  end
+
+  attr :cue, :map, required: true
+
+  defp atmosphere_audio(assigns) do
+    ~H"""
+    <aside
+      id="atmosphere-audio"
+      phx-hook="AtmosphereAudio"
+      data-ambient-cue={@cue.ambient_cue}
+      data-ambient-source={@cue.ambient_source}
+      data-major-event-cue={@cue.major_event_cue}
+      data-event-source={@cue.event_source}
+      data-active-cue={@cue.active_cue}
+      data-active-source={@cue.active_source}
+      data-loop={to_string(@cue.loop?)}
+      data-label={@cue.label}
+      class="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)]"
+      aria-label="Звуковая атмосфера мира"
+    >
+      <audio id="atmosphere-audio-player" preload="none" aria-hidden="true"></audio>
+      <button
+        id="atmosphere-audio-toggle"
+        type="button"
+        data-atmosphere-toggle
+        disabled={not @cue.available?}
+        aria-pressed="false"
+        aria-describedby="atmosphere-audio-description"
+        class="inline-flex min-h-10 items-center gap-2 rounded-full border border-stone-600/80 bg-stone-950/90 px-3 py-2 text-xs font-medium text-stone-200 shadow-lg backdrop-blur transition enabled:hover:border-sky-300 enabled:hover:text-sky-100 disabled:cursor-not-allowed disabled:opacity-70"
+      >
+        <.icon name="hero-speaker-wave" class="size-4" />
+        <span data-atmosphere-status>
+          <%= if @cue.available? do %>
+            Звук мира: выкл.
+          <% else %>
+            Звук: запись не подключена
+          <% end %>
+        </span>
+      </button>
+      <p id="atmosphere-audio-description" class="sr-only" aria-live="polite">
+        Семантическая сцена: {@cue.label}.
+        <%= if @cue.major_event_cue do %>
+          Событие: {@cue.major_event_cue}.
+        <% end %>
+        <%= if not @cue.available? do %>
+          Запись для этой сцены пока не настроена.
+        <% end %>
+      </p>
+    </aside>
     """
   end
 

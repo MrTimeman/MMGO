@@ -1,25 +1,36 @@
 defmodule MMGOWeb.PlayApiController do
   use MMGOWeb, :controller
 
+  alias MMGO.Accounts
   alias MMGO.Play
 
   def state(conn, _params) do
-    with {:ok, character_id} <- demo_character_id(conn),
-         {:ok, state} <- Play.load_demo_state(character_id) do
+    with {:ok, character_id} <- current_character_id(conn),
+         {:ok, state} <- Play.load_state(character_id) do
       json(conn, state_payload(state))
     else
-      {:error, _reason} -> json(conn, %{character: nil})
+      {:error, _reason} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{character: nil})
     end
   end
 
   def create_journey(conn, params) do
-    with {:ok, character_id} <- demo_character_id(conn),
+    with {:ok, character_id} <- current_character_id(conn),
          {:ok, destination_slug} <- fetch_destination_slug(params),
          {:ok, %{journey: journey}} <- Play.start_journey(character_id, destination_slug) do
       json(conn, %{ok: true, journey: journey_payload(journey)})
     else
       {:error, :not_found} ->
-        conn |> put_status(:unauthorized) |> json(%{ok: false, error: "demo session not started"})
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{ok: false, error: "player session not started"})
+
+      {:error, :inactive} ->
+        conn
+        |> put_status(:unauthorized)
+        |> json(%{ok: false, error: "player session not started"})
 
       {:error, :missing_destination} ->
         conn
@@ -36,10 +47,14 @@ defmodule MMGOWeb.PlayApiController do
     end
   end
 
-  defp demo_character_id(conn) do
-    case get_session(conn, :demo_character_id) do
-      nil -> {:error, :not_found}
-      character_id -> {:ok, character_id}
+  defp current_character_id(conn) do
+    with account_id when is_binary(account_id) <- get_session(conn, :current_account_id),
+         character_id when is_binary(character_id) <- get_session(conn, :current_character_id),
+         {:ok, _character} <- Accounts.get_active_character_for_account(account_id, character_id) do
+      {:ok, character_id}
+    else
+      {:error, reason} when reason in [:not_found, :inactive] -> {:error, reason}
+      _other -> {:error, :not_found}
     end
   end
 

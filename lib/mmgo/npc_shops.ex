@@ -112,22 +112,7 @@ defmodule MMGO.NPCShops do
     |> normalize_transaction_result()
   end
 
-  def ensure_charity_fund_account(realm) do
-    case Repo.get_by(Economy.EconomyAccount, realm_id: realm.id, owner_type: :charity_fund) do
-      %Economy.EconomyAccount{} = account ->
-        {:ok, account}
-
-      nil ->
-        %Economy.EconomyAccount{}
-        |> Economy.EconomyAccount.changeset(%{
-          realm_id: realm.id,
-          owner_type: :charity_fund,
-          current_balance: 0,
-          metadata: %{"system" => "charity_fund"}
-        })
-        |> Repo.insert()
-    end
-  end
+  def ensure_charity_fund_account(realm), do: Economy.ensure_charity_fund_account(realm)
 
   def donate_to_charity(%Character{} = character, amount) when is_integer(amount) do
     with true <- amount > 0 do

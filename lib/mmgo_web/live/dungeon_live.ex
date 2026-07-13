@@ -1,741 +1,658 @@
 defmodule MMGOWeb.DungeonLive do
   @moduledoc """
-  Design-pass screen — the mega-dungeon beneath the Tower (GDD §10).
+  Scoped browser surface for an active party expedition beneath the Tower.
 
-  One module, two diegetic artifacts consulted by torchlight:
-
-    * `:depths` (/dungeon) — THE DESCENT. A vertical geological
-      cross-section of the mega-dungeon: levels stacked downward, upper
-      strata warm and lit, deeper ones cold and strange. Known levels
-      (visited or map purchased) show their facts; unknown levels are
-      sealed fog. The party's current depth and deepest reach are marked.
-
-    * `:level` (/dungeon/level/:n) — THE LEVEL GRAPH. A hand-charted
-      expedition map of one floor: a non-linear node graph (§10.1) drawn
-      as inline SVG. Visited nodes are solid charted ink; reachable nodes
-      glow as current choices; distant known nodes fade; unexplored edges
-      trail off into darkness. The party sigil pulses at its position;
-      tapping a reachable node opens a confirm sheet, then the marker
-      travels the edge and fog recedes. Occasionally the dungeon
-      "breathes" — one passage visibly redraws (§10.2).
-
-  No backend wiring — all demo data lives in module attributes. See
-  docs/UI_DESIGN_BRIEF.md.
+  Every action is delegated to `MMGO.Play`, which re-resolves the current
+  expedition, node, encounter, loot, and resource from persisted state.
   """
   use MMGOWeb, :live_view
 
-  import MMGOWeb.UIKit
-
-  # ── Cross-section (View 1) ────────────────────────────────────────────
-  # Seven descending strata (§10.1). `state` is :visited | :map | :fogged.
-  # `depth` drives the warm→cold hue shift in CSS.
-  @levels [
-    %{
-      n: 1,
-      name: "Верхние галереи",
-      epithet: "тихие руины",
-      state: :visited,
-      danger: "I · низкая",
-      village: "Первый привал",
-      ascents: 2,
-      note: "Самый обжитой ярус — сюда спускаются новички за первой добычей."
-    },
-    %{
-      n: 2,
-      name: "Грибные топи",
-      epithet: "сырость, споры и болотный свет",
-      state: :visited,
-      party: true,
-      danger: "II · умеренная",
-      village: "Мокрый фонарь",
-      ascents: 1,
-      note: "Отряд стоит здесь. Воздух густой; фонарь гаснет без причины."
-    },
-    %{
-      n: 3,
-      name: "Костяные катакомбы",
-      epithet: "эхо и старые кости",
-      state: :visited,
-      deepest: true,
-      danger: "III · высокая",
-      village: nil,
-      ascents: 1,
-      note: "Дальше отряд не заходил. Здесь кончается ваша карта, начертанная своей рукой."
-    },
-    %{
-      n: 4,
-      name: "Затопленный ярус",
-      epithet: "по слухам — вода до самых сводов",
-      state: :map,
-      danger: "IV · по чужой карте",
-      village: nil,
-      ascents: 1,
-      note: "Карта куплена у гильдии картографов, но отряд здесь не бывал."
-    },
-    %{n: 5, name: "Неизведано", epithet: nil, state: :fogged, danger: nil},
-    %{n: 6, name: "Неизведано", epithet: nil, state: :fogged, danger: nil},
-    %{n: 7, name: "Неизведано", epithet: nil, state: :fogged, danger: nil}
-  ]
-
-  # ── Level graph (View 2) ──────────────────────────────────────────────
-  # Column centres (viewBox 330 wide) and row pitch (viewBox 824 tall).
-  @col %{1 => 60, 2 => 165, 3 => 270}
-  @row_top 60
-  @row_pitch 88
-
-  # Node glyphs + accent role per type.
-  @glyphs %{
-    "подъём" => "↑",
-    "спуск" => "↓",
-    "бой" => "⚔",
-    "находка" => "◈",
-    "стоянка" => "▲",
-    "деревня" => "⌂",
-    "аномалия" => "✳",
-    "?" => "?"
-  }
-
-  # Human names per node type, for the confirm sheet.
-  @type_dative %{
-    "подъём" => "к подъёму",
-    "спуск" => "к спуску",
-    "бой" => "к логову тварей",
-    "находка" => "к тайнику",
-    "стоянка" => "к привалу",
-    "деревня" => "к деревеньке делверов",
-    "аномалия" => "к аномалии",
-    "?" => "к неизведанному ходу"
-  }
-
-  # Level 1 topology. `reveals` lists node ids the fog gives up on arrival.
-  @nodes_l1 [
-    %{id: 1, type: "подъём", col: 2, row: 0, name: "Подъём на поверхность", reveals: []},
-    %{id: 2, type: "бой", col: 2, row: 1, name: "Крысиные ходы", reveals: []},
-    %{id: 3, type: "деревня", col: 1, row: 2, name: "Первый привал", reveals: []},
-    %{id: 4, type: "находка", col: 3, row: 2, name: "Осыпь у стены", reveals: []},
-    %{id: 5, type: "бой", col: 2, row: 3, name: "Галерея паутин", reveals: []},
-    %{id: 14, type: "подъём", col: 3, row: 3, name: "Запасной подъём", reveals: []},
-    %{id: 6, type: "аномалия", col: 1, row: 4, name: "Дышащая трещина", reveals: []},
-    %{id: 7, type: "стоянка", col: 2, row: 4, name: "Ваш привал", reveals: []},
-    %{
-      id: 8,
-      type: "находка",
-      col: 3,
-      row: 5,
-      name: "Затопленный тайник",
-      risk: "низкий",
-      hours: 2,
-      reveals: [15]
-    },
-    %{
-      id: 9,
-      type: "бой",
-      col: 1,
-      row: 5,
-      name: "Гнездо жаб",
-      risk: "высокий",
-      hours: 1,
-      reveals: [12]
-    },
-    %{
-      id: 10,
-      type: "аномалия",
-      col: 2,
-      row: 6,
-      name: "Смещённый свод",
-      risk: "средний",
-      hours: 3,
-      reveals: [11, 13]
-    },
-    %{id: 11, type: "бой", col: 3, row: 7, name: "Костяной страж", reveals: []},
-    %{id: 12, type: "стоянка", col: 1, row: 7, name: "Сырой уступ", reveals: []},
-    %{id: 13, type: "спуск", col: 2, row: 8, name: "Спуск на 2-й ярус", reveals: []},
-    %{id: 15, type: "находка", col: 3, row: 6, name: "Тупик с рудой", reveals: []},
-    %{id: 16, type: "?", col: 1, row: 8, name: "Неизведанный ход", reveals: []}
-  ]
-
-  @edges_l1 [
-    {1, 2},
-    {2, 3},
-    {2, 4},
-    {3, 5},
-    {4, 5},
-    {4, 14},
-    {5, 6},
-    {5, 7},
-    {6, 7},
-    {7, 8},
-    {7, 9},
-    {8, 10},
-    {9, 10},
-    {8, 15},
-    {10, 11},
-    {10, 13},
-    {9, 12},
-    {12, 16},
-    {11, 13}
-  ]
-
-  # When the dungeon "breathes" (§10.2): this passage closes…
-  @shift_remove {8, 10}
-  # …and this shortcut opens between the two forward branches.
-  @shift_add {8, 9}
+  alias MMGO.Play
 
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:legend_open, false)
-     |> assign(:confirm, nil)
-     |> assign(:shifted, false)}
+     |> assign(:page_title, "Подземелье")
+     |> assign(:error, nil)
+     |> refresh_dungeon()}
   end
 
   @impl true
-  def handle_params(params, _uri, socket) do
-    case socket.assigns.live_action do
-      :level ->
-        {:noreply, mount_level(socket, params["level"] || "1")}
+  def handle_event("enter", _params, socket) do
+    case Play.enter_current_dungeon(socket.assigns.character) do
+      {:ok, state} ->
+        {:noreply,
+         socket |> put_flash(:info, "Экспедиция вошла в Подземелье.") |> assign_state(state)}
 
-      _depths ->
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("move", %{"node-id" => node_id}, socket) do
+    case Play.move_in_dungeon(socket.assigns.character, node_id) do
+      {:ok, state} -> {:noreply, socket |> assign(:error, nil) |> assign_state(state)}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("avoid", _params, socket) do
+    case Play.avoid_current_dungeon_encounter(socket.assigns.character) do
+      {:ok, state} ->
+        {:noreply, socket |> put_flash(:info, "Встреча обойдена.") |> assign_state(state)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("start_combat", _params, socket) do
+    case Play.start_current_dungeon_combat(socket.assigns.character) do
+      {:ok, %{combat: combat}} -> {:noreply, push_navigate(socket, to: ~p"/combat/#{combat.id}")}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("sync_combat", _params, socket) do
+    case Play.sync_current_dungeon_combat(socket.assigns.character) do
+      {:ok, %{failed?: true}} ->
+        {:noreply, push_navigate(socket, to: ~p"/defeat")}
+
+      {:ok, %{state: state}} ->
+        {:noreply, socket |> put_flash(:info, "Итог встречи сохранён.") |> assign_state(state)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("claim_loot", %{"loot-drop-id" => loot_drop_id}, socket) do
+    case Play.claim_current_dungeon_loot(socket.assigns.character, loot_drop_id) do
+      {:ok, state} ->
+        {:noreply,
+         socket |> put_flash(:info, "Добыча добавлена в котомку.") |> assign_state(state)}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("harvest", %{"resource-id" => resource_id}, socket) do
+    case Play.harvest_current_dungeon_resource(socket.assigns.character, resource_id, 1) do
+      {:ok, state} ->
         {:noreply,
          socket
-         |> assign(:page_title, "Разрез подземелья")
-         |> assign(:levels, @levels)}
-    end
-  end
+         |> put_flash(:info, "Ресурс собран: поиск занял 1 игровой день и принёс опыт.")
+         |> assign_state(state)}
 
-  # ── Level graph state ─────────────────────────────────────────────────
-  defp mount_level(socket, level_str) do
-    level = parse_level(level_str)
-    deep = level >= 2
-
-    # Party has charted the upper floor down to the mid-map rest spot.
-    visited = MapSet.new([1, 2, 3, 4, 5, 6, 14])
-    party = 7
-    # Revealed = what the torch presently shows: everything visited, the
-    # party node, its forward choices, and one known-distant landmark.
-    revealed = MapSet.union(visited, MapSet.new([7, 8, 9, 10]))
-
-    socket
-    |> assign(:page_title, "Ярус #{level}")
-    |> assign(:level, level)
-    |> assign(:deep, deep)
-    |> assign(:party, party)
-    |> assign(:visited, visited)
-    |> assign(:revealed, revealed)
-    |> assign(:shifted, false)
-    |> assign(:confirm, nil)
-    |> assign(:legend_open, false)
-    |> assign(:breathed, false)
-    |> maybe_schedule_breath()
-  end
-
-  defp maybe_schedule_breath(socket) do
-    if connected?(socket) do
-      # The dungeon breathes once, unprompted, a few seconds in (§10.2).
-      Process.send_after(self(), :dungeon_breathes, 6500)
-    end
-
-    socket
-  end
-
-  defp parse_level(str) do
-    case Integer.parse(to_string(str)) do
-      {n, _} when n >= 1 -> n
-      _ -> 1
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
   @impl true
-  def handle_event("select_node", %{"id" => id}, socket) do
-    id = String.to_integer(id)
-    node = node_by_id(id)
-    reachable = reachable_set(socket.assigns)
+  def handle_event("extract", _params, socket) do
+    case Play.extract_current_dungeon(socket.assigns.character) do
+      {:ok, state} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Экспедиция поднялась к вратам Башни.")
+         |> assign_state(state)}
 
-    if MapSet.member?(reachable, id) and node do
-      {:noreply, assign(socket, :confirm, confirm_for(node))}
-    else
-      {:noreply, socket}
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
   @impl true
-  def handle_event("cancel_move", _params, socket) do
-    {:noreply, assign(socket, :confirm, nil)}
-  end
+  def handle_event("return_ritual", _params, socket) do
+    case Play.begin_current_return_ritual(socket.assigns.character) do
+      {:ok, state} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Ритуал возвращения начат. Он завершится по времени мира.")
+         |> assign_state(state)}
 
-  @impl true
-  def handle_event("confirm_move", %{"id" => id}, socket) do
-    id = String.to_integer(id)
-    reachable = reachable_set(socket.assigns)
-
-    if MapSet.member?(reachable, id) do
-      {:noreply, move_party(socket, id)}
-    else
-      {:noreply, assign(socket, :confirm, nil)}
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
   @impl true
-  def handle_event("toggle_legend", _params, socket) do
-    {:noreply, assign(socket, :legend_open, not socket.assigns.legend_open)}
-  end
-
-  @impl true
-  def handle_event("shift_moves", _params, socket) do
-    {:noreply, assign(socket, shifted: true, breathed: true)}
-  end
-
-  @impl true
-  def handle_info(:dungeon_breathes, socket) do
-    # Only breathe if the layout is still in its original state.
-    if socket.assigns.shifted do
-      {:noreply, socket}
-    else
-      {:noreply, assign(socket, shifted: true, breathed: true)}
-    end
-  end
-
-  defp move_party(socket, target) do
-    %{party: party, visited: visited, revealed: revealed} = socket.assigns
-    node = node_by_id(target)
-
-    new_visited = MapSet.put(visited, party)
-
-    new_revealed =
-      revealed
-      |> MapSet.put(target)
-      |> MapSet.union(MapSet.new(neighbors(target, socket.assigns.shifted)))
-      |> MapSet.union(MapSet.new(node.reveals))
-
-    socket
-    |> assign(:party, target)
-    |> assign(:visited, new_visited)
-    |> assign(:revealed, new_revealed)
-    |> assign(:confirm, nil)
-  end
-
-  # ── View derivation ───────────────────────────────────────────────────
-  defp reachable_set(%{party: party, visited: visited, revealed: revealed, shifted: shifted}) do
-    party
-    |> neighbors(shifted)
-    |> Enum.filter(fn n ->
-      MapSet.member?(revealed, n) and not MapSet.member?(visited, n) and n != party
-    end)
-    |> MapSet.new()
-  end
-
-  defp active_edges(shifted) do
-    if shifted do
-      @edges_l1
-      |> Enum.reject(&same_edge?(&1, @shift_remove))
-      |> Kernel.++([@shift_add])
-    else
-      @edges_l1
-    end
-  end
-
-  defp same_edge?({a, b}, {c, d}), do: (a == c and b == d) or (a == d and b == c)
-
-  defp neighbors(id, shifted) do
-    active_edges(shifted)
-    |> Enum.flat_map(fn
-      {^id, b} -> [b]
-      {a, ^id} -> [a]
-      _ -> []
-    end)
-  end
-
-  defp node_by_id(id), do: Enum.find(@nodes_l1, &(&1.id == id))
-
-  defp col_x(col), do: @col[col]
-  defp row_y(row), do: @row_top + row * @row_pitch
-
-  defp confirm_for(node) do
-    dative = @type_dative[node.type] || "к ходу"
-    hours = Map.get(node, :hours, 2)
-    risk = Map.get(node, :risk, "неизвестен")
-
-    %{
-      id: node.id,
-      title: "Идти #{dative}",
-      name: node.name,
-      hint: "≈ #{hours} ч пути · риск #{risk}"
-    }
-  end
-
-  # Builds the annotated node + edge lists the SVG renders from assigns.
-  defp build_view(assigns) do
-    %{party: party, visited: visited, revealed: revealed, shifted: shifted} = assigns
-    reachable = reachable_set(assigns)
-
-    nodes =
-      for n <- @nodes_l1, MapSet.member?(revealed, n.id) do
-        state =
-          cond do
-            n.id == party -> :party
-            MapSet.member?(reachable, n.id) -> :reachable
-            MapSet.member?(visited, n.id) -> :visited
-            true -> :known
-          end
-
-        n
-        |> Map.merge(%{
-          x: col_x(n.col),
-          y: row_y(n.row),
-          glyph: @glyphs[n.type] || "•",
-          state: state
-        })
-      end
-
-    edges =
-      for {a, b} <- active_edges(shifted), edge <- [build_edge(a, b, revealed, shifted)], edge do
-        edge
-      end
-
-    party_node = node_by_id(party)
-
-    %{
-      nodes: nodes,
-      edges: edges,
-      party_x: col_x(party_node.col),
-      party_y: row_y(party_node.row)
-    }
-  end
-
-  defp build_edge(a, b, revealed, shifted) do
-    na = node_by_id(a)
-    nb = node_by_id(b)
-    ax = col_x(na.col)
-    ay = row_y(na.row)
-    bx = col_x(nb.col)
-    by = row_y(nb.row)
-
-    ra = MapSet.member?(revealed, a)
-    rb = MapSet.member?(revealed, b)
-
-    shifting? =
-      shifted and (same_edge?({a, b}, @shift_add) or same_edge?({a, b}, @shift_remove))
-
-    cond do
-      ra and rb ->
-        %{x1: ax, y1: ay, x2: bx, y2: by, kind: :solid, shifting: shifting?, id: "#{a}-#{b}"}
-
-      ra ->
-        # Trail off toward the fogged node b, stopping short — into darkness.
-        %{
-          x1: ax,
-          y1: ay,
-          x2: ax + (bx - ax) * 0.55,
-          y2: ay + (by - ay) * 0.55,
-          kind: :trail,
-          shifting: false,
-          id: "#{a}-#{b}"
-        }
-
-      rb ->
-        %{
-          x1: bx,
-          y1: by,
-          x2: bx + (ax - bx) * 0.55,
-          y2: by + (ay - by) * 0.55,
-          kind: :trail,
-          shifting: false,
-          id: "#{a}-#{b}"
-        }
-
-      true ->
-        nil
-    end
-  end
-
-  # ── Render ────────────────────────────────────────────────────────────
-  @impl true
-  def render(%{live_action: :level} = assigns) do
-    assigns = assign(assigns, :view, build_view(assigns))
-
-    ~H"""
-    <div class={["dng-screen", "dng-screen--graph", @deep && "dng-screen--deep"]}>
-      <div class="dng-graph-grain"></div>
-
-      <header class="dng-lvl-head">
-        <.link navigate={~p"/dungeon"} class="dng-exit">← к разрезу</.link>
-        <div class="dng-lvl-title">
-          <span class="dng-lvl-kicker">Экспедиционная карта</span>
-          <h1 class="dng-lvl-name">
-            Ярус {@level} — {level_title(@level)}
-          </h1>
-        </div>
-        <button type="button" class="dng-legend-btn" phx-click="toggle_legend">
-          {if @legend_open, do: "закрыть", else: "легенда"}
-        </button>
-      </header>
-
-      <%= if @breathed do %>
-        <div class="dng-omen" aria-live="polite">
-          <span class="dng-omen__mark">✳</span> ходы сместились — подземелье дышит
-        </div>
-      <% end %>
-
-      <div class="dng-graph-scroll">
-        <svg
-          class="dng-graph"
-          viewBox="0 0 330 824"
-          preserveAspectRatio="xMidYMin meet"
-          role="img"
-          aria-label={"Карта яруса #{@level}"}
-        >
-          <defs>
-            <filter id="dng-ink" x="-20%" y="-20%" width="140%" height="140%">
-              <feTurbulence
-                type="fractalNoise"
-                baseFrequency="0.018"
-                numOctaves="2"
-                seed="7"
-                result="n"
-              />
-              <feDisplacementMap in="SourceGraphic" in2="n" scale="4" />
-            </filter>
-          </defs>
-
-          <g class="dng-edges" filter="url(#dng-ink)">
-            <line
-              :for={e <- @view.edges}
-              x1={e.x1}
-              y1={e.y1}
-              x2={e.x2}
-              y2={e.y2}
-              class={[
-                "dng-edge",
-                "dng-edge--#{e.kind}",
-                e.shifting && "dng-edge--shifting"
-              ]}
-            />
-          </g>
-
-          <g class="dng-nodes">
-            <g
-              :for={n <- @view.nodes}
-              class={["dng-node", "dng-node--#{n.state}", "dng-node--t-#{node_slug(n.type)}"]}
-              transform={"translate(#{n.x} #{n.y})"}
-            >
-              <circle class="dng-node__disc" r="17" />
-              <circle :if={n.state == :reachable} class="dng-node__ring" r="23" />
-              <text class="dng-node__glyph" text-anchor="middle" dy="0.36em">{n.glyph}</text>
-              <text class="dng-node__label" text-anchor="middle" y="30">{n.name}</text>
-              <circle
-                :if={n.state == :reachable}
-                class="dng-node__hit"
-                r="26"
-                phx-click="select_node"
-                phx-value-id={n.id}
-              />
-            </g>
-          </g>
-
-          <g class="dng-party" transform={"translate(#{@view.party_x} #{@view.party_y})"}>
-            <circle class="dng-party__pulse" r="17" />
-            <circle class="dng-party__core" r="9" />
-            <text class="dng-party__sigil" text-anchor="middle" dy="0.34em">✦</text>
-          </g>
-        </svg>
-      </div>
-
-      <footer class="dng-lvl-foot">
-        <span class="dng-foot-ctx">Башня · вход на ярус {@level}</span>
-        <button type="button" class="dng-breathe-btn" phx-click="shift_moves" disabled={@shifted}>
-          прислушаться к подземелью
-        </button>
-      </footer>
-
-      <%= if @confirm do %>
-        <div class="dng-sheet-scrim" phx-click="cancel_move"></div>
-        <div class="dng-sheet" role="dialog" aria-label={@confirm.title}>
-          <p class="dng-sheet__title">{@confirm.title}</p>
-          <p class="dng-sheet__name">{@confirm.name}</p>
-          <p class="dng-sheet__hint">{@confirm.hint}</p>
-          <div class="dng-sheet__acts">
-            <button type="button" class="dng-btn dng-btn--ghost" phx-click="cancel_move">
-              Остаться
-            </button>
-            <button
-              type="button"
-              class="dng-btn dng-btn--go"
-              phx-click="confirm_move"
-              phx-value-id={@confirm.id}
-            >
-              Идти
-            </button>
-          </div>
-        </div>
-      <% end %>
-
-      <%= if @legend_open do %>
-        <div class="dng-sheet-scrim" phx-click="toggle_legend"></div>
-        <div class="dng-legend" role="dialog" aria-label="Легенда карты">
-          <p class="dng-legend__title">Условные знаки</p>
-          <ul class="dng-legend__list">
-            <li :for={{type, glyph, meaning} <- legend_entries()} class="dng-legend__row">
-              <span class={["dng-legend__glyph", "dng-node--t-#{node_slug(type)}"]}>
-                {glyph}
-              </span>
-              <span class="dng-legend__meaning">{meaning}</span>
-            </li>
-          </ul>
-          <div class="dng-legend__states">
-            <span><i class="dng-swatch dng-swatch--visited"></i> пройдено</span>
-            <span><i class="dng-swatch dng-swatch--reachable"></i> доступно</span>
-            <span><i class="dng-swatch dng-swatch--known"></i> известно</span>
-            <span><i class="dng-swatch dng-swatch--fog"></i> во тьме</span>
-          </div>
-          <button
-            type="button"
-            class="dng-btn dng-btn--ghost dng-legend__close"
-            phx-click="toggle_legend"
-          >
-            Закрыть
-          </button>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
+  def handle_event("refresh", _params, socket), do: {:noreply, refresh_dungeon(socket)}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="dng-screen dng-screen--depths">
-      <div class="dng-depths-grain"></div>
-
-      <header class="dng-head">
-        <div class="dng-head__art">
-          <.art_slot
-            kind="banner"
-            label="Врата подземелья — зев Бездны под Башней"
-          />
-          <div class="dng-head__art-veil"></div>
-        </div>
-        <.link navigate={~p"/map"} class="dng-exit">← выйти к Башне</.link>
-        <div class="dng-head__frame">
-          <span class="dng-head__kicker">Врата подземелья · Башня</span>
-          <h1 class="dng-head__title">Разрез Бездны</h1>
-          <p class="dng-head__sub">
-            Мега-подземелье уходит вниз семью ярусами — каждый глубже, темнее и чужероднее.
-          </p>
-        </div>
-
-        <div class="dng-party-status" role="group" aria-label="Состояние отряда">
-          <span class="dng-chip dng-chip--hp">
-            <span class="dng-chip__k">Общее HP</span>
-            <span class="dng-chip__v">148 / 220</span>
-          </span>
-          <span class="dng-chip dng-chip--food">
-            <span class="dng-chip__k">Припасы</span>
-            <span class="dng-chip__v">6 дней</span>
-          </span>
-          <span class="dng-chip dng-chip--ritual">
-            <span class="dng-chip__k">Ритуал Возврата</span>
-            <span class="dng-chip__v">готов ·  требует 3 хода</span>
-          </span>
-        </div>
-      </header>
-
-      <div class="dng-strata">
-        <div
-          :for={lvl <- @levels}
-          class={[
-            "dng-stratum",
-            "dng-stratum--#{lvl.state}",
-            Map.get(lvl, :party) && "dng-stratum--here"
-          ]}
-          style={"--depth: #{lvl.n};"}
-        >
-          <div class="dng-stratum__rail">
-            <span class="dng-stratum__num">{roman(lvl.n)}</span>
-            <span :if={Map.get(lvl, :party)} class="dng-stratum__pin dng-stratum__pin--party">
-              отряд ✦
-            </span>
-            <span :if={Map.get(lvl, :deepest)} class="dng-stratum__pin dng-stratum__pin--deep">
-              предел ↧
-            </span>
+    <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
+      <main id="dungeon-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
+        <div class="mx-auto w-full max-w-5xl space-y-5">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <.link
+              id="dungeon-back-to-party"
+              navigate={~p"/party"}
+              class="text-sm text-amber-200 underline decoration-amber-500/40 underline-offset-4"
+            >
+              ← Отряд
+            </.link>
+            <button
+              id="dungeon-refresh"
+              type="button"
+              phx-click="refresh"
+              class="rounded border border-stone-600 px-3 py-2 text-sm text-stone-200 hover:border-stone-400"
+            >
+              Обновить состояние
+            </button>
           </div>
 
-          <div class="dng-stratum__body">
-            <%= if lvl.state == :fogged do %>
-              <p class="dng-stratum__fog-name">Уровень {lvl.n} — неизведано</p>
-              <p class="dng-stratum__fog-hint">
-                купите карту у гильдии картографов или спуститесь и начертите её сами
+          <header class="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-stone-900 via-stone-950 to-amber-950/30 p-6 shadow-2xl">
+            <p class="text-xs font-semibold uppercase tracking-[0.24em] text-amber-300/75">
+              экспедиция · подземелье
+            </p>
+            <h1 class="mt-2 font-serif text-3xl text-amber-100">{dungeon_title(@state)}</h1>
+            <p class="mt-3 max-w-3xl text-sm leading-6 text-stone-300">{dungeon_subtitle(@state)}</p>
+          </header>
+
+          <div
+            :if={@error}
+            id="dungeon-error"
+            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+          >
+            {@error}
+          </div>
+
+          <section
+            :if={is_nil(@state.expedition)}
+            id="dungeon-no-expedition"
+            class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6"
+          >
+            <h2 class="font-serif text-2xl text-stone-100">Сначала соберите экспедицию</h2>
+            <p class="mt-2 text-sm leading-6 text-stone-400">
+              В Подземелье входит активный отряд, собранный у врат Башни.
+            </p>
+            <.link
+              id="dungeon-form-party"
+              navigate={~p"/party"}
+              class="mt-4 inline-flex rounded-lg bg-amber-300 px-4 py-3 text-sm font-semibold text-stone-950 hover:bg-amber-200"
+            >
+              Открыть отряд
+            </.link>
+          </section>
+
+          <section
+            :if={@state.expedition}
+            id="dungeon-expedition"
+            class="grid gap-4 lg:grid-cols-[1.5fr_1fr]"
+          >
+            <article class="rounded-2xl border border-stone-700 bg-stone-900/80 p-5 shadow-lg">
+              <div class="flex flex-wrap items-start justify-between gap-3">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.2em] text-stone-500">состав</p>
+                  <h2 class="mt-1 font-serif text-2xl text-stone-100">{@state.party.name}</h2>
+                </div>
+                <span
+                  id="dungeon-run-status"
+                  class="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1 text-xs font-semibold text-amber-100"
+                >
+                  {run_status(@state.run)}
+                </span>
+              </div>
+              <ul id="dungeon-members" class="mt-4 space-y-2">
+                <li
+                  :for={member <- @state.members}
+                  id={"dungeon-member-#{member.character_id}"}
+                  class="flex items-center justify-between rounded-lg bg-stone-950/55 px-3 py-2 text-sm"
+                >
+                  <span>{member.character.name}</span>
+                  <span class="text-stone-400">ур. {member.character.level}</span>
+                </li>
+              </ul>
+              <div
+                id="dungeon-loot-policy"
+                class="mt-4 rounded-xl border border-violet-300/20 bg-violet-950/20 p-3"
+              >
+                <p class="text-xs uppercase tracking-[0.18em] text-violet-200/70">делёж добычи</p>
+                <p id="dungeon-loot-policy-value" class="mt-1 font-medium text-violet-100">
+                  {loot_policy_label(@state.loot_policy)}
+                </p>
+                <p id="dungeon-loot-policy-note" class="mt-1 text-xs leading-5 text-stone-400">
+                  Это договорённость отряда: доступный трофей технически может взять любой участник.
+                </p>
+              </div>
+            </article>
+
+            <article
+              id="dungeon-supplies"
+              class="rounded-2xl border border-emerald-400/20 bg-emerald-950/15 p-5 shadow-lg"
+            >
+              <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/75">припасы</p>
+              <%= if @state.survival do %>
+                <p id="dungeon-survival-food" class="mt-2 font-serif text-3xl text-emerald-100">
+                  {@state.survival.food_units_remaining}
+                </p>
+                <p class="text-sm text-emerald-100/75">
+                  ед. еды из {@state.survival.food_units_initial} на старте · расход {@state.survival.food_units_consumed}
+                </p>
+                <p id="dungeon-survival-carry" class="mt-3 text-sm text-stone-300">
+                  Вес: {@state.survival.carried_weight} / {@state.survival.carry_capacity}
+                </p>
+                <p
+                  :if={@state.survival.encumbered?}
+                  id="dungeon-overloaded"
+                  class="mt-2 text-sm text-amber-200"
+                >
+                  Перегруз удваивает стоимость каждого перехода.
+                </p>
+                <p
+                  :if={
+                    @state.survival.food_units_remaining == 0 and
+                      @state.survival.foodless_game_days == 0
+                  }
+                  id="dungeon-starvation-risk"
+                  class="mt-2 text-sm text-amber-200"
+                >
+                  Рационы закончились: следующий переход займёт больше времени.
+                </p>
+                <p
+                  :if={@state.survival.foodless_game_days > 0}
+                  id="dungeon-starvation-risk"
+                  class="mt-2 text-sm text-red-200"
+                >
+                  <%= if @state.survival.shared_hp_drain > 0 do %>
+                    Без еды уже {@state.survival.foodless_game_days} игровых дней: перед следующим боем отряд потеряет {@state.survival.shared_hp_drain} общего здоровья.
+                  <% else %>
+                    Без еды уже {@state.survival.foodless_game_days} игровых дней: следующий переход усилит истощение.
+                  <% end %>
+                </p>
+              <% else %>
+                <p class="mt-2 font-serif text-3xl text-emerald-100">
+                  {@state.supply.total_food_units}
+                </p>
+                <p class="text-sm text-emerald-100/75">
+                  ед. еды · около {@state.supply.projected_days} игровых дней
+                </p>
+                <p class="mt-3 text-sm text-stone-300">
+                  Вес: {@state.supply.total_carried_weight} / {@state.supply.total_carry_capacity}
+                </p>
+              <% end %>
+            </article>
+
+            <article
+              :if={is_map(@state.route_plan)}
+              id="dungeon-route-plan"
+              class="rounded-2xl border border-lime-400/20 bg-lime-950/15 p-5 shadow-lg"
+            >
+              <p class="text-xs uppercase tracking-[0.2em] text-lime-200/75">маршрутный план</p>
+              <p id="dungeon-route-plan-status" class="mt-2 font-serif text-2xl text-lime-100">
+                {route_plan_status(@state.route_plan)}
               </p>
-            <% else %>
-              <div class="dng-stratum__heading">
-                <h2 class="dng-stratum__name">
-                  Уровень {lvl.n} — {lvl.name}
-                </h2>
-                <span :if={lvl.state == :map} class="dng-badge dng-badge--map">
-                  карта куплена · не пройдено
-                </span>
-                <span :if={lvl.state == :visited} class="dng-badge dng-badge--seen">
-                  пройдено
-                </span>
-              </div>
-              <p class="dng-stratum__epithet">{lvl.epithet}</p>
-              <div class="dng-facts">
-                <span class="dng-fact"><i>опасность</i> {lvl.danger}</span>
-                <span class="dng-fact">
-                  <i>деревня</i> {lvl.village || "нет"}
-                </span>
-                <span class="dng-fact"><i>подъёмы</i> {lvl.ascents}</span>
-              </div>
-              <p :if={lvl[:note]} class="dng-stratum__note">{lvl.note}</p>
-              <.link navigate={~p"/dungeon/level/#{lvl.n}"} class="dng-stratum__enter">
-                открыть карту яруса ›
-              </.link>
-            <% end %>
-          </div>
-        </div>
-      </div>
+              <p class="mt-2 text-sm leading-6 text-stone-300">
+                {route_plan_description(@state.route_plan)}
+              </p>
+            </article>
+          </section>
 
-      <p class="dng-depths-foot">
-        Жизнь в подземелье — это экспедиция: припасы, ремонт снаряжения и хотя бы один
-        заклинатель для Ритуала Возврата. Наверх ведут постоянные подъёмы или ритуал.
-      </p>
-    </div>
+          <section
+            :if={@state.expedition && is_nil(@state.run)}
+            id="dungeon-entry"
+            class="rounded-2xl border border-amber-400/25 bg-amber-950/20 p-6"
+          >
+            <h2 class="font-serif text-2xl text-amber-100">Врата</h2>
+            <p class="mt-2 text-sm leading-6 text-stone-300">
+              <%= if @state.entry_dungeon do %>
+                {@state.entry_dungeon.name} ждёт у текущей точки экспедиции. Вход создаёт настоящий маршрут и содержимое первого узла.
+              <% else %>
+                Экспедиция должна собраться у активного входа в Подземелье.
+              <% end %>
+            </p>
+            <button
+              :if={@state.can_enter?}
+              id="dungeon-enter"
+              type="button"
+              phx-click="enter"
+              class="mt-4 rounded-lg bg-amber-300 px-4 py-3 text-sm font-semibold text-stone-950 hover:bg-amber-200"
+            >
+              Войти в Подземелье
+            </button>
+            <p
+              :if={@state.entry_dungeon && not @state.can_enter?}
+              id="dungeon-entry-waiting"
+              class="mt-4 text-sm text-stone-400"
+            >
+              Вход открывает лидер отряда.
+            </p>
+          </section>
+
+          <section :if={@state.run} id="dungeon-run" class="space-y-5">
+            <article
+              id="dungeon-current-node"
+              class="rounded-2xl border border-amber-400/25 bg-stone-900/85 p-6 shadow-xl"
+            >
+              <p class="text-xs uppercase tracking-[0.22em] text-amber-300/75">текущий узел</p>
+              <h2 class="mt-2 font-serif text-3xl text-amber-100">{@state.current_node.name}</h2>
+              <p class="mt-2 text-sm text-stone-400">
+                {node_kind_label(@state.current_node.kind)} · шагов в походе: {@state.run.steps_taken}
+              </p>
+
+              <div
+                :if={@state.current_encounter}
+                id="dungeon-encounter"
+                class="mt-5 rounded-xl border border-rose-400/25 bg-rose-950/20 p-4"
+              >
+                <p class="text-xs uppercase tracking-[0.18em] text-rose-200/70">встреча</p>
+                <h3 class="mt-1 font-serif text-xl text-rose-100">
+                  {encounter_label(@state.current_encounter)}
+                </h3>
+                <p class="mt-1 text-sm text-stone-300">
+                  Угроза: {@state.current_encounter.threat_level} · {encounter_status(
+                    @state.current_encounter.status
+                  )}
+                </p>
+                <div class="mt-4 flex flex-wrap gap-2">
+                  <button
+                    :if={@state.can_start_combat?}
+                    id="dungeon-start-combat"
+                    type="button"
+                    phx-click="start_combat"
+                    class="rounded bg-rose-300 px-3 py-2 text-sm font-semibold text-stone-950 hover:bg-rose-200"
+                  >
+                    Начать бой
+                  </button>
+                  <button
+                    :if={@state.can_avoid_encounter?}
+                    id="dungeon-avoid-encounter"
+                    type="button"
+                    phx-click="avoid"
+                    class="rounded border border-rose-300/50 px-3 py-2 text-sm text-rose-100"
+                  >
+                    Обойти встречу
+                  </button>
+                  <.link
+                    :if={@state.active_combat && @state.active_combat.status != :finished}
+                    id="dungeon-open-combat"
+                    navigate={~p"/combat/#{@state.active_combat.id}"}
+                    class="rounded bg-rose-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                  >
+                    Вернуться к бою
+                  </.link>
+                  <button
+                    :if={@state.active_combat && @state.active_combat.status == :finished}
+                    id="dungeon-sync-combat"
+                    type="button"
+                    phx-click="sync_combat"
+                    class="rounded bg-amber-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                  >
+                    Применить итог боя
+                  </button>
+                </div>
+              </div>
+
+              <div
+                :if={@state.available_resources != []}
+                id="dungeon-resources"
+                class="mt-5 rounded-xl border border-emerald-400/20 bg-emerald-950/15 p-4"
+              >
+                <h3 class="font-serif text-xl text-emerald-100">Ресурсы узла</h3>
+                <p id="dungeon-scavenging-time" class="mt-1 text-sm text-emerald-100/75">
+                  Осмотр каждого ресурса занимает 1 игровой день и даёт до 3 опыта каждому участнику отряда.
+                </p>
+                <article
+                  :for={resource <- @state.available_resources}
+                  id={"dungeon-resource-#{resource.id}"}
+                  class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-950/55 p-3 text-sm"
+                >
+                  <span>{resource_label(resource)} · осталось {resource.quantity_remaining}</span>
+                  <button
+                    id={"dungeon-harvest-#{resource.id}"}
+                    type="button"
+                    phx-click="harvest"
+                    phx-value-resource-id={resource.id}
+                    class="rounded border border-emerald-300/50 px-3 py-2 text-emerald-100"
+                  >
+                    Собрать 1 · 1 игровой день
+                  </button>
+                </article>
+              </div>
+
+              <div
+                :if={@state.available_loot != []}
+                id="dungeon-loot"
+                class="mt-5 rounded-xl border border-violet-400/25 bg-violet-950/20 p-4"
+              >
+                <h3 class="font-serif text-xl text-violet-100">Добыча</h3>
+                <article
+                  :for={loot <- @state.available_loot}
+                  id={"dungeon-loot-#{loot.id}"}
+                  class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-950/55 p-3 text-sm"
+                >
+                  <span>{loot_label(loot)} · ×{loot.amount}</span>
+                  <button
+                    id={"dungeon-claim-#{loot.id}"}
+                    type="button"
+                    phx-click="claim_loot"
+                    phx-value-loot-drop-id={loot.id}
+                    class="rounded border border-violet-300/50 px-3 py-2 text-violet-100"
+                  >
+                    Взять
+                  </button>
+                </article>
+              </div>
+
+              <div
+                id="dungeon-return-ritual-readiness"
+                class="mt-5 rounded-xl border border-amber-300/20 bg-amber-950/15 p-4"
+              >
+                <p class="text-xs uppercase tracking-[0.18em] text-amber-200/75">
+                  ритуал возвращения
+                </p>
+                <%= cond do %>
+                  <% not @state.return_ritual.wizardry_specialist? -> %>
+                    <p class="mt-1 text-sm leading-6 text-stone-300">
+                      Нужна активная специализация волшебника.
+                    </p>
+                  <% not @state.return_ritual.active_grimoire? -> %>
+                    <p class="mt-1 text-sm leading-6 text-stone-300">
+                      Нужен активный гримуар с подготовленной формулой возвращения.
+                    </p>
+                  <% @state.return_ritual.prepared? -> %>
+                    <p
+                      id="dungeon-return-ritual-prepared"
+                      class="mt-1 text-sm leading-6 text-amber-100"
+                    >
+                      Подготовлена формула: {@state.return_ritual.prepared_spell_name}.
+                    </p>
+                  <% true -> %>
+                    <p class="mt-1 text-sm leading-6 text-stone-300">
+                      В активном гримуаре нет подготовленного Ритуала возвращения.
+                    </p>
+                <% end %>
+              </div>
+
+              <div class="mt-5 flex flex-wrap gap-2">
+                <button
+                  :if={@state.can_extract?}
+                  id="dungeon-extract"
+                  type="button"
+                  phx-click="extract"
+                  class="rounded bg-emerald-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                >
+                  Подняться к Башне
+                </button>
+                <button
+                  :if={@state.can_return_ritual?}
+                  id="dungeon-return-ritual"
+                  type="button"
+                  phx-click="return_ritual"
+                  class="rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+                >
+                  Начать ритуал возвращения
+                </button>
+                <p
+                  :if={@state.active_extraction}
+                  id="dungeon-active-extraction"
+                  class="rounded border border-sky-300/30 px-3 py-2 text-sm text-sky-100"
+                >
+                  Ритуал активен до {format_time(@state.active_extraction.completes_at)}.
+                </p>
+              </div>
+            </article>
+
+            <section
+              id="dungeon-map"
+              class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+            >
+              <div class="flex flex-wrap items-end justify-between gap-3">
+                <div>
+                  <p class="text-xs uppercase tracking-[0.2em] text-stone-500">разведанная карта</p>
+                  <h2 class="mt-1 font-serif text-2xl text-stone-100">Соседние проходы</h2>
+                </div>
+                <span class="text-sm text-stone-400">
+                  Неизведанное открывается только у текущего узла.
+                </span>
+              </div>
+              <div class="mt-4 grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+                <article
+                  :for={row <- @state.nodes}
+                  id={"dungeon-node-#{row.node.id}"}
+                  class={node_card_class(row)}
+                >
+                  <p class="text-xs uppercase tracking-[0.16em] text-stone-500">
+                    {node_kind_label(row.node.kind)}
+                  </p>
+                  <h3 class="mt-1 font-serif text-lg text-stone-100">{row.node.name}</h3>
+                  <p class="mt-1 text-xs text-stone-400">{node_progress_label(row)}</p>
+                  <button
+                    :if={row.reachable?}
+                    id={"dungeon-move-#{row.node.id}"}
+                    type="button"
+                    phx-click="move"
+                    phx-value-node-id={row.node.id}
+                    class="mt-3 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+                  >
+                    Перейти
+                  </button>
+                </article>
+              </div>
+            </section>
+          </section>
+        </div>
+      </main>
+    </Layouts.app>
     """
   end
 
-  # ── Render helpers ────────────────────────────────────────────────────
-  defp level_title(1), do: "Верхние галереи"
-  defp level_title(2), do: "Грибные топи"
-  defp level_title(n), do: "ярус #{n}"
-
-  defp node_slug("подъём"), do: "up"
-  defp node_slug("спуск"), do: "down"
-  defp node_slug("бой"), do: "fight"
-  defp node_slug("находка"), do: "loot"
-  defp node_slug("стоянка"), do: "rest"
-  defp node_slug("деревня"), do: "village"
-  defp node_slug("аномалия"), do: "anomaly"
-  defp node_slug("?"), do: "unknown"
-
-  defp legend_entries do
-    [
-      {"бой", "⚔", "логово тварей — бой"},
-      {"находка", "◈", "тайник — добыча"},
-      {"стоянка", "▲", "привал — передышка"},
-      {"деревня", "⌂", "деревенька делверов — полубезопасный узел"},
-      {"подъём", "↑", "постоянный подъём на поверхность"},
-      {"спуск", "↓", "проход на следующий ярус"},
-      {"аномалия", "✳", "аномалия — событие подземелья"},
-      {"?", "?", "неизведанный ход"}
-    ]
+  defp refresh_dungeon(socket) do
+    case Play.dungeon_state(socket.assigns.current_scope.character) do
+      {:ok, state} -> socket |> assign(:error, nil) |> assign_state(state)
+      {:error, _reason} -> push_navigate(socket, to: ~p"/play")
+    end
   end
 
-  defp roman(1), do: "I"
-  defp roman(2), do: "II"
-  defp roman(3), do: "III"
-  defp roman(4), do: "IV"
-  defp roman(5), do: "V"
-  defp roman(6), do: "VI"
-  defp roman(7), do: "VII"
-  defp roman(n), do: to_string(n)
+  defp assign_state(socket, state),
+    do:
+      socket
+      |> assign(:character, state.character)
+      |> assign(:atmosphere, state.atmosphere)
+      |> assign(:state, state)
+      |> assign(:error, nil)
+
+  defp dungeon_title(%{run: nil, entry_dungeon: nil}), do: "Подземелье недоступно"
+  defp dungeon_title(%{run: nil, entry_dungeon: dungeon}), do: dungeon.name
+  defp dungeon_title(%{dungeon: dungeon}), do: dungeon.name
+
+  defp dungeon_subtitle(%{run: nil}),
+    do: "Соберите готовый отряд у входа, чтобы создать настоящую экспедицию."
+
+  defp dungeon_subtitle(%{current_node: node}),
+    do: "Маршрут, бой, находки и выход сохраняются в состоянии похода: #{node.name}."
+
+  defp run_status(nil), do: "у врат"
+  defp run_status(_run), do: "в глубине"
+  defp route_plan_status(%{"status" => "available"}), do: "план готов"
+  defp route_plan_status(%{"status" => "consumed"}), do: "план применён"
+  defp route_plan_status(_route_plan), do: "план записан"
+
+  defp route_plan_description(%{"status" => "available", "xp_bonus_bps" => bonus_bps}) do
+    "Первый выигранный бой в этом походе получит +#{div(bonus_bps, 100)}% XP для отряда."
+  end
+
+  defp route_plan_description(%{"status" => "consumed", "xp_awarded" => xp_awarded}) do
+    "План уже сработал и добавил #{xp_awarded} XP в общий итог первой победы."
+  end
+
+  defp route_plan_description(_route_plan), do: "Маршрутная заметка привязана к этому походу."
+
+  defp node_kind_label(:entrance), do: "вход"
+  defp node_kind_label(:room), do: "зал"
+  defp node_kind_label(:rest), do: "привал"
+  defp node_kind_label(:hazard), do: "аномалия"
+  defp node_kind_label(:boss), do: "логово"
+  defp node_kind_label(:stairs_up), do: "подъём"
+  defp node_kind_label(:stairs_down), do: "спуск"
+  defp node_kind_label(:exit), do: "выход"
+  defp node_kind_label(_kind), do: "узел"
+
+  defp encounter_label(encounter),
+    do: String.capitalize(String.replace(encounter.encounter_kind, "_", " "))
+
+  defp encounter_status(:pending), do: "ожидает решения"
+  defp encounter_status(:active), do: "бой идёт"
+  defp encounter_status(:cleared), do: "побеждена"
+  defp encounter_status(:avoided), do: "обойдена"
+  defp encounter_status(:failed), do: "провалена"
+
+  defp resource_label(resource),
+    do: (resource.item_template && resource.item_template.name) || resource.resource_code
+
+  defp loot_label(%{reward_kind: :currency}), do: "Монеты"
+  defp loot_label(loot), do: (loot.item_template && loot.item_template.name) || "Трофей"
+
+  defp loot_policy_label("leader"), do: "Решает лидер"
+  defp loot_policy_label("free_for_all"), do: "Первый взял"
+  defp loot_policy_label(_policy), do: "По кругу"
+
+  defp format_time(nil), do: "неизвестного часа"
+  defp format_time(datetime), do: Calendar.strftime(datetime, "%H:%M")
+
+  defp node_card_class(%{current?: true}),
+    do: "rounded-xl border border-amber-300/60 bg-amber-950/25 p-4"
+
+  defp node_card_class(%{reachable?: true}),
+    do: "rounded-xl border border-amber-300/25 bg-stone-950/60 p-4"
+
+  defp node_card_class(_row), do: "rounded-xl border border-stone-700 bg-stone-950/40 p-4"
+
+  defp node_progress_label(%{current?: true}), do: "вы здесь"
+  defp node_progress_label(%{reachable?: true}), do: "доступный проход"
+  defp node_progress_label(%{node_state: nil}), do: "виден издалека"
+
+  defp node_progress_label(%{node_state: state}),
+    do: "#{state.status} · встреча: #{encounter_status(state.encounter_status)}"
+
+  defp error_message(:not_party_leader), do: "Вход в Подземелье открывает лидер отряда."
+
+  defp error_message(:dungeon_entry_unavailable),
+    do: "Экспедиция должна находиться у активного входа в Подземелье."
+
+  defp error_message(:dungeon_node_unavailable), do: "Этот проход сейчас недоступен."
+  defp error_message(:dungeon_encounter_unavailable), do: "Текущая встреча больше не доступна."
+  defp error_message(:dungeon_combat_not_finished), do: "Итог боя пока не готов к применению."
+  defp error_message(:dungeon_loot_unavailable), do: "Этот трофей нельзя взять отсюда."
+  defp error_message(:dungeon_resource_unavailable), do: "Этот ресурс больше нельзя собрать."
+
+  defp error_message(:dungeon_extraction_unavailable),
+    do: "Отступление возможно только после решения текущей встречи."
+
+  defp error_message(:return_ritual_unavailable),
+    do: "Ритуал может начать участник с подготовкой волшебника."
+
+  defp error_message(_reason),
+    do: "Действие Подземелья не выполнено: состояние похода изменилось."
 end

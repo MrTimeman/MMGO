@@ -44,6 +44,47 @@ defmodule MMGO.ProgressionTest do
     assert length(grants) == 1
   end
 
+  test "grant_xp/4 caps total XP and never awards progress beyond level 100", %{
+    character: character
+  } do
+    assert {:ok, %{character: capped_character, xp_gained: 1_000_000}} =
+             Progression.grant_xp(character, 1_000_250, %{"source" => "cap_test"})
+
+    assert capped_character.xp == 1_000_000
+    assert capped_character.level == 100
+
+    assert {:ok, %{character: still_capped, xp_gained: 0, grants: []}} =
+             Progression.grant_xp(capped_character, 100, %{"source" => "cap_test"})
+
+    assert still_capped.xp == 1_000_000
+    assert still_capped.level == 100
+  end
+
+  test "repeated same-source activity diminishes after three grants in one game day", %{
+    character: character
+  } do
+    granted_at = ~U[2026-07-12 12:00:00Z]
+    attrs = %{"source" => "repeatable_activity", "granted_at" => granted_at}
+
+    assert {:ok, %{character: character, xp_gained: 10}} =
+             Progression.grant_xp(character, 10, attrs)
+
+    assert {:ok, %{character: character, xp_gained: 10}} =
+             Progression.grant_xp(character, 10, attrs)
+
+    assert {:ok, %{character: character, xp_gained: 10}} =
+             Progression.grant_xp(character, 10, attrs)
+
+    assert {:ok, %{character: diminished_character, xp_gained: 5}} =
+             Progression.grant_xp(character, 10, attrs)
+
+    assert diminished_character.xp == 35
+
+    repetition = diminished_character.metadata["xp_source_repetition"]["repeatable_activity"]
+    assert repetition["count"] == 4
+    assert is_binary(repetition["game_day"])
+  end
+
   defp character_fixture(realm, location, handle, name) do
     account =
       %Account{}

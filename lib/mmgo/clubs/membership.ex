@@ -6,7 +6,10 @@ defmodule MMGO.Clubs.Membership do
   alias MMGO.Accounts.Character
   alias MMGO.Clubs.Club
 
-  @roles [:leader, :member]
+  # `:leader` is the persisted legacy value for the club president. Keeping it
+  # preserves existing memberships while the public club vocabulary can call
+  # the office a president.
+  @roles [:leader, :officer, :member]
   @statuses [:active, :left, :removed]
 
   @primary_key {:id, :binary_id, autogenerate: true}

@@ -4,7 +4,7 @@ defmodule MMGO.ToolActionsTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat
   alias MMGO.Combat.Combat, as: CombatSchema
-  alias MMGO.Combat.{Event, Participant}
+  alias MMGO.Combat.{Action, Participant}
   alias MMGO.Inventory
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -117,7 +117,7 @@ defmodule MMGO.ToolActionsTest do
                payload: %{"tool_action" => "strike"}
              })
 
-    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(combat)
+    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(combat, force?: true)
     assert resolved_combat.sides["defenders"]["shared_hp"] < 100
 
     sword_after = Inventory.get_inventory_item!(sword.id)
@@ -141,7 +141,7 @@ defmodule MMGO.ToolActionsTest do
                payload: %{"tool_action" => "raise_shield"}
              })
 
-    assert {:ok, _combat} = Combat.resolve_turn(combat)
+    assert {:ok, _combat} = Combat.resolve_turn(combat, force?: true)
 
     defender_after_guard =
       Repo.get_by!(Participant, combat_id: combat.id, character_id: defender.id)
@@ -159,7 +159,7 @@ defmodule MMGO.ToolActionsTest do
                payload: %{"tool_action" => "strike"}
              })
 
-    assert {:ok, %CombatSchema{} = resolved_again} = Combat.resolve_turn(reloaded)
+    assert {:ok, %CombatSchema{} = resolved_again} = Combat.resolve_turn(reloaded, force?: true)
     assert resolved_again.sides["defenders"]["shared_hp"] > 90
 
     defender_after = Repo.get_by!(Participant, combat_id: combat.id, character_id: defender.id)
@@ -182,7 +182,7 @@ defmodule MMGO.ToolActionsTest do
                payload: %{"tool_action" => "throw"}
              })
 
-    assert {:ok, _resolved} = Combat.resolve_turn(combat)
+    assert {:ok, _resolved} = Combat.resolve_turn(combat, force?: true)
 
     potion_after = Inventory.get_inventory_item!(potion.id)
     assert potion_after.quantity == 1
@@ -199,19 +199,14 @@ defmodule MMGO.ToolActionsTest do
     combat = Combat.get_combat!(combat.id)
     attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
 
-    assert {:ok, _action} =
+    assert {:error, :item_not_owned} =
              Combat.submit_action(combat, attacker_participant.id, %{
                action_type: :use_item,
                inventory_item_id: shield.id,
                payload: %{"tool_action" => "raise_shield"}
              })
 
-    assert {:ok, _resolved} = Combat.resolve_turn(combat)
-
-    unauthorized_event =
-      Repo.get_by!(Event, combat_id: combat.id, event_type: "unauthorized_item")
-
-    assert unauthorized_event.payload["inventory_item_id"] == shield.id
+    assert Repo.aggregate(Action, :count, :id) == 0
   end
 
   defp character_fixture(realm, handle, name) do

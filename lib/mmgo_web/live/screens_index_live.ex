@@ -66,7 +66,6 @@ defmodule MMGOWeb.ScreensIndexLive do
        {"/academy/clubs/research", "Клуб — исследовательский"},
        {"/academy/clubs/expedition", "Клуб — экспедиционный"},
        {"/academy/clubs/duelists/manage", "Клуб — управление"},
-       {"/academy/thesis/demo", "Защита диссертации"},
        {"/academy/bulletin-board", "Доска объявлений"},
        {"/academy/study-desk", "Учебный стол"}
      ]},

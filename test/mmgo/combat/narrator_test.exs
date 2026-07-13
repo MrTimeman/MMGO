@@ -10,6 +10,13 @@ defmodule MMGO.Combat.NarratorTest do
   alias MMGO.Spells
   alias MMGO.Worlds
 
+  defmodule FailedNarratorProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(_prompt_payload, _schema, _opts), do: {:ok, %{}}
+    def text_completion(_prompt_payload, _opts), do: {:error, :provider_unavailable}
+  end
+
   setup do
     {:ok, realm} =
       Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
@@ -51,7 +58,7 @@ defmodule MMGO.Combat.NarratorTest do
         target_side: "defenders"
       })
 
-    {:ok, _resolved_combat} = Combat.resolve_turn(combat)
+    {:ok, _resolved_combat} = Combat.resolve_turn(combat, force?: true)
 
     %{combat: combat}
   end
@@ -65,6 +72,18 @@ defmodule MMGO.Combat.NarratorTest do
     ai_request = Repo.one!(Request)
     assert ai_request.kind == :turn_narration
     assert ai_request.combat_id == combat.id
+  end
+
+  test "narrate_turn/3 persists a Russian fallback when the provider fails", %{combat: combat} do
+    assert {:ok, turn} =
+             Narrator.narrate_turn(combat.id, 1,
+               provider: FailedNarratorProvider,
+               model: "failed-narrator-test"
+             )
+
+    assert turn.narration =~ "Ход 1 завершён"
+    assert %{"source" => "fallback"} = turn.resolution["narration"]
+    assert %{kind: :turn_narration, status: :failed} = Repo.one!(Request)
   end
 
   defp character_fixture(realm, handle, name) do

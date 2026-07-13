@@ -4,7 +4,9 @@ defmodule MMGO.Alchemy do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Academy
+  alias MMGO.Academy.StarterOutcomes
   alias MMGO.Alchemy.{BrewJob, CompleteBrewJobWorker, Recipe, Workshop}
+  alias MMGO.Bases.Base
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Notifications
@@ -23,6 +25,22 @@ defmodule MMGO.Alchemy do
       from recipe in Recipe, order_by: [asc: recipe.inserted_at], preload: [:result_item_template]
     )
   end
+
+  @doc "Lists recipes that the character has actually unlocked or can use by default."
+  def list_recipes_for_character(%Character{} = character) do
+    list_recipes()
+    |> Enum.filter(&recipe_available_to_character?(character, &1))
+  end
+
+  @doc "Returns whether a recipe is available to this character's alchemy practice."
+  def recipe_available_to_character?(%Character{} = character, %Recipe{} = recipe) do
+    case Map.get(recipe.metadata || %{}, "academy_starter_track") do
+      "alchemy" -> recipe.code in StarterOutcomes.recipe_unlocks(character)
+      _other -> true
+    end
+  end
+
+  def recipe_available_to_character?(_character, _recipe), do: false
 
   def get_recipe!(id), do: Recipe |> Repo.get!(id) |> Repo.preload(:result_item_template)
 
@@ -55,15 +73,39 @@ defmodule MMGO.Alchemy do
       |> Map.put("owner_character_id", character.id)
       |> Map.put("realm_id", character.realm_id)
 
-    %Workshop{}
-    |> Workshop.changeset(attrs)
-    |> Repo.insert()
+    Repo.transaction(fn ->
+      character = lock_character!(character.id)
+      validate_workshop_location!(character, Map.get(attrs, "location_id"))
+
+      case %Workshop{} |> Workshop.changeset(attrs) |> Repo.insert() do
+        {:ok, workshop} -> workshop
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+    |> normalize_transaction_result()
   end
 
   def update_workshop(%Workshop{} = workshop, attrs) when is_map(attrs) do
-    workshop
-    |> Workshop.changeset(stringify_keys(attrs))
-    |> Repo.update()
+    attrs = stringify_keys(attrs)
+
+    Repo.transaction(fn ->
+      workshop = lock_workshop!(workshop.id)
+      character = lock_character!(workshop.owner_character_id)
+      location_id = Map.get(attrs, "location_id", workshop.location_id)
+
+      validate_workshop_location!(character, location_id)
+
+      attrs =
+        attrs
+        |> Map.delete("owner_character_id")
+        |> Map.delete("realm_id")
+
+      case workshop |> Workshop.changeset(attrs) |> Repo.update() do
+        {:ok, updated_workshop} -> updated_workshop
+        {:error, changeset} -> Repo.rollback(changeset)
+      end
+    end)
+    |> normalize_transaction_result()
   end
 
   def create_recipe(attrs \\ %{}) do
@@ -208,11 +250,17 @@ defmodule MMGO.Alchemy do
       character.current_location_id != workspace.location_id ->
         Repo.rollback(workspace_changeset("character must be at the workshop location"))
 
+      is_nil(active_owned_base_at_location(character, workspace.location_id)) ->
+        Repo.rollback(workspace_changeset("workshop must be installed at an active owned base"))
+
       active_brew_job(character.id) ->
         Repo.rollback(brew_job_changeset("character already has an active brew job"))
 
       is_nil(specialization) or specialization.track != :alchemy ->
         Repo.rollback(brew_job_changeset("character must be specialized in alchemy"))
+
+      not recipe_available_to_character?(character, recipe) ->
+        Repo.rollback(brew_job_changeset("recipe is not unlocked for this character"))
 
       recipe.required_tool_codes -- workspace.installed_tool_codes != [] ->
         Repo.rollback(workspace_changeset("workshop lacks required alchemy tools"))
@@ -305,6 +353,34 @@ defmodule MMGO.Alchemy do
   defp brew_xp(%Recipe{} = recipe, quantity) do
     max(quantity * (recipe.difficulty * 2), quantity * 5)
   end
+
+  defp validate_workshop_location!(%Character{} = character, location_id) do
+    cond do
+      not is_binary(location_id) ->
+        Repo.rollback(workspace_changeset("workshop location is required"))
+
+      character.current_location_id != location_id ->
+        Repo.rollback(workspace_changeset("character must be at the workshop location"))
+
+      is_nil(active_owned_base_at_location(character, location_id)) ->
+        Repo.rollback(workspace_changeset("workshop must be installed at an active owned base"))
+
+      true ->
+        :ok
+    end
+  end
+
+  defp active_owned_base_at_location(%Character{} = character, location_id)
+       when is_binary(location_id) do
+    Repo.get_by(Base,
+      owner_character_id: character.id,
+      realm_id: character.realm_id,
+      location_id: location_id,
+      status: :active
+    )
+  end
+
+  defp active_owned_base_at_location(_character, _location_id), do: nil
 
   defp lock_character!(character_id) do
     Character

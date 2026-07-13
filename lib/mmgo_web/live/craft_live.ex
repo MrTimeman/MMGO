@@ -1,282 +1,267 @@
 defmodule MMGOWeb.CraftLive do
   @moduledoc """
-  The craftsman's bench — the mundane sibling of the alchemy bench and the
-  spell circle. Same ceremony arc — tag materials → charge → dim → forge →
-  reveal — but fire and iron instead of glass and vapor. Crucially,
-  crafting is NOT AI-driven (GDD §3.3.2): tool stats come from tables, so
-  the reveal reads precise (урон · прочность · вес), not mystical.
-
-  Design pass: hardcoded demo data, no backend wiring. GDD §8 — workshops
-  are required; the tools row shows owned/missing states.
+  Scoped crafting workshop and durable craft-job surface.
   """
   use MMGOWeb, :live_view
 
-  import MMGOWeb.UIKit
-
-  @materials [
-    %{id: "ingot", name: "Железный слиток", note: "кузнечное железо"},
-    %{id: "plank", name: "Дубовая доска", note: "выдержанный дуб"},
-    %{id: "strap", name: "Кожаный ремень", note: "дублёная кожа"},
-    %{id: "whet", name: "Точильный камень", note: "правит кромку"},
-    %{id: "rivet", name: "Стальные заклёпки", note: "горсть на рукоять"}
-  ]
-
-  # Tools are gear, not consumed materials — the bench requires them present.
-  # молот + тиски are owned; напильник is missing (raises quality when owned).
-  @tools [
-    %{id: "hammer", name: "Молот", owned: true, req: true},
-    %{id: "vise", name: "Тиски", owned: true, req: true},
-    %{id: "file", name: "Напильник", owned: false, req: false}
-  ]
-
-  @forge_ms 2600
+  alias MMGO.Play
 
   @impl true
-  def mount(_params, _session, socket) do
-    # TODO: wire — load carried materials, owned tools, workshop tier.
-    {:ok,
-     socket
-     |> assign(:page_title, "Ремесло")
-     |> assign(:materials, @materials)
-     |> assign(:tools, @tools)
-     |> assign(:tagged, [])
-     |> assign(:intent, "")
-     |> assign(:phase, :idle)
-     |> assign(:result, nil)}
-  end
+  def mount(_params, _session, socket),
+    do: load_craft(socket, socket.assigns.current_scope.character)
 
   @impl true
-  def handle_event("toggle", %{"id" => id}, socket) do
-    tagged = socket.assigns.tagged
-    tagged = if id in tagged, do: List.delete(tagged, id), else: tagged ++ [id]
-    {:noreply, assign(socket, :tagged, tagged)}
-  end
+  def handle_event("create_workshop", %{"craft_workshop" => attrs}, socket) do
+    case Play.create_crafting_workshop(socket.assigns.character, attrs) do
+      {:ok, _state} ->
+        {:noreply, socket |> put_flash(:info, "Верстак подготовлен.") |> refresh_craft()}
 
-  @impl true
-  def handle_event("untag", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :tagged, List.delete(socket.assigns.tagged, id))}
-  end
-
-  @impl true
-  def handle_event("intent", %{"intent" => intent}, socket) do
-    {:noreply, assign(socket, :intent, intent)}
-  end
-
-  @impl true
-  def handle_event("forge", _params, socket) do
-    if ready?(socket.assigns) do
-      Process.send_after(self(), :forge_done, @forge_ms)
-      {:noreply, assign(socket, :phase, :forging)}
-    else
-      {:noreply, socket}
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
   @impl true
-  def handle_event("reset", _params, socket) do
-    {:noreply, assign(socket, phase: :idle, result: nil)}
+  def handle_event("craft", %{"craft" => params}, socket) do
+    with {:ok, quantity} <- parse_positive(params["quantity"]),
+         {:ok, _state} <-
+           Play.start_craft(socket.assigns.character, params["recipe_id"], quantity) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Работа начата; результат появится по игровому времени.")
+       |> refresh_craft()}
+    else
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_info(:forge_done, socket) do
-    {:noreply, assign(socket, phase: :result, result: forge_result(socket.assigns.tagged))}
+  def handle_event("collect", %{"job-id" => job_id}, socket) do
+    case Play.collect_craft(socket.assigns.character, job_id) do
+      {:ok, _state} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Работа завершена, результат добавлен в котомку.")
+         |> refresh_craft()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, refresh_craft(socket)}
 
   @impl true
   def render(assigns) do
-    count = length(assigns.tagged)
-
-    assigns =
-      assigns
-      |> assign(:count, count)
-      |> assign(:ready, ready?(assigns))
-      |> assign(:fill, min(count, 4) / 4 * 100)
-      |> assign(:tagged_items, Enum.map(assigns.tagged, &find_mat(&1)))
-
     ~H"""
-    <div class="game-screen crf-screen">
-      <div class={["crf-root", @phase != :idle && "crf-root--dim"]}>
-        <a href={~p"/map"} class="crf-exit">&larr; выйти на карту</a>
-
-        <.art_slot
-          kind="scene"
-          variant="dark"
-          label="Верстак мастера — тиски, молот, заготовки"
-          class="crf-art"
-        />
-
-        <header class="crf-head">
-          <h1 class="crf-title">Верстак мастера</h1>
-          <p class="crf-sub">Альберт Северин · кузница во Вратах Зари</p>
-        </header>
-
-        <div class={["crf-forge", @ready && "crf-forge--ready", @count > 0 && "crf-forge--live"]}>
-          <div class="crf-forge__anvil">
-            <div class="crf-forge__ingot" style={"--heat:#{@fill}%"}>
-              <span class="crf-spark crf-spark--1"></span>
-              <span class="crf-spark crf-spark--2"></span>
-              <span class="crf-spark crf-spark--3"></span>
-            </div>
-            <span class="crf-forge__count">{@count}</span>
-          </div>
-        </div>
-
-        <section class="crf-tools">
-          <p class="crf-label">Инструменты</p>
-          <div class="crf-tools__row">
-            <span
-              :for={t <- @tools}
-              class={["crf-tool", (t.owned && "crf-tool--owned") || "crf-tool--missing"]}
-            >
-              <span class="crf-tool__mark">{if t.owned, do: "✓", else: "✕"}</span>
-              {t.name}
-              <span :if={not t.owned} class="crf-tool__hint">нет</span>
-            </span>
-          </div>
-        </section>
-
-        <section class="crf-bench">
-          <p class="crf-label">На верстаке</p>
-          <div class="crf-bench__row">
-            <p :if={@tagged_items == []} class="crf-hint">
-              Пусто. Коснитесь материала, чтобы положить заготовку на верстак.
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="craft-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
+        <div class="mx-auto w-full max-w-3xl space-y-5">
+          <.link id="craft-back-to-base" navigate={~p"/base"} class="map-back-link">← База</.link>
+          <header class="rounded-xl border border-orange-500/25 bg-stone-900/80 p-6 shadow-xl">
+            <p class="text-xs uppercase tracking-[0.22em] text-orange-300/70">
+              мастерская · {@base.name}
             </p>
-            <button
-              :for={it <- @tagged_items}
-              type="button"
-              class="crf-chip"
-              phx-click="untag"
-              phx-value-id={it.id}
-            >
-              {it.name}<span class="crf-chip__x">×</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="crf-shelf">
-          <p class="crf-label">Материалы в котомке</p>
-          <div class="crf-strip">
-            <button
-              :for={it <- @materials}
-              type="button"
-              class={["crf-mat", it.id in @tagged && "crf-mat--on"]}
-              phx-click="toggle"
-              phx-value-id={it.id}
-            >
-              <span class="crf-mat__glyph">◆</span>
-              <span class="crf-mat__name">{it.name}</span>
-              <span class="crf-mat__note">{it.note}</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="crf-intent-box">
-          <p class="crf-label">Замысел</p>
-          <form phx-change="intent">
-            <textarea
-              name="intent"
-              class="crf-intent"
-              rows="3"
-              phx-debounce="150"
-              placeholder="короткий клинок под левую руку, лёгкий и цепкий в рукояти…"
-            >{@intent}</textarea>
-          </form>
-        </section>
-
-        <button
-          type="button"
-          class={["crf-do", @ready && "crf-do--ready"]}
-          phx-click="forge"
-          disabled={!@ready}
-        >
-          Ковать
-        </button>
-
-        <div class="crf-notes">
-          <p class="crf-note">Утомление · 5 &nbsp;•&nbsp; время ковки · 4 часа</p>
-          <p class="crf-note crf-note--req">
-            ◆ Требуется кузница при вашей базе · молот и тиски (§8)
-          </p>
-        </div>
-      </div>
-
-      <%= if @phase == :forging do %>
-        <div class="crf-ritual">
-          <div class="crf-ritual__anvil">
-            <div class="crf-ritual__bar"></div>
-            <span class="crf-ritual__spark"></span>
-            <span class="crf-ritual__spark"></span>
-            <span class="crf-ritual__spark"></span>
-          </div>
-          <p class="crf-ritual__caption">Куётся…</p>
-        </div>
-      <% end %>
-
-      <%= if @phase == :result and @result do %>
-        <div class="crf-reveal" phx-click="reset">
-          <div class={["crf-item", (@result.ok && "crf-item--ok") || "crf-item--fail"]}>
-            <p class="crf-item__eyebrow">
-              {if @result.ok, do: "изделие занесено в опись", else: "брак"}
+            <h1 class="mt-2 font-serif text-3xl text-orange-100">Верстак</h1>
+            <p class="mt-2 text-sm text-stone-400">
+              Инструменты из котомки: {tool_list(@installed_tool_codes)}
             </p>
-            <h2 class="crf-item__name">{@result.name}</h2>
-            <p class="crf-item__kind">{@result.kind}</p>
-            <p class="crf-item__desc">{@result.desc}</p>
+          </header>
 
-            <dl class="crf-item__stats">
-              <div :for={{label, value} <- @result.stats} class="crf-item__stat">
-                <dt class="crf-item__stat-k">{label}</dt>
-                <dd class="crf-item__stat-v">{value}</dd>
+          <div
+            :if={@error}
+            id="craft-error"
+            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+          >
+            {@error}
+          </div>
+
+          <section
+            :if={is_nil(@workspace)}
+            id="craft-workshop-setup"
+            class="rounded-xl border border-orange-500/25 bg-orange-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-orange-100">Оборудовать верстак</h2>
+            <p class="mt-2 text-sm text-stone-400">
+              Коды установленных инструментов берутся из вашей реальной котомки.
+            </p>
+            <.form
+              for={@workshop_form}
+              id="craft-workshop-form"
+              phx-submit="create_workshop"
+              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <.input
+                field={@workshop_form[:name]}
+                type="text"
+                label="Название"
+                placeholder="Верстак"
+              />
+              <button
+                id="craft-create-workshop"
+                type="submit"
+                class="mb-4 rounded-md bg-orange-300 px-4 py-3 font-semibold text-stone-950 hover:bg-orange-200"
+              >
+                Оборудовать
+              </button>
+            </.form>
+          </section>
+
+          <section
+            :if={@workspace && not @workspace_here?}
+            id="craft-workshop-away"
+            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-6 text-sm text-amber-100"
+          >
+            Ваш активный верстак находится в другом месте. Вернитесь к нему, чтобы начать работу.
+          </section>
+
+          <section
+            :if={@workspace_here?}
+            id="craft-start"
+            class="rounded-xl border border-orange-500/25 bg-orange-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-orange-100">Начать работу</h2>
+            <p :if={@recipes == []} id="craft-recipes-empty" class="mt-3 text-sm text-stone-400">
+              Для этого мира ещё не записаны чертежи.
+            </p>
+            <.form
+              :if={@recipes != []}
+              for={@craft_form}
+              id="craft-form"
+              phx-submit="craft"
+              class="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end"
+            >
+              <.input
+                field={@craft_form[:recipe_id]}
+                type="select"
+                label="Чертёж"
+                prompt="Выберите чертёж"
+                options={@recipe_options}
+              />
+              <.input
+                field={@craft_form[:quantity]}
+                type="number"
+                label="Количество"
+                min="1"
+                inputmode="numeric"
+              />
+              <button
+                id="craft-start-job"
+                type="submit"
+                class="mb-4 rounded-md bg-orange-300 px-4 py-3 font-semibold text-stone-950 hover:bg-orange-200"
+              >
+                Начать
+              </button>
+            </.form>
+          </section>
+
+          <section id="craft-jobs" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
+            <h2 class="font-serif text-xl text-stone-100">Работы</h2>
+            <p :if={@jobs == []} id="craft-jobs-empty" class="mt-3 text-sm text-stone-400">
+              Нет активных или завершённых работ.
+            </p>
+            <article
+              :for={job <- @jobs}
+              id={"craft-job-#{job.id}"}
+              class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+            >
+              <div>
+                <p class="font-medium text-stone-100">{job.recipe.name} ×{job.quantity}</p>
+                <p class="text-stone-400">
+                  {job.status} · готовность {format_time(job.completes_at)}
+                </p>
               </div>
-            </dl>
+              <button
+                :if={job.status == :active}
+                id={"craft-collect-#{job.id}"}
+                type="button"
+                phx-click="collect"
+                phx-value-job-id={job.id}
+                class="rounded border border-orange-300/50 px-3 py-1.5 text-orange-100"
+              >
+                Проверить готовность
+              </button>
+            </article>
+          </section>
 
-            <button type="button" class="crf-item__again" phx-click="reset">
-              ← вернуться к верстаку
-            </button>
-          </div>
+          <button
+            id="craft-refresh"
+            type="button"
+            phx-click="refresh"
+            class="text-sm text-orange-200 underline decoration-orange-500/40 underline-offset-4"
+          >
+            Обновить верстак
+          </button>
         </div>
-      <% end %>
-    </div>
+      </main>
+    </Layouts.app>
     """
   end
 
-  # --- helpers -------------------------------------------------------------
+  defp load_craft(socket, character) do
+    case Play.craft_state(character) do
+      {:ok, state} ->
+        {:ok,
+         socket |> assign(:page_title, "Верстак") |> assign(:error, nil) |> assign_craft(state)}
 
-  defp ready?(assigns) do
-    tools_ok = Enum.all?(@tools, fn t -> not t.req or t.owned end)
-    length(assigns.tagged) >= 1 and String.trim(assigns.intent) != "" and tools_ok
+      {:error, :active_base_not_found} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Верстак доступен только на активной базе.")
+         |> push_navigate(to: ~p"/base")}
+
+      {:error, :travelling} ->
+        {:ok, push_navigate(socket, to: ~p"/travel")}
+
+      {:error, _reason} ->
+        {:ok, push_navigate(socket, to: ~p"/base")}
+    end
   end
 
-  defp find_mat(id), do: Enum.find(@materials, &(&1.id == id))
-
-  # Deterministic-feeling outcome (no AI): a single material can't be
-  # worked into a sound piece — it cracks under the hammer. Two or more
-  # yield a finished tool with fixed table stats.
-  defp forge_result(tagged) when length(tagged) == 1 do
-    %{
-      ok: false,
-      name: "Треснувшая поковка",
-      kind: "брак · не годна в дело",
-      desc:
-        "Одной заготовки мало — под молотом металл пошёл трещиной по всей длине. " <>
-          "В переплавку.",
-      stats: [{"Урон", "—"}, {"Прочность", "0 / 0"}, {"Вес", "0.9 ст."}]
-    }
+  defp refresh_craft(socket) do
+    case Play.craft_state(socket.assigns.character) do
+      {:ok, state} -> socket |> assign(:error, nil) |> assign_craft(state)
+      {:error, :active_base_not_found} -> push_navigate(socket, to: ~p"/base")
+      {:error, :travelling} -> push_navigate(socket, to: ~p"/travel")
+      {:error, _reason} -> assign(socket, :error, "Верстак сейчас недоступен.")
+    end
   end
 
-  defp forge_result(_tagged) do
-    %{
-      ok: true,
-      name: "Кинжал левой руки",
-      kind: "оружие ближнего боя · для тумана",
-      desc:
-        "Короткий парный клинок под левую руку: узкий, цепкий в хвате, " <>
-          "хорош в тесноте, где длинному мечу не размахнуться.",
-      stats: [
-        {"Урон", "6–9 (укол)"},
-        {"Прочность", "48 / 48"},
-        {"Вес", "1.1 стоуна"},
-        {"Хват", "лёгкий · левая рука"}
-      ]
-    }
+  defp assign_craft(socket, state) do
+    socket
+    |> assign(:character, state.character)
+    |> assign(:base, state.base)
+    |> assign(:workspace, state.workspace)
+    |> assign(:workspace_here?, state.workspace_here?)
+    |> assign(:recipes, state.recipes)
+    |> assign(:jobs, state.jobs)
+    |> assign(:installed_tool_codes, state.installed_tool_codes)
+    |> assign(:recipe_options, Enum.map(state.recipes, &{&1.name, &1.id}))
+    |> assign(:workshop_form, to_form(%{"name" => ""}, as: :craft_workshop))
+    |> assign(:craft_form, to_form(%{"recipe_id" => "", "quantity" => "1"}, as: :craft))
   end
+
+  defp parse_positive(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} when number > 0 -> {:ok, number}
+      _other -> {:error, :invalid_quantity}
+    end
+  end
+
+  defp parse_positive(_value), do: {:error, :invalid_quantity}
+  defp tool_list([]), do: "нет"
+  defp tool_list(codes), do: Enum.join(codes, ", ")
+  defp format_time(nil), do: "ожидает расчёта"
+  defp format_time(time), do: Calendar.strftime(time, "%d.%m %H:%M UTC")
+
+  defp error_message(:active_base_not_found), do: "Верстак доступен только на активной базе."
+  defp error_message(:crafting_workshop_exists), do: "У вас уже есть активный верстак."
+  defp error_message(:crafting_workshop_not_here), do: "Этот верстак находится в другом месте."
+  defp error_message(:craft_recipe_not_found), do: "Чертёж больше недоступен."
+  defp error_message(:craft_job_not_found), do: "Работа больше недоступна."
+  defp error_message(:invalid_quantity), do: "Укажите положительное количество."
+
+  defp error_message(_reason),
+    do: "Команда не выполнена: проверьте специализацию, инструменты и материалы."
 end

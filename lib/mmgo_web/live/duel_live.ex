@@ -1,75 +1,83 @@
 defmodule MMGOWeb.DuelLive do
   @moduledoc """
-  A local PvP duel surface backed by the real PvP and combat contexts.
+  Scoped wagered-duel lobby.
+
+  A player can challenge only a real, stationary character at the same
+  non-safe location. Acceptance transfers both players into the persisted
+  combat flow; this LiveView never invents a bot, accepts on behalf of an
+  opponent, or resolves a turn locally.
   """
   use MMGOWeb, :live_view
 
   alias MMGO.Play
-  alias MMGOWeb.LocationGate
 
   @impl true
-  def mount(_params, session, socket) do
-    case session_character(session, :demo_character_id) do
-      nil ->
-        {:ok, push_navigate(socket, to: ~p"/play/continue")}
+  def mount(_params, _session, socket) do
+    character = socket.assigns.current_scope.character
 
-      character ->
-        case LocationGate.gate(socket, character, :tower) do
-          {:halt, socket} ->
-            {:ok, socket}
+    case Play.active_duel_combat_state(character) do
+      {:ok, state} ->
+        {:ok, push_navigate(socket, to: ~p"/combat/#{state.combat.id}")}
 
-          {:ok, socket} ->
-            {:ok,
-             socket
-             |> assign(:page_title, "Дуэль")
-             |> assign(:character, character)
-             |> assign(:opponent, session_character(session, :demo_opponent_id))
-             |> assign(:duel_state, active_duel_state(character))
-             |> assign(:error, nil)}
-        end
+      {:error, :no_active_duel} ->
+        load_lobby(socket, character)
+
+      {:error, _reason} ->
+        load_lobby(socket, character, "Не удалось проверить текущий поединок.")
     end
   end
 
   @impl true
-  def handle_event("challenge_bot", _params, socket) do
-    case socket.assigns.opponent do
-      nil ->
-        {:noreply,
-         assign(socket, :error, "Local opponent not set up. Visit /play/continue first.")}
-
-      opponent ->
-        case Play.start_demo_duel(socket.assigns.character, opponent.id) do
-          {:ok, state} -> {:noreply, apply_duel_state(socket, state)}
-          {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
-        end
-    end
-  end
-
-  @impl true
-  def handle_event("cast_spell", %{"spell_id" => spell_id}, socket) do
-    case Play.cast_and_resolve_duel_turn(socket.assigns.character, spell_id) do
-      {:ok, state} -> {:noreply, apply_duel_state(socket, state)}
+  def handle_event(
+        "challenge",
+        %{"duel_challenge" => %{"opponent_id" => opponent_id, "stake" => stake_raw}},
+        socket
+      ) do
+    with {:ok, stake} <- parse_stake(stake_raw),
+         {:ok, _result} <- Play.challenge_duel(socket.assigns.character, opponent_id, stake) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Вызов отправлен. Ставка будет внесена только после принятия.")
+       |> refresh_lobby()}
+    else
       {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
+  def handle_event("challenge", _params, socket) do
+    {:noreply, assign(socket, :error, "Выберите соперника и положительную ставку.")}
+  end
+
   @impl true
-  def handle_event("wait", _params, socket) do
-    case Play.wait_and_resolve_duel_turn(socket.assigns.character) do
-      {:ok, state} -> {:noreply, apply_duel_state(socket, state)}
-      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+  def handle_event("accept", %{"duel-id" => duel_id}, socket) do
+    case Play.accept_duel(socket.assigns.character, duel_id) do
+      {:ok, %{duel: duel}} when is_binary(duel.combat_id) ->
+        {:noreply, push_navigate(socket, to: ~p"/combat/#{duel.combat_id}")}
+
+      {:ok, _result} ->
+        {:noreply, assign(socket, :error, "Поединок принят, но круг боя ещё не готов.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
   @impl true
-  def handle_event("cancel_duel", _params, socket) do
-    case Play.cancel_active_duel(socket.assigns.character) do
-      {:ok, _duel} ->
-        {:noreply,
-         socket
-         |> assign(:duel_state, nil)
-         |> assign(:error, nil)
-         |> put_flash(:info, "The duel was cancelled and the wager was refunded.")}
+  def handle_event("reject", %{"duel-id" => duel_id}, socket) do
+    case Play.reject_duel(socket.assigns.character, duel_id) do
+      {:ok, _result} ->
+        {:noreply, socket |> put_flash(:info, "Вызов отклонён.") |> refresh_lobby()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("cancel", %{"duel-id" => duel_id}, socket) do
+    case Play.cancel_pending_duel(socket.assigns.character, duel_id) do
+      {:ok, _result} ->
+        {:noreply, socket |> put_flash(:info, "Непринятый вызов отменён.") |> refresh_lobby()}
 
       {:error, reason} ->
         {:noreply, assign(socket, :error, error_message(reason))}
@@ -79,240 +87,223 @@ defmodule MMGOWeb.DuelLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <main id="duel-screen" class="game-root min-h-full overflow-y-auto px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl">
-          <.link id="duel-back-to-map" navigate={~p"/map"} class="map-back-link">← World map</.link>
+        <div class="mx-auto w-full max-w-3xl space-y-5">
+          <.link id="duel-back-to-map" navigate={~p"/map"} class="map-back-link">
+            ← Карта мира
+          </.link>
 
-          <header class="mb-8 border-b border-amber-500/20 pb-5">
-            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">Башня · круг поединка</p>
+          <header class="border-b border-amber-500/20 pb-5">
+            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">
+              {location_label(@location)} · круг поединка
+            </p>
             <h1 class="mt-2 font-serif text-3xl text-amber-200">Дуэль</h1>
             <p id="duel-identity" class="mt-2 text-sm text-stone-400">
-              {@character.name}
-              <span :if={@opponent} class="text-stone-600"> против    {@opponent.name}</span>
+              {@character.name} · кошель: {@balance} ◈
             </p>
           </header>
 
           <div
             :if={@error}
             id="duel-error"
-            class="mb-5 rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
           >
             {@error}
           </div>
 
-          <%= if is_nil(@duel_state) do %>
-            <section
-              id="duel-lobby"
-              class="rounded-xl border border-stone-700 bg-stone-900/70 p-6 shadow-xl"
+          <section
+            id="duel-lobby"
+            class="rounded-xl border border-stone-700 bg-stone-900/70 p-6 shadow-xl"
+          >
+            <h2 class="font-serif text-xl text-stone-100">Вызвать игрока</h2>
+            <p class="mt-2 max-w-xl text-sm leading-6 text-stone-400">
+              Оба игрока должны стоять здесь. Ставка попадёт в эскроу только после принятия;
+              начатый бой нельзя отменить ради возврата — только завершить или бежать.
+            </p>
+
+            <p
+              :if={@location.safe_zone}
+              id="duel-safe-zone"
+              class="mt-5 rounded-md border border-sky-400/30 bg-sky-950/30 px-4 py-3 text-sm text-sky-100"
             >
-              <h2 class="font-serif text-xl text-stone-100">Круг свободен</h2>
-              <p class="mt-2 max-w-xl text-sm leading-6 text-stone-400">
-                Вызов создаёт настоящую ставку: по 100 монет с каждой стороны. Локальный соперник
-                принимает вызов сразу, затем каждый ваш ход попадает в серверный combat engine.
-              </p>
+              Это безопасная зона. Поединки здесь запрещены — выйдите в опасную местность.
+            </p>
+
+            <p
+              :if={not @location.safe_zone and @opponents == []}
+              id="duel-opponents-empty"
+              class="mt-5 text-sm text-stone-400"
+            >
+              Рядом нет готовых к вызову игроков.
+            </p>
+
+            <.form
+              :if={not @location.safe_zone and @opponents != []}
+              for={@challenge_form}
+              id="duel-challenge-form"
+              phx-submit="challenge"
+              class="mt-5 grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end"
+            >
+              <.input
+                field={@challenge_form[:opponent_id]}
+                type="select"
+                label="Соперник"
+                prompt="Выберите игрока"
+                options={@opponent_options}
+              />
+              <.input
+                field={@challenge_form[:stake]}
+                type="number"
+                label="Ставка"
+                min="1"
+                inputmode="numeric"
+              />
               <button
-                :if={@opponent}
-                id="duel-challenge-bot"
-                type="button"
-                phx-click="challenge_bot"
-                class="mt-5 rounded-md bg-amber-300 px-5 py-2.5 font-serif font-semibold text-stone-950 transition hover:bg-amber-200"
+                id="duel-challenge"
+                type="submit"
+                class="mb-4 rounded-md bg-amber-300 px-5 py-3 font-serif font-semibold text-stone-950 transition hover:bg-amber-200"
               >
-                Challenge {@opponent.name}
+                Отправить вызов
               </button>
-              <.link
-                :if={is_nil(@opponent)}
-                id="duel-setup-opponent"
-                navigate={~p"/play/continue"}
-                class="mt-5 inline-block text-sm text-amber-200 underline"
-              >
-                Set up the local opponent
-              </.link>
-            </section>
-          <% else %>
-            <section id="duel-combat-state" class="space-y-5">
-              <div class="rounded-xl border border-stone-700 bg-stone-900/70 p-5 shadow-xl">
-                <div class="flex flex-wrap items-baseline justify-between gap-3">
-                  <div>
-                    <p class="text-xs uppercase tracking-[0.16em] text-stone-500">Статус</p>
-                    <p id="duel-status" class="mt-1 font-serif text-xl text-amber-200">
-                      {status_name(@duel_state.duel.status)} · ход {@duel_state.combat.turn_number}
-                    </p>
-                  </div>
-                  <p id="duel-stakes" class="text-sm text-stone-400">
-                    Ставка {@duel_state.duel.stake_amount} · банк {@duel_state.duel.pot_amount}
-                  </p>
-                </div>
+            </.form>
+          </section>
 
-                <div id="duel-sides" class="mt-5 grid gap-3 sm:grid-cols-2">
-                  <article
-                    :for={side <- @duel_state.sides}
-                    id={"duel-side-#{side.id}"}
-                    class="rounded-lg border border-stone-700/80 bg-stone-950/50 p-4"
-                  >
-                    <div class="flex items-center justify-between gap-2">
-                      <h2 class="font-serif text-lg text-stone-100">{side.label}</h2>
-                      <span class="text-sm text-amber-200">
-                        {side.shared_hp} / {side.max_shared_hp}
-                      </span>
-                    </div>
-                    <div class="mt-3 h-2 overflow-hidden rounded bg-stone-800">
-                      <div
-                        class="h-full rounded bg-amber-400 transition-[width] duration-500"
-                        style={"width:#{hp_percent(side.shared_hp, side.max_shared_hp)}%"}
-                      >
-                      </div>
-                    </div>
-                    <p class="mt-3 text-sm text-stone-400">{Enum.join(side.participants, ", ")}</p>
-                  </article>
-                </div>
+          <section
+            :if={@incoming != []}
+            id="duel-incoming"
+            class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-5"
+          >
+            <h2 class="font-serif text-xl text-emerald-100">Вам бросили вызов</h2>
+            <article
+              :for={duel <- @incoming}
+              id={"duel-incoming-#{duel.id}"}
+              class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/50 p-4"
+            >
+              <div>
+                <p class="font-medium text-stone-100">{duel.challenger_character.name}</p>
+                <p class="text-sm text-stone-400">Ставка: {duel.stake_amount} ◈ с каждой стороны</p>
               </div>
-
-              <%= if @duel_state.duel.status == :active do %>
-                <section
-                  id="duel-actions"
-                  class="rounded-xl border border-amber-500/25 bg-stone-900/70 p-5"
+              <div class="flex gap-2">
+                <button
+                  id={"duel-accept-#{duel.id}"}
+                  type="button"
+                  phx-click="accept"
+                  phx-value-duel-id={duel.id}
+                  class="rounded-md bg-emerald-300 px-3 py-2 text-sm font-semibold text-stone-950"
                 >
-                  <div class="flex flex-wrap items-start justify-between gap-3">
-                    <div>
-                      <h2 class="font-serif text-xl text-amber-200">Ваш ход</h2>
-                      <p class="mt-1 text-sm text-stone-400">
-                        Выберите подготовленное заклинание. Соперник ждёт, затем движок одновременно
-                        разрешает ход и фиксирует результат.
-                      </p>
-                    </div>
-                    <button
-                      id="duel-wait"
-                      type="button"
-                      phx-click="wait"
-                      class="rounded-md border border-stone-600 px-3 py-2 text-sm text-stone-300 transition hover:border-stone-400 hover:text-white"
-                    >
-                      Выждать
-                    </button>
-                  </div>
-
-                  <div id="duel-spells" class="mt-4 flex flex-wrap gap-2">
-                    <button
-                      :for={spell <- @duel_state.prepared_spells}
-                      id={"duel-cast-#{spell.id}"}
-                      type="button"
-                      phx-click="cast_spell"
-                      phx-value-spell_id={spell.id}
-                      class="rounded-md bg-amber-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
-                    >
-                      {spell.name}
-                      <span class="ml-1 text-stone-700">· усталость {spell.fatigue_cost}</span>
-                    </button>
-                    <p
-                      :if={@duel_state.prepared_spells == []}
-                      id="duel-no-spells"
-                      class="text-sm text-stone-500"
-                    >
-                      В активном гримуаре нет доступных заклинаний.
-                    </p>
-                  </div>
-
-                  <button
-                    id="duel-cancel"
-                    type="button"
-                    phx-click="cancel_duel"
-                    class="mt-5 text-sm text-stone-500 underline transition hover:text-stone-300"
-                  >
-                    Отменить дуэль и вернуть ставку
-                  </button>
-                </section>
-              <% else %>
-                <section
-                  id="duel-outcome"
-                  class="rounded-xl border border-amber-500/35 bg-amber-950/15 p-5"
+                  Принять
+                </button>
+                <button
+                  id={"duel-reject-#{duel.id}"}
+                  type="button"
+                  phx-click="reject"
+                  phx-value-duel-id={duel.id}
+                  class="rounded-md border border-stone-600 px-3 py-2 text-sm text-stone-200"
                 >
-                  <h2 class="font-serif text-xl text-amber-200">{outcome_title(@duel_state.duel)}</h2>
-                  <p class="mt-2 text-sm text-stone-300">{outcome_note(@duel_state.duel)}</p>
-                </section>
-              <% end %>
+                  Отклонить
+                </button>
+              </div>
+            </article>
+          </section>
 
-              <section id="duel-events" class="rounded-xl border border-stone-700 bg-stone-900/70 p-5">
-                <h2 class="font-serif text-xl text-stone-100">Последние события</h2>
-                <p
-                  :if={@duel_state.events == []}
-                  id="duel-no-events"
-                  class="mt-3 text-sm text-stone-500"
-                >
-                  Первый ход ещё не разрешён.
-                </p>
-                <ol class="mt-3 space-y-2 text-sm text-stone-400">
-                  <li :for={event <- @duel_state.events} id={"duel-event-#{event.id}"}>
-                    <span class="text-amber-300">Ход {event.turn_number}</span>
-                    <span class="text-stone-600">·</span>
-                    {event_name(event.event_type)}
-                  </li>
-                </ol>
-              </section>
-            </section>
-          <% end %>
+          <section
+            :if={@outgoing != []}
+            id="duel-outgoing"
+            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-5"
+          >
+            <h2 class="font-serif text-xl text-amber-100">Ожидают ответа</h2>
+            <article
+              :for={duel <- @outgoing}
+              id={"duel-outgoing-#{duel.id}"}
+              class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/50 p-4"
+            >
+              <div>
+                <p class="font-medium text-stone-100">{duel.opponent_character.name}</p>
+                <p class="text-sm text-stone-400">Ставка: {duel.stake_amount} ◈ с каждой стороны</p>
+              </div>
+              <button
+                id={"duel-cancel-#{duel.id}"}
+                type="button"
+                phx-click="cancel"
+                phx-value-duel-id={duel.id}
+                class="rounded-md border border-stone-600 px-3 py-2 text-sm text-stone-200"
+              >
+                Отменить вызов
+              </button>
+            </article>
+          </section>
         </div>
       </main>
     </Layouts.app>
     """
   end
 
-  defp active_duel_state(character) do
-    case Play.active_duel_combat_state(character) do
-      {:ok, state} -> state
-      {:error, :no_active_duel} -> nil
-      {:error, _reason} -> nil
+  defp load_lobby(socket, character, initial_error \\ nil) do
+    case Play.duel_lobby_state(character) do
+      {:ok, state} ->
+        {:ok,
+         socket
+         |> assign(:page_title, "Дуэль")
+         |> assign(:error, initial_error)
+         |> assign_lobby(state)}
+
+      {:error, :travelling} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Нельзя вызывать на дуэль во время пути.")
+         |> push_navigate(to: ~p"/travel")}
+
+      {:error, _reason} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Круг поединка сейчас недоступен.")
+         |> push_navigate(to: ~p"/map")}
     end
   end
 
-  defp apply_duel_state(socket, state) do
+  defp assign_lobby(socket, state) do
     socket
-    |> assign(:duel_state, state)
-    |> assign(:error, nil)
+    |> assign(:character, state.character)
+    |> assign(:location, state.location)
+    |> assign(:balance, state.balance)
+    |> assign(:incoming, state.incoming)
+    |> assign(:outgoing, state.outgoing)
+    |> assign(:opponents, state.opponents)
+    |> assign(:opponent_options, Enum.map(state.opponents, &{&1.name, &1.id}))
+    |> assign(
+      :challenge_form,
+      to_form(%{"opponent_id" => "", "stake" => "100"}, as: :duel_challenge)
+    )
   end
 
-  defp session_character(session, key) do
-    with id when is_binary(id) <- session[to_string(key)],
-         {:ok, %{character: character}} <- Play.load_demo_state(id) do
-      character
-    else
-      _other -> nil
+  defp refresh_lobby(socket) do
+    case Play.duel_lobby_state(socket.assigns.character) do
+      {:ok, state} -> socket |> assign(:error, nil) |> assign_lobby(state)
+      {:error, :travelling} -> push_navigate(socket, to: ~p"/travel")
+      {:error, _reason} -> assign(socket, :error, "Круг поединка сейчас недоступен.")
     end
   end
 
-  defp hp_percent(_hp, max_hp) when max_hp <= 0, do: 0
-
-  defp hp_percent(hp, max_hp),
-    do: hp |> Kernel./(max_hp) |> Kernel.*(100) |> min(100) |> max(0) |> round()
-
-  defp status_name(:active), do: "В бою"
-  defp status_name(:resolved), do: "Завершена"
-  defp status_name(:cancelled), do: "Отменена"
-  defp status_name(status), do: status |> to_string() |> String.capitalize()
-
-  defp outcome_title(%{winner_character: %{name: name}}), do: "Победитель: #{name}"
-  defp outcome_title(%{status: :cancelled}), do: "Дуэль отменена"
-  defp outcome_title(_duel), do: "Дуэль завершена"
-
-  defp outcome_note(%{status: :resolved}), do: "Ставка рассчитана сервером и записана в реестр."
-  defp outcome_note(%{status: :cancelled}), do: "Ставка возвращена сервером."
-  defp outcome_note(_duel), do: "Результат зафиксирован."
-
-  defp event_name(event_type) do
-    event_type
-    |> String.replace("_", " ")
-    |> String.capitalize()
+  defp parse_stake(stake) when is_binary(stake) do
+    case Integer.parse(stake) do
+      {amount, ""} when amount > 0 -> {:ok, amount}
+      _other -> {:error, :invalid_stake}
+    end
   end
 
-  defp error_message(%Ecto.Changeset{} = changeset) do
-    changeset.errors
-    |> Enum.map(fn {field, {message, _opts}} -> "#{field}: #{message}" end)
-    |> Enum.join(", ")
-  end
+  defp parse_stake(_stake), do: {:error, :invalid_stake}
 
-  defp error_message(:spell_not_prepared),
-    do: "That spell is not prepared in your active grimoire."
+  defp location_label(location), do: location.name
 
-  defp error_message(:no_active_duel), do: "There is no active duel."
-  defp error_message(:missing_opponent), do: "The local opponent is unavailable."
-  defp error_message(reason), do: "The duel could not be updated: #{inspect(reason)}"
+  defp error_message(:opponent_not_found), do: "Этот игрок больше не находится рядом."
+  defp error_message(:invalid_stake), do: "Укажите положительную ставку."
+  defp error_message(:duel_not_found), do: "Вызов больше недоступен."
+  defp error_message(:not_challenged_player), do: "Принять вызов может только приглашённый игрок."
+  defp error_message(:not_challenger), do: "Отменить вызов может только тот, кто его отправил."
+  defp error_message(:travelling), do: "Нельзя управлять дуэлью во время пути."
+  defp error_message(:location_not_found), do: "Текущее место не определено."
+
+  defp error_message(_reason),
+    do: "Команда поединка не выполнена. Проверьте место, ставку и кошелёк."
 end

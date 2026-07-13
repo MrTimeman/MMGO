@@ -4,6 +4,7 @@ defmodule MMGO.TravelSurvivalTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Inventory
   alias MMGO.Repo
+  alias MMGO.Survival
   alias MMGO.Travel
   alias MMGO.Worlds
 
@@ -89,7 +90,7 @@ defmodule MMGO.TravelSurvivalTest do
     assert ration_stack.quantity == 4
   end
 
-  test "start_journey/3 rejects travel without enough food", %{
+  test "underfed travel persists delay, health drain, and recovery after food returns", %{
     route: route,
     realm: realm,
     city: city
@@ -109,10 +110,42 @@ defmodule MMGO.TravelSurvivalTest do
     character = character_fixture(realm, city, "hungry", "Hungry")
     {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 2})
 
-    assert {:error, changeset} = Travel.start_journey(character, route)
+    assert {:ok, %{journey: journey}} =
+             Travel.start_journey(character, route, started_at: ~U[2026-03-27 12:00:00Z])
 
-    assert %{nutrition_units: ["not enough food for the requested activity"]} =
-             errors_on(changeset)
+    assert journey.travel_days == 5
+    assert journey.food_units_consumed == 2
+
+    assert %{
+             "food_shortage_days" => 3,
+             "movement_penalty_days" => 1,
+             "health_drain" => 2
+           } = journey.metadata["survival"]
+
+    assert {:ok, %{character: arrived_character}} =
+             Travel.complete_journey_by_id(journey.id, now: journey.arrival_at, force: true)
+
+    assert %{starvation_days: 3, health_drain: 2, movement_penalty_days: 1, starving?: true} =
+             Survival.summary(arrived_character)
+
+    assert {:ok, _rations} =
+             Inventory.grant_item(arrived_character, ration_template, %{quantity: 3})
+
+    recovered_character = Repo.get!(Character, arrived_character.id)
+
+    assert %{starvation_days: 0, health_drain: 0, recovered?: true, starving?: false} =
+             Survival.summary(recovered_character)
+  end
+
+  test "travel plan exposes the first-day movement delay and later health drain", %{
+    character: character
+  } do
+    plan = Survival.travel_plan(character, 12)
+
+    assert plan.food_units_available == 8
+    assert plan.movement_penalty_days == 1
+    assert plan.food_shortage_days == 5
+    assert plan.health_drain == 4
   end
 
   defp character_fixture(realm, location, handle, name) do

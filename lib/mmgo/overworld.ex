@@ -7,6 +7,7 @@ defmodule MMGO.Overworld do
   alias MMGO.Overworld.{Encounter, Response}
   alias MMGO.Repo
   alias MMGO.Travel
+  alias MMGO.Worlds
   alias MMGO.Worlds.Location
   alias MMGO.Worlds.Realm
 
@@ -34,6 +35,51 @@ defmodule MMGO.Overworld do
       :combat,
       responses: :actor_character
     ])
+  end
+
+  @doc """
+  Closes an escalated overworld encounter after its linked combat finishes.
+
+  Combat owns mechanics; this adapter owns the road-encounter lifecycle. It is
+  deliberately idempotent so an Oban retry cannot leave an escalation open or
+  record a second outcome.
+  """
+  def settle_encounter_from_combat(%MMGO.Combat.Combat{} = combat) do
+    Repo.transaction(fn ->
+      if combat.kind != :overworld_encounter or combat.status != :finished do
+        Repo.rollback(encounter_changeset("combat is not a finished overworld encounter"))
+      end
+
+      encounter_id = combat.metadata["encounter_id"] || combat.metadata[:encounter_id]
+      encounter = lock_encounter!(encounter_id)
+
+      case encounter.status do
+        :resolved ->
+          Repo.preload(encounter, [:location, :initiator_character, :target_character, :combat])
+
+        :escalated ->
+          metadata =
+            encounter.metadata
+            |> Kernel.||(%{})
+            |> Map.merge(%{
+              "winner_side" => combat.winner_side,
+              "resolved_via" => "combat"
+            })
+
+          encounter
+          |> Encounter.changeset(%{
+            status: :resolved,
+            resolved_at: DateTime.utc_now(),
+            metadata: metadata
+          })
+          |> Repo.update!()
+          |> Repo.preload([:location, :initiator_character, :target_character, :combat])
+
+        _other ->
+          Repo.rollback(encounter_changeset("encounter is not escalated"))
+      end
+    end)
+    |> normalize_transaction_result()
   end
 
   def create_encounter(%Character{} = initiator, %Character{} = target, attrs \\ %{}) do
@@ -157,6 +203,12 @@ defmodule MMGO.Overworld do
 
     if location.safe_zone do
       Repo.rollback(encounter_changeset("attacks are not allowed in safe zones"))
+    end
+
+    realm = Repo.get!(Realm, encounter.realm_id)
+
+    unless Worlds.realm_ruleset(realm)["overworld_pvp_enabled"] do
+      Repo.rollback(encounter_changeset("overworld PvP is disabled for this realm"))
     end
 
     initiator_side =

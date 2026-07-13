@@ -4,7 +4,9 @@ defmodule MMGO.DungeonsTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Dungeons
   alias MMGO.Dungeons.{NodeState, Run}
+  alias MMGO.Inventory
   alias MMGO.Parties
+  alias MMGO.Parties.Expedition
   alias MMGO.Repo
   alias MMGO.Worlds
 
@@ -103,6 +105,20 @@ defmodule MMGO.DungeonsTest do
     member = character_fixture(realm, tower, "member-mage", "Member Mage")
     traveler = character_fixture(realm, city, "traveler-mage", "Traveler Mage")
 
+    {:ok, ration_template} =
+      Inventory.create_item_template(%{
+        code: "dungeon_test_ration",
+        name: "Dungeon Test Ration",
+        item_type: :food,
+        stackable: true,
+        weight: 1,
+        max_durability: 0,
+        nutrition_units: 1,
+        actions: []
+      })
+
+    {:ok, _rations} = Inventory.grant_item(leader, ration_template, %{quantity: 10})
+
     {:ok, %{party: party}} = Parties.create_party(leader, %{name: "Tower Delvers"})
     {:ok, %{membership: _membership}} = Parties.add_member(party, member)
     {:ok, %{expedition: expedition}} = Parties.start_expedition(party)
@@ -116,7 +132,10 @@ defmodule MMGO.DungeonsTest do
       entrance_node: entrance_node,
       rest_node: rest_node,
       deeper_node: deeper_node,
+      party: party,
       expedition: expedition,
+      leader: leader,
+      member: member,
       traveler: traveler
     }
   end
@@ -142,6 +161,10 @@ defmodule MMGO.DungeonsTest do
     deeper_node: deeper_node
   } do
     {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+    entrance_encounter = Dungeons.current_encounter_for_run(run.id)
+
+    assert {:ok, %{encounter: _resolved_encounter}} =
+             Dungeons.resolve_encounter(entrance_encounter, :avoided)
 
     assert {:ok, %{run: moved_run}} = Dungeons.move_run(run, rest_node.id)
     assert moved_run.current_node_id == rest_node.id
@@ -156,6 +179,177 @@ defmodule MMGO.DungeonsTest do
 
     rest_state = Repo.get_by!(NodeState, run_id: run.id, node_id: rest_node.id)
     assert rest_state.status == :cleared
+  end
+
+  test "move_run/3 requires the current encounter to be resolved", %{
+    expedition: expedition,
+    dungeon: dungeon,
+    rest_node: rest_node
+  } do
+    {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+
+    assert {:error, changeset} = Dungeons.move_run(run, rest_node.id)
+    assert %{status: ["current encounter must be resolved before moving"]} = errors_on(changeset)
+  end
+
+  test "movement consumes snapshotted food and turns later starvation into shared HP drain", %{
+    expedition: expedition,
+    dungeon: dungeon,
+    rest_node: rest_node,
+    deeper_node: deeper_node
+  } do
+    expedition =
+      expedition
+      |> Expedition.changeset(%{
+        food_units_snapshot: 2,
+        metadata: %{
+          "survival" => %{
+            "food_units_initial" => 2,
+            "food_units_remaining" => 2,
+            "food_units_consumed" => 0,
+            "foodless_game_days" => 0,
+            "shared_hp_drain" => 0,
+            "movement_penalty_days" => 0
+          }
+        }
+      })
+      |> Repo.update!()
+
+    {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+    entrance_encounter = Dungeons.current_encounter_for_run(run.id)
+
+    assert {:ok, %{encounter: _resolved_encounter}} =
+             Dungeons.resolve_encounter(entrance_encounter, :avoided)
+
+    assert {:ok, %{run: rested_run, survival: rested_survival}} =
+             Dungeons.move_run(run, rest_node.id)
+
+    assert rested_run.steps_taken == 1
+    assert rested_survival.food_units_remaining == 0
+    assert rested_survival.food_units_consumed == 2
+    assert rested_survival.foodless_game_days == 0
+
+    assert {:ok, %{run: starving_run, expedition: updated_expedition, survival: survival}} =
+             Dungeons.move_run(rested_run, deeper_node.id, leave_status: :cleared)
+
+    assert starving_run.steps_taken == 5
+    assert survival.food_units_remaining == 0
+    assert survival.foodless_game_days == 2
+    assert survival.shared_hp_drain == 2
+
+    assert %{
+             "food_units_remaining" => 0,
+             "food_units_consumed" => 2,
+             "foodless_game_days" => 2,
+             "shared_hp_drain" => 2,
+             "last_movement" => %{
+               "food_units_required" => 4,
+               "food_shortage_units" => 4,
+               "movement_penalty_days" => 2
+             }
+           } = updated_expedition.metadata["survival"]
+
+    encounter = Dungeons.current_encounter_for_run(starving_run.id)
+    assert {:ok, %{combat: combat}} = Dungeons.start_encounter_combat(encounter)
+    assert combat.sides["party"]["shared_hp"] == 198
+    assert combat.metadata["survival"]["shared_hp_drain"] == 2
+  end
+
+  test "overweight expeditions pay the snapshotted carry penalty on every move", %{
+    expedition: expedition,
+    dungeon: dungeon,
+    rest_node: rest_node
+  } do
+    expedition =
+      expedition
+      |> Expedition.changeset(%{carried_weight: 81, carry_capacity: 80})
+      |> Repo.update!()
+
+    {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+    entrance_encounter = Dungeons.current_encounter_for_run(run.id)
+
+    assert {:ok, %{encounter: _resolved_encounter}} =
+             Dungeons.resolve_encounter(entrance_encounter, :avoided)
+
+    assert {:ok, %{run: moved_run, survival: survival}} = Dungeons.move_run(run, rest_node.id)
+
+    assert survival.encumbered?
+    assert moved_run.steps_taken == 2
+    assert survival.movement_penalty_days == 1
+  end
+
+  test "harvesting spends one durable game-day per resource and awards server XP", %{
+    expedition: expedition,
+    dungeon: dungeon,
+    leader: leader,
+    member: member
+  } do
+    assert {:ok, %{run: run, content: %{resource_cache: resource_cache}}} =
+             Dungeons.enter_dungeon(expedition, dungeon,
+               resource: %{
+                 resource_code: "test_scavenged_shard",
+                 status: :available,
+                 quantity_total: 2,
+                 quantity_remaining: 2
+               }
+             )
+
+    assert {:ok,
+            %{
+              resource_cache: updated_cache,
+              run: updated_run,
+              expedition: updated_expedition,
+              character: updated_character,
+              xp_awarded: 3,
+              party_xp_awarded: 6,
+              xp_rewards: xp_rewards,
+              harvest_game_days: 1,
+              survival: survival
+            }} = Dungeons.harvest_resource(resource_cache, leader, 1)
+
+    assert updated_cache.status == :available
+    assert updated_cache.quantity_remaining == 1
+    assert updated_cache.metadata["last_harvest_game_days"] == 1
+    assert updated_cache.metadata["last_harvest_xp"] == 6
+    assert updated_cache.metadata["last_harvest_xp_per_member"] == 3
+    assert updated_run.steps_taken == run.steps_taken
+    assert updated_run.metadata["scavenging_game_days"] == 1
+    assert updated_character.xp == 3
+    assert Enum.map(xp_rewards, & &1.amount) == [3, 3]
+
+    assert MapSet.new(Enum.map(xp_rewards, & &1.character_id)) ==
+             MapSet.new([leader.id, member.id])
+
+    assert survival.food_units_consumed == 2
+    assert survival.food_units_remaining == 8
+
+    assert %{
+             "activity" => "scavenging",
+             "game_days" => 1,
+             "food_units_required" => 2,
+             "food_units_consumed" => 2
+           } = updated_expedition.metadata["survival"]["last_activity"]
+
+    assert {:ok,
+            %{
+              resource_cache: depleted_cache,
+              run: depleted_run,
+              xp_rewards: next_xp_rewards,
+              party_xp_awarded: 6
+            }} = Dungeons.harvest_resource(updated_cache, leader, 1)
+
+    assert depleted_cache.status == :depleted
+    assert depleted_run.metadata["scavenging_game_days"] == 2
+    assert Enum.map(next_xp_rewards, & &1.amount) == [3, 3]
+
+    reward_codes = Enum.map(xp_rewards ++ next_xp_rewards, & &1.reward_code)
+    assert Enum.uniq(reward_codes) == reward_codes
+    assert Repo.get!(Character, leader.id).xp == 6
+    assert Repo.get!(Character, member.id).xp == 6
+
+    assert {:error, changeset} = Dungeons.harvest_resource(depleted_cache, leader, 1)
+    assert %{status: ["resource cache is depleted"]} = errors_on(changeset)
+    assert Repo.get!(Character, leader.id).xp == 6
   end
 
   test "update_node_state/3 attaches encounter and resource state to a run node", %{
@@ -214,6 +408,27 @@ defmodule MMGO.DungeonsTest do
     assert {:ok, %{run: _run}} = Dungeons.enter_dungeon(expedition, dungeon)
     assert {:error, changeset} = Dungeons.enter_dungeon(expedition, dungeon)
     assert %{status: ["expedition already has an active dungeon run"]} = errors_on(changeset)
+  end
+
+  test "loot policies are agreements and do not block eligible expedition members", %{
+    realm: realm,
+    party: party,
+    leader: leader,
+    member: member,
+    expedition: expedition,
+    dungeon: dungeon,
+    entrance_node: entrance_node
+  } do
+    assert {:ok, _party} = Parties.set_loot_policy(party, leader, "leader")
+    assert {:ok, %{run: run}} = Dungeons.enter_dungeon(expedition, dungeon)
+
+    encounter = Repo.get_by!(MMGO.Dungeons.Encounter, run_id: run.id, node_id: entrance_node.id)
+    assert {:ok, %{loot_drops: [loot_drop]}} = Dungeons.resolve_encounter(encounter, :cleared)
+
+    assert {:ok, _treasury_account} = MMGO.Economy.ensure_treasury_account(realm, 100)
+
+    assert {:ok, %{loot_drop: claimed_loot}} = Dungeons.claim_loot(loot_drop, member)
+    assert claimed_loot.claimed_by_character_id == member.id
   end
 
   defp character_fixture(realm, location, handle, name) do

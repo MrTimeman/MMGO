@@ -4,6 +4,7 @@ defmodule MMGO.Telegram.ClubCommandsTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Academy.Enrollment
   alias MMGO.Clubs
+  alias MMGO.Economy
   alias MMGO.Repo
   alias MMGO.Telegram.Commands
   alias MMGO.Worlds
@@ -24,11 +25,36 @@ defmodule MMGO.Telegram.ClubCommandsTest do
 
     founder = character_fixture(realm, city, "clubber", "Clubber")
     invitee = character_fixture(realm, city, "invitee", "Invitee")
+    outsider = character_fixture(realm, city, "outsider", "Outsider")
 
-    enroll(founder, realm, :basic_education)
+    {:ok, _treasury} = Economy.ensure_treasury_account(realm, 1_000)
+    enroll_active_academy_core(founder, realm)
     enroll(invitee, realm, :basic_education)
+    enroll(outsider, realm, :basic_education)
+    {:ok, _funding} = Economy.grant_from_treasury(realm, founder, 100)
 
-    %{founder: founder, invitee: invitee}
+    %{founder: founder, invitee: invitee, outsider: outsider}
+  end
+
+  test "a club officer can invite through Telegram after presidential appointment", %{
+    founder: founder,
+    invitee: invitee,
+    outsider: outsider
+  } do
+    assert {:ok, %{club: club}} =
+             Clubs.create_club(founder, %{name: "Officer Circle", club_type: :general_interest})
+
+    assert {:ok, %{invitation: invitation}} = Clubs.invite_member(club, founder, invitee)
+    assert {:ok, _membership} = Clubs.accept_invitation(invitation, invitee)
+    assert {:ok, _appointment} = Clubs.appoint_officer(club, founder, invitee)
+
+    assert {:ok, response} =
+             Commands.process_message(invitee, %{
+               "text" => "/club invite #{club.id} outsider"
+             })
+
+    assert response =~ "Invitation"
+    assert [_invitation] = Clubs.pending_invitations_for_character(outsider.id)
   end
 
   test "/club commands exercise creation, invitation, acceptance, and listing", %{
@@ -90,6 +116,22 @@ defmodule MMGO.Telegram.ClubCommandsTest do
       started_at: DateTime.utc_now(),
       expected_completion_at: DateTime.utc_now(),
       completed_at: DateTime.utc_now(),
+      metadata: %{}
+    })
+    |> Repo.insert!()
+  end
+
+  defp enroll_active_academy_core(character, realm) do
+    %Enrollment{}
+    |> Enrollment.changeset(%{
+      character_id: character.id,
+      realm_id: realm.id,
+      program_type: :academy_core,
+      track: :wizardry,
+      status: :active,
+      funding_type: :self_funded,
+      started_at: DateTime.utc_now(),
+      expected_completion_at: DateTime.add(DateTime.utc_now(), 86_400, :second),
       metadata: %{}
     })
     |> Repo.insert!()

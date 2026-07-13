@@ -11,7 +11,7 @@ defmodule MMGO.FederationRulesetTest do
   alias MMGO.Spells
   alias MMGO.Worlds
 
-  test "canonical ruleset suppresses magic in city duels while global ruleset allows it" do
+  test "canonical ruleset suppresses magic in wilderness duels while global ruleset allows it" do
     {:ok, canonical_realm} =
       Worlds.create_realm(%{
         slug: "canonical",
@@ -29,30 +29,31 @@ defmodule MMGO.FederationRulesetTest do
         ruleset: %{"magic_scope" => "global"}
       })
 
-    {:ok, canonical_city} =
+    {:ok, canonical_wilderness} =
       Worlds.create_location(canonical_realm, %{
-        slug: "city-a",
-        name: "City A",
-        kind: :city,
+        slug: "wilds-a",
+        name: "Wilds A",
+        kind: :wilderness,
         x: 10,
         y: 10,
-        safe_zone: true
+        safe_zone: false
       })
 
-    {:ok, global_city} =
+    {:ok, global_wilderness} =
       Worlds.create_location(global_realm, %{
-        slug: "city-b",
-        name: "City B",
-        kind: :city,
+        slug: "wilds-b",
+        name: "Wilds B",
+        kind: :wilderness,
         x: 20,
         y: 20,
-        safe_zone: true
+        safe_zone: false
       })
 
     {canonical_caster, canonical_target, canonical_spell} =
-      duel_fixture(canonical_realm, canonical_city, 50)
+      duel_fixture(canonical_realm, canonical_wilderness, 50)
 
-    {global_caster, global_target, global_spell} = duel_fixture(global_realm, global_city, 50)
+    {global_caster, global_target, global_spell} =
+      duel_fixture(global_realm, global_wilderness, 50)
 
     {:ok, canonical_duel} = PVP.challenge_duel(canonical_caster, canonical_target, 10)
     {:ok, canonical_duel} = PVP.accept_duel(canonical_duel, canonical_target)
@@ -67,7 +68,7 @@ defmodule MMGO.FederationRulesetTest do
                spell_id: canonical_spell.id
              })
 
-    assert {:ok, _resolved} = Combat.resolve_turn(canonical_combat)
+    assert {:ok, _resolved} = Combat.resolve_turn(canonical_combat, force?: true)
     assert Repo.get_by!(Event, combat_id: canonical_combat.id, event_type: "magic_suppressed")
 
     {:ok, global_duel} = PVP.challenge_duel(global_caster, global_target, 10)
@@ -83,7 +84,7 @@ defmodule MMGO.FederationRulesetTest do
                spell_id: global_spell.id
              })
 
-    assert {:ok, _resolved} = Combat.resolve_turn(global_combat)
+    assert {:ok, _resolved} = Combat.resolve_turn(global_combat, force?: true)
     refute Repo.get_by(Event, combat_id: global_combat.id, event_type: "magic_suppressed")
   end
 

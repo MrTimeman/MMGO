@@ -617,7 +617,9 @@ code {
 .hex-map__sheet {
   position: absolute;
   left: 0.75rem;
-  right: 0.75rem;
+  /* Clear the account portrait (72px, anchored bottom-right) so the Travel
+     button on this sheet's right edge isn't hidden beneath it. */
+  right: calc(max(0.75rem, env(safe-area-inset-right)) + 72px + 0.5rem);
   bottom: 0.75rem;
   z-index: 15;
   display: flex;
@@ -4056,7 +4058,7 @@ code {
 }
 
 /* Map filter overlays (EVE/HOI4-style) — button + legend, mobile-first */
-/* Map-filter toggle (рельеф ↔ владения) — same pill family as .ovl-chip */
+/* Map-filter toggle (рельеф → владения → сети) — same pill family as .ovl-chip */
 .hex-map__filter {
   position: absolute;
   top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
@@ -4105,6 +4107,14 @@ code {
   border: 1px solid rgba(242, 238, 232, 0.16);
   color: #f2eee8;
   font-size: 0.72rem;
+}
+
+.hex-map__legend-title {
+  color: rgba(254, 243, 199, 0.9);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
 }
 
 .hex-map__legend-chip i {

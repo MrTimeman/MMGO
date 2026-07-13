@@ -17,11 +17,19 @@ defmodule MMGO.Notifications.Formatter do
         track -> " Track: #{track}."
       end
 
-    {:ok,
-     %{
-       text: "Your #{payload["program_type"]} enrollment is complete.#{track_suffix}",
-       opts: [parse_mode: "HTML"]
-     }}
+    text =
+      case {payload["status"], payload["outcome_tier"]} do
+        {"failed", "capstone_incomplete"} ->
+          "Your #{payload["program_type"]} enrollment ended without graduation: the final capstone was not passed.#{track_suffix}"
+
+        {"failed", _outcome_tier} ->
+          "Your #{payload["program_type"]} enrollment ended without graduation.#{track_suffix}"
+
+        _other ->
+          "Your #{payload["program_type"]} enrollment is complete.#{track_suffix}"
+      end
+
+    {:ok, %{text: text, opts: [parse_mode: "HTML"]}}
   end
 
   def render(%Notification{kind: "scavenge_completed", payload: payload}) do

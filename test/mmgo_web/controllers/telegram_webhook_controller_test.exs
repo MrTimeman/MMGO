@@ -1,11 +1,18 @@
 defmodule MMGOWeb.TelegramWebhookControllerTest do
-  use MMGOWeb.ConnCase, async: true
+  use MMGOWeb.ConnCase, async: false
 
   alias MMGO.Accounts.Account
   alias MMGO.Repo
+  alias MMGO.Telegram
   alias MMGO.Worlds
 
   setup do
+    original_telegram_config = Application.get_env(:mmgo, Telegram)
+
+    on_exit(fn ->
+      Application.put_env(:mmgo, Telegram, original_telegram_config)
+    end)
+
     {:ok, _realm} =
       Worlds.create_realm(%{
         slug: "canonical",
@@ -45,6 +52,24 @@ defmodule MMGOWeb.TelegramWebhookControllerTest do
       |> put_req_header("accept", "application/json")
       |> put_req_header("x-telegram-bot-api-secret-token", "wrong-secret")
       |> post(~p"/api/telegram/webhook", %{"update_id" => 99})
+
+    assert json_response(conn, 401) == %{"ok" => false, "error" => "unauthorized"}
+  end
+
+  test "POST /api/telegram/webhook rejects a missing secret in production-style config", %{
+    conn: conn
+  } do
+    Application.put_env(:mmgo, Telegram,
+      api_base_url: "http://localhost:8081",
+      bot_token: "test-bot-token",
+      webhook_secret: nil,
+      allow_insecure_webhook?: false
+    )
+
+    conn =
+      conn
+      |> put_req_header("accept", "application/json")
+      |> post(~p"/api/telegram/webhook", %{"update_id" => 100})
 
     assert json_response(conn, 401) == %{"ok" => false, "error" => "unauthorized"}
   end

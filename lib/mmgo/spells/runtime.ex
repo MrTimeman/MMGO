@@ -4,7 +4,7 @@ defmodule MMGO.Spells.Runtime do
   def success_rate(%Spell{failure_profile: failure_profile}, caster_level, fatigue_penalty \\ 0) do
     (failure_profile.base_success_rate + (caster_level - failure_profile.difficulty) * 3 -
        fatigue_penalty)
-    |> clamp(5, 99)
+    |> clamp(5, 100)
   end
 
   def environment_outcome(%Spell{} = spell, environment_tags) do

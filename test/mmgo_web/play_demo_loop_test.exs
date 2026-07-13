@@ -71,6 +71,9 @@ defmodule MMGOWeb.PlayDemoLoopTest do
 
     assert character.status == :active
     assert character.current_location_id == city.id
+    assert get_session(conn, :demo_character_id) == character.id
+    assert get_session(conn, :current_character_id) == character.id
+    assert get_session(conn, :current_account_id) == character.account_id
     assert Survival.food_units_available(character) >= 30
     assert Repo.get_by!(EconomyAccount, character_id: character.id).current_balance == 1_000
 
@@ -96,6 +99,15 @@ defmodule MMGOWeb.PlayDemoLoopTest do
     assert response["character"]["current_location"]["slug"] == "capital-city"
     assert [%{"destination" => %{"slug" => "the-tower"}}] = response["routes"]
     assert response["active_journey"] == nil
+  end
+
+  test "play API rejects a demo-only session and ignores client character ids", %{conn: conn} do
+    conn =
+      conn
+      |> init_test_session(%{demo_character_id: Ecto.UUID.generate()})
+      |> get(~p"/api/play/state?character_id=#{Ecto.UUID.generate()}")
+
+    assert %{"character" => nil} = json_response(conn, 401)
   end
 
   test "map LiveView starts a journey from a reachable route", %{conn: conn, tower: tower} do
@@ -137,6 +149,7 @@ defmodule MMGOWeb.PlayDemoLoopTest do
     continued_conn = get(conn, ~p"/play/continue")
 
     assert get_session(continued_conn, :demo_character_id) == character.id
+    assert get_session(continued_conn, :current_character_id) == character.id
     assert Travel.active_journey(character.id).id == journey.id
 
     reset_conn =
@@ -155,5 +168,25 @@ defmodule MMGOWeb.PlayDemoLoopTest do
 
     assert redirected_to(conn) == ~p"/map"
     assert get_session(conn, :demo_character_id)
+  end
+
+  test "disabled local demo endpoints do not create demo accounts", %{conn: conn} do
+    previous_value = Application.get_env(:mmgo, :local_demo_enabled)
+    Application.put_env(:mmgo, :local_demo_enabled, false)
+
+    on_exit(fn -> Application.put_env(:mmgo, :local_demo_enabled, previous_value) end)
+
+    conn = get(conn, ~p"/play/new")
+
+    assert response(conn, 404) == "Not found"
+
+    reset_conn =
+      conn
+      |> recycle()
+      |> post(~p"/api/play/reset")
+
+    assert response(reset_conn, 404) == "Not found"
+    refute Repo.get_by(Account, handle: "demo-player-1")
+    refute Repo.get_by(Account, handle: "demo-bot-1")
   end
 end

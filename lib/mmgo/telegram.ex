@@ -8,7 +8,7 @@ defmodule MMGO.Telegram do
   def authorized_webhook_secret?(provided_secret) do
     case config()[:webhook_secret] do
       secret when secret in [nil, ""] ->
-        true
+        config()[:allow_insecure_webhook?] == true
 
       secret
       when is_binary(secret) and is_binary(provided_secret) and

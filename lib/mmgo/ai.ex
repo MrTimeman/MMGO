@@ -30,6 +30,22 @@ defmodule MMGO.AI do
     )
   end
 
+  def orchestrate_turn(prompt_payload, opts \\ []) when is_map(prompt_payload) do
+    {schema, prompt_payload} = Map.pop(prompt_payload, :schema)
+
+    run(:combat_orchestration, prompt_payload, opts,
+      result_key: :orchestration,
+      stored_request_payload: Map.put(prompt_payload, :schema, schema),
+      response_payload: & &1,
+      request_attrs: fn metadata ->
+        %{combat_id: metadata["combat_id"], combat_turn_id: metadata["combat_turn_id"]}
+      end,
+      call: fn provider, payload, call_opts ->
+        provider.structured_completion(payload, schema, call_opts)
+      end
+    )
+  end
+
   def update_request(%Request{} = request, attrs) when is_map(attrs) do
     request
     |> Request.changeset(attrs)

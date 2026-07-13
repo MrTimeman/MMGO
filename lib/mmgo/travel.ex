@@ -3,6 +3,7 @@ defmodule MMGO.Travel do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
+  alias MMGO.Parties
   alias MMGO.Repo
   alias MMGO.Survival
   alias MMGO.Travel.{Clock, CompleteJourneyWorker, Journey}
@@ -28,98 +29,128 @@ defmodule MMGO.Travel do
     started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
     base_travel_days = travel_days_override(opts) || route.travel_days
 
-    Repo.transaction(fn ->
-      character = lock_character!(character.id)
-      route = Repo.get!(Route, route.id)
+    result =
+      Repo.transaction(fn ->
+        character = lock_character!(character.id)
+        route = Repo.get!(Route, route.id)
 
-      if character.realm_id != route.realm_id do
-        Repo.rollback(route_changeset("route must belong to the same realm as the character"))
-      end
-
-      if active_journey(character.id) do
-        Repo.rollback(active_journey_changeset())
-      end
-
-      {from_location_id, to_location_id} = resolve_route_direction(character, route)
-      plan = Survival.travel_plan(character, base_travel_days)
-
-      food_result =
-        case Survival.consume_food(Repo, character, plan.required_food_units) do
-          {:ok, food_result} -> food_result
-          {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+        if character.realm_id != route.realm_id do
+          Repo.rollback(route_changeset("route must belong to the same realm as the character"))
         end
 
-      arrival_at = Clock.arrival_at(started_at, plan.total_game_days)
+        if active_journey(character.id) do
+          Repo.rollback(active_journey_changeset())
+        end
 
-      journey =
-        %Journey{}
-        |> Journey.changeset(%{
-          character_id: character.id,
-          realm_id: character.realm_id,
-          route_id: route.id,
-          from_location_id: from_location_id,
-          to_location_id: to_location_id,
-          status: :active,
-          travel_days: plan.total_game_days,
-          food_units_consumed: food_result.food_units_consumed,
-          encumbrance_penalty_days: plan.encumbrance_penalty_days,
-          carried_weight: plan.current_weight,
-          carry_capacity: plan.carry_capacity,
-          started_at: started_at,
-          arrival_at: arrival_at
-        })
-        |> Repo.insert!()
+        {from_location_id, to_location_id} = resolve_route_direction(character, route)
 
-      job =
-        %{"journey_id" => journey.id}
-        |> CompleteJourneyWorker.new(
-          schedule_in: max(DateTime.diff(arrival_at, DateTime.utc_now(), :second), 0)
-        )
-        |> Oban.insert!()
+        character =
+          if Survival.food_units_available(character) > 0 do
+            case Survival.recover_after_food(Repo, character) do
+              {:ok, recovered_character} -> recovered_character
+              {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+            end
+          else
+            character
+          end
 
-      %{journey: journey, job: job, character: character}
-    end)
-    |> normalize_transaction_result()
+        plan = Survival.travel_plan(character, base_travel_days)
+
+        food_result =
+          case Survival.consume_available_food(Repo, character, plan.required_food_units) do
+            {:ok, food_result} -> food_result
+            {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+          end
+
+        arrival_at = Clock.arrival_at(started_at, plan.total_game_days)
+
+        journey =
+          %Journey{}
+          |> Journey.changeset(%{
+            character_id: character.id,
+            realm_id: character.realm_id,
+            route_id: route.id,
+            from_location_id: from_location_id,
+            to_location_id: to_location_id,
+            status: :active,
+            travel_days: plan.total_game_days,
+            food_units_consumed: food_result.food_units_consumed,
+            encumbrance_penalty_days: plan.encumbrance_penalty_days,
+            carried_weight: plan.current_weight,
+            carry_capacity: plan.carry_capacity,
+            started_at: started_at,
+            arrival_at: arrival_at,
+            metadata: %{"survival" => survival_metadata(plan, food_result)}
+          })
+          |> Repo.insert!()
+
+        job =
+          %{"journey_id" => journey.id}
+          |> CompleteJourneyWorker.new(
+            schedule_in: max(DateTime.diff(arrival_at, DateTime.utc_now(), :second), 0)
+          )
+          |> Oban.insert!()
+
+        %{journey: journey, job: job, character: character}
+      end)
+      |> normalize_transaction_result()
+
+    notify_party_of_travel_result(result)
+    result
   end
 
   def complete_journey_by_id(journey_id, opts \\ []) when is_binary(journey_id) do
     now = Keyword.get(opts, :now, DateTime.utc_now())
     force? = Keyword.get(opts, :force, false)
 
-    Repo.transaction(fn ->
-      journey =
-        Journey
-        |> where([journey], journey.id == ^journey_id)
-        |> lock("FOR UPDATE")
-        |> Repo.one()
+    result =
+      Repo.transaction(fn ->
+        journey =
+          Journey
+          |> where([journey], journey.id == ^journey_id)
+          |> lock("FOR UPDATE")
+          |> Repo.one()
 
-      if is_nil(journey) do
-        Repo.rollback(missing_journey_changeset())
-      end
+        if is_nil(journey) do
+          Repo.rollback(missing_journey_changeset())
+        end
 
-      if journey.status != :active do
-        Repo.rollback(journey_status_changeset("journey is not active"))
-      end
+        if journey.status != :active do
+          Repo.rollback(journey_status_changeset("journey is not active"))
+        end
 
-      if not force? and DateTime.compare(now, journey.arrival_at) == :lt do
-        Repo.rollback(journey_status_changeset("journey is not due yet"))
-      end
+        if not force? and DateTime.compare(now, journey.arrival_at) == :lt do
+          Repo.rollback(journey_status_changeset("journey is not due yet"))
+        end
 
-      character = lock_character!(journey.character_id)
+        character = lock_character!(journey.character_id)
 
-      updated_character =
-        character
-        |> Character.travel_changeset(%{current_location_id: journey.to_location_id})
-        |> Repo.update!()
+        updated_character =
+          character
+          |> Character.travel_changeset(%{current_location_id: journey.to_location_id})
+          |> Repo.update!()
 
-      updated_journey =
-        journey
-        |> Journey.changeset(%{status: :arrived, completed_at: now})
-        |> Repo.update!()
+        updated_character =
+          case Survival.apply_starvation_consequences(
+                 Repo,
+                 updated_character,
+                 Map.get(journey.metadata || %{}, "survival", %{})
+               ) do
+            {:ok, character} -> character
+            {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+          end
 
-      %{journey: updated_journey, character: updated_character}
-    end)
-    |> normalize_transaction_result()
+        updated_journey =
+          journey
+          |> Journey.changeset(%{status: :arrived, completed_at: now})
+          |> Repo.update!()
+
+        %{journey: updated_journey, character: updated_character}
+      end)
+      |> normalize_transaction_result()
+
+    notify_party_of_travel_result(result)
+    result
   end
 
   def complete_due_journeys(now \\ DateTime.utc_now()) do
@@ -159,6 +190,24 @@ defmodule MMGO.Travel do
       _ -> nil
     end
   end
+
+  defp survival_metadata(plan, food_result) do
+    %{
+      "food_required_units" => plan.required_food_units,
+      "food_available_at_departure" => plan.food_units_available,
+      "daily_food_units" => plan.daily_food_units,
+      "food_units_consumed" => food_result.food_units_consumed,
+      "food_shortage_days" => plan.food_shortage_days,
+      "movement_penalty_days" => plan.movement_penalty_days,
+      "health_drain" => plan.health_drain
+    }
+  end
+
+  defp notify_party_of_travel_result({:ok, %{character: %Character{id: character_id}}}) do
+    Parties.notify_character_state_changed(character_id)
+  end
+
+  defp notify_party_of_travel_result(_result), do: :ok
 
   defp lock_character!(character_id) do
     Character

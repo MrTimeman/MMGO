@@ -21,6 +21,7 @@ defmodule MMGO.Spells.Spell do
   ]
   @targeting_modes [:self, :ally, :enemy, :zone]
   @environment_modes [:none, :add, :replace]
+  @max_description_length 1_200
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id
@@ -82,6 +83,7 @@ defmodule MMGO.Spells.Spell do
     ])
     |> validate_length(:name, min: 3, max: 120)
     |> validate_length(:formula, min: 3, max: 180)
+    |> validate_length(:description, max: @max_description_length)
     |> validate_number(:level_requirement, greater_than_or_equal_to: 1)
     |> validate_number(:fatigue_cost, greater_than_or_equal_to: 0)
     |> validate_number(:cooldown_turns, greater_than_or_equal_to: 0)

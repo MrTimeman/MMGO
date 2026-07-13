@@ -9,7 +9,7 @@ defmodule MMGO.Overworld.Encounter do
   alias MMGO.Worlds.{Location, Realm}
 
   @kinds [:player]
-  @statuses [:pending, :active, :greeted, :trading, :avoided, :escalated]
+  @statuses [:pending, :active, :greeted, :trading, :avoided, :escalated, :resolved]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

@@ -7,13 +7,23 @@ defmodule MMGO.Combat.Narrator do
   alias MMGO.Combat.{Event, Participant, Turn}
   alias MMGO.Repo
 
+  @narration_key "narration"
+
   def narrate_turn(combat_id, turn_number, opts \\ []) do
     combat = Combat.get_combat!(combat_id)
     turn = Repo.get_by!(Turn, combat_id: combat_id, number: turn_number)
 
+    if persisted_narration?(turn) do
+      {:ok, turn}
+    else
+      persist_narration(combat, turn, opts)
+    end
+  end
+
+  defp persist_narration(combat, turn, opts) do
     participants =
       Participant
-      |> where([p], p.combat_id == ^combat_id)
+      |> where([participant], participant.combat_id == ^combat.id)
       |> Repo.all()
 
     participants_by_id =
@@ -53,18 +63,64 @@ defmodule MMGO.Combat.Narrator do
         turn: %{
           id: turn.id,
           number: turn.number,
-          status: turn.status
+          status: turn.status,
+          orchestration: Map.get(turn.resolution || %{}, "orchestration", %{})
         },
         events: event_payloads
       })
 
     ai_opts = Keyword.put_new(opts, :metadata, %{combat_id: combat.id, combat_turn_id: turn.id})
 
-    with {:ok, %{narration: narration}} <- AI.narrate_turn(prompt_payload, ai_opts),
-         {:ok, updated_turn} <- Turn.changeset(turn, %{narration: narration}) |> Repo.update() do
-      {:ok, updated_turn}
+    case AI.narrate_turn(prompt_payload, ai_opts) do
+      {:ok, %{narration: narration}} when is_binary(narration) ->
+        case String.trim(narration) do
+          "" ->
+            persist_turn_narration(turn, fallback_narration(turn, event_payloads), "fallback")
+
+          trimmed ->
+            persist_turn_narration(turn, trimmed, "provider")
+        end
+
+      {:ok, _result} ->
+        persist_turn_narration(turn, fallback_narration(turn, event_payloads), "fallback")
+
+      {:error, _reason} ->
+        persist_turn_narration(turn, fallback_narration(turn, event_payloads), "fallback")
     end
   end
+
+  defp fallback_narration(turn, event_payloads) do
+    count = length(event_payloads)
+
+    case Map.get(turn.resolution || %{}, "orchestration", %{}) do
+      %{"result" => %{"narrative_ru" => narrative}}
+      when is_binary(narrative) and narrative != "" ->
+        "Ход #{turn.number} завершён. #{narrative}"
+
+      _other when count == 0 ->
+        "Ход #{turn.number} завершён: стороны выждали, и поле боя осталось напряжённо тихим."
+
+      _other ->
+        "Ход #{turn.number} завершён: движок сохранил #{count} событий по запечатанным действиям."
+    end
+  end
+
+  defp persist_turn_narration(turn, narration, source) do
+    resolution =
+      turn.resolution
+      |> Kernel.||(%{})
+      |> Map.put(@narration_key, %{"source" => source})
+
+    turn
+    |> Turn.changeset(%{narration: narration, resolution: resolution})
+    |> Repo.update()
+  end
+
+  defp persisted_narration?(%Turn{resolution: resolution}) when is_map(resolution) do
+    match?(%{}, Map.get(resolution, @narration_key))
+  end
+
+  defp persisted_narration?(_turn), do: false
 
   defp resolve_names(payload, participants_by_id) when is_map(payload) do
     payload

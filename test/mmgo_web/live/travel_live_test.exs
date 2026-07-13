@@ -3,8 +3,10 @@ defmodule MMGOWeb.TravelLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias MMGO.Accounts.Account
   alias MMGO.Economy
   alias MMGO.Play
+  alias MMGO.Repo
   alias MMGO.Travel
   alias MMGO.Worlds
 
@@ -47,22 +49,30 @@ defmodule MMGOWeb.TravelLiveTest do
     %{tower: tower}
   end
 
-  test "redirects visitors without a local play session", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/play/continue"}}} = live(conn, ~p"/travel")
+  test "redirects visitors without a verified game scope", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/play"}}} = live(conn, ~p"/travel")
   end
 
   test "renders the active server-timed journey", %{conn: conn, tower: tower} do
     {:ok, %{challenger: character}} = Play.start_new_local_session()
     {:ok, %{journey: journey}} = Play.start_journey(character.id, "the-tower")
 
-    {:ok, view, _html} = live(session_conn(conn, character.id), ~p"/travel")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/travel")
 
     assert has_element?(view, "#travel-screen")
     assert has_element?(view, "#travel-progress-panel")
     assert has_element?(view, "#travel-supplies-panel")
+    assert has_element?(view, "#travel-survival-state")
+    assert has_element?(view, "#travel-overload-state")
     assert has_element?(view, "#travel-waypoint-0")
     assert has_element?(view, "#travel-waypoint-2")
     assert has_element?(view, "#travel-open-inventory")
+
+    assert has_element?(
+             view,
+             "#atmosphere-audio[data-ambient-cue='city'][data-major-event-cue='journey']"
+           )
+
     assert journey.to_location_id == tower.id
   end
 
@@ -72,14 +82,17 @@ defmodule MMGOWeb.TravelLiveTest do
     assert {:ok, _result} = Travel.complete_journey_by_id(journey.id, force: true)
 
     assert {:error, {:live_redirect, %{to: "/map", flash: flash}}} =
-             live(session_conn(conn, character.id), ~p"/travel")
+             live(session_conn(conn, character), ~p"/travel")
 
     assert flash["info"] =~ "active journey"
   end
 
-  defp session_conn(conn, character_id) do
+  defp session_conn(conn, character) do
+    account = Repo.get!(Account, character.account_id)
+
     conn
     |> Plug.Test.init_test_session(%{})
-    |> Plug.Conn.put_session(:demo_character_id, character_id)
+    |> Plug.Conn.put_session(:current_account_id, account.id)
+    |> Plug.Conn.put_session(:current_character_id, character.id)
   end
 end

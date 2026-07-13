@@ -11,6 +11,7 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Clubs
   alias MMGO.Clubs.Invitation, as: ClubInvitation
   alias MMGO.Combat
+  alias MMGO.Combat.{Turn, TurnArtifacts}
   alias MMGO.Combat.Resolution, as: CombatResolution
   alias MMGO.Crafting
   alias MMGO.Dungeons
@@ -775,8 +776,8 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
-  defp dispatch("alchemy", ["recipes"], _character) do
-    recipes = Alchemy.list_recipes()
+  defp dispatch("alchemy", ["recipes"], character) do
+    recipes = Alchemy.list_recipes_for_character(character)
 
     if recipes == [] do
       {:ok, "No alchemy recipes are currently registered."}
@@ -1307,13 +1308,13 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp dispatch("club", ["invite", club_id, handle], character) do
-    with %{} = club <- load_leader_club(club_id, character.id),
+    with %{} = club <- load_member_club(club_id, character.id),
          %{} = invitee <- Accounts.get_character_by_handle(character.realm_id, handle),
          {:ok, %{invitation: invitation}} <- Clubs.invite_member(club, character, invitee) do
       {:ok, "Invitation #{invitation.id} sent to #{handle}."}
     else
       nil ->
-        {:ok, "Club or invitee not found, or you are not the club leader."}
+        {:ok, "Club or invitee not found, or your club role cannot send invitations."}
 
       {:error, %Changeset{} = changeset} ->
         {:ok, "Could not invite member: #{format_changeset(changeset)}"}
@@ -1734,8 +1735,10 @@ defmodule MMGO.Telegram.Commands do
 
   defp dispatch("combat", ["resolve"], character) do
     with %{} = combat <- Combat.active_combat_for_character(character.id),
-         true <- combat.status == :locked or combat.status == :active_turn,
-         {:ok, resolved_combat} <- Combat.resolve_turn(combat) do
+         true <- combat.status == :locked,
+         %Turn{id: turn_id} <- Repo.get_by(Turn, combat_id: combat.id, number: combat.turn_number),
+         {:ok, resolved_combat} <- Combat.resolve_turn(combat),
+         :ok <- TurnArtifacts.persist(combat.id, turn_id) do
       case CombatResolution.finalize(resolved_combat) do
         {:ok, _result} ->
           {:ok, combat_resolution_text(resolved_combat)}
@@ -2217,20 +2220,6 @@ defmodule MMGO.Telegram.Commands do
     end
   rescue
     Ecto.NoResultsError -> nil
-  end
-
-  defp load_leader_club(club_id, character_id) do
-    club = load_member_club(club_id, character_id)
-
-    if club &&
-         Enum.any?(
-           club.memberships,
-           &(&1.character_id == character_id and &1.role == :leader and &1.status == :active)
-         ) do
-      club
-    else
-      nil
-    end
   end
 
   defp load_invitation(invitation_id, character_id) do

@@ -25,50 +25,63 @@ defmodule MMGOWeb.Router do
     pipe_through :browser
 
     get "/", PageController, :home
+    live "/play", GameEntryLive
+    post "/auth/telegram", TelegramAuthController, :create
     get "/play/new", PlayDemoController, :new
     get "/play/continue", PlayDemoController, :continue
     get "/demo/start", PlayDemoController, :start
 
-    live "/map", MapLive
-    live "/spellbook", SpellbookLive
-    live "/pvp", DuelLive
-    live "/screens", ScreensIndexLive
+    live_session :game, on_mount: [{MMGOWeb.GameAuth, :require_character}] do
+      live "/map", MapLive
+      live "/notifications", NotificationsLive
+      live "/spellbook", SpellbookLive
+      live "/pvp", DuelLive
+      live "/screens", ScreensIndexLive
 
-    live "/academy/bulletin-board", BulletinBoardLive
-    live "/academy/study-desk", StudyDeskLive
-    live "/academy/exam/:term_id", ExamLive
-    live "/academy/club-events/:event_id", ClubEventLive
+      live "/academy/bulletin-board", BulletinBoardLive
+      live "/academy/study-desk", AcademyLive, :overview
+      live "/academy/lecture/:term_id", LectureLive
+      live "/academy/exam/:term_id", ExamLive
+      live "/academy/club-events/:event_id", ClubEventLive
 
-    live "/orgs", OrganizationsLive, :index
-    live "/orgs/new", OrganizationsLive, :new
-    live "/orgs/:id", OrganizationsLive, :show
-    live "/orgs/:id/:tab", OrganizationsLive, :show
+      live "/orgs", OrganizationsLive, :index
+      live "/orgs/new", OrganizationsLive, :new
+      live "/orgs/:id", OrganizationsLive, :show
+      live "/orgs/:id/:tab", OrganizationsLive, :show
 
-    # --- Design-pass screens (demo data, backend wiring pending) ---
-    live "/event", ActionHubLive
-    live "/travel", TravelLive
-    live "/party", PartyLive
-    live "/combat", CombatLive
-    live "/defeat", DefeatLive
-    live "/base", BaseLive
-    live "/trade", TradeLive
-    live "/inventory", InventoryLive
-    live "/alchemy", AlchemyLive
-    live "/craft", CraftLive
-    live "/finance", FinanceLive
-    live "/dungeon", DungeonLive, :depths
-    live "/dungeon/level/:level", DungeonLive, :level
+      live "/event", ActionHubLive
+      live "/travel", TravelLive
+      live "/party", PartyLive
+      live "/combat", CombatLive, :current
+      live "/combat/:id", CombatLive, :show
+      live "/defeat", DefeatLive
+      live "/base", BaseLive, :index
+      live "/base/:id", BaseLive, :show
+      live "/trade", TradeLive
+      live "/inventory", InventoryLive
+      live "/alchemy", AlchemyLive
+      live "/craft", CraftLive
+      live "/finance", FinanceLive
+      live "/dungeon", DungeonLive, :depths
+      live "/dungeon/level/:level", DungeonLive, :level
 
-    live "/academy", AcademyLive, :overview
-    live "/academy/timetable", AcademyLive, :timetable
-    live "/academy/grades", AcademyLive, :grades
-    live "/academy/library", AcademyLive, :library
-    live "/academy/courses", AcademyLive, :courses
-    live "/academy/progress", AcademyLive, :progress
-    live "/academy/clubs", ClubsLive, :index
-    live "/academy/clubs/:id", ClubsLive, :show
-    live "/academy/clubs/:id/manage", ClubsLive, :manage
-    live "/academy/thesis/:id", ThesisDefenseLive
+      live "/academy", AcademyLive, :overview
+      live "/academy/timetable", AcademyLive, :timetable
+      live "/academy/grades", AcademyLive, :grades
+      live "/academy/library", AcademyLive, :library
+      live "/academy/courses", AcademyLive, :courses
+      live "/academy/progress", AcademyLive, :progress
+      live "/academy/clubs", ClubsLive, :index
+      live "/academy/clubs/:id", ClubsLive, :show
+      live "/academy/clubs/:id/manage", ClubsLive, :manage
+      live "/academy/research", AcademiaLive
+      live "/academy/thesis/:id", ThesisDefenseLive
+    end
+
+    live_session :realm_migration,
+      on_mount: [{MMGOWeb.GameAuth, :require_migration_character}] do
+      live "/realms", RealmsLive
+    end
   end
 
   scope "/", MMGOWeb do

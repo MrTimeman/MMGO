@@ -12,6 +12,10 @@ config :mmgo,
   ecto_repos: [MMGO.Repo],
   generators: [timestamp_type: :utc_datetime, binary_id: true]
 
+# Local demo accounts are a development aid, never a production sign-in path.
+# runtime.exs enables this explicitly only for development and test.
+config :mmgo, local_demo_enabled: false
+
 config :mmgo, Oban,
   repo: MMGO.Repo,
   plugins: [
@@ -23,16 +27,20 @@ config :mmgo, MMGO.Telegram,
   api_base_url: "https://api.telegram.org",
   bot_token: nil,
   webhook_path: "/api/telegram/webhook",
-  webhook_secret: nil
+  webhook_secret: nil,
+  allow_insecure_webhook?: false,
+  web_app_auth_max_age_seconds: 300
 
 config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
   models: %{
     spell_compile: "gemini-3-flash",
+    combat_orchestration: "g3f-lite",
     turn_narration: "g3f-lite"
   },
   prompt_versions: %{
     spell_compile: "2026-03-27.spell-compile.v1",
+    combat_orchestration: "2026-07-11.combat-orchestration.v1",
     turn_narration: "2026-03-27.turn-narration.v1"
   }
 

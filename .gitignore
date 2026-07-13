@@ -46,3 +46,6 @@ lib/mmgo_web/live/hooks_demo_live.ex
 
 # Local Claude Code tooling state
 /.claude/
+
+# Embedded standalone hex atlas project (separate repo candidate, 134MB with deps/_build)
+/hex_atlas/

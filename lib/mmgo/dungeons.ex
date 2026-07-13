@@ -36,6 +36,10 @@ defmodule MMGO.Dungeons do
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
 
+  @return_ritual_tag "return_ritual"
+  @scavenging_game_days_per_unit 1
+  @scavenging_xp_per_unit 3
+
   def list_dungeons_for_realm(realm_id) when is_binary(realm_id) do
     Repo.all(
       from dungeon in Dungeon,
@@ -73,6 +77,14 @@ defmodule MMGO.Dungeons do
       from link_state in LinkState,
         where: link_state.dungeon_id == ^dungeon_id,
         order_by: [asc: link_state.inserted_at]
+    )
+  end
+
+  def list_links_for_dungeon(dungeon_id) when is_binary(dungeon_id) do
+    Repo.all(
+      from link in Link,
+        where: link.dungeon_id == ^dungeon_id,
+        order_by: [asc: link.inserted_at]
     )
   end
 
@@ -123,6 +135,25 @@ defmodule MMGO.Dungeons do
 
   def active_run_for_expedition(expedition_id) when is_binary(expedition_id) do
     case Repo.get_by(Run, expedition_id: expedition_id, status: :active) do
+      nil -> nil
+      run -> preload_run(run)
+    end
+  end
+
+  def latest_failed_run_for_character(character_id) when is_binary(character_id) do
+    Run
+    |> join(:inner, [run], member in ExpeditionMember,
+      on: member.expedition_id == run.expedition_id
+    )
+    |> where(
+      [run, member],
+      run.status == :failed and member.character_id == ^character_id and
+        member.status == :completed
+    )
+    |> order_by([run, _member], desc: run.ended_at, desc: run.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+    |> case do
       nil -> nil
       run -> preload_run(run)
     end
@@ -193,6 +224,38 @@ defmodule MMGO.Dungeons do
     Repo.get_by(Extraction, run_id: run_id, status: :active)
   end
 
+  @doc """
+  Returns the caster-owned loadout facts needed to begin a Return Ritual.
+
+  A generic ritual tag is deliberately not enough: the active grimoire must
+  contain a spell explicitly marked `return_ritual`. This keeps the dungeon
+  rule tied to a prepared, durable spell instead of a name or UI convention.
+  """
+  def return_ritual_loadout(%Character{} = character) do
+    active_grimoire = active_grimoire_for_return_ritual(character)
+    prepared_spell = return_ritual_spell_from(active_grimoire)
+
+    %{
+      wizardry_specialist?: ritual_caster?(character),
+      active_grimoire?: not is_nil(active_grimoire),
+      active_grimoire_id: active_grimoire && active_grimoire.id,
+      prepared?: not is_nil(prepared_spell),
+      prepared_spell_id: prepared_spell && prepared_spell.id,
+      prepared_spell_name: prepared_spell && prepared_spell.name
+    }
+  end
+
+  def return_ritual_loadout(_character) do
+    %{
+      wizardry_specialist?: false,
+      active_grimoire?: false,
+      active_grimoire_id: nil,
+      prepared?: false,
+      prepared_spell_id: nil,
+      prepared_spell_name: nil
+    }
+  end
+
   def list_drops_for_run(run_id) when is_binary(run_id) do
     Repo.all(
       from drop in Drop,
@@ -208,10 +271,16 @@ defmodule MMGO.Dungeons do
     Repo.transaction(fn ->
       encounter = lock_encounter!(encounter.id)
       run = Repo.get!(Run, encounter.run_id)
-      expedition = Repo.get!(Expedition, run.expedition_id)
+      expedition = lock_expedition!(run.expedition_id)
       dungeon = Repo.get!(Dungeon, run.dungeon_id)
 
       cond do
+        run.status != :active ->
+          Repo.rollback(encounter_changeset("run is not active"))
+
+        run.current_node_id != encounter.node_id ->
+          Repo.rollback(encounter_changeset("encounter is not at the party's current node"))
+
         encounter.status not in [:pending, :active] ->
           Repo.rollback(
             encounter_changeset("encounter cannot enter combat from its current state")
@@ -229,14 +298,16 @@ defmodule MMGO.Dungeons do
           end
 
           encounter_participants = build_encounter_participants(spawns)
+          survival = Parties.expedition_survival_state(expedition)
+          party_shared_hp = party_shared_hp(expedition_members, survival.shared_hp_drain)
 
           combat_attrs = %{
             participants: build_party_participants(expedition_members) ++ encounter_participants,
             sides: %{
               party: %{
                 "label" => "Party",
-                "shared_hp" => party_shared_hp(expedition_members),
-                "max_shared_hp" => party_shared_hp(expedition_members)
+                "shared_hp" => party_shared_hp,
+                "max_shared_hp" => party_shared_hp
               },
               encounter: %{
                 "label" => encounter_label(encounter),
@@ -252,6 +323,11 @@ defmodule MMGO.Dungeons do
               "node_id" => encounter.node_id,
               "encounter_kind" => encounter.encounter_kind,
               "location_kind" => "dungeon",
+              "survival" => %{
+                "food_units_remaining" => survival.food_units_remaining,
+                "foodless_game_days" => survival.foodless_game_days,
+                "shared_hp_drain" => survival.shared_hp_drain
+              },
               "started_at" => DateTime.to_iso8601(now)
             }
           }
@@ -442,6 +518,20 @@ defmodule MMGO.Dungeons do
         |> lock("FOR UPDATE")
         |> Repo.one!()
 
+      current_encounter = Repo.get_by(Encounter, run_id: run.id, node_id: run.current_node_id)
+
+      if current_encounter && current_encounter.status in [:pending, :active] do
+        Repo.rollback(run_changeset("current encounter must be resolved before moving"))
+      end
+
+      expedition = lock_expedition!(run.expedition_id)
+      survival_result = Parties.advance_expedition_survival(expedition, link.travel_cost)
+
+      updated_expedition =
+        expedition
+        |> Expedition.changeset(%{metadata: survival_result.metadata})
+        |> Repo.update!()
+
       current_state
       |> NodeState.changeset(%{status: leave_status, left_at: now, last_seen_at: now})
       |> Repo.update!()
@@ -486,14 +576,21 @@ defmodule MMGO.Dungeons do
           current_floor_id: target_node.floor_id,
           current_node_id: target_node.id,
           last_progressed_at: now,
-          steps_taken: run.steps_taken + Map.get(link, :travel_cost, 1)
+          steps_taken: run.steps_taken + survival_result.effective_travel_cost
         })
         |> Repo.update!()
 
       content =
         materialize_node_content!(updated_run, target_node, now, content_attrs_from_opts(opts))
 
-      %{run: preload_run(updated_run), node_state: target_state, link: link, content: content}
+      %{
+        run: preload_run(updated_run),
+        expedition: updated_expedition,
+        node_state: target_state,
+        link: link,
+        content: content,
+        survival: survival_result.survival
+      }
     end)
     |> normalize_transaction_result()
   end
@@ -537,20 +634,32 @@ defmodule MMGO.Dungeons do
         |> Encounter.changeset(%{status: outcome, resolved_at: now})
         |> Repo.update!()
 
-      xp_rewards =
+      {xp_rewards, route_plan_bonus} =
         if outcome == :cleared do
-          expedition = Repo.get!(Expedition, run_expedition_id!(updated_encounter.run_id))
+          expedition = lock_expedition!(run_expedition_id!(updated_encounter.run_id))
 
-          Parties.distribute_xp_shares(Repo, expedition, encounter_xp(updated_encounter), %{
-            "source_type" => "encounter",
-            "reward_kind" => "xp",
-            "run_id" => updated_encounter.run_id,
-            "encounter_id" => updated_encounter.id,
-            "granted_at" => now,
-            "encounter_kind" => updated_encounter.encounter_kind
-          })
+          {xp_amount, route_plan_bonus, _updated_expedition} =
+            apply_route_plan_bonus!(
+              expedition,
+              encounter_xp(updated_encounter),
+              updated_encounter.id,
+              now
+            )
+
+          {
+            Parties.distribute_xp_shares(Repo, expedition, xp_amount, %{
+              "source_type" => "encounter",
+              "reward_kind" => "xp",
+              "run_id" => updated_encounter.run_id,
+              "encounter_id" => updated_encounter.id,
+              "granted_at" => now,
+              "encounter_kind" => updated_encounter.encounter_kind,
+              "club_route_plan_bonus" => route_plan_bonus
+            }),
+            route_plan_bonus
+          }
         else
-          []
+          {[], nil}
         end
 
       loot_drops = maybe_create_loot_drops!(updated_encounter, attrs)
@@ -573,7 +682,8 @@ defmodule MMGO.Dungeons do
         encounter: updated_encounter,
         node_state: updated_state,
         loot_drops: loot_drops,
-        xp_rewards: xp_rewards
+        xp_rewards: xp_rewards,
+        route_plan_bonus: route_plan_bonus
       }
     end)
     |> normalize_transaction_result()
@@ -632,6 +742,13 @@ defmodule MMGO.Dungeons do
     |> normalize_transaction_result()
   end
 
+  @doc """
+  Harvests a current-node dungeon cache under its row lock.
+
+  Every harvested unit consumes one persisted expedition game-day and grants a
+  small equal XP share to each active expedition member. Inventory rewards stay
+  with the harvesting character, preserving the existing loot ownership rule.
+  """
   def harvest_resource(
         %ResourceCache{} = resource_cache,
         %Character{} = character,
@@ -640,6 +757,7 @@ defmodule MMGO.Dungeons do
       )
       when is_integer(quantity) do
     attrs = stringify_keys(attrs)
+    now = DateTime.utc_now()
 
     Repo.transaction(fn ->
       resource_cache =
@@ -649,8 +767,11 @@ defmodule MMGO.Dungeons do
         |> Repo.one!()
         |> Repo.preload(:item_template)
 
+      run = lock_run!(resource_cache.run_id)
+      expedition = lock_expedition!(run.expedition_id)
       character = Repo.get!(Character, character.id)
-      validate_resource_claim!(resource_cache, character, quantity)
+      validate_resource_claim!(resource_cache, character, run, expedition, quantity)
+      harvest_game_days = scavenging_game_days(quantity)
 
       reward_result =
         case resource_cache.item_template do
@@ -661,6 +782,48 @@ defmodule MMGO.Dungeons do
       case reward_result do
         {:ok, reward} ->
           remaining_quantity = resource_cache.quantity_remaining - quantity
+
+          survival_result =
+            Parties.advance_expedition_survival(expedition, harvest_game_days,
+              activity: :scavenging
+            )
+
+          updated_expedition =
+            expedition
+            |> Expedition.changeset(%{metadata: survival_result.metadata})
+            |> Repo.update!()
+
+          updated_run =
+            run
+            |> Run.changeset(%{
+              last_progressed_at: now,
+              metadata: record_scavenging_time(run.metadata, harvest_game_days, now)
+            })
+            |> Repo.update!()
+
+          xp_per_member = scavenging_xp_per_member(quantity)
+          active_member_count = active_expedition_members(expedition.id) |> length()
+          party_xp_awarded = xp_per_member * active_member_count
+
+          xp_rewards =
+            Parties.distribute_xp_shares(Repo, expedition, party_xp_awarded, %{
+              "source" => "dungeon_scavenging",
+              "source_type" => "run",
+              "reward_kind" => "xp",
+              "run_id" => run.id,
+              "resource_cache_id" => resource_cache.id,
+              "game_days_spent" => harvest_game_days,
+              "xp_per_member" => xp_per_member,
+              "reward_code_suffix" => "scavenge:#{resource_cache.id}:#{remaining_quantity}",
+              "granted_at" => now
+            })
+
+          xp_awarded =
+            Enum.find_value(xp_rewards, 0, fn reward ->
+              if reward.character_id == character.id, do: reward.amount
+            end)
+
+          updated_character = Repo.get!(Character, character.id)
 
           updated_resource_cache =
             resource_cache
@@ -673,6 +836,9 @@ defmodule MMGO.Dungeons do
                   "last_harvest_note",
                   attrs["note"] || "harvested"
                 )
+                |> Map.put("last_harvest_game_days", harvest_game_days)
+                |> Map.put("last_harvest_xp", party_xp_awarded)
+                |> Map.put("last_harvest_xp_per_member", xp_per_member)
             })
             |> Repo.update!()
 
@@ -689,11 +855,23 @@ defmodule MMGO.Dungeons do
             node_state
             |> NodeState.changeset(%{
               resource_status: if(remaining_quantity == 0, do: :depleted, else: :available),
-              last_seen_at: DateTime.utc_now()
+              last_seen_at: now
             })
             |> Repo.update!()
 
-          %{resource_cache: updated_resource_cache, node_state: updated_state, reward: reward}
+          %{
+            resource_cache: updated_resource_cache,
+            node_state: updated_state,
+            reward: reward,
+            character: updated_character,
+            xp_awarded: xp_awarded,
+            xp_rewards: xp_rewards,
+            party_xp_awarded: party_xp_awarded,
+            harvest_game_days: harvest_game_days,
+            run: preload_run(updated_run),
+            expedition: updated_expedition,
+            survival: survival_result.survival
+          }
 
         {:error, %Changeset{} = changeset} ->
           Repo.rollback(changeset)
@@ -749,9 +927,7 @@ defmodule MMGO.Dungeons do
 
     Repo.transaction(fn ->
       run = lock_run!(run.id)
-      validate_extraction_ready!(run, nil, :ascent, nil)
-
-      current_node = Repo.get!(Node, run.current_node_id)
+      %{position: %{node: current_node}} = validate_extraction_ready!(run, nil, :ascent, nil)
 
       if current_node.kind not in [:entrance, :stairs_up, :exit] do
         Repo.rollback(extraction_changeset("current node is not a valid ascent point"))
@@ -769,7 +945,11 @@ defmodule MMGO.Dungeons do
     Repo.transaction(fn ->
       run = lock_run!(run.id)
       caster = Repo.get!(Character, caster.id)
-      validate_extraction_ready!(run, caster, :return_ritual, nil)
+
+      %{
+        position: %{node: current_node, floor: current_floor},
+        ritual_loadout: ritual_loadout
+      } = validate_extraction_ready!(run, caster, :return_ritual, nil)
 
       completes_at = MMGO.Travel.Clock.arrival_at(now, ritual_game_days)
 
@@ -782,7 +962,13 @@ defmodule MMGO.Dungeons do
           status: :active,
           started_at: now,
           completes_at: completes_at,
-          metadata: %{"ritual_game_days" => ritual_game_days}
+          metadata: %{
+            "ritual_game_days" => ritual_game_days,
+            "origin_floor_number" => current_floor.number,
+            "origin_node_id" => current_node.id,
+            "prepared_grimoire_id" => ritual_loadout.active_grimoire_id,
+            "prepared_spell_id" => ritual_loadout.prepared_spell_id
+          }
         })
         |> Repo.insert!()
 
@@ -955,6 +1141,8 @@ defmodule MMGO.Dungeons do
     expedition = Repo.get!(Expedition, run.expedition_id)
     encounter = current_encounter_for_run(run.id)
     extraction = active_extraction(run.id)
+    position = current_run_position(run)
+    ritual_loadout = maybe_return_ritual_loadout(extraction_type, caster)
 
     cond do
       run.status != :active ->
@@ -962,6 +1150,9 @@ defmodule MMGO.Dungeons do
 
       expedition.status != :active ->
         Repo.rollback(extraction_changeset("expedition is not active"))
+
+      is_nil(position) ->
+        Repo.rollback(extraction_changeset("run has no valid current dungeon node"))
 
       extraction && extraction.id != current_extraction_id ->
         Repo.rollback(extraction_changeset("run already has an active extraction"))
@@ -984,15 +1175,69 @@ defmodule MMGO.Dungeons do
       extraction_type == :return_ritual and not expedition_member?(expedition.id, caster.id) ->
         Repo.rollback(extraction_changeset("ritual caster must belong to the expedition"))
 
+      extraction_type == :return_ritual and not ritual_loadout.active_grimoire? ->
+        Repo.rollback(extraction_changeset("ritual caster must have an active grimoire"))
+
+      extraction_type == :return_ritual and not ritual_loadout.prepared? ->
+        Repo.rollback(
+          extraction_changeset("active grimoire must contain a prepared return ritual")
+        )
+
       true ->
-        :ok
+        %{position: position, ritual_loadout: ritual_loadout}
     end
   end
 
   defp ritual_caster?(%Character{} = character) do
     case MMGO.Academy.active_specialization(character.id) do
-      %MMGO.Academy.Specialization{track: :wizardry} -> true
-      _other -> false
+      %MMGO.Academy.Specialization{track: :wizardry, realm_id: realm_id}
+      when realm_id == character.realm_id ->
+        true
+
+      _other ->
+        false
+    end
+  end
+
+  defp ritual_caster?(_character), do: false
+
+  defp maybe_return_ritual_loadout(:return_ritual, %Character{} = caster),
+    do: return_ritual_loadout(caster)
+
+  defp maybe_return_ritual_loadout(_extraction_type, _caster), do: nil
+
+  defp active_grimoire_for_return_ritual(%Character{} = character) do
+    case Grimoires.active_grimoire_for_character(character.id) do
+      %{realm_id: realm_id} = grimoire when realm_id == character.realm_id ->
+        Grimoires.get_grimoire!(grimoire.id)
+
+      _other ->
+        nil
+    end
+  end
+
+  defp return_ritual_spell_from(nil), do: nil
+
+  defp return_ritual_spell_from(%{entries: entries}) do
+    Enum.find_value(entries, fn
+      %{spell: %{tags: tags} = spell} when is_list(tags) ->
+        if @return_ritual_tag in tags, do: spell
+
+      _entry ->
+        nil
+    end)
+  end
+
+  defp return_ritual_spell_from(_grimoire), do: nil
+
+  defp current_run_position(%Run{} = run) do
+    with %Node{} = node <- Repo.get(Node, run.current_node_id),
+         true <- node.floor_id == run.current_floor_id,
+         %Floor{} = floor <- Repo.get(Floor, node.floor_id),
+         true <- floor.dungeon_id == run.dungeon_id do
+      %{node: node, floor: floor}
+    else
+      _other -> nil
     end
   end
 
@@ -1307,6 +1552,35 @@ defmodule MMGO.Dungeons do
     ])
   end
 
+  defp apply_route_plan_bonus!(%Expedition{} = expedition, base_xp, encounter_id, now) do
+    case Map.get(expedition.metadata || %{}, "club_route_plan") do
+      %{"status" => "available", "xp_bonus_bps" => bonus_bps} = route_plan
+      when is_integer(bonus_bps) and bonus_bps > 0 ->
+        bonus_bps = min(bonus_bps, 2_500)
+        xp_bonus = max(div(max(base_xp, 1) * bonus_bps + 9_999, 10_000), 1)
+
+        consumed_route_plan =
+          route_plan
+          |> Map.put("status", "consumed")
+          |> Map.put("consumed_at", DateTime.to_iso8601(now))
+          |> Map.put("consumed_for_encounter_id", encounter_id)
+          |> Map.put("xp_awarded", xp_bonus)
+
+        updated_expedition =
+          expedition
+          |> Expedition.changeset(%{
+            metadata: Map.put(expedition.metadata || %{}, "club_route_plan", consumed_route_plan)
+          })
+          |> Repo.update!()
+
+        {base_xp + xp_bonus, %{"xp_awarded" => xp_bonus, "xp_bonus_bps" => bonus_bps},
+         updated_expedition}
+
+      _other ->
+        {base_xp, nil, expedition}
+    end
+  end
+
   defp lock_expedition!(expedition_id) do
     Expedition
     |> where([expedition], expedition.id == ^expedition_id)
@@ -1357,8 +1631,13 @@ defmodule MMGO.Dungeons do
     |> Repo.all()
   end
 
-  defp party_shared_hp(expedition_members) do
-    max(length(expedition_members), 1) * 100
+  defp party_shared_hp(expedition_members, shared_hp_drain) do
+    expedition_members
+    |> length()
+    |> max(1)
+    |> Kernel.*(100)
+    |> Kernel.-(shared_hp_drain)
+    |> max(1)
   end
 
   defp encounter_shared_hp_from_spawns(%Encounter{} = encounter, spawns) when is_list(spawns) do
@@ -1660,9 +1939,14 @@ defmodule MMGO.Dungeons do
   end
 
   defp validate_loot_claim!(%LootDrop{} = loot_drop, %Character{} = character) do
+    run = Repo.get!(Run, loot_drop.run_id)
+
     cond do
       loot_drop.status != :available ->
         Repo.rollback(loot_changeset("loot has already been claimed"))
+
+      run.current_node_id != loot_drop.node_id ->
+        Repo.rollback(loot_changeset("loot must be claimed at the current dungeon node"))
 
       character.realm_id != run_realm_id!(loot_drop.run_id) ->
         Repo.rollback(loot_changeset("character must belong to the same realm as the run"))
@@ -1680,17 +1964,30 @@ defmodule MMGO.Dungeons do
   defp validate_resource_claim!(
          %ResourceCache{} = resource_cache,
          %Character{} = character,
+         %Run{} = run,
+         %Expedition{} = expedition,
          quantity
        ) do
     cond do
       quantity <= 0 ->
         Repo.rollback(resource_changeset("quantity must be greater than zero"))
 
+      run.status != :active ->
+        Repo.rollback(resource_changeset("dungeon run is not active"))
+
+      expedition.status != :active ->
+        Repo.rollback(resource_changeset("expedition is not active"))
+
       resource_cache.status != :available ->
         Repo.rollback(resource_changeset("resource cache is depleted"))
 
       quantity > resource_cache.quantity_remaining ->
         Repo.rollback(resource_changeset("quantity exceeds the remaining resources"))
+
+      run.current_node_id != resource_cache.node_id ->
+        Repo.rollback(
+          resource_changeset("resource must be harvested at the current dungeon node")
+        )
 
       character.realm_id != run_realm_id!(resource_cache.run_id) ->
         Repo.rollback(resource_changeset("character must belong to the same realm as the run"))
@@ -1706,6 +2003,23 @@ defmodule MMGO.Dungeons do
         :ok
     end
   end
+
+  defp record_scavenging_time(metadata, game_days, now) do
+    metadata = if is_map(metadata), do: metadata, else: %{}
+
+    previous_game_days =
+      case Map.get(metadata, "scavenging_game_days") do
+        value when is_integer(value) and value >= 0 -> value
+        _other -> 0
+      end
+
+    metadata
+    |> Map.put("scavenging_game_days", previous_game_days + game_days)
+    |> Map.put("last_scavenged_at", DateTime.to_iso8601(now))
+  end
+
+  defp scavenging_game_days(quantity), do: quantity * @scavenging_game_days_per_unit
+  defp scavenging_xp_per_member(quantity), do: max(quantity * @scavenging_xp_per_unit, 1)
 
   defp run_realm_id!(run_id) do
     run = Repo.get!(Run, run_id)

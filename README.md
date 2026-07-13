@@ -6,7 +6,7 @@ A server-authoritative magic MMO roleplay engine built with Elixir/Phoenix, Tele
 
 ## Architecture
 
-MMGO is a deterministic, event-sourced game server. Spells are compiled from player descriptions into validated schemas at authoring time (not LLM-at-runtime). All game state is persisted via Ecto/PostgreSQL, with Oban for deferred job scheduling.
+MMGO is a deterministic, event-sourced game server. Spells are compiled from player descriptions into validated schemas at authoring time; during combat, a bounded runtime-AI layer may describe only the already-approved snapshot effects and Russian narration. It cannot alter targets, costs, rewards, shared HP, or state primitives, and a deterministic fallback is persisted when a provider fails. All game state is persisted via Ecto/PostgreSQL, with Oban for deferred job scheduling.
 
 ```
 ┌──────────────────────┐     ┌──────────────────────┐
@@ -37,7 +37,7 @@ MMGO is a deterministic, event-sourced game server. Spells are compiled from pla
 
 - **Accounts** — account, identity, character provisioning with Telegram linking
 - **World** — realms, locations, routes, scheduled journey completions
-- **Combat** — deterministic turn engine with tool-user actions, AI narration
+- **Combat** — deterministic timed turn engine, immutable action snapshots, bounded AI orchestration, Russian narration
 - **Spells** — compiled schemas from player-authored descriptions, runtime validation
 - **Grimoires** — loadouts of prepared spells per character
 - **Economy** — append-only ledgers, treasury accounts, exchange rates, migration
@@ -116,6 +116,7 @@ By default the app uses a mock AI provider for local dev. Set `GEMINI_API_KEY` t
 | `GEMINI_API_KEY` | _(unset — uses mock)_ |
 | `GEMINI_API_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
 | `GEMINI_SPELL_MODEL` | `gemini-3-flash` |
+| `GEMINI_COMBAT_MODEL` | `g3f-lite` |
 | `GEMINI_NARRATION_MODEL` | `g3f-lite` |
 
 ## Project structure
@@ -163,7 +164,7 @@ lib/
 ## Design conventions
 
 - **Server-authoritative** — all game logic runs on the server; the frontend is a thin client
-- **Deterministic spells** — spells are compiled from author descriptions into validated schemas, not run through an LLM at combat time
+- **Bounded runtime AI** — combat mechanics use immutable server snapshots; AI may only produce schema-validated manifestations/narration within those limits, with deterministic fallback
 - **Append-only** — combat logs and economy ledgers are append-only for auditability
 - **Mobile-first** — the LiveView frontend targets Telegram Mini App at ~375px touch viewport
 - **Location-gated** — actions live at physical map locations, not in global nav bars

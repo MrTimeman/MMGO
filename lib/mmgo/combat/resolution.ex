@@ -19,7 +19,9 @@ defmodule MMGO.Combat.Resolution do
   """
 
   alias MMGO.Combat.Combat, as: CombatSchema
+  alias MMGO.Clubs
   alias MMGO.Dungeons
+  alias MMGO.Overworld
   alias MMGO.PVP
 
   @doc """
@@ -27,27 +29,63 @@ defmodule MMGO.Combat.Resolution do
 
   Safe to call for any combat regardless of `status`/`kind` — it is a no-op
   unless the combat is `:finished` and belongs to a domain (duel, dungeon
-  encounter) that has one. Also safe to call more than once for the same
-  finished combat: the underlying settlement/sync functions re-check their
-  own state (duel/encounter status) inside a locked transaction and return
-  an error instead of double-settling, so a caller can call `finalize/1`
-  defensively without risking a double payout or double loot drop.
+  encounter) that has one. It is safe to call more than once for the same
+  finished combat: terminal domain records report `:already_finalized` rather
+  than attempting a second payout, loot drop, or sacrifice.
   """
   def finalize(%CombatSchema{status: :finished, kind: :duel} = combat) do
-    if duel_id(combat) do
-      PVP.settle_duel_from_combat(combat)
+    case duel_id(combat) do
+      duel_id when is_binary(duel_id) ->
+        case PVP.get_duel!(duel_id).status do
+          status when status in [:resolved, :cancelled, :rejected] -> {:ok, :already_finalized}
+          _status -> PVP.settle_duel_from_combat(combat)
+        end
+
+      _other ->
+        {:ok, :no_op}
+    end
+  end
+
+  def finalize(%CombatSchema{status: :finished, kind: :dungeon_encounter} = combat) do
+    case encounter_id(combat) do
+      encounter_id when is_binary(encounter_id) ->
+        case Dungeons.get_encounter!(encounter_id).status do
+          status when status in [:cleared, :avoided, :failed] -> {:ok, :already_finalized}
+          _status -> Dungeons.sync_encounter_combat(combat)
+        end
+
+      _other ->
+        {:ok, :no_op}
+    end
+  end
+
+  def finalize(%CombatSchema{status: :finished, kind: :overworld_encounter} = combat) do
+    if encounter_id(combat) do
+      Overworld.settle_encounter_from_combat(combat)
     else
       {:ok, :no_op}
     end
   end
 
-  def finalize(%CombatSchema{status: :finished, kind: :dungeon_encounter} = combat) do
-    Dungeons.sync_encounter_combat(combat)
+  def finalize(%CombatSchema{status: :finished, kind: :club_match} = combat) do
+    if club_event_id(combat) do
+      Clubs.settle_event_from_combat(combat)
+    else
+      {:ok, :no_op}
+    end
   end
 
   def finalize(%CombatSchema{} = _combat), do: {:ok, :no_op}
 
   defp duel_id(%CombatSchema{metadata: metadata}) do
     metadata["duel_id"] || metadata[:duel_id]
+  end
+
+  defp encounter_id(%CombatSchema{metadata: metadata}) do
+    metadata["encounter_id"] || metadata[:encounter_id]
+  end
+
+  defp club_event_id(%CombatSchema{metadata: metadata}) do
+    metadata["club_event_id"] || metadata[:club_event_id]
   end
 end

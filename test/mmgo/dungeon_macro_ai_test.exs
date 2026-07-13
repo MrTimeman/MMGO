@@ -100,6 +100,7 @@ defmodule MMGO.DungeonMacroAiTest do
     link_a: link_a
   } do
     {:ok, _result} = Dungeons.maintain_dungeon_by_id(dungeon.id, now: ~U[2026-03-28 12:00:00Z])
+    resolve_entrance_encounter(run)
 
     link_state = Repo.get_by!(Dungeons.LinkState, dungeon_id: dungeon.id, link_id: link_a.id)
 
@@ -122,6 +123,8 @@ defmodule MMGO.DungeonMacroAiTest do
     {:ok, %{node_overrides: _node_overrides}} =
       Dungeons.maintain_dungeon_by_id(dungeon.id, now: ~U[2026-03-28 12:00:00Z])
 
+    resolve_entrance_encounter(run)
+
     assert {:ok, %{run: moved_run}} = Dungeons.move_run(run, room.id)
     encounter = Dungeons.current_encounter_for_run(moved_run.id)
     node_override = Repo.get_by!(Dungeons.NodeOverride, dungeon_id: dungeon.id, node_id: room.id)
@@ -140,5 +143,14 @@ defmodule MMGO.DungeonMacroAiTest do
     |> Repo.insert!()
     |> Character.travel_changeset(%{current_location_id: location.id})
     |> Repo.update!()
+  end
+
+  defp resolve_entrance_encounter(run) do
+    encounter = Dungeons.current_encounter_for_run(run.id)
+
+    assert {:ok, %{encounter: resolved_encounter}} =
+             Dungeons.resolve_encounter(encounter, :avoided)
+
+    assert resolved_encounter.status == :avoided
   end
 end

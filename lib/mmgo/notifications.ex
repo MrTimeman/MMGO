@@ -6,7 +6,7 @@ defmodule MMGO.Notifications do
   alias MMGO.Notifications.{DeliveryWorker, Formatter, Notification}
   alias MMGO.Repo
 
-  @channels [:telegram]
+  @channels [:in_app, :telegram]
   def list_notifications(character_id \\ nil) do
     query =
       case character_id do
@@ -56,6 +56,31 @@ defmodule MMGO.Notifications do
     end
   end
 
+  @doc "Stores an immediately visible in-app notification without requiring Telegram identity."
+  def enqueue_in_app(%Character{} = character, kind, payload, opts \\ []) when is_map(payload) do
+    scheduled_at = Keyword.get(opts, :scheduled_at, DateTime.utc_now())
+    delivered_at = Keyword.get(opts, :delivered_at, scheduled_at)
+    metadata = Keyword.get(opts, :metadata, %{})
+    dedupe_key = Keyword.get(opts, :dedupe_key)
+
+    with :ok <- validate_channel(:in_app),
+         :ok <- validate_dedupe_key(character.id, dedupe_key) do
+      %Notification{}
+      |> Notification.changeset(%{
+        character_id: character.id,
+        channel: :in_app,
+        kind: to_string(kind),
+        status: :sent,
+        scheduled_at: scheduled_at,
+        delivered_at: delivered_at,
+        payload: stringify_keys(payload),
+        metadata: stringify_keys(metadata),
+        dedupe_key: dedupe_key
+      })
+      |> Repo.insert()
+    end
+  end
+
   def deliver_notification_by_id(notification_id, opts \\ [])
       when is_binary(notification_id) and is_list(opts) do
     mark_failed? = Keyword.get(opts, :mark_failed?, true)
@@ -94,7 +119,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_journey_arrived(%Character{} = character, journey) do
-    enqueue(
+    notify(
       character,
       :journey_arrived,
       %{
@@ -107,20 +132,22 @@ defmodule MMGO.Notifications do
   end
 
   def notify_enrollment_completed(%Character{} = character, enrollment) do
-    enqueue(
+    notify(
       character,
       :academy_completed,
       %{
         enrollment_id: enrollment.id,
         program_type: to_string(enrollment.program_type),
-        track: enrollment.track && to_string(enrollment.track)
+        track: enrollment.track && to_string(enrollment.track),
+        status: to_string(enrollment.status),
+        outcome_tier: Map.get(enrollment.metadata || %{}, "outcome_tier")
       },
       dedupe_key: "academy-completed:#{enrollment.id}"
     )
   end
 
   def notify_scavenge_completed(%Character{} = character, attempt) do
-    enqueue(
+    notify(
       character,
       :scavenge_completed,
       %{
@@ -133,7 +160,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_brew_completed(%Character{} = character, brew_job) do
-    enqueue(
+    notify(
       character,
       :brew_completed,
       %{
@@ -146,7 +173,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_craft_completed(%Character{} = character, craft_job) do
-    enqueue(
+    notify(
       character,
       :craft_completed,
       %{
@@ -159,7 +186,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_research_completed(%Character{} = character, project) do
-    enqueue(
+    notify(
       character,
       :research_completed,
       %{
@@ -172,7 +199,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_base_ready(%Character{} = character, base) do
-    enqueue(
+    notify(
       character,
       :base_ready,
       %{
@@ -185,7 +212,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_realm_migration_started(%Character{} = character, migration, destination_realm) do
-    enqueue(
+    notify(
       character,
       :realm_migration_started,
       %{
@@ -199,7 +226,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_realm_migration_completed(%Character{} = character, migration) do
-    enqueue(
+    notify(
       character,
       :realm_migration_completed,
       %{
@@ -211,7 +238,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_extraction_completed(%Character{} = character, run, extraction_type) do
-    enqueue(
+    notify(
       character,
       :dungeon_extraction_completed,
       %{
@@ -224,7 +251,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_run_failed(%Character{} = character, run, lost_item_count) do
-    enqueue(
+    notify(
       character,
       :dungeon_run_failed,
       %{
@@ -236,7 +263,7 @@ defmodule MMGO.Notifications do
   end
 
   def notify_club_invitation(%Character{} = character, invitation, club) do
-    enqueue(
+    notify(
       character,
       :club_invitation,
       %{
@@ -249,8 +276,21 @@ defmodule MMGO.Notifications do
     )
   end
 
+  def notify_party_invitation(%Character{} = character, invitation, party) do
+    notify(
+      character,
+      :party_invitation,
+      %{
+        invitation_id: invitation["id"],
+        party_id: party.id,
+        party_name: party.name
+      },
+      dedupe_key: "party-invitation:#{invitation["id"]}"
+    )
+  end
+
   def notify_org_invitation(%Character{} = character, invitation, organization) do
-    enqueue(
+    notify(
       character,
       :organization_invitation,
       %{
@@ -262,6 +302,24 @@ defmodule MMGO.Notifications do
       dedupe_key: "organization-invitation:#{invitation.id}"
     )
   end
+
+  defp notify(%Character{} = character, kind, payload, opts) do
+    dedupe_key = Keyword.get(opts, :dedupe_key)
+    in_app_opts = Keyword.put(opts, :dedupe_key, channel_dedupe_key(dedupe_key, :in_app))
+    telegram_opts = Keyword.put(opts, :dedupe_key, channel_dedupe_key(dedupe_key, :telegram))
+
+    case enqueue_in_app(character, kind, payload, in_app_opts) do
+      {:ok, in_app_notification} ->
+        _ = enqueue(character, kind, payload, telegram_opts)
+        {:ok, in_app_notification}
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  defp channel_dedupe_key(nil, _channel), do: nil
+  defp channel_dedupe_key(dedupe_key, channel), do: "#{dedupe_key}:#{channel}"
 
   defp validate_channel(channel) when channel in @channels, do: :ok
 

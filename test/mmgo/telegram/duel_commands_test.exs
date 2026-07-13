@@ -16,12 +16,12 @@ defmodule MMGO.Telegram.DuelCommandsTest do
 
     {:ok, location} =
       Worlds.create_location(realm, %{
-        slug: "duel-yard",
-        name: "Duel Yard",
-        kind: :city,
+        slug: "duel-tower",
+        name: "Duel Tower",
+        kind: :tower,
         x: 10,
         y: 10,
-        safe_zone: true
+        safe_zone: false
       })
 
     challenger = character_fixture(realm, location, "challenger", "Challenger")

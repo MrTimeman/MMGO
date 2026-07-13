@@ -5,8 +5,11 @@ defmodule MMGO.Economy do
   alias Ecto.Multi
   alias MMGO.Accounts.Character
   alias MMGO.Economy.{EconomyAccount, LedgerEntry}
+  alias MMGO.Organizations.Organization
   alias MMGO.Repo
   alias MMGO.Worlds.Realm
+
+  @public_organization_activity_entry_limit 250
 
   def list_accounts_for_realm(realm_id) when is_binary(realm_id) do
     Repo.all(
@@ -24,17 +27,81 @@ defmodule MMGO.Economy do
     )
   end
 
+  @doc """
+  Returns a public, bounded activity score for organization treasuries in one
+  realm. The result deliberately contains no balances or amounts: the map may
+  show that a linked organization is economically active without exposing its
+  private treasury.
+  """
+  def public_organization_activity_for_realm(realm_id) when is_binary(realm_id) do
+    LedgerEntry
+    |> where([entry], entry.realm_id == ^realm_id)
+    |> order_by([entry], desc: entry.inserted_at, desc: entry.id)
+    |> limit(^@public_organization_activity_entry_limit)
+    |> Repo.all()
+    |> Enum.reduce(%{}, fn entry, activity ->
+      case organization_id_from_ledger_entry(entry) do
+        organization_id when is_binary(organization_id) ->
+          Map.update(activity, organization_id, 1, &(&1 + 1))
+
+        _other ->
+          activity
+      end
+    end)
+  end
+
+  def public_organization_activity_for_realm(_realm_id), do: %{}
+
+  @doc "Lists the append-only entries that debit or credit one account."
+  def list_ledger_entries_for_account(account_id) when is_binary(account_id) do
+    Repo.all(
+      from entry in LedgerEntry,
+        where: entry.debit_account_id == ^account_id or entry.credit_account_id == ^account_id,
+        order_by: [desc: entry.inserted_at, desc: entry.id]
+    )
+  end
+
   def get_account!(id), do: Repo.get!(EconomyAccount, id)
 
   def treasury_account_for_realm(realm_id) when is_binary(realm_id) do
     Repo.get_by(EconomyAccount, realm_id: realm_id, owner_type: :treasury)
   end
 
+  @doc "Returns the realm-local charity fund account, if the fund has been opened."
+  def charity_fund_account_for_realm(realm_id) when is_binary(realm_id) do
+    Repo.get_by(EconomyAccount, realm_id: realm_id, owner_type: :charity_fund)
+  end
+
+  def charity_fund_account_for_realm(_realm_id), do: nil
+
   def ensure_treasury_account(%Realm{} = realm, initial_supply \\ 0) do
     case treasury_account_for_realm(realm.id) do
       %EconomyAccount{} = account -> {:ok, account}
       nil -> create_treasury_account(realm, initial_supply)
     end
+  end
+
+  @doc "Ensures one durable charity fund account exists for a realm."
+  def ensure_charity_fund_account(%Realm{} = realm) do
+    Repo.transaction(fn ->
+      _realm = lock_realm!(realm.id)
+
+      case charity_fund_account_for_realm(realm.id) do
+        %EconomyAccount{} = account ->
+          account
+
+        nil ->
+          %EconomyAccount{}
+          |> EconomyAccount.changeset(%{
+            realm_id: realm.id,
+            owner_type: :charity_fund,
+            current_balance: 0,
+            metadata: %{"system" => "charity_fund"}
+          })
+          |> Repo.insert!()
+      end
+    end)
+    |> normalize_transaction_result()
   end
 
   def create_treasury_account(%Realm{} = realm, initial_supply) when is_integer(initial_supply) do
@@ -80,6 +147,56 @@ defmodule MMGO.Economy do
         end
     end
   end
+
+  @doc """
+  Returns the durable treasury account for one organization.
+
+  Organization accounts use the existing closed-ledger table rather than a
+  browser-side balance. The organization context serializes creation by
+  locking the organization row before calling `ensure_organization_account/1`.
+  """
+  def organization_account_for_organization(%Organization{} = organization) do
+    EconomyAccount
+    |> where(
+      [account],
+      account.realm_id == ^organization.realm_id and account.owner_type == :organization
+    )
+    |> Repo.all()
+    |> Enum.find(fn account ->
+      Map.get(account.metadata || %{}, "organization_id") == organization.id
+    end)
+  end
+
+  def organization_account_for_organization(_organization), do: nil
+
+  @doc """
+  Ensures a zero-balance account exists for an organization treasury.
+
+  Callers that can create accounts must hold the organization row lock first;
+  this makes the metadata-backed owner reference safe without a new schema
+  migration.
+  """
+  def ensure_organization_account(%Organization{} = organization) do
+    case organization_account_for_organization(organization) do
+      %EconomyAccount{} = account ->
+        {:ok, account}
+
+      nil ->
+        %EconomyAccount{}
+        |> EconomyAccount.changeset(%{
+          realm_id: organization.realm_id,
+          owner_type: :organization,
+          current_balance: 0,
+          metadata: %{
+            "system" => "organization_treasury",
+            "organization_id" => organization.id
+          }
+        })
+        |> Repo.insert()
+    end
+  end
+
+  def ensure_organization_account(_organization), do: {:error, missing_account_changeset()}
 
   def create_escrow_account(%Realm{} = realm, metadata \\ %{}) do
     %EconomyAccount{}
@@ -143,6 +260,77 @@ defmodule MMGO.Economy do
       |> normalize_transaction_result()
     end
   end
+
+  @doc """
+  Atomically transfers one account's balance to distinct same-realm recipients.
+
+  Each transfer is a map with `:credit_account`, `:amount`, and optional
+  `:metadata`. The debit account is locked once and all credits are locked in a
+  stable order, so a collective payout cannot leave a partial split behind.
+  """
+  def transfer_many(debit_account, transfers, attrs \\ %{})
+
+  def transfer_many(%EconomyAccount{} = debit_account, transfers, attrs)
+      when is_list(transfers) and is_map(attrs) do
+    attrs = normalize_metadata(attrs)
+
+    with {:ok, transfers} <- normalize_many_transfers(debit_account, transfers) do
+      total_amount = transfers |> Enum.map(& &1.amount) |> Enum.sum()
+
+      Repo.transaction(fn ->
+        account_ids = [debit_account.id | Enum.map(transfers, & &1.credit_account.id)]
+        accounts = lock_accounts!(account_ids)
+        debit_account = Map.fetch!(accounts, debit_account.id)
+
+        if debit_account.current_balance < total_amount do
+          Repo.rollback(insufficient_funds_changeset())
+        end
+
+        ledger_entries =
+          Enum.map(transfers, fn transfer ->
+            credit_account = Map.fetch!(accounts, transfer.credit_account.id)
+
+            %LedgerEntry{}
+            |> LedgerEntry.changeset(%{
+              realm_id: debit_account.realm_id,
+              entry_type: entry_type_from_attrs(attrs, :transfer),
+              amount: transfer.amount,
+              debit_account_id: debit_account.id,
+              credit_account_id: credit_account.id,
+              metadata: Map.merge(attrs, transfer.metadata)
+            })
+            |> Repo.insert!()
+          end)
+
+        updated_debit =
+          debit_account
+          |> EconomyAccount.changeset(%{
+            current_balance: debit_account.current_balance - total_amount
+          })
+          |> Repo.update!()
+
+        updated_credit_accounts =
+          Enum.map(transfers, fn transfer ->
+            credit_account = Map.fetch!(accounts, transfer.credit_account.id)
+
+            credit_account
+            |> EconomyAccount.changeset(%{
+              current_balance: credit_account.current_balance + transfer.amount
+            })
+            |> Repo.update!()
+          end)
+
+        %{
+          ledger_entries: ledger_entries,
+          debit_account: updated_debit,
+          credit_accounts: updated_credit_accounts
+        }
+      end)
+      |> normalize_transaction_result()
+    end
+  end
+
+  def transfer_many(_debit_account, _transfers, _attrs), do: {:error, missing_account_changeset()}
 
   def taxed_transfer(
         %EconomyAccount{} = payer_account,
@@ -283,6 +471,50 @@ defmodule MMGO.Economy do
 
   defp validate_transfer_pair(_debit_account, _credit_account), do: :ok
 
+  defp normalize_many_transfers(%EconomyAccount{} = debit_account, transfers) do
+    case Enum.reduce_while(transfers, {:ok, []}, fn
+           %{credit_account: %EconomyAccount{} = credit_account, amount: amount} = transfer,
+           {:ok, normalized}
+           when is_integer(amount) ->
+             with :ok <- validate_transfer_pair(debit_account, credit_account),
+                  :ok <- validate_amount(amount) do
+               metadata =
+                 case Map.get(transfer, :metadata, %{}) do
+                   value when is_map(value) -> normalize_metadata(value)
+                   _other -> %{}
+                 end
+
+               {:cont,
+                {:ok,
+                 [
+                   %{credit_account: credit_account, amount: amount, metadata: metadata}
+                   | normalized
+                 ]}}
+             else
+               {:error, _reason} = error -> {:halt, error}
+             end
+
+           _transfer, _normalized ->
+             {:halt, {:error, invalid_amount_changeset("recipient transfers are invalid")}}
+         end) do
+      {:ok, []} ->
+        {:error, invalid_amount_changeset("at least one recipient is required")}
+
+      {:ok, normalized} ->
+        transfers = Enum.reverse(normalized)
+        credit_account_ids = Enum.map(transfers, & &1.credit_account.id)
+
+        if length(credit_account_ids) == length(Enum.uniq(credit_account_ids)) do
+          {:ok, transfers}
+        else
+          {:error, invalid_amount_changeset("recipient accounts must be distinct")}
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
   defp validate_amount(amount) when amount > 0, do: :ok
 
   defp validate_amount(_amount),
@@ -317,6 +549,13 @@ defmodule MMGO.Economy do
     Map.new(accounts, &{&1.id, &1})
   end
 
+  defp lock_realm!(realm_id) do
+    Realm
+    |> where([realm], realm.id == ^realm_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one!()
+  end
+
   defp normalize_transaction_result({:ok, result}), do: {:ok, result}
   defp normalize_transaction_result({:error, %Changeset{} = changeset}), do: {:error, changeset}
 
@@ -329,6 +568,16 @@ defmodule MMGO.Economy do
   defp entry_type_from_attrs(attrs, fallback) do
     attrs["entry_type"] || Atom.to_string(fallback)
   end
+
+  defp organization_id_from_ledger_entry(%LedgerEntry{metadata: metadata})
+       when is_map(metadata) do
+    case Map.get(metadata, "organization_id") do
+      organization_id when is_binary(organization_id) -> organization_id
+      _other -> nil
+    end
+  end
+
+  defp organization_id_from_ledger_entry(_entry), do: nil
 
   defp normalize_metadata(attrs) when is_map(attrs) do
     Map.new(attrs, fn {key, value} -> {to_string(key), value} end)

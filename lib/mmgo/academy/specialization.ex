@@ -4,6 +4,7 @@ defmodule MMGO.Academy.Specialization do
   import Ecto.Changeset
 
   alias MMGO.Accounts.Character
+  alias MMGO.Spells
   alias MMGO.Worlds.Realm
 
   @tracks [:wizardry, :alchemy, :mastery]
@@ -54,6 +55,7 @@ defmodule MMGO.Academy.Specialization do
         changeset
         |> validate_required([:primary_school, :secondary_school])
         |> validate_distinct_schools()
+        |> validate_compatible_schools()
 
       _other ->
         changeset
@@ -63,6 +65,21 @@ defmodule MMGO.Academy.Specialization do
   defp validate_distinct_schools(changeset) do
     if get_field(changeset, :primary_school) == get_field(changeset, :secondary_school) do
       add_error(changeset, :secondary_school, "must differ from the primary school")
+    else
+      changeset
+    end
+  end
+
+  defp validate_compatible_schools(changeset) do
+    primary_school = get_field(changeset, :primary_school)
+    secondary_school = get_field(changeset, :secondary_school)
+
+    if Spells.opposed_schools?(primary_school, secondary_school) do
+      add_error(
+        changeset,
+        :secondary_school,
+        "is incompatible with the primary school's opposite on the elemental compass"
+      )
     else
       changeset
     end

@@ -10,6 +10,8 @@ defmodule MMGO.Telegram.CommandsTest do
   alias MMGO.Repo
   alias MMGO.Academy.Specialization
   alias MMGO.Alchemy
+  alias MMGO.Bases
+  alias MMGO.Combat
   alias MMGO.Crafting
   alias MMGO.Spells
   alias MMGO.Telegram.Commands
@@ -147,6 +149,11 @@ defmodule MMGO.Telegram.CommandsTest do
       character
       |> Character.travel_changeset(%{current_location_id: tower.id})
       |> Repo.update!()
+
+    {:ok, %{base: building_base}} =
+      Bases.start_custom_base_build(character, tower, %{name: "Bot Tower Lab"}, build_days: 1)
+
+    assert {:ok, _active_base} = Bases.complete_base_build_by_id(building_base.id, force: true)
 
     %Specialization{}
     |> Specialization.changeset(%{
@@ -388,6 +395,7 @@ defmodule MMGO.Telegram.CommandsTest do
         school: :fire,
         targeting: :enemy,
         delivery_form: :sphere,
+        tags: ["return_ritual"],
         effects: [
           %{applies_to: :target, state: "impact", intensity: 40, variance: 0, duration: 0}
         ],
@@ -426,6 +434,16 @@ defmodule MMGO.Telegram.CommandsTest do
              Commands.process_message(character, %{"text" => "/combat cast #{spell.id}"})
 
     assert cast_text =~ "Spell queued"
+
+    combat = Combat.active_combat_for_character(character.id)
+
+    encounter_participant =
+      Enum.find(combat.participants, fn participant ->
+        participant.character_id != character.id and participant.status == :ready
+      end)
+
+    assert {:ok, _wait} =
+             Combat.submit_action(combat, encounter_participant.id, %{action_type: :wait})
 
     assert {:ok, resolve_text} =
              Commands.process_message(character, %{"text" => "/combat resolve"})

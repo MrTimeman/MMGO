@@ -7,7 +7,7 @@ defmodule MMGO.Combat.Action do
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Spells.Spell
 
-  @action_types [:wait, :cast_spell, :use_item]
+  @action_types [:wait, :cast_spell, :use_item, :flee]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

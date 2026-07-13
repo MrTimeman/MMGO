@@ -1,624 +1,626 @@
 defmodule MMGOWeb.SpellbookLive do
   @moduledoc """
-  The Tower spellbook, wired to the real `MMGO.Spells`/`MMGO.Grimoires`
-  contexts through `MMGO.Play`.
+  Scoped spell composition and grimoire loadouts.
 
-  Map-first (GDD §5): magic only works at the Tower, so mount gates on the
-  session character's location. Domain rules stay in their contexts — this view
-  only composes reads and forwards player intent.
+  The LiveView only renders state supplied by `MMGO.Play` and forwards player
+  choices back to that facade. Location, travel, ownership, and school rules
+  are deliberately rechecked there for every command.
   """
   use MMGOWeb, :live_view
 
   alias MMGO.Play
-  alias MMGOWeb.LocationGate
 
-  @school_label %{
-    fire: "Огонь",
-    water: "Вода",
-    earth: "Земля",
-    air: "Воздух",
-    life: "Жизнь",
-    death: "Смерть",
-    chaos: "Хаос",
-    order: "Порядок"
-  }
-
-  @school_hue %{
-    fire: 18,
-    water: 210,
-    earth: 80,
-    air: 190,
-    life: 140,
-    death: 270,
-    chaos: 320,
-    order: 45
-  }
-
-  @school_order [:fire, :water, :earth, :air, :life, :death, :chaos, :order]
-
-  @targeting_label %{
-    self: "на себя",
-    ally: "союзник",
-    enemy: "враг",
-    zone: "зона"
-  }
-
-  @delivery_label %{
-    single_target: "одна цель",
-    beam: "луч",
-    cone: "конус",
-    sphere: "сфера",
-    wall: "стена",
-    zone: "зона",
-    self: "на себя",
-    link: "связь",
-    delayed_trigger: "отложенный триггер"
+  @school_labels %{
+    "fire" => "Огонь",
+    "water" => "Вода",
+    "earth" => "Земля",
+    "air" => "Воздух",
+    "life" => "Жизнь",
+    "death" => "Смерть",
+    "chaos" => "Хаос",
+    "order" => "Порядок"
   }
 
   @impl true
-  def mount(_params, session, socket) do
-    case session_character(session) do
-      nil ->
-        {:ok, push_navigate(socket, to: ~p"/play/continue")}
+  def mount(_params, _session, socket) do
+    character = socket.assigns.current_scope.character
 
-      character ->
-        case LocationGate.gate(socket, character, :tower) do
-          {:halt, socket} ->
-            {:ok, socket}
+    case Play.spellbook_state(character) do
+      {:ok, state} ->
+        {:ok,
+         socket
+         |> assign(:page_title, "Гримуар")
+         |> assign(:last_spell, nil)
+         |> assign(:compose_error, nil)
+         |> assign(:action_feedback, nil)
+         |> assign(:inscription_form, inscription_form())
+         |> assign_spellbook_state(state)
+         |> reset_compose_form()}
 
-          {:ok, socket} ->
-            {:ok, state} = Play.spellbook_state(character)
-
-            {:ok,
-             socket
-             |> assign(:page_title, "Гримуар")
-             |> assign(:view, :cast)
-             |> assign(:compiling, false)
-             |> assign(:last_spell, nil)
-             |> assign(:compile_error, nil)
-             |> assign(:pending_formula, nil)
-             |> assign(:grimoire_order, nil)
-             |> assign_spellbook_state(state)}
-        end
+      {:error, reason} ->
+        {:ok, redirect_for_spellbook_error(socket, reason)}
     end
   end
 
   @impl true
-  def handle_event("switch_view", %{"view" => view}, socket) do
-    view =
-      case view do
-        "cast" -> :cast
-        "grimoires" -> :grimoires
-        "spells" -> :spells
-        _ -> socket.assigns.view
-      end
-
-    socket = assign(socket, :view, view)
-
-    socket =
-      if view == :grimoires do
-        push_shelf(socket)
-      else
-        socket
-      end
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("hook_mounted", %{"hook" => "SpellCircle"}, socket) do
-    socket =
-      push_event(socket, "spell_circle_init", %{
-        slots: build_slots(socket.assigns.character, socket.assigns.spells),
-        current: %{}
-      })
-
-    {:noreply, socket}
-  end
-
-  @impl true
-  def handle_event("hook_mounted", %{"hook" => "GrimoireShelf"}, socket) do
-    {:noreply, push_shelf(socket)}
-  end
-
-  @impl true
-  def handle_event("spell_compile", params, socket) do
-    if socket.assigns.compiling do
-      {:noreply, socket}
-    else
-      formula = build_formula(params)
-
-      attrs = %{
-        "formula" => formula,
-        "school" => params["school"] || "chaos",
-        "base_id" => params["base"]
-      }
-
-      # Give the circle a beat to settle before the server-authoritative
-      # compile lands; the compile itself is deterministic (MMGO.Play).
-      Process.send_after(self(), {:spell_compiled, attrs}, 1200)
-
-      {:noreply,
-       socket
-       |> assign(:compiling, true)
-       |> assign(:compile_error, nil)
-       |> assign(:pending_formula, formula)}
-    end
-  end
-
-  @impl true
-  def handle_event("grimoire_create", _params, socket) do
-    index = length(socket.assigns.grimoires) + 1
-
-    case Play.create_grimoire(socket.assigns.character.id, "Чистый переплёт #{index}") do
-      {:ok, _grimoire} -> {:noreply, socket |> reload_spellbook() |> push_shelf()}
-      {:error, _reason} -> {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("grimoire_activate", %{"id" => id}, socket) do
-    case Play.activate_grimoire(socket.assigns.character.id, id) do
-      {:ok, _result} -> {:noreply, socket |> reload_spellbook() |> push_shelf()}
-      {:error, _reason} -> {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("grimoire_inscribe", %{"id" => id}, socket) do
-    case Play.inscribe_next_spell(socket.assigns.character.id, id) do
-      {:ok, _entry} -> {:noreply, socket |> reload_spellbook() |> push_shelf()}
-      {:error, _reason} -> {:noreply, socket}
-    end
-  end
-
-  @impl true
-  def handle_event("grimoire_reorder", %{"id" => id, "before_id" => before_id}, socket) do
-    ids = Enum.map(socket.assigns.grimoires, & &1.id)
-    order = socket.assigns.grimoire_order || ids
-    order = Enum.reject(order, &(&1 == id))
-
-    order =
-      case before_id do
-        nil -> order ++ [id]
-        _ -> insert_before(order, id, before_id)
-      end
-
-    {:noreply, socket |> assign(:grimoire_order, order) |> push_shelf()}
-  end
-
-  @impl true
-  def handle_info({:spell_compiled, attrs}, socket) do
-    case Play.compile_spell(socket.assigns.character.id, attrs) do
-      {:ok, spell} ->
+  def handle_event("compose", %{"composition" => attrs}, socket) when is_map(attrs) do
+    case Play.compile_spell(socket.assigns.current_scope.character, attrs) do
+      {:ok, result} ->
         {:noreply,
          socket
          |> reload_spellbook()
-         |> assign(:compiling, false)
-         |> assign(:last_spell, spell_view(spell))
-         |> assign(:compile_error, nil)
-         |> assign(:pending_formula, nil)
-         |> push_event("spell_result", %{ok: true})}
+         |> reset_compose_form()
+         |> assign(:last_spell, compiled_spell(result))
+         |> assign(:compose_error, nil)
+         |> assign(:action_feedback, nil)}
 
       {:error, reason} ->
         {:noreply,
          socket
-         |> assign(:compiling, false)
-         |> assign(:last_spell, nil)
-         |> assign(:compile_error, compile_error_message(reason))
-         |> assign(:pending_formula, nil)
-         |> push_event("spell_result", %{ok: false})}
+         |> assign(:compose_form, compose_form(attrs))
+         |> assign(:compose_error, spellbook_error_message(reason))
+         |> assign(:last_spell, nil)}
     end
+  end
+
+  def handle_event("compose", _params, socket) do
+    {:noreply,
+     socket
+     |> assign(:compose_error, spellbook_error_message(:invalid_composition))
+     |> assign(:last_spell, nil)}
+  end
+
+  @impl true
+  def handle_event(
+        "inscribe",
+        %{"inscription" => %{"grimoire_id" => grimoire_id, "spell_id" => spell_id}},
+        socket
+      ) do
+    case Play.inscribe_spell(socket.assigns.current_scope.character, grimoire_id, spell_id) do
+      {:ok, _entry} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{kind: :success, message: "Заклинание внесено в переплёт."})}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })}
+    end
+  end
+
+  def handle_event("inscribe", _params, socket) do
+    {:noreply,
+     assign(socket, :action_feedback, %{
+       kind: :error,
+       message: spellbook_error_message(:invalid_inscription)
+     })}
+  end
+
+  @impl true
+  def handle_event("activate", %{"id" => grimoire_id}, socket) do
+    case Play.activate_grimoire(socket.assigns.current_scope.character, grimoire_id) do
+      {:ok, _grimoire} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{kind: :success, message: "Боевой гримуар выбран."})}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })}
+    end
+  end
+
+  def handle_event("activate", _params, socket) do
+    {:noreply,
+     assign(socket, :action_feedback, %{
+       kind: :error,
+       message: spellbook_error_message(:invalid_grimoire)
+     })}
   end
 
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="scene-desk">
-      <%= if is_nil(@character) do %>
-        <div style="text-align:center; margin-top: 20vh; color: #e7e5e4;">
-          <h1 style="font-family: var(--font-serif); color: var(--color-accent); font-size: 2rem; margin-bottom: 1rem;">
-            Гримуар
-          </h1>
-          <p style="margin-bottom: 2rem;">Продолжите локальную игру, чтобы открыть гримуар.</p>
-          <a
-            href={~p"/play/continue"}
-            style="display: inline-block; padding: 0.75rem 2rem; background: var(--color-accent); color: #000; font-family: var(--font-serif); font-weight: bold; border-radius: 0.375rem; text-decoration: none;"
-          >
-            Войти в башню
-          </a>
-        </div>
-      <% else %>
-        <div class="book">
-          <div class="book__spine"></div>
-          <div class="book__page">
-            <div class="book__ribbons">
-              <button
-                type="button"
-                class={"book__ribbon#{if @view == :cast, do: " book__ribbon--active"}"}
-                phx-click="switch_view"
-                phx-value-view="cast"
-              >
-                Создать
-              </button>
-              <button
-                type="button"
-                class={"book__ribbon#{if @view == :grimoires, do: " book__ribbon--active"}"}
-                phx-click="switch_view"
-                phx-value-view="grimoires"
-              >
-                Гримуары
-              </button>
-              <button
-                type="button"
-                class={"book__ribbon#{if @view == :spells, do: " book__ribbon--active"}"}
-                phx-click="switch_view"
-                phx-value-view="spells"
-              >
-                Заклинания
-              </button>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <section id="spellbook-screen" class="mx-auto max-w-6xl space-y-6 pb-10">
+        <header class="overflow-hidden rounded-[2rem] border border-amber-900/20 bg-stone-950 px-6 py-7 text-amber-50 shadow-2xl sm:px-8">
+          <div class="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
+            <div class="max-w-2xl space-y-3">
+              <p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
+                Кабинет формул
+              </p>
+              <h1 class="font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
+                Гримуар {"·"} {@character.name}
+              </h1>
+              <p class="text-sm leading-6 text-stone-300">
+                Составление доступно здесь: <span
+                  id="spellbook-location"
+                  class="font-semibold text-amber-200"
+                >{@composition_location.name}</span>.
+                Основа и школа всегда проверяются хранителем круга.
+              </p>
             </div>
 
-            <a href={~p"/map"} class="book__back">&larr; покинуть башню</a>
-
-            <%= case @view do %>
-              <% :cast -> %>
-                <.cast_leaf
-                  character={@character}
-                  compiling={@compiling}
-                  compile_error={@compile_error}
-                  last_spell={@last_spell}
-                  pending_formula={@pending_formula}
-                />
-              <% :grimoires -> %>
-                <.grimoires_leaf character={@character} />
-              <% :spells -> %>
-                <.spells_leaf spells={@spells} />
-            <% end %>
+            <.link
+              id="spellbook-back-to-map"
+              navigate={~p"/map"}
+              class="inline-flex min-h-11 items-center justify-center rounded-xl border border-amber-200/30 px-4 py-2 text-sm font-semibold text-amber-50 transition hover:border-amber-200 hover:bg-amber-100/10"
+            >
+              <.icon name="hero-map" class="mr-2 size-4" /> Вернуться к карте
+            </.link>
           </div>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
+        </header>
 
-  attr :character, :map, required: true
-  attr :compiling, :boolean, required: true
-  attr :compile_error, :any, required: true
-  attr :last_spell, :any, required: true
-  attr :pending_formula, :any, required: true
-
-  defp cast_leaf(assigns) do
-    ~H"""
-    <div class="book__leaf">
-      <h1 class="book__title">Создание заклинания</h1>
-      <p class="book__subtitle">{@character.name}, начерти печать</p>
-      <div
-        id="spell-circle-root"
-        phx-hook="SpellCircle"
-        phx-update="ignore"
-        style="min-height: 340px; display: flex; justify-content: center;"
-      />
-
-      <%= if @compiling do %>
-        <div class="sc-result sc-result--working">
-          <span class="sc-result__kicker">AI толкует круг</span>
-          <p class="sc-result__formula">«{@pending_formula}»</p>
-          <p class="sc-result__desc">
-            Свечи гаснут, чернила ходят по странице. Ответ будет через несколько ударов сердца.
-          </p>
-        </div>
-      <% end %>
-
-      <%= if @compile_error do %>
-        <div style="margin-top: 1rem; padding: 0.75rem 1rem; background: rgba(124,43,34,0.1); border: 1px solid var(--parch-red); border-radius: 0.375rem; color: var(--parch-red); font-size: 0.875rem;">
-          {@compile_error}
-        </div>
-      <% end %>
-
-      <%= if @last_spell do %>
-        <div class="sc-result">
-          <span class="sc-result__kicker">Новое заклинание записано</span>
-          <h2 class="sc-result__name">{@last_spell.name}</h2>
-          <p class="sc-result__formula">«{@last_spell.formula}»</p>
-          <p class="sc-result__desc">{@last_spell.description}</p>
-          <div class="sc-result__meta">
-            <span>{school_label(@last_spell.school)}</span>
-            <span>мана {@last_spell.mana_cost}</span>
-            <span>усталость {@last_spell.fatigue_cost}</span>
-          </div>
-        </div>
-      <% end %>
-    </div>
-    """
-  end
-
-  attr :character, :map, required: true
-
-  defp grimoires_leaf(assigns) do
-    ~H"""
-    <div class="book__leaf">
-      <h1 class="book__title">Полка гримуаров</h1>
-      <p class="book__subtitle">переплетённые тома {@character.name}</p>
-      <div id="grimoire-shelf-root" phx-hook="GrimoireShelf" phx-update="ignore"></div>
-      <button
-        type="button"
-        phx-click="grimoire_create"
-        style="margin-top: 1rem; padding: 0.5rem 1rem; background: var(--parch-paper-dark); border: 1px solid var(--parch-ink-faint); border-radius: 4px; color: var(--parch-ink); font-family: var(--font-serif); cursor: pointer;"
-      >
-        + Переплести новый гримуар
-      </button>
-    </div>
-    """
-  end
-
-  attr :spells, :list, required: true
-
-  defp spells_leaf(assigns) do
-    ~H"""
-    <div class="book__leaf">
-      <h1 class="book__title">Известные заклинания</h1>
-      <p class="book__subtitle">записей в списке: {length(@spells)}</p>
-
-      <%= if @spells == [] do %>
-        <p class="splist__empty">Список пуст. Сотвори что-нибудь достойное записи.</p>
-      <% else %>
-        <div class="splist">
-          <%= for spell <- @spells do %>
-            <details class="splist__row">
-              <summary>
-                <span class="splist__mark" style={"background: #{school_color(spell.school)}"}></span>
-                <span class="splist__name">{spell.name}</span>
-                <span class="splist__school">{school_label(spell.school)}</span>
-              </summary>
-              <div class="splist__body">
-                <p class="splist__formula">«{spell.formula}»</p>
-                <%= if spell.description do %>
-                  <p class="splist__desc">{spell.description}</p>
-                <% end %>
-                <div class="splist__stat-grid">
-                  <div class="splist__stat">
-                    <span class="splist__stat-label">Уровень</span>
-                    <span class="splist__stat-value">{spell.level_requirement}+</span>
-                  </div>
-                  <div class="splist__stat">
-                    <span class="splist__stat-label">Мана</span>
-                    <span class="splist__stat-value">{spell.mana_cost}</span>
-                  </div>
-                  <div class="splist__stat">
-                    <span class="splist__stat-label">Утомление</span>
-                    <span class="splist__stat-value">{spell.fatigue_cost}</span>
-                  </div>
-                  <div class="splist__stat">
-                    <span class="splist__stat-label">Откат</span>
-                    <span class="splist__stat-value">{spell.cooldown_turns} х.</span>
-                  </div>
-                  <div class="splist__stat">
-                    <span class="splist__stat-label">Форма</span>
-                    <span class="splist__stat-value">{delivery_label(spell.delivery_form)}</span>
-                  </div>
-                  <div class="splist__stat">
-                    <span class="splist__stat-label">Цель</span>
-                    <span class="splist__stat-value">{targeting_label(spell.targeting)}</span>
-                  </div>
-                  <%= if spell.effects != [] do %>
-                    <div class="splist__stat">
-                      <span class="splist__stat-label">Эффекты</span>
-                      <span class="splist__stat-value">{length(spell.effects)}</span>
-                    </div>
-                  <% end %>
-                </div>
-                <p class="splist__lineage">{spell.lineage}</p>
+        <div class="grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(19rem,0.88fr)]">
+          <section
+            id="spell-compose-panel"
+            class="rounded-[2rem] border border-amber-950/15 bg-[#ece0bd] p-5 shadow-lg sm:p-8"
+          >
+            <div class="mb-6 flex items-start justify-between gap-4 border-b border-amber-950/15 pb-5">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-900/70">
+                  Новая запись
+                </p>
+                <h2 class="mt-2 font-serif text-2xl font-semibold text-stone-950">
+                  Создание заклинания
+                </h2>
               </div>
-            </details>
-          <% end %>
+              <span class="rounded-full border border-amber-900/20 bg-amber-100/70 px-3 py-1 text-xs font-semibold text-amber-950">
+                {length(@permitted_schools)} школ
+              </span>
+            </div>
+
+            <%= if @spells == [] do %>
+              <div
+                id="spell-library-empty"
+                class="rounded-2xl border border-dashed border-amber-950/30 bg-amber-50/45 p-6"
+              >
+                <h3 class="font-serif text-xl font-semibold text-stone-950">Библиотека ещё пуста</h3>
+                <p class="mt-2 max-w-xl text-sm leading-6 text-stone-700">
+                  Изучите начальное заклинание или вернитесь к обучению, затем выберите основу для новой формулы.
+                </p>
+              </div>
+            <% else %>
+              <.form
+                for={@compose_form}
+                id="spell-compose-form"
+                phx-submit="compose"
+                class="space-y-1"
+              >
+                <.input
+                  field={@compose_form[:base_spell_id]}
+                  id="spell-compose-base"
+                  type="select"
+                  label="Основа заклинания"
+                  options={spell_options(@spells)}
+                  prompt="Выберите известную основу"
+                  required
+                />
+                <.input
+                  field={@compose_form[:school]}
+                  id="spell-compose-school"
+                  type="select"
+                  label="Школа"
+                  options={school_options(@permitted_schools)}
+                  prompt="Выберите школу"
+                  required
+                />
+                <.input
+                  field={@compose_form[:formula]}
+                  id="spell-compose-formula"
+                  type="text"
+                  label="Латинская формула"
+                  placeholder="Ignis Radius"
+                  autocomplete="off"
+                  maxlength="180"
+                  required
+                />
+                <p class="-mt-1 text-sm leading-6 text-stone-700">
+                  От 1 до 6 латинских слов, до 180 байт. Формула проверяется на стороне мира.
+                </p>
+
+                <button
+                  id="spell-compose-submit"
+                  type="submit"
+                  phx-disable-with="Формула проверяется…"
+                  class="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-[#a9791f] px-5 py-3 text-sm font-semibold text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-800 focus:outline-none focus:ring-2 focus:ring-amber-700 focus:ring-offset-2 focus:ring-offset-[#ece0bd]"
+                >
+                  <.icon name="hero-sparkles" class="mr-2 size-5" /> Сотворить заклинание
+                </button>
+              </.form>
+            <% end %>
+
+            <div
+              :if={@compose_error}
+              id="spell-compose-error"
+              role="alert"
+              class="mt-5 rounded-xl border border-[#7c2b22]/30 bg-[#7c2b22]/10 px-4 py-3 text-sm leading-6 text-[#5e1d16]"
+            >
+              {@compose_error}
+            </div>
+
+            <article
+              :if={@last_spell}
+              id={"spell-compose-result-#{@last_spell.id}"}
+              class="mt-6 rounded-2xl border border-emerald-900/20 bg-emerald-50/70 p-5"
+            >
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-emerald-800">
+                Формула сохранена
+              </p>
+              <h3 class="mt-2 font-serif text-xl font-semibold text-stone-950">{@last_spell.name}</h3>
+              <p class="mt-1 text-sm text-stone-700">
+                {@last_spell.formula} {"·"} {school_label(@last_spell.school)}
+              </p>
+              <p class="mt-3 text-sm leading-6 text-stone-700">{lineage_label(@last_spell)}</p>
+            </article>
+          </section>
+
+          <aside
+            id="spellbook-loadout-summary"
+            class="rounded-[2rem] border border-stone-900/10 bg-white/85 p-5 shadow-lg sm:p-6"
+          >
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+              Боевая раскладка
+            </p>
+            <%= if @active_grimoire do %>
+              <h2 class="mt-3 font-serif text-2xl font-semibold text-stone-950">
+                {@active_grimoire.name}
+              </h2>
+              <p class="mt-2 text-sm leading-6 text-stone-600">
+                {entry_count(@active_grimoire)} / {@active_grimoire.capacity} формул {"·"} {@active_grimoire.weight} стоун
+              </p>
+              <span class="mt-5 inline-flex rounded-full bg-amber-100 px-3 py-1 text-xs font-semibold text-amber-900">
+                Активный гримуар
+              </span>
+            <% else %>
+              <h2 class="mt-3 font-serif text-2xl font-semibold text-stone-950">
+                Боевой гримуар не выбран
+              </h2>
+              <p class="mt-2 text-sm leading-6 text-stone-600">
+                Заполните хотя бы один переплёт и отметьте его для ближайшей дуэли.
+              </p>
+            <% end %>
+
+            <div
+              :if={@action_feedback}
+              id="spellbook-action-feedback"
+              class={feedback_class(@action_feedback.kind)}
+            >
+              {@action_feedback.message}
+            </div>
+          </aside>
         </div>
-      <% end %>
-    </div>
+
+        <section
+          id="spell-library"
+          class="rounded-[2rem] border border-stone-900/10 bg-white/85 p-5 shadow-lg sm:p-8"
+        >
+          <div class="flex flex-col gap-2 border-b border-stone-900/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Личная библиотека
+              </p>
+              <h2 class="mt-2 font-serif text-2xl font-semibold text-stone-950">
+                Известные заклинания
+              </h2>
+            </div>
+            <span class="text-sm text-stone-500">{length(@spells)} записей</span>
+          </div>
+
+          <p
+            :if={@spells == []}
+            id="spell-library-empty-copy"
+            class="mt-5 text-sm leading-6 text-stone-600"
+          >
+            В библиотеке ещё нет заклинаний, которые можно положить в переплёт.
+          </p>
+
+          <div :if={@spells != []} class="mt-5 grid gap-3 md:grid-cols-2">
+            <article
+              :for={spell <- @spells}
+              id={"spell-library-#{spell.id}"}
+              class="rounded-2xl border border-stone-200 bg-stone-50/80 p-4 transition hover:-translate-y-0.5 hover:border-amber-300"
+            >
+              <div class="flex items-start justify-between gap-3">
+                <div>
+                  <h3 class="font-serif text-lg font-semibold text-stone-950">{spell.name}</h3>
+                  <p class="mt-1 text-sm text-stone-600">{spell.formula}</p>
+                </div>
+                <span class="rounded-full border border-amber-900/15 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-900">
+                  {school_label(spell.school)}
+                </span>
+              </div>
+              <p class="mt-3 text-sm leading-6 text-stone-600">
+                {spell.description || "Устойчивое заклинание из вашей библиотеки."}
+              </p>
+            </article>
+          </div>
+        </section>
+
+        <section
+          id="grimoire-loadouts"
+          class="rounded-[2rem] border border-stone-900/10 bg-white/85 p-5 shadow-lg sm:p-8"
+        >
+          <div class="flex flex-col gap-2 border-b border-stone-900/10 pb-5 sm:flex-row sm:items-end sm:justify-between">
+            <div>
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                Носимые книги
+              </p>
+              <h2 class="mt-2 font-serif text-2xl font-semibold text-stone-950">
+                Гримуары и нагрузка
+              </h2>
+            </div>
+            <span class="text-sm text-stone-500">{length(@grimoires)} переплётов</span>
+          </div>
+
+          <div
+            :if={@grimoires == []}
+            id="grimoire-empty"
+            class="mt-5 rounded-2xl border border-dashed border-stone-300 bg-stone-50 p-6"
+          >
+            <h3 class="font-serif text-xl font-semibold text-stone-950">Нет чистого переплёта</h3>
+            <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-600">
+              Активные и запечатанные книги нельзя переписывать. Новый физический гримуар покупается на рынке.
+            </p>
+          </div>
+
+          <div :if={@grimoires != []} class="mt-5 grid gap-5 xl:grid-cols-2">
+            <article
+              :for={grimoire <- @grimoires}
+              id={"grimoire-#{grimoire.id}"}
+              class={[
+                "rounded-2xl border p-5",
+                active_grimoire?(grimoire, @active_grimoire) && "border-amber-400 bg-amber-50/70",
+                not active_grimoire?(grimoire, @active_grimoire) && "border-stone-200 bg-stone-50/70"
+              ]}
+            >
+              <div class="flex items-start justify-between gap-4">
+                <div>
+                  <p class="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">
+                    {grimoire_status_label(grimoire.status)}
+                  </p>
+                  <h3 class="mt-1 font-serif text-xl font-semibold text-stone-950">
+                    {grimoire.name}
+                  </h3>
+                  <p class="mt-1 text-sm text-stone-600">
+                    {entry_count(grimoire)} / {grimoire.capacity} ячеек {"·"} {grimoire.weight} стоун
+                  </p>
+                </div>
+                <span
+                  :if={active_grimoire?(grimoire, @active_grimoire)}
+                  class="rounded-full bg-amber-200 px-3 py-1 text-xs font-semibold text-amber-950"
+                >
+                  боевой
+                </span>
+              </div>
+
+              <ol :if={grimoire_entries(grimoire) != []} class="mt-4 space-y-2">
+                <li
+                  :for={entry <- sorted_entries(grimoire)}
+                  id={"grimoire-entry-#{entry.id}"}
+                  class="flex items-center justify-between gap-3 rounded-xl border border-stone-200 bg-white/75 px-3 py-2 text-sm"
+                >
+                  <span class="min-w-0 truncate font-medium text-stone-800">
+                    {entry_label(entry)}
+                  </span>
+                  <span class="shrink-0 text-xs text-stone-500">слот {entry.slot_index}</span>
+                </li>
+              </ol>
+
+              <p
+                :if={grimoire_entries(grimoire) == []}
+                class="mt-4 rounded-xl border border-dashed border-stone-300 px-3 py-3 text-sm text-stone-600"
+              >
+                В переплёте пока нет формул.
+              </p>
+
+              <.form
+                :if={
+                  writable_grimoire?(grimoire, @writable_grimoires) and
+                    uninscribed_spells(grimoire, @spells) != []
+                }
+                for={@inscription_form}
+                id={"grimoire-inscribe-form-#{grimoire.id}"}
+                phx-submit="inscribe"
+                class="mt-5 rounded-xl border border-amber-900/15 bg-amber-50/70 p-4"
+              >
+                <.input
+                  field={@inscription_form[:grimoire_id]}
+                  id={"grimoire-target-#{grimoire.id}"}
+                  type="hidden"
+                  value={grimoire.id}
+                />
+                <.input
+                  field={@inscription_form[:spell_id]}
+                  id={"grimoire-spell-#{grimoire.id}"}
+                  type="select"
+                  label="Заклинание для записи"
+                  options={spell_options(uninscribed_spells(grimoire, @spells))}
+                  prompt="Выберите заклинание"
+                  required
+                />
+                <button
+                  id={"grimoire-inscribe-#{grimoire.id}"}
+                  type="submit"
+                  class="inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-amber-900/30 bg-white px-4 py-2 text-sm font-semibold text-amber-950 transition hover:border-amber-700 hover:bg-amber-100"
+                >
+                  Записать выбранное заклинание
+                </button>
+              </.form>
+
+              <p
+                :if={
+                  writable_grimoire?(grimoire, @writable_grimoires) and
+                    uninscribed_spells(grimoire, @spells) == []
+                }
+                id={"grimoire-no-spells-#{grimoire.id}"}
+                class="mt-5 text-sm leading-6 text-stone-600"
+              >
+                Все известные формулы уже записаны или библиотека пока пуста.
+              </p>
+
+              <p
+                :if={not writable_grimoire?(grimoire, @writable_grimoires)}
+                id={"grimoire-write-once-#{grimoire.id}"}
+                class="mt-5 text-sm leading-6 text-stone-600"
+              >
+                Этот переплёт уже запечатан: его состав нельзя изменить.
+              </p>
+
+              <button
+                :if={not active_grimoire?(grimoire, @active_grimoire)}
+                id={"grimoire-activate-#{grimoire.id}"}
+                type="button"
+                phx-click="activate"
+                phx-value-id={grimoire.id}
+                class="mt-5 inline-flex min-h-11 w-full items-center justify-center rounded-xl bg-stone-900 px-4 py-2 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-stone-700"
+              >
+                Сделать боевым гримуаром
+              </button>
+            </article>
+          </div>
+        </section>
+      </section>
+    </Layouts.app>
     """
-  end
-
-  defp push_shelf(socket) do
-    grimoires = order_grimoires(socket.assigns.grimoires, socket.assigns[:grimoire_order])
-
-    push_event(socket, "shelf_update", %{
-      grimoires: Enum.map(grimoires, &grimoire_json(&1, socket.assigns.spells))
-    })
-  end
-
-  defp order_grimoires(grimoires, nil), do: grimoires
-
-  defp order_grimoires(grimoires, order) do
-    index = Map.new(Enum.with_index(order))
-    Enum.sort_by(grimoires, &Map.get(index, &1.id, 999_999))
-  end
-
-  defp grimoire_json(grimoire, spells) do
-    %{
-      id: grimoire.id,
-      name: grimoire.name,
-      status: grimoire_status(grimoire.status),
-      capacity: grimoire.capacity,
-      weight: grimoire.weight,
-      entries:
-        Enum.map(grimoire.entries, fn entry ->
-          spell = Enum.find(spells, &(&1.id == entry.spell_id))
-
-          %{
-            slot: entry.slot,
-            spell: shelf_spell_json(spell)
-          }
-        end)
-    }
-  end
-
-  defp shelf_spell_json(nil), do: nil
-
-  defp shelf_spell_json(spell) do
-    %{
-      id: spell.id,
-      name: spell.name,
-      school: spell.school,
-      cooldown: spell.cooldown_turns
-    }
-  end
-
-  defp grimoire_status(:draft), do: "draft"
-  defp grimoire_status(:sealed), do: "sealed"
-  defp grimoire_status(:active), do: "active"
-
-  defp insert_before(order, id, before_id) do
-    {left, right} = Enum.split_while(order, &(&1 != before_id))
-    left ++ [id] ++ right
-  end
-
-  # Canonical Latin incantation slots per GDD §2.2.2, in fixed order:
-  # Actio (core action, always required) > Forma (shape) > Vis (power) >
-  # Tempus (duration) > Mutatio (secondary effect) > Pretium (extra cost).
-  # Only Actio is required — "a minimal spell uses only Actio... the AI
-  # determines all other parameters."
-  defp build_formula(params) do
-    ["actio", "forma", "vis", "tempus", "mutatio", "pretium"]
-    |> Enum.map(&Map.get(params, &1))
-    |> Enum.reject(&(is_nil(&1) || &1 == ""))
-    |> Enum.join(" ")
-  end
-
-  # Demo wizard circle: Schola, six Latin parameter slots from GDD §2.2.2,
-  # and Fundamen as the optional base spell from the personal library.
-  defp build_slots(character, known_spells) do
-    _ = character
-
-    school_options =
-      Enum.map(@school_order, fn school ->
-        %{
-          value: Atom.to_string(school),
-          label: school_label(school),
-          hue: Map.get(@school_hue, school)
-        }
-      end)
-
-    spell_options = Enum.map(known_spells, &%{value: &1.id, label: &1.name})
-
-    [
-      %{key: "school", label: "Schola", required: true, kind: "select", options: school_options},
-      %{key: "actio", label: "Actio", required: true, kind: "text"},
-      %{key: "forma", label: "Forma", required: false, kind: "text"},
-      %{key: "vis", label: "Vis", required: false, kind: "text"},
-      %{key: "tempus", label: "Tempus", required: false, kind: "text"},
-      %{key: "mutatio", label: "Mutatio", required: false, kind: "text"},
-      %{key: "pretium", label: "Pretium", required: false, kind: "text"},
-      %{key: "base", label: "Fundamen", required: false, kind: "select", options: spell_options}
-    ]
-  end
-
-  defp school_label(nil), do: "—"
-
-  defp school_label(school) when is_atom(school),
-    do: Map.get(@school_label, school, to_string(school))
-
-  defp school_label(school) when is_binary(school),
-    do: school |> String.to_existing_atom() |> school_label()
-
-  defp school_color(nil), do: "hsl(0,0%,50%)"
-
-  defp school_color(school) do
-    hue = Map.get(@school_hue, to_atom(school), 0)
-    "hsl(#{hue},60%,42%)"
-  end
-
-  defp to_atom(school) when is_atom(school), do: school
-  defp to_atom(school) when is_binary(school), do: String.to_existing_atom(school)
-
-  defp targeting_label(nil), do: "—"
-  defp targeting_label(t), do: Map.get(@targeting_label, to_atom(t), to_string(t))
-
-  defp delivery_label(nil), do: "—"
-  defp delivery_label(d), do: Map.get(@delivery_label, to_atom(d), to_string(d))
-
-  # ------------------------------------------------------------------
-  # Session + server-authoritative state
-  # ------------------------------------------------------------------
-
-  defp session_character(session) do
-    with id when is_binary(id) <- session["demo_character_id"],
-         {:ok, %{character: character}} <- Play.load_demo_state(id) do
-      character
-    else
-      _other -> nil
-    end
   end
 
   defp reload_spellbook(socket) do
-    {:ok, state} = Play.spellbook_state(socket.assigns.character.id)
-    assign_spellbook_state(socket, state)
+    case Play.spellbook_state(socket.assigns.current_scope.character) do
+      {:ok, state} -> assign_spellbook_state(socket, state)
+      {:error, reason} -> redirect_for_spellbook_error(socket, reason)
+    end
   end
 
   defp assign_spellbook_state(socket, state) do
     socket
-    |> assign(:character, %{
-      id: state.character.id,
-      name: state.character.name,
-      level: state.character.level
-    })
-    |> assign(:spells, Enum.map(state.spells, &spell_view/1))
-    |> assign(:grimoires, Enum.map(state.grimoires, &grimoire_view/1))
+    |> assign(:character, state.character)
+    |> assign(:spells, state.spells)
+    |> assign(:grimoires, state.grimoires)
+    |> assign(:active_grimoire, state.active_grimoire)
+    |> assign(:permitted_schools, state.permitted_schools)
+    |> assign(:composition_location, state.composition_location)
+    |> assign(:writable_grimoires, Map.get(state, :writable_grimoires, []))
   end
 
-  # Real Spell/Grimoire structs carry more (and less) than the book UI needs;
-  # these adapters project them onto the flat shapes the templates and the
-  # SpellCircle/GrimoireShelf JS hooks already consume.
-  defp spell_view(spell) do
-    %{
-      id: spell.id,
-      name: spell.name,
-      formula: spell.formula,
-      school: spell.school,
-      description: spell.description,
-      level_requirement: spell.level_requirement,
-      fatigue_cost: spell.fatigue_cost,
-      mana_cost: derived_mana_cost(spell),
-      cooldown_turns: spell.cooldown_turns,
-      delivery_form: spell.delivery_form,
-      targeting: spell.targeting,
-      effects: spell.effects,
-      lineage: spell_lineage(spell)
-    }
+  defp redirect_for_spellbook_error(socket, :travelling) do
+    socket
+    |> put_flash(:error, "Вы в пути. Дождитесь прибытия, чтобы открыть гримуар.")
+    |> push_navigate(to: ~p"/travel")
   end
 
-  defp derived_mana_cost(spell) do
-    case spell.effects do
-      [] -> (spell.fatigue_cost || 0) * 2
-      effects -> Enum.sum(Enum.map(effects, &(&1.intensity || 0)))
-    end
+  defp redirect_for_spellbook_error(socket, :spellbook_location) do
+    socket
+    |> put_flash(:error, "Здесь магию не составить. Доберитесь до Башни или своей базы.")
+    |> push_navigate(to: ~p"/map")
   end
 
-  defp spell_lineage(%{source_spell_id: id}) when is_binary(id), do: "производное заклинание"
-  defp spell_lineage(_spell), do: "собственная формула"
-
-  defp grimoire_view(grimoire) do
-    %{
-      id: grimoire.id,
-      name: grimoire.name,
-      status: grimoire.status,
-      capacity: grimoire.capacity,
-      weight: grimoire.weight,
-      entries:
-        grimoire.entries
-        |> Enum.sort_by(& &1.slot_index)
-        |> Enum.map(&%{slot: &1.slot_index, spell_id: &1.spell_id})
-    }
+  defp redirect_for_spellbook_error(socket, _reason) do
+    socket
+    |> put_flash(
+      :error,
+      "Не удалось открыть гримуар. Вернитесь к игровому входу и попробуйте снова."
+    )
+    |> push_navigate(to: ~p"/play")
   end
 
-  defp compile_error_message(%Ecto.Changeset{}),
-    do: "Круг не сомкнулся: формула вышла за пределы устойчивого заклинания."
+  defp reset_compose_form(socket), do: assign(socket, :compose_form, compose_form())
 
-  defp compile_error_message(:formula_too_short),
-    do: "Слишком коротко — начерти хотя бы одно слово действия."
+  defp compose_form(attrs \\ %{}) do
+    to_form(
+      %{
+        "base_spell_id" => Map.get(attrs, "base_spell_id", ""),
+        "school" => Map.get(attrs, "school", ""),
+        "formula" => Map.get(attrs, "formula", "")
+      },
+      as: :composition
+    )
+  end
 
-  defp compile_error_message(:invalid_school),
-    do: "Не выбрана школа — круг не с чем связать."
+  defp inscription_form do
+    to_form(%{"grimoire_id" => "", "spell_id" => ""}, as: :inscription)
+  end
 
-  defp compile_error_message(_reason),
-    do: "Круг вспыхнул слишком резко, и формула распалась. Попробуй иначе."
+  defp compiled_spell(%{spell: spell}), do: spell
+  defp compiled_spell(spell), do: spell
+
+  defp spell_options(spells), do: Enum.map(spells, &{"#{&1.name} — #{&1.formula}", &1.id})
+
+  defp school_options(schools), do: Enum.map(schools, &{school_label(&1), &1})
+
+  defp school_label(school), do: Map.get(@school_labels, to_string(school), to_string(school))
+
+  defp lineage_label(%{source_spell_id: source_spell_id}) when is_binary(source_spell_id),
+    do: "Производная формула: она сохраняет связь с выбранной основой."
+
+  defp lineage_label(_spell), do: "Самостоятельная формула из вашей библиотеки."
+
+  defp entry_count(grimoire), do: length(grimoire_entries(grimoire))
+
+  defp grimoire_entries(%{entries: entries}) when is_list(entries), do: entries
+  defp grimoire_entries(_grimoire), do: []
+
+  defp sorted_entries(grimoire), do: Enum.sort_by(grimoire_entries(grimoire), & &1.slot_index)
+
+  defp entry_label(%{spell: %{name: name}}) when is_binary(name), do: name
+  defp entry_label(_entry), do: "Записанная формула"
+
+  defp active_grimoire?(grimoire, %{id: active_id}), do: grimoire.id == active_id
+  defp active_grimoire?(_grimoire, _active_grimoire), do: false
+
+  defp writable_grimoire?(grimoire, writable_grimoires) do
+    Enum.any?(writable_grimoires, &(&1.id == grimoire.id))
+  end
+
+  defp uninscribed_spells(grimoire, spells) do
+    inscribed_ids = MapSet.new(grimoire_entries(grimoire), & &1.spell_id)
+    Enum.reject(spells, &MapSet.member?(inscribed_ids, &1.id))
+  end
+
+  defp grimoire_status_label(:draft), do: "чистый переплёт"
+  defp grimoire_status_label(:sealed), do: "запечатан"
+  defp grimoire_status_label(:active), do: "боевой"
+  defp grimoire_status_label(status), do: to_string(status)
+
+  defp feedback_class(:success),
+    do:
+      "mt-5 rounded-xl border border-emerald-900/20 bg-emerald-50 px-4 py-3 text-sm leading-6 text-emerald-900"
+
+  defp feedback_class(:error),
+    do:
+      "mt-5 rounded-xl border border-[#7c2b22]/30 bg-[#7c2b22]/10 px-4 py-3 text-sm leading-6 text-[#5e1d16]"
+
+  defp spellbook_error_message(:travelling),
+    do: "Вы в пути. Дождитесь прибытия и откройте гримуар снова."
+
+  defp spellbook_error_message(:spellbook_location),
+    do: "Здесь магию не составить. Доберитесь до Башни или своей базы."
+
+  defp spellbook_error_message(:not_grimoire_owner), do: "Этот переплёт вам не принадлежит."
+  defp spellbook_error_message(:grimoire_not_found), do: "Переплёт не найден в вашей библиотеке."
+
+  defp spellbook_error_message(:spell_not_found),
+    do: "Это заклинание нельзя записать в ваш переплёт."
+
+  defp spellbook_error_message(:no_spell_to_inscribe), do: "Нет доступной формулы для записи."
+  defp spellbook_error_message(:invalid_composition), do: generic_composition_error()
+
+  defp spellbook_error_message(:invalid_inscription),
+    do: "Выберите свой переплёт и заклинание для записи."
+
+  defp spellbook_error_message(:invalid_grimoire), do: "Выберите гримуар из своей библиотеки."
+  defp spellbook_error_message(%Ecto.Changeset{}), do: generic_composition_error()
+  defp spellbook_error_message(_reason), do: generic_composition_error()
+
+  defp generic_composition_error do
+    "Формула не сложилась. Проверьте основу, школу и от 1 до 6 латинских слов, затем попробуйте снова."
+  end
 end

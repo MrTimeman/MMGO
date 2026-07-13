@@ -12,8 +12,8 @@ defmodule MMGOWeb.TravelLive do
   @refresh_interval 15_000
 
   @impl true
-  def mount(_params, session, socket) do
-    case travel_state(session) do
+  def mount(_params, _session, socket) do
+    case Play.travel_state(socket.assigns.current_scope.character) do
       {:ok, %{journey: nil}} ->
         {:ok,
          socket
@@ -30,7 +30,7 @@ defmodule MMGOWeb.TravelLive do
         {:ok, socket}
 
       {:error, _reason} ->
-        {:ok, push_navigate(socket, to: ~p"/play/continue")}
+        {:ok, push_navigate(socket, to: ~p"/play")}
     end
   end
 
@@ -53,7 +53,7 @@ defmodule MMGOWeb.TravelLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash}>
+    <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
       <div class="trv-scene">
         <div id="travel-screen" class="trv-shell">
           <.link id="travel-back-to-map" navigate={~p"/map"} class="trv-exit">← На карту</.link>
@@ -137,6 +137,12 @@ defmodule MMGOWeb.TravelLive do
                 </div>
               </div>
             </div>
+            <p id="travel-survival-state" class="trv-panel__sub">
+              {travel_survival_status(@journey, @survival)}
+            </p>
+            <p id="travel-overload-state" class="trv-panel__sub">
+              {overload_status(@survival)}
+            </p>
             <p class="trv-panel__sub">
               На этот переход уже израсходовано {@journey.food_units_consumed} ед. еды.
               <span :if={@journey.encumbrance_penalty_days > 0}>
@@ -187,14 +193,9 @@ defmodule MMGOWeb.TravelLive do
         assign_travel_state(socket, state)
 
       {:error, _reason} ->
-        push_navigate(socket, to: ~p"/play/continue")
+        push_navigate(socket, to: ~p"/play")
     end
   end
-
-  defp travel_state(%{"demo_character_id" => character_id}) when is_binary(character_id),
-    do: Play.travel_state(character_id)
-
-  defp travel_state(_session), do: {:error, :missing_session}
 
   defp assign_travel_state(socket, state) do
     journey = state.journey
@@ -207,6 +208,8 @@ defmodule MMGOWeb.TravelLive do
     |> assign(:food_units, state.food_units)
     |> assign(:carried_weight, journey.carried_weight)
     |> assign(:carry_capacity, journey.carry_capacity)
+    |> assign(:survival, state.survival)
+    |> assign(:atmosphere, state.atmosphere)
     |> assign(:waypoints, journey_waypoints(journey))
     |> assign(:waypoint_index, waypoint_index(state.journey_progress))
     |> assign(:log, journey_log(journey, state.journey_progress))
@@ -236,6 +239,44 @@ defmodule MMGOWeb.TravelLive do
   defp format_remaining(seconds) when seconds >= 3_600, do: "~#{div(seconds, 3_600)}ч"
   defp format_remaining(seconds) when seconds >= 60, do: "~#{div(seconds, 60)}м"
   defp format_remaining(_seconds), do: "сейчас"
+
+  defp travel_survival_status(journey, %{starving?: true} = survival) do
+    "Голод продолжается: #{survival.starvation_days} дн., накопленный урон #{survival.health_drain}. " <>
+      journey_starvation_note(journey)
+  end
+
+  defp travel_survival_status(journey, %{recovered?: true}) do
+    "Провизия вернула силы. #{journey_starvation_note(journey)}"
+  end
+
+  defp travel_survival_status(journey, %{food_units: food_units}) do
+    "Провизия в пути: #{food_units} ед. еды. #{journey_starvation_note(journey)}"
+  end
+
+  defp journey_starvation_note(journey) do
+    survival = Map.get(journey.metadata || %{}, "survival", %{})
+    shortage_days = Map.get(survival, "food_shortage_days", 0)
+    health_drain = Map.get(survival, "health_drain", 0)
+
+    cond do
+      shortage_days > 1 ->
+        "Недостаток пищи добавил задержку и #{health_drain} ед. не-смертельного урона."
+
+      shortage_days == 1 ->
+        "Недостаток пищи добавил задержку в пути."
+
+      true ->
+        "Запас на этот переход рассчитан."
+    end
+  end
+
+  defp overload_status(%{encumbered?: true, carried_weight: weight, carry_capacity: capacity}) do
+    "Перегруз: #{weight} / #{capacity} стоунов. Из боя нельзя отступить."
+  end
+
+  defp overload_status(%{carried_weight: weight, carry_capacity: capacity}) do
+    "Перегруза нет: #{weight} / #{capacity} стоунов. Отступление доступно."
+  end
 
   defp bar_pct(_value, max) when max <= 0, do: 0
 

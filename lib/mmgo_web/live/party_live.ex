@@ -1,274 +1,409 @@
 defmodule MMGOWeb.PartyLive do
   @moduledoc """
-  Design-pass screen — the party sheet (GDD §13).
-
-  The centrepiece is the single shared HP pool: one bar for the whole
-  party, because damage to any member drains the same pool (§3.2). Members
-  keep their own fatigue and status. Roles are emergent, hinted per member.
-
-  Interactive demo: loot-rule selector, an invite modal with pending
-  invites, and a toggle to review the solo empty state.
-  See docs/UI_DESIGN_BRIEF.md.
+  Scoped party, invitation, readiness, and expedition lobby.
   """
   use MMGOWeb, :live_view
 
-  import MMGOWeb.UIKit
+  alias MMGO.{Parties, Play}
 
-  @members [
-    %{
-      name: "Альберт Северин",
-      klass: "маг",
-      level: 12,
-      fatigue: 20,
-      leader: true,
-      chips: ["Свеж"],
-      role: "Заклинатель — урон и контроль внутри Башни. Единственный, кто знает Ритуал Возврата."
-    },
-    %{
-      name: "Гром Железнобородый",
-      klass: "мастеровой",
-      level: 14,
-      fatigue: 55,
-      leader: false,
-      chips: ["Щитоносец", "Утомлён"],
-      role: "Фронтлайн — держит удар и прикрывает магов на дороге, где магия молчит."
-    },
-    %{
-      name: "Лисса Вьюн",
-      klass: "алхимик",
-      level: 9,
-      fatigue: 35,
-      leader: false,
-      chips: ["Сыта", "Готовит"],
-      role: "Зелья и провизия — варит еду из добытого в пути, лечит отряд между схватками."
-    },
-    %{
-      name: "Одо Кузнец",
-      klass: "ремесленник",
-      level: 11,
-      fatigue: 40,
-      leader: false,
-      chips: ["Ранен"],
-      role: "Чинит щиты и снаряжение на привалах. Без него железо тупится и ломается насовсем."
-    }
-  ]
-
-  @loot_rules [
-    %{key: "first", title: "Первый взял", desc: "что нашёл — то твоё; быстро, но сеет раздор."},
-    %{key: "round", title: "По кругу", desc: "добыча идёт по очереди — честно и без обид."},
-    %{key: "leader", title: "Решает лидер", desc: "вожак делит трофеи по своему усмотрению."}
+  @loot_policies [
+    {"По кругу", "round_robin"},
+    {"Решает лидер", "leader"},
+    {"Первый взял", "free_for_all"}
   ]
 
   @impl true
-  def mount(_params, _session, socket) do
-    # TODO: wire — load the character's real party, HP pool and pending invites.
-    {:ok,
-     socket
-     |> assign(:page_title, "Отряд")
-     |> assign(:members, @members)
-     |> assign(:party_name, "Вольный отряд")
-     |> assign(:hp, 214)
-     |> assign(:hp_max, 260)
-     |> assign(:loot_rule, "round")
-     |> assign(:solo, false)
-     |> assign(:invite_open, false)
-     |> assign(:pending, [%{name: "Тень Ворона", note: "приглашён · ожидает ответа"}])}
+  def mount(_params, _session, socket),
+    do: load_party(socket, socket.assigns.current_scope.character)
+
+  @impl true
+  def handle_event("create", %{"party_create" => attrs}, socket) do
+    case Play.create_party(socket.assigns.character, attrs) do
+      {:ok, _state} -> {:noreply, socket |> put_flash(:info, "Отряд создан.") |> refresh_party()}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("set_loot", %{"key" => key}, socket) do
-    {:noreply, assign(socket, :loot_rule, key)}
+  def handle_event("invite", %{"party_invite" => %{"character_id" => character_id}}, socket) do
+    case Play.invite_to_party(socket.assigns.character, character_id) do
+      {:ok, _state} ->
+        {:noreply, socket |> put_flash(:info, "Приглашение отправлено.") |> refresh_party()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("toggle_solo", _params, socket) do
-    {:noreply, assign(socket, :solo, not socket.assigns.solo)}
+  def handle_event("accept", %{"invitation-id" => invitation_id}, socket) do
+    case Play.accept_party_invitation(socket.assigns.character, invitation_id) do
+      {:ok, _state} ->
+        {:noreply, socket |> put_flash(:info, "Вы вступили в отряд.") |> refresh_party()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("open_invite", _params, socket) do
-    {:noreply, assign(socket, :invite_open, true)}
+  def handle_event("reject", %{"invitation-id" => invitation_id}, socket) do
+    case Play.reject_party_invitation(socket.assigns.character, invitation_id) do
+      {:ok, _state} ->
+        {:noreply, socket |> put_flash(:info, "Приглашение отклонено.") |> refresh_party()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("close_invite", _params, socket) do
-    {:noreply, assign(socket, :invite_open, false)}
+  def handle_event("ready", %{"value" => value}, socket) do
+    case Play.set_party_ready(socket.assigns.character, value == "true") do
+      {:ok, _state} -> {:noreply, refresh_party(socket)}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_event("send_invite", %{"name" => name}, socket) do
-    # TODO: wire — dispatch a real party invitation to the named character.
-    name = String.trim(name)
-
-    socket =
-      if name == "" do
-        socket
-      else
-        update(socket, :pending, &[%{name: name, note: "приглашён · ожидает ответа"} | &1])
-      end
-
-    {:noreply, assign(socket, :invite_open, false)}
+  def handle_event("loot_policy", %{"value" => policy}, socket) do
+    case Play.set_party_loot_policy(socket.assigns.character, policy) do
+      {:ok, _state} -> {:noreply, refresh_party(socket)}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
+
+  @impl true
+  def handle_event("leave", _params, socket) do
+    case Play.leave_party(socket.assigns.character) do
+      {:ok, _state} ->
+        {:noreply, socket |> put_flash(:info, "Вы покинули отряд.") |> refresh_party()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("start_expedition", _params, socket) do
+    case Play.start_party_expedition(socket.assigns.character) do
+      {:ok, %{expedition: _expedition}} -> {:noreply, push_navigate(socket, to: ~p"/dungeon")}
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
+  end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, refresh_party(socket)}
+
+  @impl true
+  def handle_info({:party_updated, _party_id}, socket), do: {:noreply, refresh_party(socket)}
 
   @impl true
   def render(assigns) do
-    assigns =
-      assigns
-      |> assign(:loot_rules, @loot_rules)
-      |> assign(:hp_pct, round(assigns.hp / assigns.hp_max * 100))
-
     ~H"""
-    <div class="pty-scene">
-      <div class="pty-shell">
-        <a href={~p"/map"} class="pty-exit">← На карту</a>
-
-        <header class="pty-banner">
-          <span class="pty-banner__crest">◆</span>
-          <p class="pty-banner__eyebrow">Отряд</p>
-          <h1 class="pty-banner__name">{@party_name}</h1>
-        </header>
-
-        <%= if @solo do %>
-          <div class="pty-empty">
-            <p class="pty-empty__glyph">☾</p>
-            <h2 class="pty-empty__title">Вы путешествуете в одиночку</h2>
-            <p class="pty-empty__text">
-              В глушь и в подземелье в одиночку ходят немногие — и немногие возвращаются.
-              Нужен щит на дороге, зелья в схватке и мастеровой, чтобы чинить снаряжение.
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="party-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
+        <div class="mx-auto w-full max-w-3xl space-y-5">
+          <.link id="party-back-to-map" navigate={~p"/map"} class="map-back-link">← Карта мира</.link>
+          <header class="rounded-xl border border-cyan-500/25 bg-stone-900/80 p-6 shadow-xl">
+            <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/70">
+              отряд · {location_name(@location)}
             </p>
-            <button type="button" class="pty-btn pty-btn--gold" phx-click="open_invite">
-              Позвать спутника
-            </button>
-            <button type="button" class="pty-solo-toggle" phx-click="toggle_solo">
-              ← вернуть демо-отряд
-            </button>
+            <h1 class="mt-2 font-serif text-3xl text-cyan-100">Путники</h1>
+          </header>
+
+          <div
+            :if={@error}
+            id="party-error"
+            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+          >
+            {@error}
           </div>
-        <% else %>
-          <section class="pty-hp">
-            <div class="pty-hp__head">
-              <span class="pty-hp__title">Общий котёл здоровья</span>
-              <span class="pty-hp__num">{@hp} / {@hp_max}</span>
-            </div>
-            <div class="pty-hp__bar">
-              <div class="pty-hp__fill" style={"width:#{@hp_pct}%"}></div>
-            </div>
-            <p class="pty-hp__note">
-              Один пул на весь отряд: урон по любому бойцу опустошает общий котёл (§3.2).
+
+          <section
+            :if={is_nil(@party)}
+            id="party-create"
+            class="rounded-xl border border-cyan-500/25 bg-cyan-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-cyan-100">Собрать отряд</h2>
+            <p class="mt-2 text-sm text-stone-400">
+              Лидер приглашает только реальных путников рядом; каждый принимает приглашение сам.
             </p>
+            <.form
+              for={@create_form}
+              id="party-create-form"
+              phx-submit="create"
+              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <.input
+                field={@create_form[:name]}
+                type="text"
+                label="Название"
+                placeholder="Вольные делверы"
+              />
+              <button
+                id="party-create-submit"
+                type="submit"
+                class="mb-4 rounded-md bg-cyan-300 px-4 py-3 font-semibold text-stone-950 hover:bg-cyan-200"
+              >
+                Создать
+              </button>
+            </.form>
           </section>
 
-          <section class="pty-members">
-            <article :for={m <- @members} class="pty-card">
-              <.art_slot kind="portrait" label={m.name} class="pty-face" />
-              <div class="pty-card__body">
-                <div class="pty-card__top">
-                  <h3 class="pty-card__name">
-                    {m.name}
-                    <span :if={m.leader} class="pty-card__crown" title="лидер отряда">
-                      ✦
-                    </span>
-                  </h3>
-                  <span class="pty-card__lvl">ур. {m.level}</span>
-                </div>
-                <span class={"pty-card__class pty-card__class--#{m.klass}"}>{m.klass}</span>
+          <section
+            :if={@party}
+            id="party-active"
+            class="rounded-xl border border-cyan-500/25 bg-cyan-950/15 p-6"
+          >
+            <div class="flex flex-wrap items-start justify-between gap-3">
+              <div>
+                <p class="text-xs uppercase tracking-[0.18em] text-cyan-300/70">активный отряд</p>
+                <h2 class="mt-1 font-serif text-2xl text-cyan-100">{@party.name}</h2>
+              </div>
+              <button
+                id="party-leave"
+                type="button"
+                phx-click="leave"
+                class="rounded border border-stone-500 px-3 py-2 text-sm text-stone-200"
+              >
+                Покинуть
+              </button>
+            </div>
 
-                <div class="pty-fat">
-                  <span class="pty-fat__label">Утомление</span>
-                  <div class="pty-fat__bar">
-                    <div
-                      class={["pty-fat__fill", m.fatigue >= 50 && "is-high"]}
-                      style={"width:#{m.fatigue}%"}
-                    >
-                    </div>
-                  </div>
+            <ul id="party-members" class="mt-5 space-y-2">
+              <li
+                :for={membership <- @members}
+                id={"party-member-#{membership.character_id}"}
+                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+              >
+                <div>
+                  <span class="font-medium text-stone-100">{membership.character.name}</span><span class="ml-2 text-stone-400">ур. {membership.character.level} · {membership.role}</span>
                 </div>
+                <span class={
+                  if member_ready?(membership), do: "text-emerald-200", else: "text-amber-200"
+                }>
+                  {if member_ready?(membership), do: "готов", else: "не готов"}
+                </span>
+              </li>
+            </ul>
 
-                <div class="pty-card__chips">
-                  <span :for={c <- m.chips} class={["pty-tag", tag_mod(c)]}>{c}</span>
+            <div class="mt-5 flex flex-wrap gap-2">
+              <button
+                :if={@self_ready?}
+                id="party-mark-unready"
+                type="button"
+                phx-click="ready"
+                phx-value-value="false"
+                class="rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+              >
+                Снять готовность
+              </button>
+              <button
+                :if={not @self_ready?}
+                id="party-mark-ready"
+                type="button"
+                phx-click="ready"
+                phx-value-value="true"
+                class="rounded bg-emerald-300 px-3 py-2 text-sm font-semibold text-stone-950"
+              >
+                Готов к экспедиции
+              </button>
+              <button
+                :if={@leader? and is_nil(@active_expedition)}
+                id="party-start-expedition"
+                type="button"
+                phx-click="start_expedition"
+                class="rounded bg-cyan-300 px-3 py-2 text-sm font-semibold text-stone-950"
+              >
+                Начать экспедицию
+              </button>
+              <.link
+                :if={@active_expedition}
+                id="party-open-expedition"
+                navigate={~p"/dungeon"}
+                class="rounded bg-cyan-300 px-3 py-2 text-sm font-semibold text-stone-950"
+              >
+                Открыть экспедицию
+              </.link>
+            </div>
+
+            <div :if={@leader?} class="mt-6 grid gap-4 md:grid-cols-2">
+              <.form
+                :if={@invite_options != []}
+                for={@invite_form}
+                id="party-invite-form"
+                phx-submit="invite"
+              >
+                <h3 class="font-serif text-lg text-cyan-100">Позвать спутника</h3>
+                <.input
+                  field={@invite_form[:character_id]}
+                  type="select"
+                  label="Рядом"
+                  prompt="Выберите путника"
+                  options={@invite_options}
+                />
+                <button
+                  id="party-send-invite"
+                  type="submit"
+                  class="rounded border border-cyan-300/50 px-3 py-2 text-sm text-cyan-100"
+                >
+                  Пригласить
+                </button>
+              </.form>
+              <div>
+                <h3 class="font-serif text-lg text-cyan-100">Делёж добычи</h3>
+                <div id="party-loot-policies" class="mt-3 flex flex-wrap gap-2">
+                  <button
+                    :for={{label, value} <- @loot_policies}
+                    id={"party-loot-#{value}"}
+                    type="button"
+                    phx-click="loot_policy"
+                    phx-value-value={value}
+                    class={
+                      if @loot_policy == value,
+                        do: "rounded bg-cyan-300 px-3 py-2 text-sm font-semibold text-stone-950",
+                        else: "rounded border border-stone-600 px-3 py-2 text-sm text-stone-200"
+                    }
+                  >
+                    {label}
+                  </button>
                 </div>
-                <p class="pty-card__role">{m.role}</p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            :if={@pending_invitations != []}
+            id="party-invitations"
+            class="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-6"
+          >
+            <h2 class="font-serif text-xl text-emerald-100">Приглашения</h2>
+            <article
+              :for={invitation <- @pending_invitations}
+              id={"party-invitation-#{invitation.id}"}
+              class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+            >
+              <span>{invitation.party.name} · зовёт {inviter_name(invitation)}</span>
+              <div class="flex gap-2">
+                <button
+                  id={"party-accept-#{invitation.id}"}
+                  type="button"
+                  phx-click="accept"
+                  phx-value-invitation-id={invitation.id}
+                  class="rounded bg-emerald-300 px-3 py-2 font-semibold text-stone-950"
+                >
+                  Принять
+                </button>
+                <button
+                  id={"party-reject-#{invitation.id}"}
+                  type="button"
+                  phx-click="reject"
+                  phx-value-invitation-id={invitation.id}
+                  class="rounded border border-stone-600 px-3 py-2 text-stone-200"
+                >
+                  Отклонить
+                </button>
               </div>
             </article>
           </section>
 
-          <section class="pty-loot">
-            <h2 class="pty-loot__title">Дележ добычи</h2>
-            <div class="pty-loot__opts">
-              <button
-                :for={r <- @loot_rules}
-                type="button"
-                class={"pty-loot__opt#{if @loot_rule == r.key, do: " is-on"}"}
-                phx-click="set_loot"
-                phx-value-key={r.key}
-              >
-                {r.title}
-              </button>
-            </div>
-            <p class="pty-loot__desc">
-              {Enum.find(@loot_rules, &(&1.key == @loot_rule)).desc}
-            </p>
-            <p class="pty-loot__xp">
-              Опыт всегда делится поровну между участниками события (§13.3). Дележ трофеев —
-              на совести отряда: правил нет, предательство возможно.
-            </p>
-          </section>
-
-          <section class="pty-invite">
-            <div class="pty-invite__head">
-              <h2 class="pty-invite__title">Приглашения</h2>
-              <button type="button" class="pty-btn pty-btn--ghost" phx-click="open_invite">
-                + Позвать
-              </button>
-            </div>
-            <ul class="pty-pending">
-              <li :for={p <- @pending} class="pty-pending__row">
-                <span class="pty-pending__name">{p.name}</span>
-                <span class="pty-pending__note">{p.note}</span>
-              </li>
-              <li :if={@pending == []} class="pty-pending__empty">Открытых приглашений нет.</li>
-            </ul>
-            <button type="button" class="pty-solo-toggle" phx-click="toggle_solo">
-              показать состояние «в одиночку» →
-            </button>
-          </section>
-        <% end %>
-      </div>
-
-      <%= if @invite_open do %>
-        <div class="pty-modal">
-          <div
-            class="pty-modal__card"
-            phx-click-away="close_invite"
-            phx-window-keydown="close_invite"
-            phx-key="Escape"
+          <button
+            id="party-refresh"
+            type="button"
+            phx-click="refresh"
+            class="text-sm text-cyan-200 underline decoration-cyan-500/40 underline-offset-4"
           >
-            <p class="pty-modal__eyebrow">Приглашение в отряд</p>
-            <h3 class="pty-modal__title">Позвать спутника</h3>
-            <form phx-submit="send_invite" class="pty-modal__form">
-              <label class="pty-modal__label" for="invite-name">Имя странника</label>
-              <input
-                id="invite-name"
-                name="name"
-                type="text"
-                autocomplete="off"
-                placeholder="напр. Мирра Светлая"
-                class="pty-modal__input"
-              />
-              <div class="pty-modal__row">
-                <button type="button" class="pty-btn pty-btn--ghost" phx-click="close_invite">
-                  Отмена
-                </button>
-                <button type="submit" class="pty-btn pty-btn--gold">Отправить</button>
-              </div>
-            </form>
-          </div>
+            Обновить отряд
+          </button>
         </div>
-      <% end %>
-    </div>
+      </main>
+    </Layouts.app>
     """
   end
 
-  defp tag_mod(chip) when chip in ["Ранен", "Утомлён"], do: "pty-tag--warn"
-  defp tag_mod(chip) when chip in ["Свеж", "Сыта"], do: "pty-tag--good"
-  defp tag_mod(_chip), do: nil
+  defp load_party(socket, character) do
+    case Play.party_state(character) do
+      {:ok, state} ->
+        {:ok,
+         socket |> assign(:page_title, "Отряд") |> assign(:error, nil) |> assign_party(state)}
+
+      {:error, _reason} ->
+        {:ok, push_navigate(socket, to: ~p"/map")}
+    end
+  end
+
+  defp refresh_party(socket) do
+    case Play.party_state(socket.assigns.character) do
+      {:ok, state} -> socket |> assign(:error, nil) |> assign_party(state)
+      {:error, _reason} -> assign(socket, :error, "Состояние отряда сейчас недоступно.")
+    end
+  end
+
+  defp assign_party(socket, state) do
+    member_ids = MapSet.new(Enum.map(state.members, & &1.character_id))
+    self_membership = Enum.find(state.members, &(&1.character_id == state.character.id))
+
+    socket
+    |> subscribe_to_party_updates(state)
+    |> assign(:character, state.character)
+    |> assign(:location, state.location)
+    |> assign(:party, state.party)
+    |> assign(:members, state.members)
+    |> assign(:pending_invitations, state.pending_invitations)
+    |> assign(:active_expedition, state.active_expedition)
+    |> assign(:loot_policy, state.loot_policy)
+    |> assign(:loot_policies, @loot_policies)
+    |> assign(
+      :leader?,
+      not is_nil(state.party) and state.party.leader_character_id == state.character.id
+    )
+    |> assign(:self_ready?, not is_nil(self_membership) and member_ready?(self_membership))
+    |> assign(
+      :invite_options,
+      state.nearby_characters
+      |> Enum.reject(&MapSet.member?(member_ids, &1.id))
+      |> Enum.map(&{&1.name, &1.id})
+    )
+    |> assign(:create_form, to_form(%{"name" => ""}, as: :party_create))
+    |> assign(:invite_form, to_form(%{"character_id" => ""}, as: :party_invite))
+  end
+
+  defp subscribe_to_party_updates(socket, state) do
+    socket
+    |> replace_subscription(:character_update_topic, Parties.character_topic(state.character.id))
+    |> replace_subscription(
+      :party_update_topic,
+      if(state.party, do: Parties.party_topic(state.party.id), else: nil)
+    )
+  end
+
+  defp replace_subscription(socket, assign_name, topic) do
+    previous_topic = socket.assigns[assign_name]
+
+    if connected?(socket) and previous_topic != topic do
+      if is_binary(previous_topic) do
+        Phoenix.PubSub.unsubscribe(MMGO.PubSub, previous_topic)
+      end
+
+      if is_binary(topic) do
+        Phoenix.PubSub.subscribe(MMGO.PubSub, topic)
+      end
+    end
+
+    assign(socket, assign_name, topic)
+  end
+
+  defp member_ready?(membership), do: Map.get(membership.metadata || %{}, "ready", true) == true
+  defp location_name(nil), do: "неизвестное место"
+  defp location_name(location), do: location.name
+  defp inviter_name(%{inviter_character: nil}), do: "неизвестный путник"
+  defp inviter_name(%{inviter_character: inviter}), do: inviter.name
+  defp error_message(:travelling), do: "Нельзя приглашать спутников во время пути."
+  defp error_message(:party_or_target_not_found), do: "Отряд или путник больше не доступны."
+  defp error_message(:party_not_found), do: "Активный отряд не найден."
+  defp error_message(:not_party_leader), do: "Экспедицию может начать только лидер."
+
+  defp error_message(_reason),
+    do: "Команда отряда не выполнена: проверьте состав, готовность и место."
 end

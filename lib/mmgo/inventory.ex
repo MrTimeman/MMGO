@@ -4,6 +4,7 @@ defmodule MMGO.Inventory do
   alias MMGO.Accounts.Character
   alias MMGO.Inventory.{InventoryItem, ItemTemplate}
   alias MMGO.Repo
+  alias MMGO.Survival.State
 
   @stack_key "stack"
 
@@ -49,10 +50,29 @@ defmodule MMGO.Inventory do
     metadata = attrs["metadata"] || %{}
 
     with :ok <- validate_grant_quantity(quantity) do
-      if item_template.stackable do
-        upsert_stackable_item(character, item_template, quantity, durability, metadata)
+      grant = fn ->
+        if item_template.stackable do
+          upsert_stackable_item(character, item_template, quantity, durability, metadata)
+        else
+          create_inventory_item(character, item_template, quantity, durability, metadata, nil)
+        end
+      end
+
+      if restorative_food?(item_template, quantity) do
+        Repo.transaction(fn ->
+          case grant.() do
+            {:ok, item} ->
+              case State.recover_after_food(Repo, character) do
+                {:ok, _character} -> item
+                {:error, changeset} -> Repo.rollback(changeset)
+              end
+
+            {:error, changeset} ->
+              Repo.rollback(changeset)
+          end
+        end)
       else
-        create_inventory_item(character, item_template, quantity, durability, metadata, nil)
+        grant.()
       end
     end
   end
@@ -119,6 +139,15 @@ defmodule MMGO.Inventory do
      |> Ecto.Changeset.change()
      |> Ecto.Changeset.add_error(:quantity, "must be greater than or equal to zero")}
   end
+
+  defp restorative_food?(
+         %ItemTemplate{item_type: :food, nutrition_units: nutrition_units},
+         quantity
+       )
+       when nutrition_units > 0 and quantity > 0,
+       do: true
+
+  defp restorative_food?(_item_template, _quantity), do: false
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)

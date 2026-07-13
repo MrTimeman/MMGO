@@ -1,781 +1,672 @@
 defmodule MMGOWeb.CombatLive do
   @moduledoc """
-  Combat — the emotional peak (GDD §3). A single engine drives duels and
-  dungeon fights: shared party HP per side, simultaneous sealed turns, and
-  an AI narration region that is the only thing players see of resolution.
+  Scoped, server-rendered combat surface.
 
-  This is a **design-pass** screen: all state is hardcoded demo data and a
-  short scripted arc that advances each time the caster submits an
-  incantation. No backend, no DB — `# TODO: wire` marks the seams where the
-  real combat engine, Spell AI, and turn timer will attach.
+  The browser supplies only a proposed action selection. `MMGO.Play` checks
+  that the current scoped character belongs to the requested combat, while the
+  combat context locks the exact participant, turn, spell, item, and target
+  before sealing anything. Resolution is performed by the durable turn worker,
+  never by a client timer or a scripted UI sequence.
   """
   use MMGOWeb, :live_view
 
-  # ── Status-effect primitives (GDD §2.3.3) → glyph, Russian label, colour
-  # class. A fixed set the engine can resolve; here they only decorate the
-  # member chips. Glyphs are dingbats (no emoji, per the design brief).
-  @status %{
-    burning: {"❂", "Горит", "burn"},
-    frozen: {"❄", "Скован льдом", "freeze"},
-    shielded: {"◈", "Под щитом", "shield"},
-    exposed: {"◎", "Уязвим", "expose"},
-    staggered: {"≀", "Оглушён", "stagger"},
-    trapped: {"⊠", "В ловушке", "trap"},
-    silenced: {"⊘", "Немота", "silence"},
-    regenerating: {"✚", "Исцеляется", "regen"},
-    empowered: {"✦", "Усилен", "power"}
-  }
+  alias MMGO.Play
 
-  # The six Latin incantation slots (GDD §2.2.2), in canonical order. The
-  # action bar lights one tick per word the caster has written.
-  @slot_ticks [
-    {"A", "Actio"},
-    {"F", "Forma"},
-    {"V", "Vis"},
-    {"T", "Tempus"},
-    {"M", "Mutatio"},
-    {"P", "Pretium"}
-  ]
-
-  # A write-once grimoire of ~10 demo base spells (GDD §7.2). The caster
-  # picks one as the Fundamen the incantation builds upon.
-  @grimoire [
-    %{id: "ignis-prima", name: "Ignis Prima", ru: "Первый огонь", school: :fire, cd: 0},
-    %{id: "ictus-flammae", name: "Ictus Flammae", ru: "Удар пламени", school: :fire, cd: 1},
-    %{id: "scintilla", name: "Scintilla", ru: "Искра", school: :fire, cd: 0},
-    %{id: "murus-ignis", name: "Murus Ignis", ru: "Огненная стена", school: :fire, cd: 3},
-    %{id: "sphaera-solis", name: "Sphaera Solis", ru: "Солнечная сфера", school: :fire, cd: 2},
-    %{id: "ultima-flamma", name: "Ultima Flamma", ru: "Последнее пламя", school: :fire, cd: 4},
-    %{id: "chaos-vortex", name: "Chaos Vortex", ru: "Вихрь хаоса", school: :chaos, cd: 2},
-    %{id: "fractura", name: "Fractura", ru: "Разлом", school: :chaos, cd: 2},
-    %{
-      id: "velum-cinereum",
-      name: "Velum Cinereum",
-      ru: "Пепельная завеса",
-      school: :chaos,
-      cd: 1
-    },
-    %{id: "sanguis-ardens", name: "Sanguis Ardens", ru: "Горящая кровь", school: :chaos, cd: 3}
-  ]
-
-  # Tool-user inventory (GDD §3.3.2): deterministic items, each offering a
-  # fixed set of actions. No AI — values come from item tables.
-  @inventory [
-    %{id: "sword", name: "Стальной клинок", weight: "3.0", actions: ["Ударить", "Метнуть"]},
-    %{id: "shield", name: "Тяжёлый щит", weight: "5.5", actions: ["Снарядить", "Блок"]},
-    %{id: "fire-vial", name: "Склянка огня", weight: "0.4", actions: ["Метнуть"]},
-    %{id: "ice-vial", name: "Склянка стужи", weight: "0.4", actions: ["Метнуть"]},
-    %{id: "smoke-vial", name: "Дымовая склянка", weight: "0.3", actions: ["Метнуть"]},
-    %{id: "net", name: "Сеть ловчего", weight: "1.2", actions: ["Расставить", "Метнуть"]},
-    %{id: "repair", name: "Ремонтный набор", weight: "1.0", actions: ["Починить"]}
-  ]
+  @refresh_interval 1_000
 
   @impl true
-  def mount(_params, _session, socket) do
-    # TODO: wire — real combat_id, participants, and shared-HP state from the
-    # Combat context; scripted demo data stands in for the resolution engine.
-    {:ok, load_scenario(socket, :duel), temporary_assigns: []}
-  end
+  def mount(params, _session, socket) do
+    character = socket.assigns.current_scope.character
 
-  # ── Demo controls ──────────────────────────────────────────────────────
-  @impl true
-  def handle_event("toggle_mode", %{"mode" => mode}, socket) do
-    {:noreply, load_scenario(socket, String.to_existing_atom(mode))}
-  end
+    case load_combat_state(character, params["id"]) do
+      {:ok, state} ->
+        {:ok,
+         socket
+         |> assign(:page_title, "Бой")
+         |> assign(:action_error, nil)
+         |> assign_combat_state(state)
+         |> schedule_refresh()}
 
-  # ── Action bar ─────────────────────────────────────────────────────────
-  @impl true
-  def handle_event("type_incantation", %{"incantation" => text}, socket) do
-    {:noreply, assign(socket, :incantation, text)}
-  end
-
-  @impl true
-  def handle_event("open_drawer", %{"drawer" => drawer}, socket) do
-    {:noreply, assign(socket, :drawer, String.to_existing_atom(drawer))}
-  end
-
-  @impl true
-  def handle_event("close_drawer", _params, socket) do
-    {:noreply, assign(socket, :drawer, nil)}
-  end
-
-  @impl true
-  def handle_event("select_spell", %{"id" => id}, socket) do
-    spell = Enum.find(@grimoire, &(&1.id == id))
-
-    {:noreply,
-     socket
-     |> assign(:selected_spell, spell && %{name: spell.name, ru: spell.ru, tool: false})
-     |> assign(:drawer, nil)}
-  end
-
-  @impl true
-  def handle_event("tool_action", %{"item" => item, "action" => action}, socket) do
-    name = Enum.find(@inventory, &(&1.id == item))[:name]
-
-    {:noreply,
-     socket
-     |> assign(:selected_spell, %{name: "#{action}: #{name}", ru: "приём мастера", tool: true})
-     |> assign(:incantation, "")
-     |> assign(:drawer, nil)}
-  end
-
-  # ── Sealing a turn (GDD §3.2: simultaneous, then locked) ────────────────
-  @impl true
-  def handle_event("cast", params, socket) do
-    if socket.assigns.phase == :awaiting and socket.assigns.script != [] do
-      spoken =
-        cond do
-          socket.assigns.selected_spell && socket.assigns.selected_spell.tool ->
-            socket.assigns.selected_spell.name
-
-          true ->
-            (params["incantation"] || socket.assigns.incantation || "")
-            |> String.trim()
-            |> case do
-              "" -> "Ictus"
-              text -> text
-            end
-        end
-
-      # TODO: wire — push the sealed action to the engine; the turn timer and
-      # "waiting for others" resolve when every side has locked in.
-      Process.send_after(self(), :resolve_seal, 1400)
-
-      {:noreply,
-       socket
-       |> assign(:phase, :sealed)
-       |> assign(:spoken, spoken)
-       |> assign(:drawer, nil)}
-    else
-      {:noreply, socket}
+      {:error, reason} ->
+        {:ok,
+         socket
+         |> put_flash(:error, combat_error_message(reason))
+         |> push_navigate(to: ~p"/map")}
     end
   end
 
-  # ── Fleeing (GDD §3.5; §10.5 in the dungeon) ───────────────────────────
+  @impl true
+  def handle_event("submit_action", %{"combat_action" => attrs}, socket) when is_map(attrs) do
+    state = socket.assigns.combat_state
+
+    case Play.submit_combat_action(socket.assigns.current_scope.character, state.combat.id, attrs) do
+      {:ok, updated_state} ->
+        {:noreply,
+         socket
+         |> assign_combat_state(updated_state)
+         |> assign(:action_error, nil)}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:action_form, action_form(state, attrs))
+         |> assign(:action_error, combat_error_message(reason))}
+    end
+  end
+
+  def handle_event("submit_action", _params, socket) do
+    {:noreply, assign(socket, :action_error, combat_error_message(:invalid_action))}
+  end
+
   @impl true
   def handle_event("flee", _params, socket) do
-    {:noreply, assign(socket, :flee_confirm, true)}
-  end
+    state = socket.assigns.combat_state
 
-  @impl true
-  def handle_event("flee_cancel", _params, socket) do
-    {:noreply, assign(socket, :flee_confirm, false)}
-  end
+    case Play.flee_combat(socket.assigns.current_scope.character, state.combat.id) do
+      {:ok, updated_state} ->
+        {:noreply,
+         socket
+         |> assign_combat_state(updated_state)
+         |> assign(:action_error, nil)}
 
-  @impl true
-  def handle_event("flee_confirm", _params, socket) do
-    # A forfeited duel costs only the wager → back to the world map. Falling
-    # in the dungeon triggers Roguelike's Sacrifice → the revival screen.
-    case socket.assigns.mode do
-      :dungeon -> {:noreply, push_navigate(socket, to: ~p"/defeat")}
-      _ -> {:noreply, push_navigate(socket, to: ~p"/map")}
+      {:error, reason} ->
+        {:noreply, assign(socket, :action_error, combat_error_message(reason))}
     end
   end
 
-  # ── Resolution sequence ────────────────────────────────────────────────
   @impl true
-  def handle_info(:resolve_seal, socket) do
-    Process.send_after(self(), :apply_turn, 850)
-    {:noreply, assign(socket, :phase, :resolving)}
-  end
+  def handle_info(:refresh_combat, socket) do
+    state = socket.assigns.combat_state
 
-  @impl true
-  def handle_info(:apply_turn, socket) do
-    case socket.assigns.script do
-      [] ->
-        {:noreply, assign(socket, :phase, :awaiting)}
+    case Play.combat_state(socket.assigns.current_scope.character, state.combat.id) do
+      {:ok, updated_state} ->
+        {:noreply,
+         socket
+         |> assign_combat_state(updated_state, preserve_form?: true)
+         |> schedule_refresh()}
 
-      [turn | rest] ->
-        block = %{
-          kind: :turn,
-          label: turn.label,
-          spoken: socket.assigns.spoken,
-          paras: turn.paras,
-          env: turn[:env],
-          tone: turn[:tone] || :normal
-        }
-
-        socket =
-          socket
-          |> update(:log, &(&1 ++ [block]))
-          |> assign(:script, rest)
-          |> assign(:sides, %{
-            ally: put_side(socket.assigns.sides.ally, turn.ally_hp, turn.ally_chips),
-            enemy: put_side(socket.assigns.sides.enemy, turn.enemy_hp, turn.enemy_chips)
-          })
-          |> assign(:turn, socket.assigns.turn + 1)
-          |> assign(:incantation, "")
-          |> assign(:spoken, nil)
-          |> assign(:selected_spell, nil)
-          |> assign(:outcome, turn[:outcome])
-          |> assign(:phase, if(turn[:outcome], do: :over, else: :awaiting))
-          |> push_event("combat_reveal", %{})
-
-        {:noreply, socket}
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> put_flash(:error, combat_error_message(reason))
+         |> push_navigate(to: ~p"/map")}
     end
   end
 
-  defp put_side(side, hp, chips) do
-    members =
-      case chips do
-        nil -> side.members
-        list -> apply_chips(side.members, list)
-      end
-
-    %{side | hp: hp, members: members}
-  end
-
-  # chips is a list matching members by index; nil means "leave unchanged".
-  defp apply_chips(members, chips) do
-    members
-    |> Enum.zip(chips ++ List.duplicate(nil, max(0, length(members) - length(chips))))
-    |> Enum.map(fn
-      {member, nil} -> member
-      {member, list} -> %{member | chips: list}
-    end)
-  end
-
-  # =========================================================================
-  # Render
-  # =========================================================================
   @impl true
   def render(assigns) do
     ~H"""
-    <div class={["cbt-arena", "cbt-arena--#{@mode}", @outcome && "cbt-arena--over"]}>
-      <div class="cbt-vignette"></div>
-
-      <%!-- ── Combatants: shared HP, member chips, turn + timer ── --%>
-      <header class="cbt-top">
-        <div class="cbt-topbar">
-          <button
-            type="button"
-            class="cbt-flee-btn"
-            phx-click={if @phase in [:awaiting, :over], do: "flee"}
-            disabled={@phase not in [:awaiting, :over]}
-          >
-            <span aria-hidden="true">‹</span> Бежать
-          </button>
-
-          <div class="cbt-mode-toggle" role="group" aria-label="Режим боя (демо)">
-            <button
-              type="button"
-              class={["cbt-mode", @mode == :duel && "cbt-mode--on"]}
-              phx-click="toggle_mode"
-              phx-value-mode="duel"
-            >
-              Дуэль
-            </button>
-            <button
-              type="button"
-              class={["cbt-mode", @mode == :dungeon && "cbt-mode--on"]}
-              phx-click="toggle_mode"
-              phx-value-mode="dungeon"
-            >
-              Подземелье
-            </button>
-          </div>
-        </div>
-
-        <.side_panel side={@sides.enemy} align="enemy" />
-
-        <div class="cbt-turnrow">
-          <span class="cbt-turn-line"></span>
-          <div class="cbt-turnring" id={"cbt-turnring-#{@turn}-#{@phase}"}>
-            <svg viewBox="0 0 44 44" class="cbt-turnring__svg" aria-hidden="true">
-              <circle class="cbt-turnring__track" cx="22" cy="22" r="19" />
-              <circle
-                class={["cbt-turnring__sweep", @phase != :awaiting && "is-held"]}
-                cx="22"
-                cy="22"
-                r="19"
-              />
-            </svg>
-            <span class="cbt-turnring__label">
-              <em>ход</em>{roman(@turn)}
-            </span>
-          </div>
-          <span class="cbt-turn-line"></span>
-        </div>
-
-        <.side_panel side={@sides.ally} align="ally" />
-
-        <%= if @stakes do %>
-          <p class="cbt-stakes"><span class="cbt-stakes__mark">❧</span> {@stakes}</p>
-        <% end %>
-      </header>
-
-      <%!-- ── THE NARRATION: the only window into resolution ── --%>
+    <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
       <main
-        class="cbt-log"
-        id={"cbt-log-#{@mode}"}
-        phx-hook="CombatLog"
-        phx-update="stream"
-        role="log"
-        aria-live="polite"
+        id="combat-screen"
+        class="min-h-full bg-stone-950 px-4 py-6 text-stone-100 sm:px-6 sm:py-9"
       >
-        <%= for {block, i} <- Enum.with_index(@log) do %>
-          <article
-            class={[
-              "cbt-turn",
-              "cbt-turn--#{block.kind}",
-              block[:tone] == :danger && "cbt-turn--danger"
-            ]}
-            id={"cbt-block-#{i}"}
-          >
-            <%= if block.kind == :prologue do %>
-              <p class="cbt-turn__prologue">{block.paras |> hd()}</p>
-            <% else %>
-              <div class="cbt-turn__sep">
-                <span class="cbt-turn__label">{block.label}</span>
-                <%= if block[:spoken] do %>
-                  <span class="cbt-turn__spoken">«{block.spoken}»</span>
-                <% end %>
+        <div class="mx-auto w-full max-w-6xl space-y-6">
+          <header class="overflow-hidden rounded-[2rem] border border-amber-400/20 bg-gradient-to-br from-stone-900 via-stone-950 to-amber-950/30 px-6 py-7 shadow-2xl sm:px-8">
+            <div class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
+              <div class="max-w-2xl">
+                <p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300/80">
+                  {combat_kind_label(@combat_state.combat.kind)}
+                </p>
+                <h1 class="mt-2 font-serif text-3xl font-semibold tracking-tight text-amber-100 sm:text-4xl">
+                  Круг решения
+                </h1>
+                <p class="mt-3 text-sm leading-6 text-stone-300">
+                  Ход фиксируется на стороне мира. После печати действие нельзя подменить
+                  браузером, а исход появится после единого разрешения всех сторон.
+                </p>
               </div>
-              <%= for para <- block.paras do %>
-                <p class="cbt-turn__para">{para}</p>
-              <% end %>
-              <%= if block[:env] do %>
-                <aside class="cbt-env">
-                  <span class="cbt-env__tag">Среда</span>
-                  <span class="cbt-env__text">{block.env}</span>
-                </aside>
-              <% end %>
-            <% end %>
-          </article>
-        <% end %>
 
-        <%= if @outcome do %>
-          <div class={["cbt-outcome", "cbt-outcome--#{@outcome}"]} id="cbt-outcome">
-            <span class="cbt-outcome__seal">{if @outcome == :victory, do: "✦", else: "☒"}</span>
-            <p class="cbt-outcome__title">{outcome_title(@outcome)}</p>
-            <p class="cbt-outcome__sub">{@outcome_note}</p>
-            <a href={~p"/map"} class="cbt-outcome__btn">Покинуть арену</a>
-          </div>
-        <% end %>
-      </main>
+              <div class="flex flex-wrap items-center gap-3">
+                <span
+                  id="combat-status"
+                  class="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200"
+                >
+                  {combat_status_label(@combat_state.combat.status)}
+                </span>
+                <.link
+                  id="combat-back-to-map"
+                  navigate={~p"/map"}
+                  class="inline-flex min-h-11 items-center justify-center rounded-xl border border-stone-600 px-4 py-2 text-sm font-semibold text-stone-100 transition hover:border-amber-200 hover:bg-amber-100/10"
+                >
+                  <.icon name="hero-map" class="mr-2 size-4" /> Карта мира
+                </.link>
+              </div>
+            </div>
+          </header>
 
-      <%!-- ── Caster action bar ── --%>
-      <footer class={["cbt-actbar", @phase in [:sealed, :resolving] && "cbt-actbar--sealed"]}>
-        <%= if @phase in [:sealed, :resolving] do %>
-          <div class="cbt-seal">
-            <span class="cbt-seal__wax" aria-hidden="true">
-              <span class="cbt-seal__rune">ᛟ</span>
-            </span>
-            <div class="cbt-seal__copy">
-              <p class="cbt-seal__title">Действие запечатано</p>
-              <p class="cbt-seal__sub">
-                {if @phase == :sealed, do: "Ждём остальных…", else: "Круг разрешается…"}
+          <section
+            :if={@combat_state.turn}
+            id={"combat-turn-#{@combat_state.turn.id}"}
+            class="rounded-[1.75rem] border border-stone-700/80 bg-stone-900/80 p-5 shadow-xl sm:p-6"
+          >
+            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
+                  Текущий ход
+                </p>
+                <h2 class="mt-1 font-serif text-2xl text-stone-50">
+                  Ход {@combat_state.turn.number}
+                </h2>
+              </div>
+              <div class="rounded-2xl border border-amber-500/20 bg-stone-950/70 px-4 py-3 text-right">
+                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
+                  Предел хода
+                </p>
+                <p id="combat-deadline" class="mt-1 font-mono text-sm text-amber-200">
+                  {deadline_label(@combat_state.deadline_at, @combat_state.resolving?)}
+                </p>
+              </div>
+            </div>
+
+            <div class="mt-5 grid gap-4 md:grid-cols-2">
+              <article
+                :for={side <- @combat_state.sides}
+                id={"combat-side-#{side.id}"}
+                class="rounded-2xl border border-stone-700 bg-stone-950/55 p-4"
+              >
+                <div class="flex items-center justify-between gap-3">
+                  <h3 class="font-serif text-xl text-stone-100">{side.label}</h3>
+                  <span class="font-mono text-sm text-amber-200">
+                    {side.shared_hp} / {side.max_shared_hp}
+                  </span>
+                </div>
+                <div class="mt-3 h-2 overflow-hidden rounded-full bg-stone-800">
+                  <div
+                    class="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-300 transition-[width] duration-500"
+                    style={"width:#{hp_percent(side.shared_hp, side.max_shared_hp)}%"}
+                  >
+                  </div>
+                </div>
+                <ul class="mt-4 space-y-2 text-sm text-stone-300">
+                  <li
+                    :for={participant <- participants_on_side(@combat_state, side.id)}
+                    id={"combat-target-#{participant.id}"}
+                    class="flex items-center justify-between gap-3 rounded-xl bg-stone-900/70 px-3 py-2"
+                  >
+                    <span>{participant.display_name}</span>
+                    <span class={participant_status_class(participant.status)}>
+                      {participant_status_label(participant.status)}
+                    </span>
+                  </li>
+                </ul>
+              </article>
+            </div>
+          </section>
+
+          <section
+            :if={@combat_state.turn && @combat_state.turn.narration}
+            id={"combat-narration-#{@combat_state.turn.id}"}
+            class="rounded-[1.75rem] border border-indigo-300/20 bg-indigo-950/30 px-5 py-5 shadow-lg"
+          >
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200/75">
+              Последнее разрешение
+            </p>
+            <p class="mt-2 font-serif text-lg leading-7 text-indigo-50">
+              {@combat_state.turn.narration}
+            </p>
+          </section>
+
+          <section
+            :if={@combat_state.spectator?}
+            id="combat-spectator"
+            class="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/25 p-6 shadow-lg"
+          >
+            <div class="flex items-start gap-4">
+              <span class="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-violet-200/25 bg-violet-200/10 text-violet-100">
+                <.icon name="hero-eye" class="size-5" />
+              </span>
+              <div>
+                <h2 class="font-serif text-2xl text-violet-50">Вы наблюдаете за боем</h2>
+                <p class="mt-2 text-sm leading-6 text-violet-100/75">
+                  Этот круг проходит у вас на глазах. Хроника и итог доступны, но выбирать
+                  действия могут только его участники.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            :if={@combat_state.combat.status == :finished}
+            id="combat-outcome"
+            class="rounded-[1.75rem] border border-amber-300/30 bg-amber-950/25 p-6 text-center shadow-xl"
+          >
+            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
+              Бой завершён
+            </p>
+            <h2 class="mt-2 font-serif text-3xl text-amber-100">
+              Победа стороны {winner_label(@combat_state)}
+            </h2>
+            <p class="mx-auto mt-3 max-w-2xl text-sm leading-6 text-stone-300">
+              Итог сохранён. Связанные последствия боя будут применены его доменным контекстом.
+            </p>
+            <.link
+              :if={dungeon_combat?(@combat_state.combat)}
+              id="combat-outcome-dungeon"
+              navigate={~p"/dungeon"}
+              class="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+            >
+              Вернуться в экспедицию
+            </.link>
+            <.link
+              :if={not dungeon_combat?(@combat_state.combat)}
+              id="combat-outcome-map"
+              navigate={~p"/map"}
+              class="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+            >
+              Вернуться к карте
+            </.link>
+          </section>
+
+          <section
+            :if={@combat_state.resolving? and @combat_state.combat.status != :finished}
+            id="combat-resolving"
+            class="rounded-[1.75rem] border border-sky-300/20 bg-sky-950/25 p-6 shadow-lg"
+          >
+            <div class="flex items-start gap-4">
+              <span class="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-sky-200/25 bg-sky-200/10 text-sky-100">
+                <.icon name="hero-arrow-path" class="size-5 animate-spin" />
+              </span>
+              <div>
+                <h2 class="font-serif text-2xl text-sky-50">Печати собраны</h2>
+                <p class="mt-2 text-sm leading-6 text-sky-100/75">
+                  Сервер разрешает ход по сохранённым снимкам действий. Экран обновится, когда
+                  результат будет записан.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            :if={@combat_state.awaiting? and not @combat_state.resolving?}
+            id="combat-awaiting"
+            class="rounded-[1.75rem] border border-emerald-300/20 bg-emerald-950/25 p-6 shadow-lg"
+          >
+            <div class="flex items-start gap-4">
+              <span class="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-emerald-200/25 bg-emerald-200/10 text-emerald-100">
+                <.icon name="hero-check" class="size-5" />
+              </span>
+              <div>
+                <h2 class="font-serif text-2xl text-emerald-50">Ваше действие запечатано</h2>
+                <p class="mt-2 text-sm leading-6 text-emerald-100/75">
+                  Ожидаем остальные стороны или окончание отсчёта. Для отсутствующих участников
+                  система запишет ожидание, затем разрешит этот же ход.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            :if={@combat_state.action_open? and is_nil(@combat_state.own_action)}
+            class="rounded-[1.75rem] border border-amber-300/25 bg-[#ece0bd] p-5 text-stone-950 shadow-xl sm:p-7"
+          >
+            <div class="mb-6 border-b border-amber-950/15 pb-5">
+              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-900/70">
+                Ваше решение
+              </p>
+              <h2 class="mt-2 font-serif text-2xl font-semibold">Выберите и запечатайте действие</h2>
+              <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-700">
+                Заклинание должно быть в активном гримуаре, предмет — в вашем инвентаре. Цели и
+                цена сверяются ещё раз в момент печати.
+              </p>
+              <p
+                :if={channeling?(@combat_state.participant)}
+                id="combat-channeling-hint"
+                class="mt-3 rounded-xl border border-violet-900/20 bg-violet-950/8 px-4 py-3 text-sm leading-6 text-violet-950"
+              >
+                Вы поддерживаете эффект. Выберите «Прервать канал», чтобы закончить его
+                добровольно; полученный урон прервёт канал автоматически.
               </p>
             </div>
-          </div>
-        <% else %>
-          <%= if @outcome do %>
-            <div class="cbt-actbar__done">Поединок окончен.</div>
-          <% else %>
-            <div class="cbt-slots">
-              <%= for {tick, idx} <- Enum.with_index(slot_ticks()) do %>
-                <span
-                  class={["cbt-slot", idx < word_count(@incantation) && "cbt-slot--lit"]}
-                  title={"#{elem(tick, 1)}"}
-                >
-                  {elem(tick, 0)}
-                </span>
-              <% end %>
-              <span class="cbt-slots__count">{word_count(@incantation)}/6</span>
+
+            <.form
+              for={@action_form}
+              id="combat-action-form"
+              phx-submit="submit_action"
+              class="space-y-1"
+            >
+              <.input
+                field={@action_form[:action_type]}
+                id="combat-action-kind"
+                type="select"
+                label="Тип действия"
+                options={action_type_options(@combat_state.participant)}
+                required
+              />
+
+              <div class="grid gap-x-5 md:grid-cols-2">
+                <div>
+                  <.input
+                    field={@action_form[:spell_id]}
+                    id="combat-cast-spell"
+                    type="select"
+                    label="Заклинание"
+                    options={spell_options(@combat_state.prepared_spells)}
+                    prompt="Выберите запись гримуара"
+                  />
+                  <.input
+                    field={@action_form[:incantation]}
+                    id="combat-incantation"
+                    type="text"
+                    label="Формула"
+                    autocomplete="off"
+                  />
+                </div>
+                <div>
+                  <.input
+                    field={@action_form[:inventory_item_id]}
+                    id="combat-tool-item"
+                    type="select"
+                    label="Предмет"
+                    options={item_options(@combat_state.items)}
+                    prompt="Выберите предмет"
+                  />
+                  <.input
+                    field={@action_form[:tool_action]}
+                    id="combat-tool-action"
+                    type="select"
+                    label="Приём предмета"
+                    options={item_action_options(@combat_state.items)}
+                    prompt="Выберите приём"
+                  />
+                </div>
+              </div>
+
+              <div class="grid gap-x-5 md:grid-cols-2">
+                <.input
+                  field={@action_form[:target_side]}
+                  id="combat-target-side"
+                  type="select"
+                  label="Сторона цели"
+                  options={target_side_options(@combat_state)}
+                />
+                <.input
+                  field={@action_form[:target_participant_id]}
+                  id="combat-target-selector"
+                  type="select"
+                  label="Участник цели"
+                  options={target_options(@combat_state)}
+                />
+              </div>
+
+              <p
+                :if={@action_error}
+                id="combat-action-error"
+                class="rounded-xl border border-rose-500/30 bg-rose-950/10 px-4 py-3 text-sm leading-6 text-rose-800"
+              >
+                {@action_error}
+              </p>
+
+              <button
+                id="combat-seal"
+                type="submit"
+                phx-disable-with="Печать накладывается…"
+                class="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-amber-800 px-5 py-3 text-sm font-semibold text-amber-50 shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-800 focus:ring-offset-2 focus:ring-offset-[#ece0bd]"
+              >
+                <.icon name="hero-lock-closed" class="mr-2 size-5" /> Запечатать действие
+              </button>
+
+              <button
+                :if={@combat_state.can_flee?}
+                id="combat-flee"
+                type="button"
+                phx-click="flee"
+                class="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-rose-900/35 px-5 py-3 text-sm font-semibold text-rose-900 transition hover:border-rose-900 hover:bg-rose-950/10"
+              >
+                <.icon name="hero-arrow-uturn-left" class="mr-2 size-5" />
+                Отступить и отдать этот круг
+              </button>
+            </.form>
+          </section>
+
+          <section
+            id="combat-events"
+            class="rounded-[1.75rem] border border-stone-700/80 bg-stone-900/80 p-5 shadow-lg sm:p-6"
+          >
+            <div class="flex items-end justify-between gap-4">
+              <div>
+                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Хроника</p>
+                <h2 class="mt-1 font-serif text-2xl text-stone-100">Последние события</h2>
+              </div>
+              <span class="text-sm text-stone-500">
+                {@combat_state.submitted_action_count} печатей в ходе
+              </span>
             </div>
 
-            <form class="cbt-form" phx-change="type_incantation" phx-submit="cast">
-              <%= if @selected_spell do %>
-                <div class={["cbt-basechip", @selected_spell.tool && "cbt-basechip--tool"]}>
-                  <span class="cbt-basechip__mark">
-                    {if @selected_spell.tool, do: "⚒", else: "✦"}
-                  </span>
-                  <span class="cbt-basechip__name">{@selected_spell.name}</span>
-                  <span class="cbt-basechip__ru">{@selected_spell.ru}</span>
-                </div>
-              <% end %>
-
-              <div class="cbt-castrow">
-                <input
-                  type="text"
-                  name="incantation"
-                  value={@incantation}
-                  class="cbt-input"
-                  placeholder="Произнесите заклинание…"
-                  autocomplete="off"
-                  spellcheck="false"
-                  phx-debounce="120"
-                />
-                <button type="submit" class="cbt-cast">
-                  <span class="cbt-cast__label">Сотворить</span>
-                </button>
-              </div>
-
-              <div class="cbt-drawer-btns">
-                <button
-                  type="button"
-                  class="cbt-dbtn"
-                  phx-click="open_drawer"
-                  phx-value-drawer="grimoire"
-                >
-                  <span class="cbt-dbtn__glyph">❦</span> Гримуар
-                </button>
-                <button
-                  type="button"
-                  class="cbt-dbtn"
-                  phx-click="open_drawer"
-                  phx-value-drawer="inventory"
-                >
-                  <span class="cbt-dbtn__glyph">⚔</span> Инвентарь
-                </button>
-              </div>
-            </form>
-          <% end %>
-        <% end %>
-      </footer>
-
-      <%!-- ── Slide-up drawers ── --%>
-      <%= if @drawer do %>
-        <div class="cbt-scrim" phx-click="close_drawer"></div>
-        <div class={["cbt-sheet", "cbt-sheet--#{@drawer}"]}>
-          <div class="cbt-sheet__grip"></div>
-          <%= if @drawer == :grimoire do %>
-            <h2 class="cbt-sheet__title">Гримуар «Искра»</h2>
-            <p class="cbt-sheet__hint">Выберите основу — на неё ляжет заклинание.</p>
-            <ul class="cbt-splist">
-              <%= for spell <- grimoire() do %>
-                <li>
-                  <button
-                    type="button"
-                    class="cbt-spell"
-                    phx-click="select_spell"
-                    phx-value-id={spell.id}
-                  >
-                    <span class={["cbt-spell__dot", "cbt-spell__dot--#{spell.school}"]}></span>
-                    <span class="cbt-spell__names">
-                      <span class="cbt-spell__lat">{spell.name}</span>
-                      <span class="cbt-spell__ru">{spell.ru}</span>
-                    </span>
-                    <span class="cbt-spell__cd">
-                      {if spell.cd == 0, do: "готово", else: "откат #{spell.cd}"}
-                    </span>
-                  </button>
-                </li>
-              <% end %>
-            </ul>
-          <% else %>
-            <h2 class="cbt-sheet__title">Инвентарь</h2>
-            <p class="cbt-sheet__hint">Приёмы мастера — точный расчёт, без магии.</p>
-            <ul class="cbt-itemlist">
-              <%= for item <- inventory() do %>
-                <li class="cbt-item">
-                  <div class="cbt-item__head">
-                    <span class="cbt-item__name">{item.name}</span>
-                    <span class="cbt-item__weight">{item.weight} фнт</span>
-                  </div>
-                  <div class="cbt-item__actions">
-                    <%= for action <- item.actions do %>
-                      <button
-                        type="button"
-                        class="cbt-iact"
-                        phx-click="tool_action"
-                        phx-value-item={item.id}
-                        phx-value-action={action}
-                      >
-                        {action}
-                      </button>
-                    <% end %>
-                  </div>
-                </li>
-              <% end %>
-            </ul>
-          <% end %>
+            <p
+              :if={@combat_state.events == []}
+              id="combat-events-empty"
+              class="mt-4 text-sm text-stone-500"
+            >
+              Хроника появится после первого разрешённого хода.
+            </p>
+            <ol :if={@combat_state.events != []} class="mt-4 space-y-2">
+              <li
+                :for={event <- @combat_state.events}
+                id={"combat-event-#{event.id}"}
+                class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-stone-950/70 px-4 py-3 text-sm"
+              >
+                <span class="font-mono text-amber-300">Ход {event.turn_number}</span>
+                <span class="text-stone-600">·</span>
+                <span class="text-stone-300">{event_label(event.event_type)}</span>
+              </li>
+            </ol>
+          </section>
         </div>
-      <% end %>
-
-      <%!-- ── Flee confirmation ── --%>
-      <%= if @flee_confirm do %>
-        <div class="cbt-scrim" phx-click="flee_cancel"></div>
-        <div class="cbt-flee-modal">
-          <p class="cbt-flee-modal__title">Покинуть бой?</p>
-          <p class="cbt-flee-modal__body">{@flee_warning}</p>
-          <div class="cbt-flee-modal__row">
-            <button type="button" class="cbt-flee-modal__stay" phx-click="flee_cancel">
-              Остаться
-            </button>
-            <button type="button" class="cbt-flee-modal__go" phx-click="flee_confirm">
-              {if @mode == :dungeon, do: "Пасть", else: "Сдаться"}
-            </button>
-          </div>
-        </div>
-      <% end %>
-    </div>
+      </main>
+    </Layouts.app>
     """
   end
 
-  # ── Side panel (shared HP + member chips) ──────────────────────────────
-  attr :side, :map, required: true
-  attr :align, :string, required: true
+  defp load_combat_state(character, combat_id) when is_binary(combat_id),
+    do: Play.combat_state(character, combat_id)
 
-  defp side_panel(assigns) do
-    ~H"""
-    <section class={["cbt-side", "cbt-side--#{@align}"]}>
-      <div class="cbt-side__head">
-        <span class="cbt-side__name">{@side.name}</span>
-        <span class="cbt-side__hpnum">{@side.hp} / {@side.max}</span>
-      </div>
-      <div class="cbt-hp">
-        <div
-          class={["cbt-hp__fill", low_class(@side.hp, @side.max)]}
-          style={"width: #{pct(@side.hp, @side.max)}%"}
-        >
-        </div>
-      </div>
-      <div class="cbt-chips">
-        <%= for m <- @side.members do %>
-          <div class="cbt-chip">
-            <span class="cbt-chip__token">{m.short}</span>
-            <span class="cbt-chip__name">{m.name}</span>
-            <span class="cbt-chip__status">
-              <%= for chip <- m.chips do %>
-                <% {glyph, label, mod} = status_meta(chip) %>
-                <span class={["cbt-glyph", "cbt-glyph--#{mod}"]} title={label}>{glyph}</span>
-              <% end %>
-            </span>
-          </div>
-        <% end %>
-      </div>
-    </section>
-    """
-  end
+  defp load_combat_state(character, _combat_id), do: Play.active_combat_state(character)
 
-  # =========================================================================
-  # Scenario data
-  # =========================================================================
-  defp load_scenario(socket, :duel) do
-    socket
-    |> assign(:page_title, "Поединок")
-    |> assign(:mode, :duel)
-    |> assign(:phase, :awaiting)
-    |> assign(:turn, 1)
-    |> assign(:incantation, "")
-    |> assign(:spoken, nil)
-    |> assign(:selected_spell, nil)
-    |> assign(:drawer, nil)
-    |> assign(:flee_confirm, false)
-    |> assign(:outcome, nil)
-    |> assign(:outcome_note, "Ставка ваша: 200 монет переходят победителю.")
-    |> assign(:stakes, nil)
-    |> assign(
-      :flee_warning,
-      "Сдача поединка отдаёт весь заклад противнику. Чести это не прибавит."
-    )
-    |> assign(:sides, %{
-      enemy: %{
-        name: "Кассиан Волхв",
-        hp: 120,
-        max: 120,
-        members: [%{short: "К", name: "Кассиан", chips: []}]
-      },
-      ally: %{
-        name: "Ваша сторона",
-        hp: 120,
-        max: 120,
-        members: [%{short: "А", name: "Альберт Северин", chips: []}]
-      }
-    })
-    |> reset_log(:duel)
-    |> assign(:script, duel_script())
-  end
+  defp assign_combat_state(socket, state, opts \\ []) do
+    preserve_form? = Keyword.get(opts, :preserve_form?, false)
 
-  defp load_scenario(socket, :dungeon) do
-    socket
-    |> assign(:page_title, "Схватка в подземелье")
-    |> assign(:mode, :dungeon)
-    |> assign(:phase, :awaiting)
-    |> assign(:turn, 1)
-    |> assign(:incantation, "")
-    |> assign(:spoken, nil)
-    |> assign(:selected_spell, nil)
-    |> assign(:drawer, nil)
-    |> assign(:flee_confirm, false)
-    |> assign(:outcome, nil)
-    |> assign(:outcome_note, "")
-    |> assign(:stakes, "На кону всё, что несёт отряд: добыча, гримуары, монеты.")
-    |> assign(
-      :flee_warning,
-      "Отступить с этого яруса нельзя. Пасть — значит призвать Жертву Роглайка: вы вернётесь к Башне ни с чем."
-    )
-    |> assign(:sides, %{
-      enemy: %{
-        name: "Выводок пепельных тварей",
-        hp: 260,
-        max: 260,
-        members: [
-          %{short: "✳", name: "Матка", chips: []},
-          %{short: "•", name: "Порождение", chips: []},
-          %{short: "•", name: "Порождение", chips: []}
-        ]
-      },
-      ally: %{
-        name: "Отряд «Три искры»",
-        hp: 96,
-        max: 210,
-        members: [
-          %{short: "А", name: "Альберт", chips: []},
-          %{short: "М", name: "Мара Тенёк", chips: []},
-          %{short: "Г", name: "Гортан", chips: []}
-        ]
-      }
-    })
-    |> reset_log(:dungeon)
-    |> assign(:script, dungeon_script())
-  end
+    socket =
+      socket
+      |> assign(:combat_state, state)
+      |> assign(:character, state.character)
+      |> assign(:atmosphere, state.atmosphere)
 
-  defp reset_log(socket, :duel) do
-    assign(socket, :log, [
-      %{
-        kind: :prologue,
-        paras: [
-          "Вершина Башни открыта ветру. Дуэльный круг — кольцо чёрного оплавленного стекла, в котором дрожат отражения звёзд. Кассиан Волхв склоняет голову; на его пальцах уже вьётся сизый дым Хаоса. Вы отвечаете поклоном. Круг запечатан — отступить нельзя."
-        ]
-      }
-    ])
-  end
-
-  defp reset_log(socket, :dungeon) do
-    assign(socket, :log, [
-      %{
-        kind: :prologue,
-        paras: [
-          "Третий ярус дышит золой. В темноте тлеют угли чужих глаз — выводок пепельных тварей смыкает вокруг отряда полукольцо. Гортан вскидывает щит перед вами и Марой; коридор за спиной уже осыпался. Драться придётся здесь."
-        ]
-      }
-    ])
-  end
-
-  # ── The duel arc: opening → burning ground → near-death → rally ────────
-  defp duel_script do
-    [
-      %{
-        label: "Ход I",
-        ally_hp: 108,
-        enemy_hp: 96,
-        ally_chips: nil,
-        enemy_chips: [[:shielded]],
-        paras: [
-          "Первое слово срывается с ваших губ — и воздух перед Кассианом вспыхивает жаром. Он не уклоняется: сизая пелена сворачивается щитом, и пламя растекается по ней, не найдя плоти. Но жар всё же лизнул его руку — Волхв морщится, впервые за вечер, и отвечает росчерком хаоса, что царапает вам плечо."
-        ]
-      },
-      %{
-        label: "Ход II",
-        ally_hp: 108,
-        enemy_hp: 70,
-        ally_chips: nil,
-        enemy_chips: [[:burning]],
-        env:
-          "Пылающая земля. Пол круга занялся огнём — всякий, кто стоит в пламени, тлеет с каждым ходом.",
-        paras: [
-          "Вы чертите дугу, и капли огня, сорвавшись с ладони, впиваются в стеклянный пол. Чёрное зеркало круга занимается: между вами разгорается полоса пылающей земли. Кассиан отступает к самому краю, но подол его мантии уже тлеет — щит хорош против пламени в лоб, но не против пола под ногами."
-        ]
-      },
-      %{
-        label: "Ход III",
-        tone: :danger,
-        ally_hp: 22,
-        enemy_hp: 64,
-        ally_chips: [[:burning, :exposed]],
-        enemy_chips: [[]],
-        paras: [
-          "Кассиан не гасит огонь — он принимает его. Вскинув руки, Волхв вплетает пламя круга в собственное заклинание, и полоса пылающей земли вздыбливается стеной, что катится на вас. Вы вскидываете щит слишком поздно. Жар выбивает дыхание, стекло под ногами трескается, и мир на миг становится белым. Вы держитесь на ногах — едва."
-        ]
-      },
-      %{
-        label: "Ход IV",
-        outcome: :victory,
-        ally_hp: 22,
-        enemy_hp: 0,
-        ally_chips: [[]],
-        enemy_chips: [[]],
-        paras: [
-          "Из последних сил вы перестаёте бороться с огнём — и делаете его своим. Хаос откликается охотно: стена пламени замирает, разворачивается и обрушивается назад, на того, кто её призвал. Сизый щит Кассиана лопается со звоном треснувшего стекла. Волхв опускается на колено в гаснущем круге и поднимает раскрытую ладонь. Довольно."
-        ]
-      }
-    ]
-  end
-
-  # ── The dungeon arc: ends on a knife-edge — flee → Roguelike's Sacrifice ─
-  defp dungeon_script do
-    [
-      %{
-        label: "Ход I",
-        ally_hp: 96,
-        enemy_hp: 198,
-        ally_chips: [[], [], [:shielded]],
-        enemy_chips: [[:burning], [], []],
-        paras: [
-          "Вы бросаете искру в самую гущу — и передний ряд твари вспыхивает, визжа на языке, которого нет у людей. Мара швыряет склянку стужи, и лапы порождений схватывает наледью. Гортан держит строй, приняв удар на щит; за его спиной вы успеваете вдохнуть."
-        ]
-      },
-      %{
-        label: "Ход II",
-        tone: :danger,
-        ally_hp: 41,
-        enemy_hp: 150,
-        ally_chips: [[:burning], [], [:staggered]],
-        enemy_chips: [[], [], []],
-        env:
-          "Пепельный смерч. Твари вздымают золу — воздух густеет, и каждый вдох в этом облаке жжёт изнутри.",
-        paras: [
-          "Матка выводка раскрывает хребет, и ярус наполняется золой. Смерч пепла глушит огонь и режет глаза. Гортан оступается под тяжестью щита, тварь достаёт Мару, и общий запас сил отряда стремительно тает. Вы кашляете кровью и пеплом."
-        ]
-      },
-      %{
-        label: "Ход III",
-        tone: :danger,
-        ally_hp: 12,
-        enemy_hp: 132,
-        ally_chips: [[:burning, :exposed], [:silenced], [:staggered]],
-        enemy_chips: [[], [], []],
-        paras: [
-          "Вы бьёте вихрем хаоса, и матка отшатывается — но выводок бесконечен. Из темноты выступают новые силуэты. Мара уже не может говорить, Гортан едва стоит. Отряд держится на последнем дыхании, и коридор к спасению завален. Решение нужно принять сейчас."
-        ]
-      }
-    ]
-  end
-
-  # =========================================================================
-  # Helpers
-  # =========================================================================
-  defp slot_ticks, do: @slot_ticks
-  defp grimoire, do: @grimoire
-  defp inventory, do: @inventory
-
-  defp status_meta(id), do: Map.fetch!(@status, id)
-
-  defp word_count(nil), do: 0
-
-  defp word_count(text) do
-    text |> String.split(~r/\s+/, trim: true) |> length() |> min(6)
-  end
-
-  defp pct(hp, max) when max > 0, do: Float.round(hp / max * 100, 1)
-  defp pct(_, _), do: 0
-
-  defp low_class(hp, max) do
-    cond do
-      max <= 0 -> nil
-      hp / max <= 0.2 -> "cbt-hp__fill--critical"
-      hp / max <= 0.45 -> "cbt-hp__fill--low"
-      true -> nil
+    if preserve_form? do
+      socket
+    else
+      form = if state.spectator?, do: to_form(%{}, as: :combat_action), else: action_form(state)
+      assign(socket, :action_form, form)
     end
   end
 
-  defp outcome_title(:victory), do: "Победа"
-  defp outcome_title(_), do: "Поражение"
+  defp schedule_refresh(socket) do
+    if connected?(socket) and active_combat?(socket.assigns.combat_state.combat) do
+      Process.send_after(self(), :refresh_combat, @refresh_interval)
+    end
 
-  @roman ~w(0 I II III IV V VI VII VIII IX X XI XII)
-  defp roman(n) when n in 0..12, do: Enum.at(@roman, n)
-  defp roman(n), do: Integer.to_string(n)
+    socket
+  end
+
+  defp active_combat?(combat), do: combat.status in [:active_turn, :locked, :resolving]
+
+  defp action_form(state, attrs \\ nil) do
+    params = attrs || default_action_params(state)
+    to_form(params, as: :combat_action)
+  end
+
+  defp default_action_params(state) do
+    spell = List.first(state.prepared_spells)
+    item = List.first(state.items)
+    item_action = item && List.first(item.actions)
+    target = List.first(opponents(state))
+
+    action_type =
+      if channeling?(state.participant),
+        do: "wait",
+        else: if(spell, do: "cast_spell", else: "wait")
+
+    %{
+      "action_type" => action_type,
+      "spell_id" => spell && spell.id,
+      "incantation" => spell && spell.formula,
+      "inventory_item_id" => item && item.id,
+      "tool_action" => item_action && item_action.key,
+      "target_side" => target && target.side,
+      "target_participant_id" => target && target.id
+    }
+  end
+
+  defp opponents(state) do
+    Enum.filter(
+      state.combat.participants,
+      &(&1.side != state.participant.side and &1.status == :ready)
+    )
+  end
+
+  defp participants_on_side(state, side_id) do
+    state.combat.participants
+    |> Enum.filter(&(&1.side == side_id))
+    |> Enum.sort_by(& &1.position)
+  end
+
+  defp action_type_options(participant) do
+    [
+      {"Заклинание", "cast_spell"},
+      {"Предмет", "use_item"},
+      {if(channeling?(participant), do: "Прервать канал", else: "Выждать"), "wait"}
+    ]
+  end
+
+  defp channeling?(%{active_states: active_states}) do
+    Enum.any?(List.wrap(active_states), &(Map.get(&1, "state") == "channeling"))
+  end
+
+  defp channeling?(_participant), do: false
+
+  defp spell_options(spells),
+    do: Enum.map(spells, &{"#{&1.name} · усталость #{&1.fatigue_cost}", &1.id})
+
+  defp item_options(items),
+    do: Enum.map(items, &{"#{&1.name} · доступно #{&1.available_quantity}", &1.id})
+
+  defp item_action_options(items) do
+    Enum.flat_map(items, fn item ->
+      Enum.map(item.actions, fn action ->
+        {"#{item.name} · #{item_action_label(action.kind)}", action.key}
+      end)
+    end)
+  end
+
+  defp target_side_options(state) do
+    state.combat.participants
+    |> Enum.map(& &1.side)
+    |> Enum.uniq()
+    |> Enum.map(fn side_id -> {side_label(state, side_id), side_id} end)
+  end
+
+  defp target_options(state) do
+    state.combat.participants
+    |> Enum.filter(&(&1.status == :ready))
+    |> Enum.sort_by(&{&1.side, &1.position})
+    |> Enum.map(&{"#{&1.display_name} · #{side_label(state, &1.side)}", &1.id})
+  end
+
+  defp side_label(state, side_id) do
+    state.sides
+    |> Enum.find(&(&1.id == side_id))
+    |> case do
+      nil -> side_id
+      side -> side.label
+    end
+  end
+
+  defp hp_percent(_hp, max_hp) when max_hp <= 0, do: 0
+
+  defp hp_percent(hp, max_hp) do
+    hp
+    |> Kernel./(max_hp)
+    |> Kernel.*(100)
+    |> min(100)
+    |> max(0)
+    |> round()
+  end
+
+  defp deadline_label(_deadline_at, true), do: "ход разрешается"
+  defp deadline_label(nil, _resolving?), do: "время уточняется"
+
+  defp deadline_label(deadline_at, _resolving?),
+    do: Calendar.strftime(deadline_at, "%H:%M:%S UTC")
+
+  defp combat_kind_label(:duel), do: "Дуэль"
+  defp combat_kind_label(:dungeon_encounter), do: "Схватка в подземелье"
+  defp combat_kind_label(:overworld_encounter), do: "Столкновение в пути"
+  defp combat_kind_label(kind), do: kind |> to_string() |> String.capitalize()
+
+  defp dungeon_combat?(%{kind: :dungeon_encounter}), do: true
+  defp dungeon_combat?(_combat), do: false
+
+  defp combat_status_label(:active_turn), do: "ход открыт"
+  defp combat_status_label(:locked), do: "печати собраны"
+  defp combat_status_label(:resolving), do: "разрешение"
+  defp combat_status_label(:finished), do: "завершён"
+  defp combat_status_label(status), do: status |> to_string() |> String.capitalize()
+
+  defp participant_status_label(:ready), do: "готов"
+  defp participant_status_label(:defeated), do: "повержен"
+  defp participant_status_label(:fled), do: "отступил"
+  defp participant_status_label(status), do: status |> to_string() |> String.capitalize()
+
+  defp participant_status_class(:ready), do: "text-xs font-semibold text-emerald-300"
+  defp participant_status_class(:defeated), do: "text-xs font-semibold text-rose-300"
+  defp participant_status_class(:fled), do: "text-xs font-semibold text-stone-500"
+  defp participant_status_class(_status), do: "text-xs font-semibold text-stone-400"
+
+  defp winner_label(state) do
+    case Enum.find(state.sides, &(&1.id == state.combat.winner_side)) do
+      nil -> "не определена"
+      side -> side.label
+    end
+  end
+
+  defp item_action_label(:strike), do: "удар"
+  defp item_action_label(:sweep), do: "взмах"
+  defp item_action_label(:raise_shield), do: "щит"
+  defp item_action_label(:throw), do: "бросок"
+  defp item_action_label(:deploy), do: "развернуть"
+  defp item_action_label(:repair), do: "починка"
+  defp item_action_label(kind), do: kind |> to_string() |> String.capitalize()
+
+  defp event_label("spell_cast"), do: "заклинание сработало"
+  defp event_label("tool_action"), do: "предмет применён"
+  defp event_label("action_blocked"), do: "действие сорвалось"
+  defp event_label("state_tick"), do: "состояние изменило поле боя"
+  defp event_label("environment_hazard_tick"), do: "опасная среда наносит урон"
+  defp event_label("channeling_stopped"), do: "канал добровольно прерван"
+  defp event_label("wait"), do: "сторона выжидает"
+  defp event_label("fled"), do: "участник отступил"
+  defp event_label(event_type), do: event_type |> to_string() |> String.replace("_", " ")
+
+  defp combat_error_message(:no_active_combat), do: "У вас нет активного боя."
+  defp combat_error_message(:combat_not_found), do: "Этот бой вам недоступен."
+  defp combat_error_message(:turn_not_open), do: "Этот ход уже запечатан или завершён."
+  defp combat_error_message(:turn_locked), do: "Печати уже собраны; действие нельзя изменить."
+  defp combat_error_message(:turn_deadline_elapsed), do: "Время хода истекло."
+  defp combat_error_message(:flee_unavailable), do: "Слишком тяжёлый груз не даёт отступить."
+  defp combat_error_message(:spectator), do: "Наблюдатель не может запечатывать действия."
+
+  defp combat_error_message(:spell_not_prepared),
+    do: "Это заклинание не внесено в боевой гримуар."
+
+  defp combat_error_message(:spell_not_owned), do: "Нельзя использовать чужое заклинание."
+  defp combat_error_message(:invalid_target), do: "Выберите допустимую цель."
+  defp combat_error_message(:item_not_owned), do: "Этот предмет вам не принадлежит."
+  defp combat_error_message(:item_unavailable), do: "Предмет уже недоступен для этого хода."
+  defp combat_error_message(:invalid_item_action), do: "Этот приём недоступен предмету."
+
+  defp combat_error_message(:invalid_incantation),
+    do: "Формула должна состоять из допустимых слов."
+
+  defp combat_error_message(:invalid_action), do: "Не удалось прочитать действие."
+  defp combat_error_message(_reason), do: "Мир отклонил это действие. Попробуйте обновить бой."
 end

@@ -60,7 +60,7 @@ defmodule MMGO.DungeonCombatIntegrationTest do
         ],
         failure_profile: %{
           difficulty: 5,
-          base_success_rate: 99,
+          base_success_rate: 100,
           partial_success_rate: 0,
           backlash_damage: 0
         }
@@ -107,7 +107,7 @@ defmodule MMGO.DungeonCombatIntegrationTest do
                target_side: "encounter"
              })
 
-    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(combat)
+    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(combat, force?: true)
     assert resolved_combat.status == :finished
     assert resolved_combat.winner_side == "party"
 

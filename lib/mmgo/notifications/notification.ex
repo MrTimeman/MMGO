@@ -5,7 +5,7 @@ defmodule MMGO.Notifications.Notification do
 
   alias MMGO.Accounts.Character
 
-  @channels [:telegram]
+  @channels [:in_app, :telegram]
   @statuses [:pending, :sent, :failed, :discarded]
 
   @primary_key {:id, :binary_id, autogenerate: true}

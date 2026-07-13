@@ -4,7 +4,7 @@ defmodule MMGO.CombatTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat
   alias MMGO.Combat.Combat, as: CombatSchema
-  alias MMGO.Combat.{Event, Participant}
+  alias MMGO.Combat.{Event, Participant, Turn}
   alias MMGO.Grimoires
   alias MMGO.Repo
   alias MMGO.Spells
@@ -86,7 +86,7 @@ defmodule MMGO.CombatTest do
                target_side: "defenders"
              })
 
-    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(combat)
+    assert {:ok, %CombatSchema{} = resolved_combat} = Combat.resolve_turn(combat, force?: true)
     assert resolved_combat.turn_number == 2
 
     defenders = resolved_combat.sides["defenders"]
@@ -114,7 +114,7 @@ defmodule MMGO.CombatTest do
                spell_id: ward.id
              })
 
-    assert {:ok, _combat} = Combat.resolve_turn(combat)
+    assert {:ok, _combat} = Combat.resolve_turn(combat, force?: true)
 
     reloaded = Combat.get_combat!(combat.id)
 
@@ -125,7 +125,7 @@ defmodule MMGO.CombatTest do
                target_side: "defenders"
              })
 
-    assert {:ok, %CombatSchema{} = resolved_again} = Combat.resolve_turn(reloaded)
+    assert {:ok, %CombatSchema{} = resolved_again} = Combat.resolve_turn(reloaded, force?: true)
     defenders = resolved_again.sides["defenders"]
 
     assert defenders["shared_hp"] > 70
@@ -155,7 +155,7 @@ defmodule MMGO.CombatTest do
                target_side: "defenders"
              })
 
-    assert {:ok, _resolved} = Combat.resolve_turn(combat)
+    assert {:ok, _resolved} = Combat.resolve_turn(combat, force?: true)
 
     blocked_event = Repo.get_by!(Event, combat_id: combat.id, event_type: "action_blocked")
     assert blocked_event.payload["state"] == "silenced"
@@ -190,17 +190,14 @@ defmodule MMGO.CombatTest do
     combat = Combat.get_combat!(combat.id)
     attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
 
-    assert {:ok, _action} =
+    assert {:error, :spell_not_prepared} =
              Combat.submit_action(combat, attacker_participant.id, %{
                action_type: :cast_spell,
                spell_id: other_spell.id,
                target_side: "defenders"
              })
 
-    assert {:ok, _resolved} = Combat.resolve_turn(combat)
-
-    rejected_event = Repo.get_by!(Event, combat_id: combat.id, event_type: "spell_not_prepared")
-    assert rejected_event.payload["spell_id"] == other_spell.id
+    assert Repo.aggregate(Event, :count, :id) == 0
   end
 
   test "resolve_turn/1 serializes concurrent resolves and never double-processes a turn", %{
@@ -267,7 +264,7 @@ defmodule MMGO.CombatTest do
       for _ <- 1..2 do
         Task.async(fn ->
           Ecto.Adapters.SQL.Sandbox.allow(Repo, parent, self())
-          Combat.resolve_turn(combat)
+          Combat.resolve_turn(combat, force?: true)
         end)
       end
 
@@ -289,6 +286,33 @@ defmodule MMGO.CombatTest do
 
     action_events = Enum.filter(events, &(&1.event_type in ["spell_cast", "partial_spell_cast"]))
     assert length(action_events) == 1
+  end
+
+  test "resolve_turn/1 rejects a stale turn snapshot instead of resolving turn two", %{
+    combat: combat,
+    attacker: attacker,
+    fireball: fireball
+  } do
+    combat = Combat.get_combat!(combat.id)
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    assert {:ok, _action} =
+             Combat.submit_action(combat, attacker_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: fireball.id,
+               target_side: "defenders"
+             })
+
+    assert {:error, :turn_open} = Combat.resolve_turn(combat)
+    assert {:ok, %CombatSchema{turn_number: 2}} = Combat.resolve_turn(combat, force?: true)
+    assert {:error, :turn_closed} = Combat.resolve_turn(combat)
+
+    assert %Turn{status: :open} = Repo.get_by(Turn, combat_id: combat.id, number: 2)
+
+    refute Repo.exists?(
+             from event in Event,
+               where: event.combat_id == ^combat.id and event.turn_number == 2
+           )
   end
 
   defp character_fixture(handle, realm, name) do

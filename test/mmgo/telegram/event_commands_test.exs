@@ -28,13 +28,13 @@ defmodule MMGO.Telegram.EventCommandsTest do
     assert {:ok, current_text} =
              Commands.process_message(character, %{"text" => "/event current"})
 
-    assert current_text =~ "City Arrival"
+    assert current_text =~ "Прибытие в город"
     assert current_text =~ "shops"
 
     assert {:ok, choose_text} =
              Commands.process_message(character, %{"text" => "/event choose shops"})
 
-    assert choose_text =~ "/npc shops"
+    assert choose_text =~ "Торговая книга"
   end
 
   defp character_fixture(realm, location, handle, name) do

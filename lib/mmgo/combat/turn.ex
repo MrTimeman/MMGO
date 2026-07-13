@@ -5,7 +5,7 @@ defmodule MMGO.Combat.Turn do
 
   alias MMGO.Combat.{Action, Combat}
 
-  @statuses [:open, :locked, :resolved]
+  @statuses [:open, :locked, :resolving, :resolved]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

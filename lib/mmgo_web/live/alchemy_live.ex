@@ -1,266 +1,267 @@
 defmodule MMGOWeb.AlchemyLive do
   @moduledoc """
-  The alchemist's bench — the ritual sibling of the spell circle
-  (`spellbook_live.ex` + `spell-circle.js`). Same ceremony arc — fill →
-  charge → dim → work → reveal — in a different medium: glass and vapor
-  instead of ink and runes. Where the caster picks constrained Latin
-  slots, the alchemist tags freeform inventory ingredients and writes a
-  plain-language intent.
-
-  Design pass: hardcoded demo data, no backend wiring. Ingredient set is
-  kept consistent with `/inventory` (клык теневого волка, пепел саламандры…).
-  GDD §8 — alchemy requires a workshop at the player's base.
+  Scoped alchemy workshop and durable brew-job surface.
   """
   use MMGOWeb, :live_view
 
-  import MMGOWeb.UIKit
-
-  # Ingredients the player carries — a superset of the alchemy items shown
-  # on /inventory, plies a few more so the bench feels stocked.
-  @ingredients [
-    %{id: "fang", name: "Клык теневого волка", note: "стойкость к порче"},
-    %{id: "ash", name: "Пепел саламандры", note: "огонь, что не гаснет"},
-    %{id: "herb", name: "Болотная трава", note: "горькая зелень топей"},
-    %{id: "dew", name: "Чистая роса", note: "собрана до рассвета"},
-    %{id: "root", name: "Корень мандрагоры", note: "кричит, если вырвать"},
-    %{id: "moon", name: "Толчёный лунный камень", note: "холодное серебро"}
-  ]
-
-  @brew_ms 2600
+  alias MMGO.Play
 
   @impl true
-  def mount(_params, _session, socket) do
-    # TODO: wire — load carried ingredients, workshop tier, fatigue budget.
-    {:ok,
-     socket
-     |> assign(:page_title, "Алхимия")
-     |> assign(:ingredients, @ingredients)
-     |> assign(:tagged, [])
-     |> assign(:intent, "")
-     |> assign(:phase, :idle)
-     |> assign(:result, nil)}
-  end
+  def mount(_params, _session, socket),
+    do: load_alchemy(socket, socket.assigns.current_scope.character)
 
   @impl true
-  def handle_event("toggle", %{"id" => id}, socket) do
-    tagged = socket.assigns.tagged
+  def handle_event("create_workshop", %{"alchemy_workshop" => attrs}, socket) do
+    case Play.create_alchemy_workshop(socket.assigns.character, attrs) do
+      {:ok, _state} ->
+        {:noreply,
+         socket |> put_flash(:info, "Алхимический стол подготовлен.") |> refresh_alchemy()}
 
-    tagged =
-      if id in tagged, do: List.delete(tagged, id), else: tagged ++ [id]
-
-    {:noreply, assign(socket, :tagged, tagged)}
-  end
-
-  @impl true
-  def handle_event("untag", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :tagged, List.delete(socket.assigns.tagged, id))}
-  end
-
-  @impl true
-  def handle_event("intent", %{"intent" => intent}, socket) do
-    {:noreply, assign(socket, :intent, intent)}
-  end
-
-  @impl true
-  def handle_event("brew", _params, socket) do
-    if ready?(socket.assigns) do
-      # Speak-the-incantation moment: the room goes dark now and holds
-      # through the brew (a fake ~2.6s round-trip via Process.send_after),
-      # exactly like the spell circle holds its blackout until the AI answers.
-      Process.send_after(self(), :brew_done, @brew_ms)
-      {:noreply, assign(socket, :phase, :brewing)}
-    else
-      {:noreply, socket}
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
     end
   end
 
   @impl true
-  def handle_event("reset", _params, socket) do
-    {:noreply, assign(socket, phase: :idle, result: nil)}
+  def handle_event("brew", %{"brew" => params}, socket) do
+    with {:ok, quantity} <- parse_positive(params["quantity"]),
+         {:ok, _state} <- Play.start_brew(socket.assigns.character, params["recipe_id"], quantity) do
+      {:noreply,
+       socket
+       |> put_flash(:info, "Варка начата; результат появится по игровому времени.")
+       |> refresh_alchemy()}
+    else
+      {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
 
   @impl true
-  def handle_info(:brew_done, socket) do
-    result = brew_result(socket.assigns.tagged)
-    {:noreply, assign(socket, phase: :result, result: result)}
+  def handle_event("collect", %{"job-id" => job_id}, socket) do
+    case Play.collect_brew(socket.assigns.character, job_id) do
+      {:ok, _state} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, "Варка завершена, результат добавлен в котомку.")
+         |> refresh_alchemy()}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :error, error_message(reason))}
+    end
   end
+
+  @impl true
+  def handle_event("refresh", _params, socket), do: {:noreply, refresh_alchemy(socket)}
 
   @impl true
   def render(assigns) do
-    count = length(assigns.tagged)
-
-    assigns =
-      assigns
-      |> assign(:count, count)
-      |> assign(:ready, ready?(assigns))
-      |> assign(:fill, min(count, 4) / 4 * 100)
-      |> assign(:tagged_items, Enum.map(assigns.tagged, &find_ing(&1)))
-
     ~H"""
-    <div class="game-screen alc-screen">
-      <div class={["alc-root", @phase != :idle && "alc-root--dim"]}>
-        <a href={~p"/map"} class="alc-exit">&larr; выйти на карту</a>
-
-        <.art_slot
-          kind="scene"
-          variant="dark"
-          label="Алхимический стол — реторты и горелка"
-          class="alc-art"
-        />
-
-        <header class="alc-head">
-          <h1 class="alc-title">Алхимический стол</h1>
-          <p class="alc-sub">Альберт Северин · мастерская во Вратах Зари</p>
-        </header>
-
-        <div class={["alc-vessel", @ready && "alc-vessel--ready", @count > 0 && "alc-vessel--live"]}>
-          <div class="alc-vessel__flask">
-            <div class="alc-vessel__brew" style={"--fill:#{@fill}%"}>
-              <span class="alc-bubble alc-bubble--1"></span>
-              <span class="alc-bubble alc-bubble--2"></span>
-              <span class="alc-bubble alc-bubble--3"></span>
-            </div>
-            <span class="alc-vessel__count">{@count}</span>
-          </div>
-          <span class="alc-vessel__flame"></span>
-        </div>
-
-        <section class="alc-table">
-          <p class="alc-label">На столе</p>
-          <div class="alc-table__row">
-            <p :if={@tagged_items == []} class="alc-hint">
-              Ничего не выбрано. Коснитесь ингредиента, чтобы положить его на стол.
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="alchemy-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
+        <div class="mx-auto w-full max-w-3xl space-y-5">
+          <.link id="alchemy-back-to-base" navigate={~p"/base"} class="map-back-link">← База</.link>
+          <header class="rounded-xl border border-violet-500/25 bg-stone-900/80 p-6 shadow-xl">
+            <p class="text-xs uppercase tracking-[0.22em] text-violet-300/70">
+              алхимия · {@base.name}
             </p>
-            <button
-              :for={it <- @tagged_items}
-              type="button"
-              class="alc-chip"
-              phx-click="untag"
-              phx-value-id={it.id}
-            >
-              {it.name}<span class="alc-chip__x">×</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="alc-shelf">
-          <p class="alc-label">Ингредиенты в котомке</p>
-          <div class="alc-strip">
-            <button
-              :for={it <- @ingredients}
-              type="button"
-              class={["alc-ing", it.id in @tagged && "alc-ing--on"]}
-              phx-click="toggle"
-              phx-value-id={it.id}
-            >
-              <span class="alc-ing__glyph">❧</span>
-              <span class="alc-ing__name">{it.name}</span>
-              <span class="alc-ing__note">{it.note}</span>
-            </button>
-          </div>
-        </section>
-
-        <section class="alc-intent-box">
-          <p class="alc-label">Замысел</p>
-          <form phx-change="intent">
-            <textarea
-              name="intent"
-              class="alc-intent"
-              rows="3"
-              phx-debounce="150"
-              placeholder="хочу зелье, что согреет в стужу и прибавит сил…"
-            >{@intent}</textarea>
-          </form>
-        </section>
-
-        <button
-          type="button"
-          class={["alc-brew", @ready && "alc-brew--ready"]}
-          phx-click="brew"
-          disabled={!@ready}
-        >
-          Варить
-        </button>
-
-        <div class="alc-notes">
-          <p class="alc-note">Утомление · 4 &nbsp;•&nbsp; время варки · 2 часа</p>
-          <p class="alc-note alc-note--req">
-            ◆ Требуется алхимическая мастерская при вашей базе (§8)
-          </p>
-        </div>
-      </div>
-
-      <%= if @phase == :brewing do %>
-        <div class="alc-ritual">
-          <div class="alc-ritual__orb">
-            <span class="alc-ritual__bubble"></span>
-            <span class="alc-ritual__bubble"></span>
-            <span class="alc-ritual__bubble"></span>
-          </div>
-          <p class="alc-ritual__caption">Варится…</p>
-        </div>
-      <% end %>
-
-      <%= if @phase == :result and @result do %>
-        <div class="alc-reveal" phx-click="reset">
-          <div class={["alc-potion", (@result.ok && "alc-potion--ok") || "alc-potion--fail"]}>
-            <p class="alc-potion__eyebrow">
-              {if @result.ok, do: "рецепт записан в книгу", else: "неудача"}
+            <h1 class="mt-2 font-serif text-3xl text-violet-100">Алхимический стол</h1>
+            <p class="mt-2 text-sm text-stone-400">
+              Инструменты из котомки: {tool_list(@installed_tool_codes)}
             </p>
-            <h2 class="alc-potion__latin">{@result.latin}</h2>
-            <p class="alc-potion__name">«{@result.name}»</p>
-            <p class="alc-potion__desc">{@result.desc}</p>
+          </header>
 
-            <ul class="alc-potion__fx">
-              <li :for={fx <- @result.effects} class="alc-potion__fx-item">{fx}</li>
-            </ul>
-
-            <button type="button" class="alc-potion__again" phx-click="reset">
-              ← вернуться к столу
-            </button>
+          <div
+            :if={@error}
+            id="alchemy-error"
+            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+          >
+            {@error}
           </div>
+
+          <section
+            :if={is_nil(@workspace)}
+            id="alchemy-workshop-setup"
+            class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-violet-100">Оборудовать стол</h2>
+            <p class="mt-2 text-sm text-stone-400">
+              Установленные коды инструментов берутся только из вашей реальной котомки.
+            </p>
+            <.form
+              for={@workshop_form}
+              id="alchemy-workshop-form"
+              phx-submit="create_workshop"
+              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+            >
+              <.input
+                field={@workshop_form[:name]}
+                type="text"
+                label="Название"
+                placeholder="Алхимический стол"
+              />
+              <button
+                id="alchemy-create-workshop"
+                type="submit"
+                class="mb-4 rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 hover:bg-violet-200"
+              >
+                Оборудовать
+              </button>
+            </.form>
+          </section>
+
+          <section
+            :if={@workspace && not @workspace_here?}
+            id="alchemy-workshop-away"
+            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-6 text-sm text-amber-100"
+          >
+            Ваш активный стол находится в другом месте. Вернитесь к нему, чтобы начать новую варку.
+          </section>
+
+          <section
+            :if={@workspace_here?}
+            id="alchemy-brew"
+            class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
+          >
+            <h2 class="font-serif text-2xl text-violet-100">Начать варку</h2>
+            <p :if={@recipes == []} id="alchemy-recipes-empty" class="mt-3 text-sm text-stone-400">
+              Для этого мира ещё не записаны рецепты.
+            </p>
+            <.form
+              :if={@recipes != []}
+              for={@brew_form}
+              id="alchemy-brew-form"
+              phx-submit="brew"
+              class="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end"
+            >
+              <.input
+                field={@brew_form[:recipe_id]}
+                type="select"
+                label="Рецепт"
+                prompt="Выберите рецепт"
+                options={@recipe_options}
+              />
+              <.input
+                field={@brew_form[:quantity]}
+                type="number"
+                label="Количество"
+                min="1"
+                inputmode="numeric"
+              />
+              <button
+                id="alchemy-start-brew"
+                type="submit"
+                class="mb-4 rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 hover:bg-violet-200"
+              >
+                Поставить
+              </button>
+            </.form>
+          </section>
+
+          <section id="alchemy-jobs" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
+            <h2 class="font-serif text-xl text-stone-100">Варки</h2>
+            <p :if={@jobs == []} id="alchemy-jobs-empty" class="mt-3 text-sm text-stone-400">
+              Нет активных или завершённых варок.
+            </p>
+            <article
+              :for={job <- @jobs}
+              id={"alchemy-job-#{job.id}"}
+              class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+            >
+              <div>
+                <p class="font-medium text-stone-100">{job.recipe.name} ×{job.quantity}</p>
+                <p class="text-stone-400">
+                  {job.status} · готовность {format_time(job.completes_at)}
+                </p>
+              </div>
+              <button
+                :if={job.status == :active}
+                id={"alchemy-collect-#{job.id}"}
+                type="button"
+                phx-click="collect"
+                phx-value-job-id={job.id}
+                class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
+              >
+                Проверить готовность
+              </button>
+            </article>
+          </section>
+
+          <button
+            id="alchemy-refresh"
+            type="button"
+            phx-click="refresh"
+            class="text-sm text-violet-200 underline decoration-violet-500/40 underline-offset-4"
+          >
+            Обновить стол
+          </button>
         </div>
-      <% end %>
-    </div>
+      </main>
+    </Layouts.app>
     """
   end
 
-  # --- helpers -------------------------------------------------------------
+  defp load_alchemy(socket, character) do
+    case Play.alchemy_state(character) do
+      {:ok, state} ->
+        {:ok,
+         socket |> assign(:page_title, "Алхимия") |> assign(:error, nil) |> assign_alchemy(state)}
 
-  defp ready?(assigns) do
-    length(assigns.tagged) >= 1 and String.trim(assigns.intent) != ""
+      {:error, :active_base_not_found} ->
+        {:ok,
+         socket
+         |> put_flash(:error, "Алхимия доступна только на активной базе.")
+         |> push_navigate(to: ~p"/base")}
+
+      {:error, :travelling} ->
+        {:ok, push_navigate(socket, to: ~p"/travel")}
+
+      {:error, _reason} ->
+        {:ok, push_navigate(socket, to: ~p"/base")}
+    end
   end
 
-  defp find_ing(id), do: Enum.find(@ingredients, &(&1.id == id))
-
-  # Demo outcome logic: a single ingredient can't hold a brew together, so
-  # it curdles — the failure state the brief asks us to show. Two or more
-  # settle into a proper potion.
-  defp brew_result(tagged) when length(tagged) == 1 do
-    %{
-      ok: false,
-      latin: "Coagulatum",
-      name: "Зелье свернулось",
-      desc:
-        "Один ингредиент не держит варки — смесь помутнела, свернулась и осела " <>
-          "бурым сгустком. Из реторты тянет едким дымом.",
-      effects: ["◦ реагенты потрачены впустую", "◦ котелок придётся отчищать"]
-    }
+  defp refresh_alchemy(socket) do
+    case Play.alchemy_state(socket.assigns.character) do
+      {:ok, state} -> socket |> assign(:error, nil) |> assign_alchemy(state)
+      {:error, :active_base_not_found} -> push_navigate(socket, to: ~p"/base")
+      {:error, :travelling} -> push_navigate(socket, to: ~p"/travel")
+      {:error, _reason} -> assign(socket, :error, "Алхимический стол сейчас недоступен.")
+    end
   end
 
-  defp brew_result(_tagged) do
-    %{
-      ok: true,
-      latin: "Potio Ignis Tepidi",
-      name: "Зелье тёплого огня",
-      desc:
-        "Густой янтарный настой, что дышит теплом даже в лютую стужу. " <>
-          "Пьётся горько, но по жилам растекается ровный жар и новая сила.",
-      effects: [
-        "◦ согревает в стужу · 3 хода",
-        "◦ + выносливость · малое",
-        "◦ стойкость к холоду · пока действует"
-      ]
-    }
+  defp assign_alchemy(socket, state) do
+    socket
+    |> assign(:character, state.character)
+    |> assign(:base, state.base)
+    |> assign(:workspace, state.workspace)
+    |> assign(:workspace_here?, state.workspace_here?)
+    |> assign(:recipes, state.recipes)
+    |> assign(:jobs, state.jobs)
+    |> assign(:installed_tool_codes, state.installed_tool_codes)
+    |> assign(:recipe_options, Enum.map(state.recipes, &{&1.name, &1.id}))
+    |> assign(:workshop_form, to_form(%{"name" => ""}, as: :alchemy_workshop))
+    |> assign(:brew_form, to_form(%{"recipe_id" => "", "quantity" => "1"}, as: :brew))
   end
+
+  defp parse_positive(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {number, ""} when number > 0 -> {:ok, number}
+      _other -> {:error, :invalid_quantity}
+    end
+  end
+
+  defp parse_positive(_value), do: {:error, :invalid_quantity}
+  defp tool_list([]), do: "нет"
+  defp tool_list(codes), do: Enum.join(codes, ", ")
+  defp format_time(nil), do: "ожидает расчёта"
+  defp format_time(time), do: Calendar.strftime(time, "%d.%m %H:%M UTC")
+
+  defp error_message(:active_base_not_found), do: "Алхимия доступна только на активной базе."
+  defp error_message(:alchemy_workshop_exists), do: "У вас уже есть активный алхимический стол."
+  defp error_message(:alchemy_workshop_not_here), do: "Этот стол находится в другом месте."
+  defp error_message(:alchemy_recipe_not_found), do: "Рецепт больше недоступен."
+  defp error_message(:brew_job_not_found), do: "Варка больше недоступна."
+  defp error_message(:invalid_quantity), do: "Укажите положительное количество."
+
+  defp error_message(_reason),
+    do: "Команда не выполнена: проверьте специализацию, инструменты и ингредиенты."
 end

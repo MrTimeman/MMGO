@@ -3,9 +3,11 @@ defmodule MMGOWeb.InventoryLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias MMGO.Accounts.Account
   alias MMGO.Economy
   alias MMGO.Inventory
   alias MMGO.Play
+  alias MMGO.Repo
   alias MMGO.Worlds
 
   setup do
@@ -47,18 +49,20 @@ defmodule MMGOWeb.InventoryLiveTest do
     :ok
   end
 
-  test "redirects visitors without a local play session", %{conn: conn} do
-    assert {:error, {:live_redirect, %{to: "/play/continue"}}} = live(conn, ~p"/inventory")
+  test "redirects visitors without a verified game scope", %{conn: conn} do
+    assert {:error, {:live_redirect, %{to: "/play"}}} = live(conn, ~p"/inventory")
   end
 
   test "renders the session character's real inventory and carry state", %{conn: conn} do
     {:ok, %{challenger: character}} = Play.start_new_local_session()
 
-    {:ok, view, _html} = live(session_conn(conn, character.id), ~p"/inventory")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/inventory")
 
     assert has_element?(view, "#inventory-screen")
     assert has_element?(view, "#inventory-character-location")
     assert has_element?(view, "#inventory-carry")
+    assert has_element?(view, "#inventory-overload-state")
+    assert has_element?(view, "#inventory-survival-state")
     assert has_element?(view, "#inventory-food-summary")
     assert has_element?(view, "#inventory-items")
     assert has_element?(view, "#inventory-search-form")
@@ -80,7 +84,7 @@ defmodule MMGOWeb.InventoryLiveTest do
       })
 
     {:ok, item} = Inventory.grant_item(character, template)
-    {:ok, view, _html} = live(session_conn(conn, character.id), ~p"/inventory")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/inventory")
 
     view
     |> element("#inventory-category-ингредиенты")
@@ -89,9 +93,12 @@ defmodule MMGOWeb.InventoryLiveTest do
     assert has_element?(view, "#inventory-item-#{item.id}")
   end
 
-  defp session_conn(conn, character_id) do
+  defp session_conn(conn, character) do
+    account = Repo.get!(Account, character.account_id)
+
     conn
     |> Plug.Test.init_test_session(%{})
-    |> Plug.Conn.put_session(:demo_character_id, character_id)
+    |> Plug.Conn.put_session(:current_account_id, account.id)
+    |> Plug.Conn.put_session(:current_character_id, character.id)
   end
 end

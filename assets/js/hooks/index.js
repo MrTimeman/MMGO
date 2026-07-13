@@ -13,6 +13,8 @@ import { SpellCircleHook }    from './spell-circle'
 import { GrimoireShelfHook }  from './grimoire-shelf'
 import { MapEditorHook }      from './map-editor'
 import { CombatLogHook }      from './combat-log'
+import { TelegramAuthHook }   from './telegram-auth'
+import { AtmosphereAudioHook } from './atmosphere-audio'
 
 export const Hooks = {
   Map:            MapHook,
@@ -30,4 +32,6 @@ export const Hooks = {
   GrimoireShelf:  GrimoireShelfHook,
   MapEditor:      MapEditorHook,
   CombatLog:      CombatLogHook,
+  TelegramAuth:   TelegramAuthHook,
+  AtmosphereAudio: AtmosphereAudioHook,
 }

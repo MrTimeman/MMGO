@@ -6,7 +6,7 @@ defmodule MMGO.Events.Template do
   alias MMGO.Events.{Instance, Option}
   alias MMGO.Worlds.Realm
 
-  @location_kinds [:city, :tower, :wilderness, :base]
+  @location_kinds [:city, :tower, :wilderness, :base, :dungeon_entrance]
   @statuses [:active, :archived]
 
   @primary_key {:id, :binary_id, autogenerate: true}

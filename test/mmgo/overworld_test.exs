@@ -3,6 +3,8 @@ defmodule MMGO.OverworldTest do
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat
+  alias MMGO.Combat.Combat, as: CombatSchema
+  alias MMGO.Combat.Resolution
   alias MMGO.Overworld
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -83,6 +85,33 @@ defmodule MMGO.OverworldTest do
     assert length(loaded_combat.participants) == 2
   end
 
+  test "a finished overworld combat closes its escalated encounter idempotently", %{
+    initiator: initiator,
+    target: target
+  } do
+    {:ok, encounter} = Overworld.create_encounter(initiator, target)
+
+    assert {:ok, %{encounter: escalated, combat: combat}} =
+             Overworld.respond(encounter, initiator, :attack)
+
+    finished_combat =
+      combat
+      |> CombatSchema.changeset(%{
+        status: :finished,
+        winner_side: "attackers",
+        finished_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    assert {:ok, resolved_encounter} = Resolution.finalize(finished_combat)
+    assert resolved_encounter.id == escalated.id
+    assert resolved_encounter.status == :resolved
+    assert resolved_encounter.metadata["winner_side"] == "attackers"
+
+    assert {:ok, repeated_encounter} = Resolution.finalize(finished_combat)
+    assert repeated_encounter.status == :resolved
+  end
+
   test "attack is blocked in safe zones", %{
     initiator: initiator,
     city_target: city_target,
@@ -97,6 +126,27 @@ defmodule MMGO.OverworldTest do
 
     assert {:error, changeset} = Overworld.respond(encounter, initiator, :attack)
     assert %{status: ["attacks are not allowed in safe zones"]} = errors_on(changeset)
+  end
+
+  test "attack is blocked when the realm disables overworld PvP", %{
+    realm: realm,
+    initiator: initiator,
+    target: target
+  } do
+    assert {:ok, _realm} =
+             realm
+             |> Worlds.change_realm(%{ruleset: %{"overworld_pvp_enabled" => false}})
+             |> Repo.update()
+
+    {:ok, encounter} = Overworld.create_encounter(initiator, target)
+
+    assert {:error, changeset} = Overworld.respond(encounter, initiator, :attack)
+    assert %{status: ["overworld PvP is disabled for this realm"]} = errors_on(changeset)
+    assert Combat.active_combat_for_character(initiator.id) == nil
+
+    encounter = Overworld.get_encounter!(encounter.id)
+    assert encounter.status == :pending
+    assert is_nil(encounter.combat_id)
   end
 
   defp character_fixture(realm, location, handle, name) do

@@ -298,6 +298,30 @@ defmodule MMGO.Federation do
     ])
   end
 
+  @doc "Returns whether a remote destination has acknowledged this migration handoff."
+  def remote_import_status(%Migration{mode: :remote} = migration) do
+    case Map.get(migration.metadata || %{}, "remote_import_status") do
+      "accepted" ->
+        :accepted
+
+      "pending" ->
+        :pending
+
+      _other ->
+        if(nonempty_string?(migration.destination_external_ref), do: :accepted, else: :pending)
+    end
+  end
+
+  def remote_import_status(_migration), do: :not_applicable
+
+  @doc "Returns whether a discovered remote has the local credentials required for import."
+  def remote_migration_ready?(%RemoteRealm{} = remote_realm) do
+    remote_realm.status == :active and remote_realm.allow_migration == true and
+      nonempty_string?(remote_realm.access_token)
+  end
+
+  def remote_migration_ready?(_remote_realm), do: false
+
   def start_migration(origin_character, destination, currency_amount, opts \\ [])
 
   def start_migration(
@@ -418,6 +442,48 @@ defmodule MMGO.Federation do
         opts
       )
       when is_integer(currency_amount) do
+    case stage_remote_migration(origin_character, remote_realm, currency_amount, opts) do
+      {:ok, %{migration: migration} = staged_result} ->
+        case retry_remote_migration_import(migration.id) do
+          {:ok, %{migration: imported_migration, remote_response: remote_response}} ->
+            {:ok,
+             staged_result
+             |> Map.put(:migration, imported_migration)
+             |> Map.put(:remote_response, remote_response)}
+
+          {:error, reason} ->
+            {:ok,
+             staged_result
+             |> Map.put(:migration, get_migration!(migration.id))
+             |> Map.put(:remote_response, nil)
+             |> Map.put(:remote_import_error, reason)}
+        end
+
+      {:error, _reason} = error ->
+        error
+    end
+  end
+
+  @doc "Retries a persisted remote handoff using its server-owned idempotency reference."
+  def retry_remote_migration_import(migration_id) when is_binary(migration_id) do
+    with {:ok, migration} <- remote_migration_for_import(migration_id) do
+      if remote_import_status(migration) == :accepted do
+        {:ok, %{migration: migration, remote_response: remote_import_response(migration)}}
+      else
+        attempt_remote_migration_import(migration)
+      end
+    end
+  end
+
+  def retry_remote_migration_import(_migration_id),
+    do: {:error, migration_changeset("remote migration could not be found")}
+
+  defp stage_remote_migration(
+         %Character{} = origin_character,
+         %RemoteRealm{} = remote_realm,
+         currency_amount,
+         opts
+       ) do
     started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
     freeze_game_days = Keyword.get(opts, :freeze_game_days, freeze_game_days())
 
@@ -438,19 +504,7 @@ defmodule MMGO.Federation do
       destination_level = migrated_level(origin_character.level)
       destination_xp = migrated_xp(origin_character.xp)
       freeze_ends_at = Clock.arrival_at(started_at, freeze_game_days)
-
-      payload = %{
-        account_handle: Repo.get!(Account, origin_character.account_id).handle,
-        display_name: Repo.get!(Account, origin_character.account_id).display_name,
-        character_name: origin_character.name,
-        destination_level: destination_level,
-        destination_xp: destination_xp,
-        converted_currency_amount: quote.converted_amount,
-        origin_realm_slug: origin_realm.slug,
-        migration_reference: Ecto.UUID.generate()
-      }
-
-      {:ok, remote_response} = request_remote_import(remote_realm, payload)
+      migration_reference = Ecto.UUID.generate()
 
       {:ok, origin_account} = Economy.ensure_character_account(origin_character)
       origin_treasury = Economy.treasury_account_for_realm(origin_realm.id)
@@ -476,9 +530,7 @@ defmodule MMGO.Federation do
           origin_realm_id: origin_realm.id,
           remote_realm_id: remote_realm.id,
           origin_character_id: origin_character.id,
-          destination_character_name:
-            remote_response["destination_character_name"] || origin_character.name,
-          destination_external_ref: remote_response["destination_character_ref"],
+          destination_character_name: origin_character.name,
           status: :active,
           currency_amount: currency_amount,
           converted_currency_amount: quote.converted_amount,
@@ -491,7 +543,10 @@ defmodule MMGO.Federation do
           passive_xp_awarded: 0,
           metadata: %{
             "source_population" => quote.source_population,
-            "destination_population" => quote.destination_population
+            "destination_population" => quote.destination_population,
+            "migration_reference" => migration_reference,
+            "remote_import_status" => "pending",
+            "remote_import_attempts" => 0
           }
         })
         |> Repo.insert!()
@@ -505,8 +560,7 @@ defmodule MMGO.Federation do
 
       %{
         migration: preload_migration(migration),
-        origin_character: updated_origin_character,
-        remote_response: remote_response
+        origin_character: updated_origin_character
       }
     end)
     |> normalize_transaction_result()
@@ -542,6 +596,9 @@ defmodule MMGO.Federation do
       cond do
         migration.status != :active ->
           Repo.rollback(migration_changeset("migration is not active"))
+
+        migration.mode == :remote and remote_import_status(migration) != :accepted ->
+          Repo.rollback(migration_changeset("destination import has not been confirmed yet"))
 
         not force? and DateTime.compare(now, migration.freeze_ends_at) == :lt ->
           Repo.rollback(migration_changeset("migration is not due yet"))
@@ -590,6 +647,180 @@ defmodule MMGO.Federation do
     |> where([migration], migration.status == :active and migration.freeze_ends_at <= ^now)
     |> Repo.all()
     |> Enum.map(fn migration -> complete_migration_by_id(migration.id, now: now, force: true) end)
+  end
+
+  defp remote_migration_for_import(migration_id) do
+    migration =
+      Migration
+      |> Repo.get(migration_id)
+      |> case do
+        nil -> nil
+        migration -> preload_migration(migration)
+      end
+
+    cond do
+      is_nil(migration) ->
+        {:error, migration_changeset("remote migration could not be found")}
+
+      migration.mode != :remote ->
+        {:error, migration_changeset("migration does not use a remote destination")}
+
+      migration.status != :active ->
+        {:error, migration_changeset("migration is not active")}
+
+      remote_import_status(migration) == :accepted ->
+        {:ok, migration}
+
+      is_nil(migration.remote_realm) ->
+        {:error, migration_changeset("remote destination is unavailable")}
+
+      migration.remote_realm.status != :active or migration.remote_realm.allow_migration != true ->
+        {:error, migration_changeset("remote destination is not accepting migrations")}
+
+      true ->
+        {:ok, migration}
+    end
+  end
+
+  defp attempt_remote_migration_import(%Migration{} = migration) do
+    result =
+      with {:ok, payload} <- remote_migration_payload(migration),
+           {:ok, remote_response} <- request_remote_import(migration.remote_realm, payload),
+           :ok <- validate_remote_import_response(remote_response),
+           {:ok, updated_migration} <-
+             confirm_remote_migration_import(migration.id, remote_response) do
+        {:ok, %{migration: updated_migration, remote_response: remote_response}}
+      end
+
+    case result do
+      {:error, reason} = error ->
+        _ = record_remote_import_failure(migration.id, reason)
+        error
+
+      success ->
+        success
+    end
+  end
+
+  defp remote_migration_payload(%Migration{} = migration) do
+    reference = Map.get(migration.metadata || %{}, "migration_reference")
+    account = Repo.get(Account, migration.account_id)
+
+    cond do
+      not nonempty_string?(reference) ->
+        {:error, migration_changeset("remote migration is missing its handoff reference")}
+
+      is_nil(account) or is_nil(migration.origin_realm) ->
+        {:error, migration_changeset("remote migration has incomplete origin identity")}
+
+      true ->
+        {:ok,
+         %{
+           account_handle: account.handle,
+           display_name: account.display_name,
+           character_name: migration.destination_character_name,
+           destination_level: migration.destination_level,
+           destination_xp: migration.destination_xp,
+           converted_currency_amount: migration.converted_currency_amount,
+           origin_realm_slug: migration.origin_realm.slug,
+           migration_reference: reference
+         }}
+    end
+  end
+
+  defp validate_remote_import_response(response) when is_map(response) do
+    if Enum.all?(
+         [
+           Map.get(response, "destination_character_id"),
+           Map.get(response, "destination_character_name"),
+           Map.get(response, "destination_character_ref")
+         ],
+         &nonempty_string?/1
+       ) do
+      :ok
+    else
+      {:error, migration_changeset("remote import returned incomplete destination identity")}
+    end
+  end
+
+  defp confirm_remote_migration_import(migration_id, remote_response) do
+    Repo.transaction(fn ->
+      migration = lock_migration!(migration_id)
+
+      cond do
+        migration.mode != :remote or migration.status != :active ->
+          Repo.rollback(migration_changeset("migration is not active"))
+
+        remote_import_status(migration) == :accepted ->
+          preload_migration(migration)
+
+        true ->
+          metadata =
+            (migration.metadata || %{})
+            |> Map.put("remote_import_status", "accepted")
+            |> Map.put("remote_import_accepted_at", DateTime.to_iso8601(DateTime.utc_now()))
+            |> Map.put("remote_import_response", remote_response)
+            |> Map.put(
+              "remote_destination_character_id",
+              Map.get(remote_response, "destination_character_id")
+            )
+            |> Map.delete("remote_import_last_error")
+
+          migration
+          |> Migration.changeset(%{
+            destination_character_name: Map.get(remote_response, "destination_character_name"),
+            destination_external_ref: Map.get(remote_response, "destination_character_ref"),
+            metadata: metadata
+          })
+          |> Repo.update!()
+          |> preload_migration()
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  defp record_remote_import_failure(migration_id, _reason) do
+    Repo.transaction(fn ->
+      migration = lock_migration!(migration_id)
+
+      if migration.mode == :remote and migration.status == :active and
+           remote_import_status(migration) != :accepted do
+        attempts =
+          case Map.get(migration.metadata || %{}, "remote_import_attempts", 0) do
+            count when is_integer(count) and count >= 0 -> count
+            _other -> 0
+          end
+
+        migration
+        |> Migration.changeset(%{
+          metadata:
+            (migration.metadata || %{})
+            |> Map.put("remote_import_status", "pending")
+            |> Map.put("remote_import_attempts", attempts + 1)
+            |> Map.put("remote_import_last_attempt_at", DateTime.to_iso8601(DateTime.utc_now()))
+            |> Map.put("remote_import_last_error", "remote import could not be confirmed")
+        })
+        |> Repo.update!()
+      else
+        migration
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
+  defp remote_import_response(%Migration{} = migration) do
+    case Map.get(migration.metadata || %{}, "remote_import_response") do
+      response when is_map(response) ->
+        response
+
+      _other ->
+        %{
+          "destination_character_id" =>
+            Map.get(migration.metadata || %{}, "remote_destination_character_id"),
+          "destination_character_name" => migration.destination_character_name,
+          "destination_character_ref" => migration.destination_external_ref
+        }
+    end
   end
 
   defp request_remote_import(%RemoteRealm{} = remote_realm, payload) do
@@ -662,6 +893,9 @@ defmodule MMGO.Federation do
 
       remote_realm.allow_migration != true ->
         Repo.rollback(migration_changeset("remote realm is not accepting migrations"))
+
+      not nonempty_string?(remote_realm.access_token) ->
+        Repo.rollback(migration_changeset("remote realm import authorization is unavailable"))
 
       is_nil(remote_realm.entry_location_slug) ->
         Repo.rollback(migration_changeset("remote realm has no configured entry location"))
@@ -913,6 +1147,9 @@ defmodule MMGO.Federation do
       destination_character_ref: import_reference || destination_character.id
     }
   end
+
+  defp nonempty_string?(value) when is_binary(value), do: String.trim(value) != ""
+  defp nonempty_string?(_value), do: false
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)

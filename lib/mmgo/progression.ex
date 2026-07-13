@@ -5,9 +5,12 @@ defmodule MMGO.Progression do
   alias MMGO.Accounts.Character
   alias MMGO.Progression.{Milestone, RewardGrant}
   alias MMGO.Repo
+  alias MMGO.Travel.Clock
 
   @max_level 100
   @total_xp_cap 1_000_000
+  @xp_repetition_key "xp_source_repetition"
+  @full_xp_awards_per_game_day 3
 
   def list_milestones do
     Repo.all(
@@ -67,8 +70,14 @@ defmodule MMGO.Progression do
         |> lock("FOR UPDATE")
         |> repo.one!()
 
-      previous_level = character.level
-      updated_xp = character.xp + amount
+      previous_level = min(character.level, @max_level)
+      current_xp = min(max(character.xp, 0), @total_xp_cap)
+
+      {diminished_amount, repetition_metadata} =
+        diminished_xp_award(character.metadata || %{}, amount, attrs)
+
+      xp_gained = min(diminished_amount, max(@total_xp_cap - current_xp, 0))
+      updated_xp = current_xp + xp_gained
       updated_level = xp_to_level(updated_xp)
 
       grants =
@@ -78,7 +87,10 @@ defmodule MMGO.Progression do
           []
         end
 
-      updated_metadata = apply_grant_effects(character.metadata || %{}, grants)
+      updated_metadata =
+        (character.metadata || %{})
+        |> Map.put(@xp_repetition_key, repetition_metadata)
+        |> apply_grant_effects(grants)
 
       updated_character =
         character
@@ -89,7 +101,7 @@ defmodule MMGO.Progression do
         })
         |> repo.update!()
 
-      %{character: updated_character, xp_gained: amount, grants: grants}
+      %{character: updated_character, xp_gained: xp_gained, grants: grants}
     end)
     |> normalize_transaction_result()
   end
@@ -134,6 +146,66 @@ defmodule MMGO.Progression do
       end)
     end)
   end
+
+  defp diminished_xp_award(metadata, amount, attrs) do
+    source = xp_source(attrs)
+    game_day = xp_game_day(attrs)
+    repetitions = xp_repetitions(metadata)
+
+    previous_count =
+      case Map.get(repetitions, source) do
+        %{"game_day" => ^game_day, "count" => count} when is_integer(count) and count >= 0 ->
+          count
+
+        _other ->
+          0
+      end
+
+    divisor = xp_repetition_divisor(previous_count)
+    diminished_amount = max(div(amount, divisor), 1)
+
+    updated_repetitions =
+      Map.put(repetitions, source, %{
+        "game_day" => game_day,
+        "count" => previous_count + 1
+      })
+
+    {diminished_amount, updated_repetitions}
+  end
+
+  defp xp_source(attrs) do
+    case Map.get(attrs, "source") do
+      source when is_binary(source) and byte_size(source) > 0 -> String.slice(source, 0, 80)
+      _other -> "xp_grant"
+    end
+  end
+
+  defp xp_game_day(attrs) do
+    now =
+      case Map.get(attrs, "granted_at") do
+        %DateTime{} = granted_at -> granted_at
+        _other -> DateTime.utc_now()
+      end
+
+    world_time = Clock.world_time(now)
+    "#{world_time.year}-#{world_time.day_of_year}"
+  end
+
+  defp xp_repetitions(metadata) do
+    case Map.get(metadata, @xp_repetition_key, %{}) do
+      repetitions when is_map(repetitions) -> repetitions
+      _other -> %{}
+    end
+  end
+
+  defp xp_repetition_divisor(previous_count) when previous_count < @full_xp_awards_per_game_day,
+    do: 1
+
+  defp xp_repetition_divisor(previous_count)
+       when previous_count < @full_xp_awards_per_game_day * 2,
+       do: 2
+
+  defp xp_repetition_divisor(_previous_count), do: 4
 
   defp normalize_transaction_result({:ok, result}), do: {:ok, result}
   defp normalize_transaction_result({:error, %Changeset{} = changeset}), do: {:error, changeset}

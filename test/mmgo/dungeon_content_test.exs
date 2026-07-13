@@ -7,7 +7,7 @@ defmodule MMGO.DungeonContentTest do
   alias MMGO.Economy
   alias MMGO.Inventory
   alias MMGO.Parties
-  alias MMGO.Parties.Reward
+  alias MMGO.Parties.{Expedition, Reward}
   alias MMGO.Repo
   alias MMGO.Worlds
 
@@ -119,6 +119,11 @@ defmodule MMGO.DungeonContentTest do
     entrance_encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: entrance_node.id)
     assert entrance_encounter.status == :pending
 
+    assert {:ok, %{encounter: resolved_encounter}} =
+             Dungeons.resolve_encounter(entrance_encounter, :avoided)
+
+    assert resolved_encounter.status == :avoided
+
     assert {:ok, %{content: content}} = Dungeons.move_run(run, rest_node.id)
     assert content.resource_cache.status == :available
     assert content.resource_cache.resource_code == "rest_supplies"
@@ -148,6 +153,38 @@ defmodule MMGO.DungeonContentTest do
 
     assert Enum.map(Parties.list_rewards_for_expedition(expedition.id), & &1.id) ==
              Enum.map(xp_rewards, & &1.id)
+  end
+
+  test "a saved club route plan boosts and consumes the first cleared encounter", %{
+    run: run,
+    entrance_node: entrance_node,
+    expedition: expedition,
+    character: character
+  } do
+    expedition
+    |> Expedition.changeset(%{
+      metadata: %{
+        "club_route_plan" => %{
+          "status" => "available",
+          "source" => "club_expedition_briefing",
+          "participant_character_ids" => [character.id],
+          "xp_bonus_bps" => 1_000
+        }
+      }
+    })
+    |> Repo.update!()
+
+    encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: entrance_node.id)
+
+    assert {:ok, %{xp_rewards: [reward], route_plan_bonus: route_plan_bonus}} =
+             Dungeons.resolve_encounter(encounter, :cleared)
+
+    assert reward.amount == 33
+    assert route_plan_bonus == %{"xp_awarded" => 3, "xp_bonus_bps" => 1_000}
+
+    updated_expedition = Repo.get!(Expedition, expedition.id)
+    assert updated_expedition.metadata["club_route_plan"]["status"] == "consumed"
+    assert updated_expedition.metadata["club_route_plan"]["xp_awarded"] == 3
   end
 
   test "resolve_encounter/3 distributes XP shares to all active expedition members", %{
@@ -236,6 +273,11 @@ defmodule MMGO.DungeonContentTest do
 
   test "harvest_resource/4 depletes the cache and grants items when linked to an item template",
        %{run: run, rest_node: rest_node, character: character, herb_template: herb_template} do
+    entrance_encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: run.current_node_id)
+
+    assert {:ok, %{encounter: _resolved_encounter}} =
+             Dungeons.resolve_encounter(entrance_encounter, :avoided)
+
     {:ok, %{content: %{resource_cache: rest_cache}}} =
       Dungeons.move_run(run, rest_node.id,
         resource: %{

@@ -5,6 +5,7 @@ defmodule MMGO.AlchemyTest do
   alias MMGO.Academy.Specialization
   alias MMGO.Alchemy
   alias MMGO.Alchemy.{BrewJob, CompleteBrewJobWorker}
+  alias MMGO.Bases
   alias MMGO.Inventory
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -27,6 +28,13 @@ defmodule MMGO.AlchemyTest do
     novice = character_fixture(realm, tower, "novice", "Novice")
 
     specialize_alchemy(alchemist)
+
+    {:ok, %{base: building_base}} =
+      Bases.start_custom_base_build(alchemist, tower, %{name: "Tower Alchemy Base"},
+        build_days: 1
+      )
+
+    assert {:ok, _active_base} = Bases.complete_base_build_by_id(building_base.id, force: true)
 
     {:ok, herb_template} =
       Inventory.create_item_template(%{
@@ -149,20 +157,48 @@ defmodule MMGO.AlchemyTest do
   end
 
   test "brew/5 rejects characters without alchemy specialization", %{
+    tower: tower,
     novice: novice,
-    workspace: workspace,
     recipe: recipe
   } do
-    workspace =
-      workspace
-      |> Alchemy.update_workshop(%{owner_character_id: novice.id})
-      |> case do
-        {:ok, workspace} -> workspace
-        {:error, _changeset} -> workspace
-      end
+    {:ok, %{base: building_base}} =
+      Bases.start_custom_base_build(novice, tower, %{name: "Novice Alchemy Base"}, build_days: 1)
+
+    assert {:ok, _active_base} = Bases.complete_base_build_by_id(building_base.id, force: true)
+
+    {:ok, workspace} =
+      Alchemy.create_workshop(novice, %{
+        name: "Novice Lab",
+        location_id: tower.id,
+        installed_tool_codes: ["cauldron"]
+      })
 
     assert {:error, changeset} = Alchemy.brew(novice, workspace, recipe, 1)
     assert %{status: ["character must be specialized in alchemy"]} = errors_on(changeset)
+  end
+
+  test "workshops cannot be installed or used outside the owner's active base", %{
+    tower: tower,
+    novice: novice,
+    alchemist: alchemist,
+    workspace: workspace,
+    recipe: recipe
+  } do
+    assert {:error, changeset} =
+             Alchemy.create_workshop(novice, %{
+               name: "Unbased Lab",
+               location_id: tower.id,
+               installed_tool_codes: ["cauldron"]
+             })
+
+    assert %{status: ["workshop must be installed at an active owned base"]} =
+             errors_on(changeset)
+
+    assert {:ok, _inactive_workspace} =
+             Alchemy.update_workshop(workspace, %{status: :inactive})
+
+    assert {:error, inactive_changeset} = Alchemy.brew(alchemist, workspace, recipe, 1)
+    assert %{status: ["workshop is not active"]} = errors_on(inactive_changeset)
   end
 
   test "brew/5 rejects workspaces missing required tools", %{

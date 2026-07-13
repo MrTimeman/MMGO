@@ -8,7 +8,7 @@ defmodule MMGO.PVP do
   alias MMGO.Economy
   alias MMGO.PVP.Duel
   alias MMGO.Repo
-  alias MMGO.Worlds.Realm
+  alias MMGO.Worlds.{Location, Realm}
 
   def list_open_duels_for_character(character_id) when is_binary(character_id) do
     Duel
@@ -174,7 +174,21 @@ defmodule MMGO.PVP do
     |> normalize_transaction_result()
   end
 
+  @doc """
+  Cancels an unanswered duel challenge. Once a duel is active, the wager is
+  already in combat escrow and the participant must resolve or flee instead
+  of recovering it through a cancellation path.
+  """
   def cancel_duel(%Duel{} = duel, %Character{} = actor) do
+    cancel_duel(duel, actor, false)
+  end
+
+  @doc false
+  def cancel_duel_for_local_reset(%Duel{} = duel, %Character{} = actor) do
+    cancel_duel(duel, actor, true)
+  end
+
+  defp cancel_duel(%Duel{} = duel, %Character{} = actor, allow_active_refund?) do
     Repo.transaction(fn ->
       duel = lock_duel!(duel.id)
 
@@ -188,7 +202,7 @@ defmodule MMGO.PVP do
           |> Duel.changeset(%{status: :cancelled, resolved_at: DateTime.utc_now()})
           |> Repo.update!()
 
-        duel.status == :active ->
+        duel.status == :active and allow_active_refund? ->
           if actor.id not in [duel.challenger_character_id, duel.opponent_character_id] do
             Repo.rollback(duel_changeset("only duel participants can cancel an active duel"))
           end
@@ -198,6 +212,9 @@ defmodule MMGO.PVP do
           duel
           |> Duel.changeset(%{status: :cancelled, resolved_at: DateTime.utc_now()})
           |> Repo.update!()
+
+        duel.status == :active ->
+          Repo.rollback(duel_changeset("active duels must be resolved through combat or flee"))
 
         true ->
           Repo.rollback(duel_changeset("duel cannot be cancelled from its current state"))
@@ -262,6 +279,12 @@ defmodule MMGO.PVP do
       challenger.realm_id != opponent.realm_id ->
         Repo.rollback(duel_changeset("duel participants must belong to the same realm"))
 
+      challenger.current_location_id != opponent.current_location_id ->
+        Repo.rollback(duel_changeset("duel participants must be at the same location"))
+
+      duel_location_unavailable?(challenger.current_location_id) ->
+        Repo.rollback(duel_changeset("duels cannot start in a safe zone"))
+
       stake_amount <= 0 ->
         Repo.rollback(duel_changeset("stake amount must be greater than zero"))
 
@@ -301,6 +324,9 @@ defmodule MMGO.PVP do
 
       challenger.current_location_id != opponent.current_location_id ->
         Repo.rollback(duel_changeset("duel participants must be at the same location"))
+
+      duel_location_unavailable?(challenger.current_location_id) ->
+        Repo.rollback(duel_changeset("duels cannot start in a safe zone"))
 
       insufficient_funds?(challenger, duel.stake_amount) ->
         Repo.rollback(duel_changeset("challenger lacks the required stake"))
@@ -395,6 +421,18 @@ defmodule MMGO.PVP do
     |> where([character], character.id == ^character_id)
     |> lock("FOR UPDATE")
     |> Repo.one!()
+  end
+
+  # The UI may hide the duel circle at protected locations, but challenge and
+  # acceptance are also reachable through Telegram and future clients. Keep
+  # the no-PvP safe-zone rule at the domain boundary.
+  defp duel_location_unavailable?(nil), do: true
+
+  defp duel_location_unavailable?(location_id) when is_binary(location_id) do
+    case Repo.get(Location, location_id) do
+      %Location{safe_zone: false} -> false
+      _other -> true
+    end
   end
 
   defp location_kind(nil), do: nil

@@ -1,32 +1,54 @@
 defmodule MMGO.Combat.Engine do
-  alias MMGO.Combat.{Action, Combat, Participant, RNG, Turn}
+  alias MMGO.Combat.{Action, ActionSnapshot, Combat, Participant, RNG, Turn}
   alias MMGO.Inventory.{InventoryItem, ItemAction}
   alias MMGO.Spells.{Runtime, Spell, SpellEffect}
   alias MMGO.Worlds
+
+  @elemental_break_conditions %{fire: "fire_spell", water: "water_spell"}
+  @physical_action_kinds [:strike, :sweep]
+  @environment_hazards_key "environment_hazards"
+  @environment_hazard_state "burning"
+  @max_environment_hazards 16
+  @max_environment_hazard_intensity 100
+  @max_environment_hazard_duration 8
 
   def resolve_turn(%Combat{} = combat, %Turn{} = turn, participants, actions) do
     participants_by_id = Map.new(participants, &{&1.id, &1})
     active_participants = Enum.filter(participants, &(&1.status == :ready))
     sides = normalize_sides(combat.sides)
-    environment_tags = combat.environment_tags || []
+    environment = initial_environment(combat, sides)
+
+    # Environmental hazards are intentionally resolved before individual state
+    # ticks and actions. A hazard is only added later in this resolution, so
+    # it can never damage a side on the turn that created it.
+    {environment, sides, starting_seq, events} =
+      tick_environment_hazards(combat, environment, sides, 1, [])
 
     {participants_by_id, sides, starting_seq, events} =
-      apply_start_of_turn(combat, active_participants, participants_by_id, sides, 1, [])
+      apply_start_of_turn(
+        combat,
+        active_participants,
+        participants_by_id,
+        sides,
+        starting_seq,
+        events
+      )
 
     actions = fill_missing_actions(actions, active_participants)
 
-    {participants_by_id, sides, environment_tags, inventory_updates, _final_seq, events} =
+    {participants_by_id, sides, environment, inventory_updates, _final_seq, events} =
       actions
       |> Enum.sort_by(&RNG.order_key(combat.seed, [combat.turn_number, &1.participant_id]), :asc)
       |> Enum.reduce(
-        {participants_by_id, sides, environment_tags, %{}, starting_seq, events},
-        fn action, {participants_acc, sides_acc, tags_acc, inventory_acc, seq_acc, events_acc} ->
+        {participants_by_id, sides, environment, %{}, starting_seq, events},
+        fn action,
+           {participants_acc, sides_acc, environment_acc, inventory_acc, seq_acc, events_acc} ->
           resolve_action(
             combat,
             action,
             participants_acc,
             sides_acc,
-            tags_acc,
+            environment_acc,
             inventory_acc,
             seq_acc,
             events_acc
@@ -44,7 +66,8 @@ defmodule MMGO.Combat.Engine do
       combat_attrs: %{
         status: if(winner_side, do: :finished, else: :active_turn),
         turn_number: next_turn_number,
-        environment_tags: environment_tags,
+        environment_tags: environment.legacy_tags,
+        metadata: put_environment_hazards(combat.metadata, environment.hazards),
         sides: sides,
         winner_side: winner_side,
         finished_at: if(winner_side, do: DateTime.utc_now(), else: nil)
@@ -64,7 +87,8 @@ defmodule MMGO.Combat.Engine do
         narration: default_narration(turn.number, events, winner_side),
         resolution: %{
           "winner_side" => winner_side,
-          "environment_tags" => environment_tags,
+          "environment_tags" => interaction_tags(environment),
+          "environment_hazards" => environment.hazards,
           "sides" => sides,
           "event_count" => length(events)
         }
@@ -196,11 +220,59 @@ defmodule MMGO.Combat.Engine do
          seq,
          events
        ) do
-    {participants, sides, tags, inventory_updates, seq + 1,
-     [
-       event(seq, combat.turn_number, "wait", %{"participant_id" => action.participant_id})
-       | events
-     ]}
+    participant = Map.fetch!(participants, action.participant_id)
+
+    case {Map.get(action.payload || %{}, "auto"),
+          pop_first_state(participant.active_states || [], "channeling")} do
+      {true, _channeling} ->
+        wait_event(combat, action, participants, sides, tags, inventory_updates, seq, events)
+
+      {_auto?, {nil, _states}} ->
+        wait_event(combat, action, participants, sides, tags, inventory_updates, seq, events)
+
+      {_auto?, {_channeling, remaining_states}} ->
+        participants =
+          Map.put(participants, participant.id, %{participant | active_states: remaining_states})
+
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "channeling_stopped", %{
+             "participant_id" => participant.id,
+             "reason" => "caster_choice"
+           })
+           | events
+         ]}
+    end
+  end
+
+  defp resolve_action(
+         combat,
+         %Action{action_type: :flee} = action,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    participant = Map.fetch!(participants, action.participant_id)
+
+    if participant.status == :ready do
+      participants = Map.put(participants, participant.id, %{participant | status: :fled})
+      sides = forfeit_side_if_empty(sides, participants, participant.side)
+
+      {participants, sides, tags, inventory_updates, seq + 1,
+       [
+         event(seq, combat.turn_number, "fled", %{
+           "participant_id" => participant.id,
+           "side" => participant.side
+         })
+         | events
+       ]}
+    else
+      {participants, sides, tags, inventory_updates, seq + 1,
+       [event(seq, combat.turn_number, "skipped", %{"participant_id" => participant.id}) | events]}
+    end
   end
 
   defp resolve_action(
@@ -237,68 +309,8 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
-      is_nil(action.spell) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "invalid_action", %{"participant_id" => participant.id})
-           | events
-         ]}
-
-      not Worlds.magic_allowed_for_combat?(combat) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "magic_suppressed", %{
-             "participant_id" => participant.id,
-             "spell_id" => action.spell_id,
-             "location_kind" =>
-               combat.metadata["location_kind"] || combat.metadata[:location_kind]
-           })
-           | events
-         ]}
-
-      is_nil(participant.character_id) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "invalid_action", %{
-             "participant_id" => participant.id,
-             "reason" => "actor_cannot_cast_player_spell"
-           })
-           | events
-         ]}
-
-      action.spell.creator_character_id != participant.character_id ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "unauthorized_spell", %{
-             "participant_id" => participant.id,
-             "spell_id" => action.spell_id
-           })
-           | events
-         ]}
-
-      not spell_available?(participant, action.spell.id) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "spell_not_prepared", %{
-             "participant_id" => participant.id,
-             "spell_id" => action.spell.id,
-             "grimoire_id" => participant.grimoire_id
-           })
-           | events
-         ]}
-
-      Map.get(participant.cooldowns || %{}, action.spell.id, 0) > 0 ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "spell_on_cooldown", %{
-             "participant_id" => participant.id,
-             "spell_id" => action.spell.id
-           })
-           | events
-         ]}
-
       true ->
-        resolve_spell_cast(
+        resolve_snapshot_spell_cast(
           combat,
           action,
           participant,
@@ -346,25 +358,8 @@ defmodule MMGO.Combat.Engine do
            | events
          ]}
 
-      is_nil(action.inventory_item) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "invalid_action", %{"participant_id" => participant.id})
-           | events
-         ]}
-
-      action.inventory_item.character_id != participant.character_id ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "unauthorized_item", %{
-             "participant_id" => participant.id,
-             "inventory_item_id" => action.inventory_item_id
-           })
-           | events
-         ]}
-
       true ->
-        resolve_item_use(
+        resolve_snapshot_item_use(
           combat,
           action,
           participant,
@@ -378,7 +373,7 @@ defmodule MMGO.Combat.Engine do
     end
   end
 
-  defp resolve_spell_cast(
+  defp resolve_snapshot_spell_cast(
          combat,
          action,
          participant,
@@ -389,11 +384,179 @@ defmodule MMGO.Combat.Engine do
          seq,
          events
        ) do
-    spell = action.spell
-    environment_outcome = Runtime.environment_outcome(spell, tags)
+    case ActionSnapshot.cast_for_resolution(action) do
+      {:ok, resolved_action, spell} ->
+        cond do
+          not Worlds.magic_allowed_for_combat?(combat) ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "magic_suppressed", %{
+                 "participant_id" => participant.id,
+                 "spell_id" => spell.id,
+                 "location_kind" =>
+                   combat.metadata["location_kind"] || combat.metadata[:location_kind]
+               })
+               | events
+             ]}
 
-    success_rate =
+          is_nil(participant.character_id) ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "invalid_action", %{
+                 "participant_id" => participant.id,
+                 "reason" => "actor_cannot_cast_player_spell"
+               })
+               | events
+             ]}
+
+          Map.get(participant.cooldowns || %{}, spell.id, 0) > 0 ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "spell_on_cooldown", %{
+                 "participant_id" => participant.id,
+                 "spell_id" => spell.id
+               })
+               | events
+             ]}
+
+          true ->
+            resolve_spell_cast(
+              combat,
+              resolved_action,
+              spell,
+              participant,
+              participants,
+              sides,
+              tags,
+              inventory_updates,
+              seq,
+              events
+            )
+        end
+
+      {:error, _reason} ->
+        invalid_snapshot_event(
+          combat,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
+    end
+  end
+
+  defp resolve_snapshot_item_use(
+         combat,
+         action,
+         participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    case ActionSnapshot.item_for_resolution(action) do
+      {:ok, resolved_action, item_action, item_code} ->
+        cond do
+          is_nil(resolved_action.inventory_item) ->
+            invalid_snapshot_event(
+              combat,
+              participant,
+              participants,
+              sides,
+              tags,
+              inventory_updates,
+              seq,
+              events
+            )
+
+          resolved_action.inventory_item.character_id != participant.character_id ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "unauthorized_item", %{
+                 "participant_id" => participant.id,
+                 "inventory_item_id" => resolved_action.inventory_item_id
+               })
+               | events
+             ]}
+
+          true ->
+            resolve_item_use(
+              combat,
+              resolved_action,
+              item_action,
+              item_code,
+              participant,
+              participants,
+              sides,
+              tags,
+              inventory_updates,
+              seq,
+              events
+            )
+        end
+
+      {:error, _reason} ->
+        invalid_snapshot_event(
+          combat,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
+    end
+  end
+
+  defp invalid_snapshot_event(
+         combat,
+         participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    {participants, sides, tags, inventory_updates, seq + 1,
+     [
+       event(seq, combat.turn_number, "invalid_action", %{
+         "participant_id" => participant.id,
+         "reason" => "invalid_snapshot"
+       })
+       | events
+     ]}
+  end
+
+  defp resolve_spell_cast(
+         combat,
+         action,
+         spell,
+         participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    interaction_tags = interaction_tags(tags)
+    environment_outcome = Runtime.environment_outcome(spell, interaction_tags)
+
+    base_success_rate =
       Runtime.success_rate(spell, participant_level(participant), div(participant.fatigue, 5))
+
+    blindness_penalty = blindness_accuracy_penalty(participant)
+    success_rate = max(base_success_rate - blindness_penalty, 0)
+
+    partial_success_threshold =
+      max(base_success_rate + spell.failure_profile.partial_success_rate - blindness_penalty, 0)
 
     success_roll =
       RNG.percent(combat.seed, [combat.turn_number, participant.id, spell.id, :success])
@@ -403,17 +566,26 @@ defmodule MMGO.Combat.Engine do
       |> Map.update!(:fatigue, &(&1 + spell.fatigue_cost))
       |> Map.update!(:cooldowns, &Map.put(&1, spell.id, spell.cooldown_turns))
 
+    {participant, empowerment} = consume_empowered(participant)
+
     participants = Map.put(participants, participant.id, participant)
 
     cond do
       environment_outcome.negated? ->
         {participants, sides, tags, inventory_updates, seq + 1,
          [
-           event(seq, combat.turn_number, "spell_negated", %{
-             "participant_id" => participant.id,
-             "spell_id" => spell.id,
-             "environment_tags" => tags
-           })
+           event(
+             seq,
+             combat.turn_number,
+             "spell_negated",
+             %{
+               "participant_id" => participant.id,
+               "spell_id" => spell.id,
+               "environment_tags" => interaction_tags
+             }
+             |> Map.merge(empowerment_payload(empowerment))
+             |> maybe_put_accuracy_penalty(blindness_penalty)
+           )
            | events
          ]}
 
@@ -430,11 +602,13 @@ defmodule MMGO.Combat.Engine do
           inventory_updates,
           seq,
           events,
-          1.0,
-          "spell_cast"
+          empowerment.multiplier,
+          "spell_cast",
+          empowerment,
+          blindness_penalty
         )
 
-      success_roll <= success_rate + spell.failure_profile.partial_success_rate ->
+      success_roll <= partial_success_threshold ->
         apply_spell_effects(
           combat,
           action,
@@ -447,8 +621,10 @@ defmodule MMGO.Combat.Engine do
           inventory_updates,
           seq,
           events,
-          0.5,
-          "partial_spell_cast"
+          0.5 * empowerment.multiplier,
+          "partial_spell_cast",
+          empowerment,
+          blindness_penalty
         )
 
       true ->
@@ -457,11 +633,18 @@ defmodule MMGO.Combat.Engine do
 
         {participants, sides, tags, inventory_updates, seq + 1,
          [
-           event(seq, combat.turn_number, "spell_failed", %{
-             "participant_id" => participant.id,
-             "spell_id" => spell.id,
-             "backlash_damage" => backlash_damage
-           })
+           event(
+             seq,
+             combat.turn_number,
+             "spell_failed",
+             %{
+               "participant_id" => participant.id,
+               "spell_id" => spell.id,
+               "backlash_damage" => backlash_damage
+             }
+             |> Map.merge(empowerment_payload(empowerment))
+             |> maybe_put_accuracy_penalty(blindness_penalty)
+           )
            | events
          ]}
     end
@@ -470,6 +653,8 @@ defmodule MMGO.Combat.Engine do
   defp resolve_item_use(
          combat,
          %Action{} = action,
+         %ItemAction{} = item_action,
+         item_code,
          %Participant{} = participant,
          participants,
          sides,
@@ -479,33 +664,15 @@ defmodule MMGO.Combat.Engine do
          events
        ) do
     inventory_item = action.inventory_item
-    item_template = inventory_item.item_template
-
-    action_key =
-      get_in(action.payload || %{}, ["tool_action"]) ||
-        get_in(action.payload || %{}, [:tool_action])
-
-    item_action = action_key && action_definition(item_template, action_key)
 
     cond do
-      is_nil(item_action) ->
-        {participants, sides, tags, inventory_updates, seq + 1,
-         [
-           event(seq, combat.turn_number, "invalid_item_action", %{
-             "participant_id" => participant.id,
-             "inventory_item_id" => inventory_item.id,
-             "action_key" => action_key
-           })
-           | events
-         ]}
-
       not usable_inventory_item?(inventory_item, item_action) ->
         {participants, sides, tags, inventory_updates, seq + 1,
          [
            event(seq, combat.turn_number, "item_unavailable", %{
              "participant_id" => participant.id,
              "inventory_item_id" => inventory_item.id,
-             "action_key" => action_key
+             "action_key" => item_action.key
            })
            | events
          ]}
@@ -526,7 +693,8 @@ defmodule MMGO.Combat.Engine do
         inventory_updates =
           Map.put(inventory_updates, inventory_item.id, %{
             quantity: max(inventory_item.quantity - item_action.quantity_cost, 0),
-            reserved_quantity: inventory_item.reserved_quantity,
+            reserved_quantity:
+              max(inventory_item.reserved_quantity - item_action.quantity_cost, 0),
             durability: max(inventory_item.durability - item_action.durability_cost, 0)
           })
 
@@ -535,7 +703,7 @@ defmodule MMGO.Combat.Engine do
           |> Map.put("participant_id", participant.id)
           |> Map.put("inventory_item_id", inventory_item.id)
           |> Map.put("action_key", item_action.key)
-          |> Map.put("item_code", item_template.code)
+          |> Map.put("item_code", item_code)
 
         {participants, sides, tags, inventory_updates, seq + 1,
          [event(seq, combat.turn_number, "tool_action", payload) | events]}
@@ -555,14 +723,24 @@ defmodule MMGO.Combat.Engine do
          seq,
          events,
          multiplier,
-         event_type
+         event_type,
+         empowerment,
+         blindness_penalty
        ) do
     target_side = resolve_target_side(action, participant, spell, sides)
     target_participant_id = resolve_target_participant_id(action, participants, target_side)
+    effects = spell.effects ++ environment_outcome.bonus_states
+
+    {participants, state_breaks} =
+      break_states_for_conditions(
+        participants,
+        spell_break_conditions(spell),
+        effect_recipient_ids(effects, participant.id, target_participant_id)
+      )
 
     {participants, sides, tags, payload} =
       Enum.reduce(
-        spell.effects ++ environment_outcome.bonus_states,
+        effects,
         {participants, sides, tags, %{"effects" => []}},
         fn effect, {participants_acc, sides_acc, tags_acc, payload_acc} ->
           {participants_acc, sides_acc, tags_acc, effect_payload} =
@@ -585,13 +763,7 @@ defmodule MMGO.Combat.Engine do
         end
       )
 
-    tags =
-      case {spell.environment_mode, environment_outcome.replacement_tags} do
-        {_mode, replacement_tags} when is_list(replacement_tags) -> replacement_tags
-        {:add, _nil} -> Enum.uniq(tags ++ spell.environment_tags)
-        {:replace, _nil} -> spell.environment_tags
-        _other -> tags
-      end
+    tags = update_legacy_environment_tags(tags, spell, environment_outcome)
 
     payload =
       payload
@@ -600,6 +772,9 @@ defmodule MMGO.Combat.Engine do
       |> Map.put("target_side", target_side)
       |> Map.put("target_participant_id", target_participant_id)
       |> Map.update!("effects", &Enum.reverse(&1))
+      |> Map.merge(empowerment_payload(empowerment))
+      |> maybe_put_state_breaks(state_breaks)
+      |> maybe_put_accuracy_penalty(blindness_penalty)
 
     {participants, sides, tags, inventory_updates, seq + 1,
      [event(seq, combat.turn_number, event_type, payload) | events]}
@@ -617,6 +792,13 @@ defmodule MMGO.Combat.Engine do
        ) do
     target_side = resolve_target_side(action, participant, item_action, sides)
     target_participant_id = resolve_target_participant_id(action, participants, target_side)
+
+    {participants, state_breaks} =
+      break_states_for_conditions(
+        participants,
+        physical_break_conditions(item_action),
+        physical_hit_recipient_ids(item_action, target_participant_id)
+      )
 
     {participants, sides, tags, payload} =
       Enum.reduce(item_action.effects, {participants, sides, tags, %{"effects" => []}}, fn effect,
@@ -648,6 +830,7 @@ defmodule MMGO.Combat.Engine do
       |> Map.put("target_side", target_side)
       |> Map.put("target_participant_id", target_participant_id)
       |> Map.update!("effects", &Enum.reverse(&1))
+      |> maybe_put_state_breaks(state_breaks)
 
     {participants, sides, tags, payload}
   end
@@ -704,14 +887,119 @@ defmodule MMGO.Combat.Engine do
         )
 
       :environment ->
-        payload = %{
-          "state" => effect.state,
+        apply_environment_effect(
+          combat,
+          target_side,
+          source,
+          effect,
+          intensity,
+          participants,
+          sides,
+          tags
+        )
+    end
+  end
+
+  # Environment hazards deliberately live in combat metadata rather than the
+  # legacy flat tag list. That gives them a bounded lifetime without changing
+  # the meaning of an existing persistent environment tag.
+  defp apply_environment_effect(
+         combat,
+         target_side,
+         source,
+         %SpellEffect{} = effect,
+         intensity,
+         participants,
+         sides,
+         environment
+       ) do
+    if burning_environment_hazard?(effect) do
+      {environment, created?} =
+        add_environment_hazard(
+          environment,
+          target_side,
+          source,
+          intensity,
+          effect.duration,
+          combat.turn_number
+        )
+
+      payload = %{
+        "state" => effect.state,
+        "intensity" => intensity,
+        "duration" => effect.duration,
+        "applies_to" => "environment",
+        "side" => target_side,
+        "hazard_created" => created?
+      }
+
+      {participants, sides, environment, payload}
+    else
+      payload = %{
+        "state" => effect.state,
+        "intensity" => intensity,
+        "applies_to" => "environment"
+      }
+
+      {participants, sides, add_legacy_environment_tag(environment, effect.state), payload}
+    end
+  end
+
+  defp burning_environment_hazard?(%SpellEffect{
+         state: @environment_hazard_state,
+         duration: duration
+       })
+       when is_integer(duration) and duration > 0,
+       do: true
+
+  defp burning_environment_hazard?(_effect), do: false
+
+  defp add_environment_hazard(environment, side, _source, intensity, duration, turn_number)
+       when is_binary(side) and is_integer(intensity) and is_integer(duration) and
+              is_integer(turn_number) do
+    cond do
+      length(environment.hazards) >= @max_environment_hazards ->
+        {environment, false}
+
+      intensity not in 1..@max_environment_hazard_intensity ->
+        {environment, false}
+
+      duration not in 1..@max_environment_hazard_duration ->
+        {environment, false}
+
+      true ->
+        hazard = %{
+          "state" => @environment_hazard_state,
+          "side" => side,
           "intensity" => intensity,
-          "applies_to" => "environment"
+          "duration" => duration,
+          "remaining_turns" => duration,
+          "applied_on_turn" => turn_number
         }
 
-        {participants, sides, Enum.uniq(tags ++ [effect.state]), payload}
+        {%{environment | hazards: environment.hazards ++ [hazard]}, true}
     end
+  end
+
+  defp add_environment_hazard(environment, _side, _source, _intensity, _duration, _turn_number),
+    do: {environment, false}
+
+  defp add_legacy_environment_tag(environment, tag) when is_binary(tag) do
+    %{environment | legacy_tags: Enum.uniq(environment.legacy_tags ++ [tag])}
+  end
+
+  defp add_legacy_environment_tag(environment, _tag), do: environment
+
+  defp update_legacy_environment_tags(environment, spell, environment_outcome) do
+    legacy_tags =
+      case {spell.environment_mode, environment_outcome.replacement_tags} do
+        {_mode, replacement_tags} when is_list(replacement_tags) -> replacement_tags
+        {:add, _nil} -> Enum.uniq(environment.legacy_tags ++ spell.environment_tags)
+        {:replace, _nil} -> spell.environment_tags
+        _other -> environment.legacy_tags
+      end
+
+    %{environment | legacy_tags: legacy_tags}
   end
 
   defp apply_effect_to_participant_or_side(
@@ -743,7 +1031,8 @@ defmodule MMGO.Combat.Engine do
             "intensity" => intensity,
             "remaining_turns" => max(effect.duration, 1),
             "applied_on_turn" => turn_number,
-            "source_id" => source_id(source)
+            "source_id" => source_id(source),
+            "break_conditions" => effect.break_conditions || []
           })
 
         {participants, sides, tags,
@@ -763,6 +1052,10 @@ defmodule MMGO.Combat.Engine do
       consume_exposed(target_participant_id, damage, participants)
 
     total_damage = max(damage + exposed_bonus, 0)
+
+    {participants, channeling_broken?} =
+      break_channeling(target_participant_id, total_damage, participants)
+
     sides = apply_side_delta(sides, side, -total_damage)
 
     {participants, sides,
@@ -770,7 +1063,8 @@ defmodule MMGO.Combat.Engine do
        "damage" => total_damage,
        "shield_absorbed" => absorbed,
        "exposed_bonus" => exposed_bonus,
-       "target_side" => side
+       "target_side" => side,
+       "channeling_broken" => channeling_broken?
      }}
   end
 
@@ -830,6 +1124,185 @@ defmodule MMGO.Combat.Engine do
     else
       {participants, damage, 0}
     end
+  end
+
+  defp break_channeling(_participant_id, damage, participants) when damage <= 0,
+    do: {participants, false}
+
+  defp break_channeling(nil, _damage, participants), do: {participants, false}
+
+  defp break_channeling(participant_id, _damage, participants) do
+    case Map.get(participants, participant_id) do
+      nil ->
+        {participants, false}
+
+      participant ->
+        case pop_first_state(participant.active_states || [], "channeling") do
+          {nil, _states} ->
+            {participants, false}
+
+          {_state, remaining_states} ->
+            updated_participant = %{participant | active_states: remaining_states}
+            {Map.put(participants, participant_id, updated_participant), true}
+        end
+    end
+  end
+
+  # `empowered` is an explicit multiplier, not a damage bonus. It is consumed
+  # as soon as a valid spell cast begins, including a cast later negated by the
+  # environment or one that fails its success roll.
+  defp consume_empowered(%Participant{} = participant) do
+    case pop_first_state(participant.active_states || [], "empowered") do
+      {nil, _states} ->
+        {participant, %{consumed?: false, multiplier: 1}}
+
+      {state, remaining_states} ->
+        multiplier = state |> Map.get("intensity", 1) |> max(1)
+
+        {%{participant | active_states: remaining_states},
+         %{consumed?: true, multiplier: multiplier}}
+    end
+  end
+
+  defp empowerment_payload(%{consumed?: false}), do: %{}
+
+  defp empowerment_payload(%{consumed?: true, multiplier: multiplier}) do
+    %{"empowerment" => %{"consumed" => true, "multiplier" => multiplier}}
+  end
+
+  defp blindness_accuracy_penalty(%Participant{} = participant) do
+    participant.active_states
+    |> List.wrap()
+    |> Enum.reduce(0, fn state, penalty ->
+      case state do
+        %{"state" => "blinded", "intensity" => intensity} when is_integer(intensity) ->
+          penalty + max(intensity, 0)
+
+        _other ->
+          penalty
+      end
+    end)
+    |> min(100)
+  end
+
+  defp maybe_put_accuracy_penalty(payload, 0), do: payload
+
+  defp maybe_put_accuracy_penalty(payload, penalty),
+    do: Map.put(payload, "accuracy_penalty", penalty)
+
+  # GDD §2.3 break conditions are an intentionally closed, data-backed
+  # vocabulary. A successful fire or water spell can break states only on a
+  # participant receiving one of its effects. `physical_hit` is emitted only
+  # by direct `:strike`/`:sweep` tool actions that contain a target impact.
+  # The break pass happens before that action's effects are applied, so an
+  # effect cannot remove a state it created in the same action.
+  defp spell_break_conditions(%Spell{school: school}) do
+    case Map.fetch(@elemental_break_conditions, school) do
+      {:ok, condition} -> [condition]
+      :error -> []
+    end
+  end
+
+  defp physical_break_conditions(%ItemAction{action_kind: action_kind, effects: effects})
+       when action_kind in @physical_action_kinds do
+    if Enum.any?(effects || [], &direct_impact_effect?/1), do: ["physical_hit"], else: []
+  end
+
+  defp physical_break_conditions(_item_action), do: []
+
+  defp direct_impact_effect?(%SpellEffect{
+         applies_to: :target,
+         state: "impact",
+         intensity: intensity
+       })
+       when is_integer(intensity) and intensity > 0,
+       do: true
+
+  defp direct_impact_effect?(_effect), do: false
+
+  defp effect_recipient_ids(effects, caster_id, target_participant_id) do
+    effects
+    |> Enum.flat_map(fn
+      %SpellEffect{applies_to: :target} -> [target_participant_id]
+      %SpellEffect{applies_to: :caster} -> [caster_id]
+      _effect -> []
+    end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  defp physical_hit_recipient_ids(item_action, target_participant_id) do
+    case physical_break_conditions(item_action) do
+      [] -> []
+      _conditions -> List.wrap(target_participant_id)
+    end
+  end
+
+  defp break_states_for_conditions(participants, [], _recipient_ids), do: {participants, []}
+
+  defp break_states_for_conditions(participants, conditions, recipient_ids) do
+    recipient_ids
+    |> Enum.uniq()
+    |> Enum.reduce({participants, []}, fn participant_id, {participants_acc, breaks_acc} ->
+      case Map.get(participants_acc, participant_id) do
+        %Participant{} = participant ->
+          {remaining_states, participant_breaks} =
+            Enum.reduce(participant.active_states || [], {[], []}, fn state,
+                                                                      {states_acc,
+                                                                       breaks_for_participant} ->
+              case matching_break_condition(state, conditions) do
+                nil ->
+                  {[state | states_acc], breaks_for_participant}
+
+                condition ->
+                  break = %{
+                    "participant_id" => participant.id,
+                    "state" => Map.get(state, "state"),
+                    "condition" => condition
+                  }
+
+                  {states_acc, [break | breaks_for_participant]}
+              end
+            end)
+
+          participant_breaks = Enum.reverse(participant_breaks)
+
+          if participant_breaks == [] do
+            {participants_acc, breaks_acc}
+          else
+            updated_participant = %{
+              participant
+              | active_states: Enum.reverse(remaining_states)
+            }
+
+            {Map.put(participants_acc, participant.id, updated_participant),
+             breaks_acc ++ participant_breaks}
+          end
+
+        _other ->
+          {participants_acc, breaks_acc}
+      end
+    end)
+  end
+
+  defp matching_break_condition(state, conditions) when is_map(state) do
+    state_conditions = state |> Map.get("break_conditions", []) |> List.wrap()
+    Enum.find(conditions, &(&1 in state_conditions))
+  end
+
+  defp matching_break_condition(_state, _conditions), do: nil
+
+  defp maybe_put_state_breaks(payload, []), do: payload
+
+  defp maybe_put_state_breaks(payload, state_breaks),
+    do: Map.put(payload, "state_breaks", state_breaks)
+
+  defp wait_event(combat, action, participants, sides, tags, inventory_updates, seq, events) do
+    {participants, sides, tags, inventory_updates, seq + 1,
+     [
+       event(seq, combat.turn_number, "wait", %{"participant_id" => action.participant_id})
+       | events
+     ]}
   end
 
   defp pop_first_state(states, state_name) do
@@ -898,13 +1371,6 @@ defmodule MMGO.Combat.Engine do
     end
   end
 
-  defp spell_available?(%Participant{grimoire: nil}, _spell_id), do: false
-
-  defp spell_available?(%Participant{grimoire: grimoire}, spell_id) do
-    entries = if Ecto.assoc_loaded?(grimoire.entries), do: grimoire.entries, else: []
-    Enum.any?(entries, &(&1.spell_id == spell_id))
-  end
-
   defp has_state?(states, state_name) do
     Enum.any?(states, &(&1["state"] == state_name))
   end
@@ -920,13 +1386,8 @@ defmodule MMGO.Combat.Engine do
   defp participant_level(_participant), do: 1
 
   defp usable_inventory_item?(%InventoryItem{} = inventory_item, %ItemAction{} = item_action) do
-    MMGO.Inventory.available_quantity(inventory_item) > 0 and
-      MMGO.Inventory.available_quantity(inventory_item) >= item_action.quantity_cost and
+    inventory_item.quantity > 0 and inventory_item.quantity >= item_action.quantity_cost and
       inventory_item.durability >= item_action.durability_cost
-  end
-
-  defp action_definition(item_template, action_key) do
-    Enum.find(item_template.actions || [], &(&1.key == action_key))
   end
 
   defp source_id(%Spell{id: id}), do: id
@@ -936,48 +1397,39 @@ defmodule MMGO.Combat.Engine do
          %Action{target_side: target_side},
          participant,
          %Spell{targeting: targeting},
-         _sides
-       )
-       when is_binary(target_side) and target_side != "" do
-    case targeting do
-      :self -> participant.side
-      _other -> target_side
-    end
+         sides
+       ) do
+    resolve_legal_target_side(targeting, target_side, participant, sides)
   end
 
   defp resolve_target_side(
          %Action{target_side: target_side},
          participant,
          %ItemAction{targeting: targeting},
-         _sides
-       )
-       when is_binary(target_side) and target_side != "" do
-    case targeting do
-      :self -> participant.side
-      :ally -> participant.side
-      _other -> target_side
+         sides
+       ) do
+    resolve_legal_target_side(targeting, target_side, participant, sides)
+  end
+
+  # Action snapshots have already validated targets. This fallback still keeps
+  # old persisted actions from injecting a non-existent side into Map.update!.
+  defp resolve_legal_target_side(targeting, _target_side, participant, _sides)
+       when targeting in [:self, :ally],
+       do: participant.side
+
+  defp resolve_legal_target_side(_targeting, target_side, participant, sides)
+       when is_binary(target_side) do
+    if Map.has_key?(sides, target_side) and target_side != participant.side do
+      target_side
+    else
+      opposing_side(participant, sides)
     end
   end
 
-  defp resolve_target_side(_action, participant, %Spell{targeting: :self}, _sides),
-    do: participant.side
+  defp resolve_legal_target_side(_targeting, _target_side, participant, sides),
+    do: opposing_side(participant, sides)
 
-  defp resolve_target_side(_action, participant, %Spell{targeting: :ally}, _sides),
-    do: participant.side
-
-  defp resolve_target_side(_action, participant, %Spell{targeting: _targeting}, sides) do
-    sides
-    |> Map.keys()
-    |> Enum.find(fn side -> side != participant.side end)
-  end
-
-  defp resolve_target_side(_action, participant, %ItemAction{targeting: :self}, _sides),
-    do: participant.side
-
-  defp resolve_target_side(_action, participant, %ItemAction{targeting: :ally}, _sides),
-    do: participant.side
-
-  defp resolve_target_side(_action, participant, %ItemAction{targeting: _targeting}, sides) do
+  defp opposing_side(participant, sides) do
     sides
     |> Map.keys()
     |> Enum.find(fn side -> side != participant.side end)
@@ -986,13 +1438,20 @@ defmodule MMGO.Combat.Engine do
   defp resolve_target_participant_id(
          %Action{target_participant_id: target_id},
          participants,
-         _side
+         side
        )
        when is_binary(target_id) do
-    if Map.has_key?(participants, target_id), do: target_id, else: nil
+    case Map.get(participants, target_id) do
+      %{side: ^side, status: :ready} -> target_id
+      _other -> first_ready_participant_on_side(participants, side)
+    end
   end
 
   defp resolve_target_participant_id(_action, participants, side) do
+    first_ready_participant_on_side(participants, side)
+  end
+
+  defp first_ready_participant_on_side(participants, side) do
     participants
     |> Enum.filter(fn {_participant_id, participant} ->
       participant.side == side and participant.status == :ready
@@ -1021,7 +1480,13 @@ defmodule MMGO.Combat.Engine do
       loser_side = sides |> Map.keys() |> Enum.find(&(&1 != winner_side))
 
       Map.new(participants, fn {participant_id, participant} ->
-        status = if participant.side == loser_side, do: :defeated, else: participant.status
+        status =
+          cond do
+            participant.status == :fled -> :fled
+            participant.side == loser_side -> :defeated
+            true -> participant.status
+          end
+
         {participant_id, %{participant | status: status}}
       end)
     end
@@ -1036,6 +1501,19 @@ defmodule MMGO.Combat.Engine do
     end
   end
 
+  defp forfeit_side_if_empty(sides, participants, side) do
+    ready_member? =
+      Enum.any?(participants, fn {_id, participant} ->
+        participant.side == side and participant.status == :ready
+      end)
+
+    if ready_member? do
+      sides
+    else
+      Map.update(sides, side, %{"shared_hp" => 0}, &Map.put(&1, "shared_hp", 0))
+    end
+  end
+
   defp default_narration(turn_number, events, winner_side) do
     cond do
       winner_side ->
@@ -1045,6 +1523,122 @@ defmodule MMGO.Combat.Engine do
         "Turn #{turn_number} resolved with #{length(events)} events."
     end
   end
+
+  defp initial_environment(%Combat{} = combat, sides) do
+    %{
+      legacy_tags: legacy_environment_tags(combat.environment_tags),
+      hazards: load_environment_hazards(combat.metadata, sides, combat.turn_number)
+    }
+  end
+
+  # Only the stored, canonical hazard shape can deal damage. Invalid metadata
+  # is discarded rather than coerced, so a corrupted row cannot create an
+  # unbounded or side-injected environmental effect.
+  defp load_environment_hazards(metadata, sides, turn_number) when is_map(sides) do
+    metadata
+    |> metadata_environment_hazards()
+    |> case do
+      hazards when is_list(hazards) ->
+        hazards
+        |> Enum.take(@max_environment_hazards)
+        |> Enum.reduce([], fn hazard, acc ->
+          case normalize_environment_hazard(hazard, sides, turn_number) do
+            {:ok, normalized} -> [normalized | acc]
+            :error -> acc
+          end
+        end)
+        |> Enum.reverse()
+
+      _other ->
+        []
+    end
+  end
+
+  defp metadata_environment_hazards(metadata) when is_map(metadata),
+    do: Map.get(metadata, @environment_hazards_key)
+
+  defp metadata_environment_hazards(_metadata), do: nil
+
+  defp normalize_environment_hazard(hazard, sides, turn_number) when is_map(hazard) do
+    with @environment_hazard_state <- Map.get(hazard, "state"),
+         side when is_binary(side) <- Map.get(hazard, "side"),
+         true <- Map.has_key?(sides, side),
+         intensity when is_integer(intensity) <- Map.get(hazard, "intensity"),
+         true <- intensity in 1..@max_environment_hazard_intensity,
+         duration when is_integer(duration) <- Map.get(hazard, "duration"),
+         true <- duration in 1..@max_environment_hazard_duration,
+         remaining_turns when is_integer(remaining_turns) <- Map.get(hazard, "remaining_turns"),
+         true <- remaining_turns in 1..duration,
+         applied_on_turn when is_integer(applied_on_turn) <- Map.get(hazard, "applied_on_turn"),
+         true <- applied_on_turn >= 1 and applied_on_turn < turn_number do
+      {:ok,
+       %{
+         "state" => @environment_hazard_state,
+         "side" => side,
+         "intensity" => intensity,
+         "duration" => duration,
+         "remaining_turns" => remaining_turns,
+         "applied_on_turn" => applied_on_turn
+       }}
+    else
+      _other -> :error
+    end
+  end
+
+  defp normalize_environment_hazard(_hazard, _sides, _turn_number), do: :error
+
+  defp tick_environment_hazards(combat, environment, sides, seq, events) do
+    {remaining_hazards, sides, next_seq, events} =
+      Enum.reduce(environment.hazards, {[], sides, seq, events}, fn hazard,
+                                                                    {hazards_acc, sides_acc,
+                                                                     seq_acc, events_acc} ->
+        remaining_turns = hazard["remaining_turns"] - 1
+        intensity = hazard["intensity"]
+        side = hazard["side"]
+        sides_acc = apply_side_delta(sides_acc, side, -intensity)
+
+        updated_hazards =
+          if remaining_turns > 0 do
+            [Map.put(hazard, "remaining_turns", remaining_turns) | hazards_acc]
+          else
+            hazards_acc
+          end
+
+        event =
+          event(seq_acc, combat.turn_number, "environment_hazard_tick", %{
+            "state" => hazard["state"],
+            "side" => side,
+            "damage" => intensity,
+            "remaining_turns" => remaining_turns,
+            "expired" => remaining_turns == 0
+          })
+
+        {updated_hazards, sides_acc, seq_acc + 1, [event | events_acc]}
+      end)
+
+    {%{environment | hazards: Enum.reverse(remaining_hazards)}, sides, next_seq, events}
+  end
+
+  # The engine resolves interaction rules against this transient view. The
+  # persisted `environment_tags` field remains the backwards-compatible flat
+  # tag list, while active hazards add tags only for as long as they exist.
+  defp interaction_tags(%{legacy_tags: legacy_tags, hazards: hazards}) do
+    Enum.uniq(legacy_tags ++ Enum.map(hazards, &Map.fetch!(&1, "state")))
+  end
+
+  defp put_environment_hazards(metadata, []) when is_map(metadata),
+    do: Map.delete(metadata, @environment_hazards_key)
+
+  defp put_environment_hazards(metadata, hazards) when is_map(metadata),
+    do: Map.put(metadata, @environment_hazards_key, hazards)
+
+  defp put_environment_hazards(_metadata, []), do: %{}
+
+  defp put_environment_hazards(_metadata, hazards),
+    do: %{@environment_hazards_key => hazards}
+
+  defp legacy_environment_tags(tags) when is_list(tags), do: tags
+  defp legacy_environment_tags(_tags), do: []
 
   defp normalize_sides(sides) do
     Map.new(sides, fn {side, data} ->
