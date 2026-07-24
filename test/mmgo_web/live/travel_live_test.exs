@@ -68,10 +68,7 @@ defmodule MMGOWeb.TravelLiveTest do
     assert has_element?(view, "#travel-waypoint-2")
     assert has_element?(view, "#travel-open-inventory")
 
-    assert has_element?(
-             view,
-             "#atmosphere-audio[data-ambient-cue='city'][data-major-event-cue='journey']"
-           )
+    refute has_element?(view, "#atmosphere-audio")
 
     assert journey.to_location_id == tower.id
   end

@@ -17,9 +17,8 @@
 }
 
 /* ------------------------------------------------------------------
-   .art-slot — placeholder frame for future hand-drawn artwork.
-   Displays at half the export size (dimensions are @2x pixels).
-   Two variants: --dark (world screens) and --parchment (documents).
+   .art-slot — decorative, non-interactive scene marker.
+   It supports the screen hierarchy without pretending to be unfinished art.
    ------------------------------------------------------------------ */
 
 .art-slot {
@@ -55,61 +54,55 @@
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  gap: 0.15rem;
   border-radius: 2px;
-  text-align: center;
-  padding: 0.5rem;
   overflow: hidden;
 }
 
 .art-slot--dark .art-slot__inner {
-  border: 1px dashed rgba(245, 158, 11, 0.28);
+  border: 1px solid rgba(245, 158, 11, 0.12);
+  background:
+    linear-gradient(135deg, transparent 42%, rgba(245, 158, 11, 0.05) 50%, transparent 58%),
+    radial-gradient(circle at center, rgba(245, 158, 11, 0.1), transparent 34%);
 }
 
 .art-slot--parchment .art-slot__inner {
-  border: 1px dashed rgba(169, 121, 31, 0.45);
+  border: 1px solid rgba(169, 121, 31, 0.25);
+  background:
+    linear-gradient(135deg, transparent 42%, rgba(169, 121, 31, 0.08) 50%, transparent 58%),
+    radial-gradient(circle at center, rgba(169, 121, 31, 0.12), transparent 34%);
+}
+
+.art-slot__orbit {
+  position: absolute;
+  width: min(42%, 8rem);
+  aspect-ratio: 1;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  opacity: 0.13;
+  box-shadow:
+    0 0 0 1.2rem color-mix(in srgb, currentColor 5%, transparent),
+    0 0 0 2.4rem color-mix(in srgb, currentColor 3%, transparent);
 }
 
 .art-slot__sigil {
-  font-size: 1.15rem;
+  position: relative;
+  z-index: 1;
+  display: grid;
+  width: 2.6rem;
+  aspect-ratio: 1;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 700;
   line-height: 1;
-  opacity: 0.75;
+  opacity: 0.7;
+  box-shadow: 0 0 2rem color-mix(in srgb, currentColor 12%, transparent);
 }
 
 .art-slot--dark .art-slot__sigil { color: var(--color-accent); }
 .art-slot--parchment .art-slot__sigil { color: var(--parch-gold); }
-
-.art-slot__label {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 0.85rem;
-  line-height: 1.25;
-  max-width: 100%;
-  overflow: hidden;
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  overflow-wrap: break-word;
-}
-
-/* Small frames (portraits in member cards etc.) get a tighter label */
-.art-slot--portrait .art-slot__label {
-  font-size: 0.7rem;
-  -webkit-line-clamp: 3;
-}
-
-.art-slot--dark .art-slot__label { color: var(--color-text-muted); }
-.art-slot--parchment .art-slot__label { color: var(--parch-ink-faint); }
-
-.art-slot__dims {
-  font-family: var(--font-sans);
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
-  opacity: 0.55;
-}
-
-.art-slot--dark .art-slot__dims { color: var(--color-text-muted); }
-.art-slot--parchment .art-slot__dims { color: var(--parch-ink-faint); }
 
 .art-slot__corner {
   position: absolute;
@@ -126,8 +119,12 @@
 .art-slot--dark .art-slot__corner { color: rgba(245, 158, 11, 0.45); }
 .art-slot--parchment .art-slot__corner { color: var(--parch-gold); }
 
-/* Compact variant: icons sit inline in item grids */
-.art-slot--icon .art-slot__label,
-.art-slot--icon .art-slot__dims { display: none; }
+/* Compact variant: icons sit inline in item grids. */
 .art-slot--icon .art-slot__inner { inset: 4px; }
 .art-slot--icon .art-slot__corner { width: 8px; height: 8px; }
+.art-slot--icon .art-slot__orbit { display: none; }
+.art-slot--icon .art-slot__sigil {
+  width: 68%;
+  font-family: var(--font-sans);
+  font-size: 0.82rem;
+}

@@ -1,6 +1,6 @@
 defmodule MMGOWeb.UIKit do
   @moduledoc """
-  Shared UI pieces for the design-pass screens (see docs/UI_DESIGN_BRIEF.md).
+  Shared UI pieces for game screens.
 
   Import in a LiveView with `import MMGOWeb.UIKit`.
   """
@@ -15,20 +15,18 @@ defmodule MMGOWeb.UIKit do
   }
 
   @doc """
-  Placeholder frame for artwork that will be drawn by human artists.
-
-  Renders an ornate frame at the correct aspect ratio with the export
-  dimensions printed inside (dimensions are @2x export pixels; the frame
-  itself displays at half size in CSS px).
+  Renders a quiet, decorative scene marker at the requested aspect ratio.
 
       <.art_slot kind="hero" label="Городские ворота" id="art-city-gate" />
       <.art_slot w={750} h={500} label="Таверна" variant="parchment" />
 
   * `kind` — one of hero (750×500, 3:2 full-width header), banner (750×320),
-    scene (600×600), portrait (300×400), icon (128×128). Or pass explicit
-    `w`/`h` instead.
+    scene (600×600), portrait (300×400), icon (128×128), or explicit `w`/`h`.
   * `variant` — "dark" (default, for world screens) or "parchment"
     (for document screens).
+
+  The marker is deliberately presentation-only. It never exposes production
+  notes, export dimensions, or promises of artwork to players.
   """
   attr :id, :string, default: nil
   attr :kind, :string, default: nil
@@ -46,15 +44,20 @@ defmodule MMGOWeb.UIKit do
         true -> {750, 500}
       end
 
-    assigns = assign(assigns, w: w, h: h)
+    symbol =
+      case assigns.kind do
+        "icon" -> label_initial(assigns.label)
+        _kind -> "✦"
+      end
+
+    assigns = assign(assigns, w: w, h: h, symbol: symbol)
 
     ~H"""
     <figure
       id={@id}
       class={["art-slot", "art-slot--#{@variant}", @kind && "art-slot--#{@kind}", @class]}
       style={"--art-ratio: #{@w} / #{@h};"}
-      data-art-label={@label}
-      data-art-size={"#{@w}x#{@h}"}
+      aria-hidden="true"
     >
       <div class="art-slot__frame">
         <span class="art-slot__corner art-slot__corner--tl"></span>
@@ -62,12 +65,23 @@ defmodule MMGOWeb.UIKit do
         <span class="art-slot__corner art-slot__corner--bl"></span>
         <span class="art-slot__corner art-slot__corner--br"></span>
         <div class="art-slot__inner">
-          <span class="art-slot__sigil">✦</span>
-          <span class="art-slot__label">{@label}</span>
-          <span class="art-slot__dims">{@w}×{@h}</span>
+          <span class="art-slot__orbit"></span>
+          <span class="art-slot__sigil">{@symbol}</span>
         </div>
       </div>
     </figure>
     """
   end
+
+  defp label_initial(label) when is_binary(label) do
+    label
+    |> String.trim()
+    |> String.first()
+    |> case do
+      nil -> "◆"
+      initial -> String.upcase(initial)
+    end
+  end
+
+  defp label_initial(_label), do: "◆"
 end

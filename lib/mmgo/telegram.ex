@@ -53,12 +53,12 @@ defmodule MMGO.Telegram do
     [
       %{command: "start", description: "Создать персонажа и открыть MMGO"},
       %{command: "play", description: "Открыть игру"},
-      %{command: "help", description: "Показать игровые команды"},
-      %{command: "status", description: "Состояние персонажа"},
-      %{command: "inventory", description: "Показать инвентарь"},
-      %{command: "routes", description: "Доступные маршруты"},
-      %{command: "journey", description: "Текущий путь"},
-      %{command: "spells", description: "Книга заклинаний"}
+      %{command: "help", description: "Что умеет бот"},
+      %{command: "status", description: "Где я и что дальше"},
+      %{command: "inventory", description: "Вещи и ресурсы"},
+      %{command: "routes", description: "Соседние направления"},
+      %{command: "journey", description: "Проверить переход"},
+      %{command: "spells", description: "Подготовленные заклинания"}
     ]
   end
 

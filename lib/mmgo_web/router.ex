@@ -27,16 +27,12 @@ defmodule MMGOWeb.Router do
     get "/", PageController, :home
     live "/play", GameEntryLive
     post "/auth/telegram", TelegramAuthController, :create
-    get "/play/new", PlayDemoController, :new
-    get "/play/continue", PlayDemoController, :continue
-    get "/demo/start", PlayDemoController, :start
 
     live_session :game, on_mount: [{MMGOWeb.GameAuth, :require_character}] do
       live "/map", MapLive
       live "/notifications", NotificationsLive
       live "/spellbook", SpellbookLive
       live "/pvp", DuelLive
-      live "/screens", ScreensIndexLive
 
       live "/academy/bulletin-board", BulletinBoardLive
       live "/academy/study-desk", AcademyLive, :overview
@@ -104,8 +100,11 @@ defmodule MMGOWeb.Router do
 
     get "/state", PlayApiController, :state
     post "/journeys", PlayApiController, :create_journey
-    post "/reset", PlayDemoController, :reset
-    post "/demo/reset", PlayDemoController, :reset
+
+    if Application.compile_env(:mmgo, :dev_routes) do
+      post "/reset", PlayDemoController, :reset
+      post "/demo/reset", PlayDemoController, :reset
+    end
   end
 
   # Enable LiveDashboard in development
@@ -128,6 +127,9 @@ defmodule MMGOWeb.Router do
     scope "/", MMGOWeb do
       pipe_through :browser
 
+      get "/play/new", PlayDemoController, :new
+      get "/play/continue", PlayDemoController, :continue
+      get "/demo/start", PlayDemoController, :start
       live "/editor", MapEditorLive
     end
   end

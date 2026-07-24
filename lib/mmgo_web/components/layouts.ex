@@ -23,6 +23,10 @@ defmodule MMGOWeb.Layouts do
     default: false,
     doc: "renders the immersive public shell instead of the authenticated game chrome"
 
+  attr :game_nav, :boolean,
+    default: true,
+    doc: "shows the four primary game destinations for an authenticated player"
+
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -92,100 +96,57 @@ defmodule MMGOWeb.Layouts do
     </div>
 
     <div
-      :if={not @public}
-      class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_22rem),linear-gradient(180deg,_#f7f1e8_0%,_#f3ede2_42%,_#efe7da_100%)] text-stone-900"
+      :if={not @public and not is_nil(@current_scope)}
+      id="game-shell"
+      class={["game-shell", @game_nav && "game-shell--with-nav"]}
     >
-      <header class="border-b border-stone-200/80 bg-white/70 backdrop-blur">
-        <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
-          <.link navigate={~p"/"} class="flex items-center gap-3">
-            <div class="flex size-11 items-center justify-center rounded-2xl border border-amber-300 bg-amber-100 text-sm font-black uppercase tracking-[0.25em] text-amber-950">
-              M
-            </div>
-            <div>
-              <p class="text-sm font-semibold uppercase tracking-[0.26em] text-stone-500">
-                Ministry of MaGic Online
-              </p>
-              <p class="text-lg font-semibold text-stone-950">MMGO</p>
-            </div>
-          </.link>
+      <main id="game-content" class="game-content">
+        {render_slot(@inner_block)}
+      </main>
 
-          <nav class="flex flex-wrap items-center gap-3 text-sm text-stone-600">
-            <.link
-              :if={@current_scope}
-              id="telegram-player-profile"
-              navigate={~p"/map"}
-              class="flex items-center gap-2 rounded-full border border-amber-300/80 bg-amber-50 px-2 py-1.5 pr-3 text-stone-800 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-500"
-            >
-              <img
-                :if={avatar_url(@current_scope)}
-                id="telegram-player-avatar"
-                src={avatar_url(@current_scope)}
-                alt=""
-                referrerpolicy="no-referrer"
-                class="size-8 rounded-full border border-amber-200 object-cover"
-              />
-              <span
-                :if={is_nil(avatar_url(@current_scope))}
-                id="telegram-player-avatar-fallback"
-                class="flex size-8 items-center justify-center rounded-full bg-amber-200 text-xs font-black uppercase text-amber-950"
-              >
-                {profile_initial(@current_scope)}
-              </span>
-              <span class="max-w-32 truncate font-semibold">
-                {@current_scope.character.name}
-              </span>
-            </.link>
-            <a
-              href={~p"/healthz"}
-              class="rounded-full border border-stone-300 bg-white px-4 py-2 font-medium transition hover:-translate-y-0.5 hover:border-stone-900 hover:text-stone-950"
-            >
-              Health
-            </a>
-            <a
-              href="https://core.telegram.org/bots/api"
-              class="rounded-full border border-stone-300 bg-white px-4 py-2 font-medium transition hover:-translate-y-0.5 hover:border-stone-900 hover:text-stone-950"
-            >
-              Telegram API
-            </a>
-            <a
-              href="https://hexdocs.pm/phoenix_live_view/welcome.html"
-              class="rounded-full border border-stone-900 bg-stone-900 px-4 py-2 font-medium text-white transition hover:-translate-y-0.5 hover:bg-black"
-            >
-              LiveView
-            </a>
-          </nav>
-        </div>
-      </header>
+      <nav
+        :if={@game_nav}
+        id="game-primary-nav"
+        aria-label="Основные разделы игры"
+        class="game-primary-nav"
+      >
+        <.link id="game-nav-map" navigate={~p"/map"} class="game-primary-nav__item">
+          <.icon name="hero-map" class="size-5" />
+          <span>Мир</span>
+        </.link>
+        <.link id="game-nav-event" navigate={~p"/event"} class="game-primary-nav__item">
+          <.icon name="hero-map-pin" class="size-5" />
+          <span>Здесь</span>
+        </.link>
+        <.link id="game-nav-inventory" navigate={~p"/inventory"} class="game-primary-nav__item">
+          <.icon name="hero-archive-box" class="size-5" />
+          <span>Вещи</span>
+        </.link>
+        <.link id="game-nav-spellbook" navigate={~p"/spellbook"} class="game-primary-nav__item">
+          <.icon name="hero-sparkles" class="size-5" />
+          <span>Магия</span>
+        </.link>
+      </nav>
 
-      <main class="px-4 py-10 sm:px-6 sm:py-14 lg:px-8">
-        <div class="mx-auto max-w-6xl space-y-4">
-          {render_slot(@inner_block)}
-        </div>
+      <.flash_group flash={@flash} />
+      <.atmosphere_audio
+        :if={@atmosphere && Map.get(@atmosphere, :available?, false)}
+        cue={@atmosphere}
+      />
+    </div>
+
+    <div
+      :if={not @public and is_nil(@current_scope)}
+      class="min-h-screen bg-[#090807] text-stone-100"
+    >
+      <main>
+        {render_slot(@inner_block)}
       </main>
 
       <.flash_group flash={@flash} />
-      <.atmosphere_audio :if={@atmosphere} cue={@atmosphere} />
     </div>
     """
   end
-
-  defp avatar_url(%{account: %{settings: %{"telegram_photo_url" => url}}})
-       when is_binary(url) and url != "",
-       do: url
-
-  defp avatar_url(_scope), do: nil
-
-  defp profile_initial(%{character: %{name: name}}) when is_binary(name) do
-    name
-    |> String.trim()
-    |> String.first()
-    |> case do
-      nil -> "M"
-      initial -> String.upcase(initial)
-    end
-  end
-
-  defp profile_initial(_scope), do: "M"
 
   attr :cue, :map, required: true
 

@@ -205,10 +205,7 @@ defmodule MMGOWeb.DungeonLiveTest do
     assert has_element?(view, "#dungeon-encounter")
     assert has_element?(view, "#dungeon-avoid-encounter")
 
-    assert has_element?(
-             view,
-             "#atmosphere-audio[data-ambient-cue='dungeon'][data-major-event-cue='dungeon_encounter']"
-           )
+    refute has_element?(view, "#atmosphere-audio")
 
     view |> element("#dungeon-avoid-encounter") |> render_click()
 

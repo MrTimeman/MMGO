@@ -46,144 +46,52 @@ defmodule MMGO.Telegram.Commands do
   def process_message(_character, _message), do: {:ok, nil}
 
   defp dispatch("start", _args, character) do
-    location = (character.current_location && character.current_location.name) || "nowhere"
+    location =
+      (character.current_location && character.current_location.name) || "место не определено"
 
     {:ok,
      [
-       "Welcome to MMGO, #{character.name}.",
-       "You are currently at #{location}.",
-       "Try /help to see available commands."
+       "#{character.name}, персонаж готов.",
+       "Сейчас вы в локации «#{location}».",
+       "Основная игра — в Mini App: там видны контекст, доступные действия и их результат.",
+       "Бот оставлен для быстрых проверок. /help — короткий список команд."
      ]
      |> Enum.join("\n")}
   end
 
   defp dispatch("play", _args, character) do
-    {:ok, "Откройте MMGO кнопкой ниже, #{character.name}."}
+    {:ok, "Открываю MMGO для #{character.name}. Продолжайте игру кнопкой ниже."}
   end
 
   defp dispatch("help", _args, _character) do
     {:ok,
      [
-       "Available commands:",
-       "/status",
-       "/inventory",
-       "/progression milestones",
-       "/event current",
-       "/event choose <option-code>",
-       "/routes",
-       "/road encounter <handle>",
-       "/road status",
-       "/road greet <encounter-id>",
-       "/road trade <encounter-id>",
-       "/road attack <encounter-id>",
-       "/road avoid <encounter-id>",
-       "/travel <location-slug>",
-       "/journey",
-       "/realms list",
-       "/realms quote <realm-slug> <amount>",
-       "/realms migrate <realm-slug> <amount>",
-       "/realms migrations",
-       "/academy status",
-       "/academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia",
-       "/academia projects",
-       "/academia start <spell|potion|tool|thesis|course> <title>",
-       "/academia professor",
-       "/academia publish-course <title>",
-       "/base status",
-       "/base buy <location-slug>",
-       "/base build <location-slug>",
-       "/base storage <base-id>",
-       "/base deposit <base-id> <inventory-item-id> [quantity]",
-       "/base withdraw <base-id> <storage-item-id> [quantity]",
-       "/alchemy workspace",
-       "/alchemy setup [tool1,tool2,...]",
-       "/alchemy recipes",
-       "/alchemy brew <recipe-code> [quantity]",
-       "/alchemy jobs",
-       "/npc shops",
-       "/npc browse <shop-code>",
-       "/npc buy <offer-id> [quantity]",
-       "/npc sell <offer-id> <inventory-item-id> [quantity]",
-       "/charity donate <amount>",
-       "/academy tuition <amount>",
-       "/craft workshop",
-       "/craft setup [tool1,tool2,...]",
-       "/craft recipes",
-       "/craft build <recipe-code> [quantity]",
-       "/craft jobs",
-       "/scavenge <resource_code> [quantity]",
-       "/party create [name]",
-       "/party status",
-       "/org create <cult|company|council|guild> <name>",
-       "/org list",
-       "/org role <org-id> <code> <rank> <perm1,perm2,...> <title>",
-       "/org invite <org-id> <handle> <role-code>",
-       "/org invites",
-       "/org accept <invite-id>",
-       "/org reject <invite-id>",
-       "/org travel <org-id> <location-slug>",
-       "/club create <type> <name>",
-       "/club list",
-       "/club status <club-id>",
-       "/club invite <club-id> <handle>",
-       "/club invites",
-       "/club accept <invite-id>",
-       "/club reject <invite-id>",
-       "/club leave <club-id>",
-       "/duel challenge <handle> <stake>",
-       "/duel accept <duel-id>",
-       "/duel reject <duel-id>",
-       "/duel cancel <duel-id>",
-       "/duel status",
-       "/expedition start",
-       "/expedition status",
-       "/dungeon enter",
-       "/dungeon status",
-       "/dungeon move <node-slug>",
-       "/dungeon extract",
-       "/dungeon ritual",
-       "/dungeon drops",
-       "/encounter status",
-       "/encounter fight",
-       "/spells",
-       "/combat status",
-       "/combat cast <spell-id>",
-       "/combat wait",
-       "/combat resolve",
-       "/admin status",
-       "/admin realm <slug>",
-       "/admin sweep",
-       "/admin dungeon maintain <dungeon-slug>",
-       "/admin federation manifest",
-       "/admin federation register <manifest-url> [token]",
-       "/admin federation sync <realm-slug>",
-       "/admin profile <handle>",
-       "/admin crime <handle> <crime_type> <severity> [fine]"
+       "Быстрые команды:",
+       "/play — открыть игру",
+       "/status — понять, где вы и что делать дальше",
+       "/inventory — проверить вещи и ресурсы",
+       "/routes — посмотреть соседние направления",
+       "/journey — проверить текущий переход",
+       "/spells — посмотреть подготовленные заклинания",
+       "",
+       "Выборы, торговля, риск и другие игровые действия доступны в Mini App."
      ]
      |> Enum.join("\n")}
   end
 
   defp dispatch("status", _args, character) do
     journey = Travel.active_journey(character.id)
-    enrollment = Academy.current_enrollment(character.id)
-    specialization = Academy.active_specialization(character.id)
-    party = Parties.active_party_for_character(character.id)
-    expedition = Parties.active_expedition_for_character(character.id)
-    run = expedition && Dungeons.active_run_for_expedition(expedition.id)
     carry = Survival.carried_weight(character)
     carry_capacity = Survival.carry_capacity(character)
     food_units = Survival.food_units_available(character)
 
     lines = [
-      "#{character.name} — lvl #{character.level}, xp #{character.xp}",
-      "Location: #{location_name(character)}",
-      "Carry: #{carry}/#{carry_capacity}",
-      "Food: #{food_units}",
-      "Journey: #{journey_status(journey)}",
-      "Academy: #{academy_status(enrollment, specialization)}",
-      "Party: #{party_status(party)}",
-      "Expedition: #{expedition_status(expedition)}",
-      "Dungeon: #{dungeon_status(run)}"
+      "#{character.name} · уровень #{character.level} · опыт #{character.xp}",
+      "Локация: #{location_name(character)}",
+      "Еда: #{food_units}",
+      "Груз: #{carry}/#{carry_capacity}",
+      "Сейчас: #{journey_status(journey)}",
+      "Следующий шаг: #{telegram_next_step(journey)}"
     ]
 
     {:ok, Enum.join(lines, "\n")}
@@ -194,17 +102,17 @@ defmodule MMGO.Telegram.Commands do
 
     body =
       if items == [] do
-        ["Inventory is empty."]
+        ["Пока ничего нет."]
       else
         Enum.map(items, fn item ->
           available = Inventory.available_quantity(item)
           reserved = item.reserved_quantity
-          suffix = if reserved > 0, do: " (reserved #{reserved})", else: ""
+          suffix = if reserved > 0, do: " (зарезервировано: #{reserved})", else: ""
           "- #{item.item_template.name}: #{available}/#{item.quantity}#{suffix}"
         end)
       end
 
-    {:ok, Enum.join(["Inventory:"] ++ body, "\n")}
+    {:ok, Enum.join(["С собой:"] ++ body, "\n")}
   end
 
   defp dispatch("event", ["current"], character) do
@@ -270,21 +178,22 @@ defmodule MMGO.Telegram.Commands do
       routes = Worlds.list_routes_for_location(location_id)
 
       if routes == [] do
-        {:ok, "No routes are available from #{location.name}."}
+        {:ok, "Из локации «#{location.name}» сейчас нет доступных маршрутов."}
       else
         {:ok,
          Enum.join(
-           ["Routes from #{location.name}:"] ++
+           ["Куда можно отправиться из локации «#{location.name}»:"] ++
              Enum.map(routes, fn route ->
                destination = route_destination(route, location_id)
 
-               "- #{destination.slug}: #{destination.name} (#{route.travel_days} game-days, risk #{route.risk_level})"
-             end),
+               "- #{destination.name} — #{route.travel_days} дн., риск #{route.risk_level}"
+             end) ++
+             ["", "Маршрут выбирается на карте в MMGO."],
            "\n"
          )}
       end
     else
-      nil -> {:ok, "You are not currently placed at a location."}
+      nil -> {:ok, "Текущая локация ещё не определена."}
     end
   end
 
@@ -363,13 +272,13 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("journey", _args, character) do
     case Travel.active_journey(character.id) do
       nil ->
-        {:ok, "No active journey."}
+        {:ok, "Сейчас вы никуда не переходите. Откройте карту MMGO, чтобы выбрать направление."}
 
       journey ->
         journey = Repo.preload(journey, [:from_location, :to_location])
 
         {:ok,
-         "Journey: #{journey.from_location.name} -> #{journey.to_location.name}, arrival #{Formatter.datetime(journey.arrival_at)}, food #{journey.food_units_consumed}."}
+         "Путь: #{journey.from_location.name} → #{journey.to_location.name}\nПрибытие: #{Formatter.datetime(journey.arrival_at)}\nПотрачено еды: #{journey.food_units_consumed}"}
     end
   end
 
@@ -1656,19 +1565,19 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("spells", _args, character) do
     case Grimoires.active_grimoire_for_character(character.id) do
       nil ->
-        {:ok, "No active grimoire."}
+        {:ok, "Активный гримуар пока не выбран."}
 
       grimoire ->
         grimoire = Grimoires.get_grimoire!(grimoire.id)
 
         if grimoire.entries == [] do
-          {:ok, "Active grimoire is empty."}
+          {:ok, "В активном гримуаре пока нет подготовленных заклинаний."}
         else
           {:ok,
            Enum.join(
-             ["Prepared spells:"] ++
+             ["Подготовленные заклинания:"] ++
                Enum.map(grimoire.entries, fn entry ->
-                 "- #{entry.spell.id}: #{entry.spell.name} (#{entry.spell.school})"
+                 "- #{entry.spell.name} · #{entry.spell.school}"
                end),
              "\n"
            )}
@@ -2035,7 +1944,7 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp dispatch(_command, _args, _character) do
-    {:ok, "Unknown command. Use /help."}
+    {:ok, "Не знаю такой команды. /help покажет короткий список доступных действий."}
   end
 
   defp parse_command(text) do
@@ -2068,21 +1977,17 @@ defmodule MMGO.Telegram.Commands do
     Ecto.NoResultsError -> "Unknown"
   end
 
-  defp journey_status(nil), do: "None"
+  defp journey_status(nil), do: "вы на месте"
 
   defp journey_status(journey),
     do:
-      "To #{location_name_by_id(journey.to_location_id)} (arrives #{Formatter.datetime(journey.arrival_at)})"
+      "переход в «#{location_name_by_id(journey.to_location_id)}» до #{Formatter.datetime(journey.arrival_at)}"
 
-  defp academy_status(nil, nil), do: "None"
+  defp telegram_next_step(nil),
+    do: "откройте MMGO и выберите действие в текущей локации"
 
-  defp academy_status(enrollment, nil) when not is_nil(enrollment),
-    do: "Enrollment #{enrollment.program_type} (#{enrollment.status})"
-
-  defp academy_status(nil, specialization), do: "#{specialization.track}"
-
-  defp academy_status(enrollment, specialization),
-    do: "#{enrollment.program_type} / #{specialization.track}"
+  defp telegram_next_step(_journey),
+    do: "переход уже идёт; /journey покажет время прибытия"
 
   defp academy_enrollment_line(nil), do: "none"
 
@@ -2091,16 +1996,6 @@ defmodule MMGO.Telegram.Commands do
 
   defp academy_specialization_line(nil), do: "none"
   defp academy_specialization_line(specialization), do: specialization.track |> to_string()
-
-  defp party_status(nil), do: "None"
-  defp party_status(party), do: party.name
-  defp expedition_status(nil), do: "None"
-
-  defp expedition_status(expedition),
-    do: "#{expedition.expedition_type} at #{location_name_by_id(expedition.location_id)}"
-
-  defp dungeon_status(nil), do: "None"
-  defp dungeon_status(run), do: "#{run.dungeon.name} / #{run.current_node.name}"
 
   defp route_destination(route, current_location_id) do
     cond do

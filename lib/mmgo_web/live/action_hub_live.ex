@@ -226,8 +226,11 @@ defmodule MMGOWeb.ActionHubLive do
             <p id="activity-world-date" class="evh-date">{format_world_time(@world_time)}</p>
             <h2 class="font-serif text-xl text-amber-100">{@event.template.title}</h2>
             <p id="activity-event-body" class="evh-narrative">{@event.template.body}</p>
+            <p id="activity-guidance" class="evh-guidance">
+              Выберите направление. Сначала откроется соответствующий экран; траты и необратимые действия всегда подтверждаются отдельно.
+            </p>
 
-            <p class="evh-legend">Здесь можно</p>
+            <p class="evh-legend">Куда пойти дальше</p>
             <div id="activity-options" class="evh-actions">
               <button
                 :for={option <- @options}
@@ -237,6 +240,7 @@ defmodule MMGOWeb.ActionHubLive do
                 phx-click="resolve_option"
                 phx-value-event_id={@event.id}
                 phx-value-option_code={option.code}
+                phx-disable-with="Открываем…"
               >
                 <span class="evh-action__glyph">{option_glyph(option.action_key)}</span>
                 <span class="evh-action__text">
@@ -251,17 +255,20 @@ defmodule MMGOWeb.ActionHubLive do
               Здесь пока нет доступных занятий.
             </p>
 
-            <p :if={@activity_result} id="activity-result" class="evh-outcome" role="status">
-              {@activity_result}
-            </p>
+            <div :if={@activity_result} id="activity-result" class="evh-outcome" role="status">
+              <strong>Готово.</strong>
+              <span>{@activity_result}</span>
+            </div>
 
             <section
               :if={@secret_cult.can_hear_rumor? or @secret_cult.stage != :unknown}
               id="activity-secret-cult"
               class="mt-8 border-t border-violet-500/25 pt-5"
             >
-              <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">тайный путь</p>
-              <h2 class="mt-1 font-serif text-xl text-violet-100">Тайный Культ</h2>
+              <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">
+                необязательная зацепка
+              </p>
+              <h2 class="mt-1 font-serif text-xl text-violet-100">Слух о тайном пути</h2>
               <%= cond do %>
                 <% @secret_cult.can_hear_rumor? -> %>
                   <p id="secret-cult-rumor-copy" class="mt-2 text-sm leading-6 text-stone-300">
@@ -317,7 +324,15 @@ defmodule MMGOWeb.ActionHubLive do
               <% end %>
             </section>
 
-            <section id="activity-scavenging" class="mt-8 border-t border-stone-700/70 pt-5">
+            <section
+              :if={
+                @scavenging.available_caches != [] or
+                  not is_nil(@scavenging.active_attempt) or
+                  not is_nil(@scavenging.latest_completed_attempt)
+              }
+              id="activity-scavenging"
+              class="mt-8 border-t border-stone-700/70 pt-5"
+            >
               <div class="flex flex-wrap items-baseline justify-between gap-3">
                 <h2 class="font-serif text-xl text-amber-100">Поиск ресурсов</h2>
                 <button
@@ -358,14 +373,6 @@ defmodule MMGOWeb.ActionHubLive do
                 </p>
               </article>
 
-              <p
-                :if={@scavenging.available_caches == [] and is_nil(@scavenging.active_attempt)}
-                id="activity-scavenging-empty"
-                class="mt-2 text-sm text-stone-400"
-              >
-                Здесь пока нечего собирать.
-              </p>
-
               <ul
                 :if={@scavenging.available_caches != []}
                 id="activity-scavenge-caches"
@@ -389,6 +396,7 @@ defmodule MMGOWeb.ActionHubLive do
                     class="rounded border border-emerald-500/50 px-2 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:bg-emerald-400/10"
                     phx-click="start_scavenging"
                     phx-value-resource_cache_id={resource_cache.id}
+                    phx-disable-with="Начинаем…"
                   >
                     Искать 1
                   </button>
@@ -396,21 +404,18 @@ defmodule MMGOWeb.ActionHubLive do
               </ul>
             </section>
 
-            <section id="activity-nearby" class="mt-8 border-t border-stone-700/70 pt-5">
+            <section
+              :if={@nearby_characters != []}
+              id="activity-nearby"
+              class="mt-8 border-t border-stone-700/70 pt-5"
+            >
               <div class="flex items-baseline justify-between gap-3">
                 <h2 class="font-serif text-xl text-amber-100">Путники рядом</h2>
                 <span class="text-xs uppercase tracking-[0.14em] text-stone-500">
                   {@location.name}
                 </span>
               </div>
-              <p
-                :if={@nearby_characters == []}
-                id="activity-nearby-empty"
-                class="mt-2 text-sm text-stone-400"
-              >
-                Поблизости никого нет.
-              </p>
-              <ul :if={@nearby_characters != []} class="mt-3 space-y-2">
+              <ul class="mt-3 space-y-2">
                 <li
                   :for={nearby <- @nearby_characters}
                   id={"activity-nearby-#{nearby.id}"}
@@ -426,6 +431,7 @@ defmodule MMGOWeb.ActionHubLive do
                     class="rounded border border-amber-500/50 px-2 py-1 text-xs text-amber-100 transition hover:border-amber-300 hover:bg-amber-400/10"
                     phx-click="start_overworld_encounter"
                     phx-value-target_id={nearby.id}
+                    phx-disable-with="Открываем встречу…"
                   >
                     Заговорить
                   </button>
@@ -497,20 +503,6 @@ defmodule MMGOWeb.ActionHubLive do
               </article>
             </section>
           </article>
-
-          <footer class="evh-compass" aria-label="Состояние персонажа">
-            <span id="activity-survival-state" class="evh-compass__label">
-              {@character.name} · {survival_status(@survival)}
-            </span>
-            <div class="evh-compass__chips">
-              <.link id="activity-open-inventory" navigate={~p"/inventory"} class="evh-chip">
-                Котомка
-              </.link>
-              <.link id="activity-plan-route" navigate={~p"/map"} class="evh-chip">
-                Проложить путь
-              </.link>
-            </div>
-          </footer>
         </div>
       </main>
     </Layouts.app>
@@ -633,11 +625,4 @@ defmodule MMGOWeb.ActionHubLive do
 
   defp format_completion(%DateTime{} = completion), do: Calendar.strftime(completion, "%H:%M UTC")
   defp format_completion(_completion), do: "скоро"
-
-  defp survival_status(%{starving?: true, health_drain: health_drain}) do
-    "голод: урон #{health_drain}"
-  end
-
-  defp survival_status(%{recovered?: true}), do: "силы восстановлены"
-  defp survival_status(%{food_units: food_units}), do: "еда #{food_units}"
 end

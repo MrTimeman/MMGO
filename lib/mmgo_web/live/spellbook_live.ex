@@ -135,17 +135,21 @@ defmodule MMGOWeb.SpellbookLive do
           <div class="flex flex-col gap-6 sm:flex-row sm:items-end sm:justify-between">
             <div class="max-w-2xl space-y-3">
               <p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300">
-                Кабинет формул
+                Личная книга магии
               </p>
               <h1 class="font-serif text-3xl font-semibold tracking-tight sm:text-4xl">
                 Гримуар {"·"} {@character.name}
               </h1>
               <p class="text-sm leading-6 text-stone-300">
-                Составление доступно здесь: <span
-                  id="spellbook-location"
-                  class="font-semibold text-amber-200"
-                >{@composition_location.name}</span>.
-                Основа и школа всегда проверяются хранителем круга.
+                Здесь собраны известные заклинания и боевой гримуар.
+                <span :if={@composition_available?} class="block pt-1">
+                  Новые формулы можно создавать в локации <span
+                    id="spellbook-location"
+                    class="font-semibold text-amber-200"
+                  >
+                    {@composition_location.name}
+                  </span>.
+                </span>
               </p>
             </div>
 
@@ -161,6 +165,7 @@ defmodule MMGOWeb.SpellbookLive do
 
         <div class="grid gap-6 lg:grid-cols-[minmax(0,1.12fr)_minmax(19rem,0.88fr)]">
           <section
+            :if={@composition_available?}
             id="spell-compose-panel"
             class="rounded-[2rem] border border-amber-950/15 bg-[#ece0bd] p-5 shadow-lg sm:p-8"
           >
@@ -263,6 +268,25 @@ defmodule MMGOWeb.SpellbookLive do
             </article>
           </section>
 
+          <section
+            :if={not @composition_available?}
+            id="spell-compose-locked"
+            class="rounded-[2rem] border border-amber-300/15 bg-stone-950 p-6 text-stone-100 shadow-lg sm:p-8"
+          >
+            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-300">
+              Создание формул
+            </p>
+            <h2 class="mt-3 font-serif text-2xl font-semibold">
+              Сейчас доступен режим просмотра
+            </h2>
+            <p class="mt-3 text-sm leading-6 text-stone-300">
+              {composition_lock_message(@composition_lock_reason)}
+            </p>
+            <p class="mt-4 text-sm leading-6 text-stone-400">
+              Известные заклинания и активный боевой гримуар доступны ниже.
+            </p>
+          </section>
+
           <aside
             id="spellbook-loadout-summary"
             class="rounded-[2rem] border border-stone-900/10 bg-white/85 p-5 shadow-lg sm:p-6"
@@ -361,6 +385,14 @@ defmodule MMGOWeb.SpellbookLive do
             <span class="text-sm text-stone-500">{length(@grimoires)} переплётов</span>
           </div>
 
+          <p
+            :if={not @composition_available?}
+            id="spellbook-read-only-note"
+            class="mt-5 rounded-xl border border-amber-900/15 bg-amber-50/60 px-4 py-3 text-sm leading-6 text-stone-700"
+          >
+            Изменить состав или выбрать другой боевой гримуар можно в Башне либо на своей базе.
+          </p>
+
           <div
             :if={@grimoires == []}
             id="grimoire-empty"
@@ -424,7 +456,8 @@ defmodule MMGOWeb.SpellbookLive do
 
               <.form
                 :if={
-                  writable_grimoire?(grimoire, @writable_grimoires) and
+                  @composition_available? and
+                    writable_grimoire?(grimoire, @writable_grimoires) and
                     uninscribed_spells(grimoire, @spells) != []
                 }
                 for={@inscription_form}
@@ -458,7 +491,8 @@ defmodule MMGOWeb.SpellbookLive do
 
               <p
                 :if={
-                  writable_grimoire?(grimoire, @writable_grimoires) and
+                  @composition_available? and
+                    writable_grimoire?(grimoire, @writable_grimoires) and
                     uninscribed_spells(grimoire, @spells) == []
                 }
                 id={"grimoire-no-spells-#{grimoire.id}"}
@@ -468,7 +502,10 @@ defmodule MMGOWeb.SpellbookLive do
               </p>
 
               <p
-                :if={not writable_grimoire?(grimoire, @writable_grimoires)}
+                :if={
+                  @composition_available? and
+                    not writable_grimoire?(grimoire, @writable_grimoires)
+                }
                 id={"grimoire-write-once-#{grimoire.id}"}
                 class="mt-5 text-sm leading-6 text-stone-600"
               >
@@ -476,7 +513,10 @@ defmodule MMGOWeb.SpellbookLive do
               </p>
 
               <button
-                :if={not active_grimoire?(grimoire, @active_grimoire)}
+                :if={
+                  @composition_available? and
+                    not active_grimoire?(grimoire, @active_grimoire)
+                }
                 id={"grimoire-activate-#{grimoire.id}"}
                 type="button"
                 phx-click="activate"
@@ -508,20 +548,19 @@ defmodule MMGOWeb.SpellbookLive do
     |> assign(:active_grimoire, state.active_grimoire)
     |> assign(:permitted_schools, state.permitted_schools)
     |> assign(:composition_location, state.composition_location)
+    |> assign(:composition_available?, state.composition_available?)
+    |> assign(:composition_lock_reason, state.composition_lock_reason)
     |> assign(:writable_grimoires, Map.get(state, :writable_grimoires, []))
   end
 
-  defp redirect_for_spellbook_error(socket, :travelling) do
-    socket
-    |> put_flash(:error, "Вы в пути. Дождитесь прибытия, чтобы открыть гримуар.")
-    |> push_navigate(to: ~p"/travel")
-  end
+  defp composition_lock_message(:travelling),
+    do: "В пути нельзя менять гримуар. После прибытия доберитесь до Башни или своей базы."
 
-  defp redirect_for_spellbook_error(socket, :spellbook_location) do
-    socket
-    |> put_flash(:error, "Здесь магию не составить. Доберитесь до Башни или своей базы.")
-    |> push_navigate(to: ~p"/map")
-  end
+  defp composition_lock_message(:spellbook_location),
+    do: "Новые формулы создаются только в Башне или на своей базе."
+
+  defp composition_lock_message(_reason),
+    do: "Создание новых формул сейчас недоступно."
 
   defp redirect_for_spellbook_error(socket, _reason) do
     socket

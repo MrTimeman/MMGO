@@ -96,7 +96,12 @@ defmodule MMGOWeb.CombatLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
+    <Layouts.app
+      flash={@flash}
+      current_scope={@current_scope}
+      atmosphere={@atmosphere}
+      game_nav={false}
+    >
       <main
         id="combat-screen"
         class="min-h-full bg-stone-950 px-4 py-6 text-stone-100 sm:px-6 sm:py-9"

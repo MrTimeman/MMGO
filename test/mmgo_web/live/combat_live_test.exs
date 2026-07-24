@@ -106,10 +106,7 @@ defmodule MMGOWeb.CombatLiveTest do
     assert has_element?(view, "#combat-cast-spell option[value=\"#{spell.id}\"]")
     assert has_element?(view, "#combat-target-#{defender_participant.id}")
 
-    assert has_element?(
-             view,
-             "#atmosphere-audio[data-ambient-cue='tower'][data-major-event-cue='combat']"
-           )
+    refute has_element?(view, "#atmosphere-audio")
 
     view
     |> form("#combat-action-form", %{

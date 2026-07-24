@@ -428,13 +428,20 @@ defmodule MMGO.Play do
   Server-authoritative read model for the spellbook screen: the caster, their
   owned spells, and their grimoires (with inscribed entries preloaded).
 
-  Rules stay in `MMGO.Spells`/`MMGO.Grimoires`; this only composes the reads a
-  gated `/spellbook` view needs.
+  Reading the book is always available to an authenticated character. The
+  returned composition capability describes whether mutating the book is
+  currently allowed; every write is independently rechecked by `spellbook_actor/1`.
   """
   def spellbook_state(character_or_id) do
-    with {:ok, character, composition_location} <- spellbook_actor(character_or_id) do
+    with {:ok, character} <- reload_spellbook_character(character_or_id) do
       spells = Spells.list_spells_for_character(character.id)
       grimoires = Grimoires.list_grimoires_for_character(character.id)
+
+      {composition_location, composition_lock_reason} =
+        case spellbook_location(character) do
+          {:ok, location} -> {location, nil}
+          {:error, reason} -> {nil, reason}
+        end
 
       {:ok,
        %{
@@ -444,7 +451,9 @@ defmodule MMGO.Play do
          active_grimoire: Enum.find(grimoires, &(&1.status == :active)),
          writable_grimoires: Enum.filter(grimoires, &(&1.status == :draft)),
          permitted_schools: permitted_spellbook_schools(character, spells),
-         composition_location: composition_location
+         composition_location: composition_location,
+         composition_available?: not is_nil(composition_location),
+         composition_lock_reason: composition_lock_reason
        }}
     end
   end

@@ -66,7 +66,18 @@ defmodule MMGO.Telegram.UpdateHandler do
       |> String.downcase()
 
     case {command, Telegram.mini_app_url()} do
-      {command, url} when command in ["start", "play"] and is_binary(url) ->
+      {command, url}
+      when command in [
+             "start",
+             "play",
+             "help",
+             "status",
+             "inventory",
+             "routes",
+             "journey",
+             "spells"
+           ] and
+             is_binary(url) ->
         [
           reply_markup: %{
             inline_keyboard: [

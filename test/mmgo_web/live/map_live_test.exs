@@ -63,9 +63,7 @@ defmodule MMGOWeb.MapLiveTest do
 
   test "uses the current scope realm and real world overlay data", %{
     conn: conn,
-    character: character,
-    nearby: nearby,
-    outsider: outsider
+    character: character
   } do
     {:ok, view, _html} = live(scoped_conn(conn, character), ~p"/map")
 
@@ -73,12 +71,12 @@ defmodule MMGOWeb.MapLiveTest do
     assert has_element?(view, "#map-world-clock")
     assert has_element?(view, "#map-current-location")
     assert has_element?(view, "#map-activity-link")
-    assert has_element?(view, "#map-nearby-actors")
-    assert has_element?(view, "#map-nearby-#{nearby.id}")
-    refute has_element?(view, "#map-nearby-#{outsider.id}")
-    assert has_element?(view, "#map-notifications")
-    assert has_element?(view, "#atmosphere-audio[data-ambient-cue='city']")
-    assert has_element?(view, "#atmosphere-audio-toggle[disabled]")
+    assert has_element?(view, "#map-character-panel")
+    assert has_element?(view, "#map-nearby-count", "Рядом: 1")
+    assert has_element?(view, "#game-primary-nav")
+    refute has_element?(view, "#map-notifications-history")
+    refute has_element?(view, "#atmosphere-audio")
+    refute has_element?(view, "a[href='/healthz']")
   end
 
   defp scoped_conn(conn, character) do

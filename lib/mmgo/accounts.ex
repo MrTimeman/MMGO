@@ -97,7 +97,8 @@ defmodule MMGO.Accounts do
         on: journey.character_id == character.id and journey.status == :active,
         where:
           character.realm_id == ^realm_id and character.current_location_id == ^location_id and
-            character.status == :active and account.status == :active and is_nil(journey.id),
+            character.status == :active and account.status == :active and is_nil(journey.id) and
+            fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings),
         order_by: [asc: character.name],
         preload: [:account, :current_location]
       )

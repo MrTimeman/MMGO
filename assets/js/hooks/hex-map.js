@@ -15,17 +15,6 @@ const LOD_SPRITE = 0.6
 const LOD_FINE = 0.45
 const LOD_MID = 0.16
 
-// Map filters (EVE/HOI4-style overlays). Each filter is a registry entry so
-// new overlays (economic, diplomacy, ...) slot in without touching render().
-const FILTERS = ["terrain", "political", "infrastructure", "economic", "diplomacy"]
-const FILTER_LABELS = {
-  terrain: "Рельеф",
-  political: "Владения",
-  infrastructure: "Сети",
-  economic: "Экономика",
-  diplomacy: "Дипломатия",
-}
-
 const KIND = {
   city: { r: 16, fill: "#d6a643", stroke: "#fff1a8" },
   tower: { r: 18, fill: "#7c6df2", stroke: "#d8d1ff" },
@@ -115,28 +104,15 @@ export const HexMapHook = {
     this.el.classList.add("hex-map")
     this.el.innerHTML = `
       <canvas class="hex-map__canvas"></canvas>
-      <button class="hex-map__filter" type="button" aria-label="Фильтр карты" aria-pressed="false">Рельеф</button>
       <div class="hex-map__legend" hidden></div>
       <section class="hex-map__sheet" hidden></section>
     `
     this.canvas = this.el.querySelector(".hex-map__canvas")
     this.ctx = this.canvas.getContext("2d")
     this.sheet = this.el.querySelector(".hex-map__sheet")
-    this.filterButton = this.el.querySelector(".hex-map__filter")
     this.legend = this.el.querySelector(".hex-map__legend")
 
-    this.filterButton.addEventListener("click", () => this.cycleFilter())
-
     this.resizeCanvas()
-  },
-
-  cycleFilter() {
-    const index = FILTERS.indexOf(this.activeFilter)
-    this.activeFilter = FILTERS[(index + 1) % FILTERS.length]
-    this.filterButton.textContent = FILTER_LABELS[this.activeFilter]
-    this.filterButton.setAttribute("aria-pressed", this.activeFilter !== "terrain")
-    this.updateLegend()
-    this.scheduleRender()
   },
 
   updateLegend() {

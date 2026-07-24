@@ -65,94 +65,75 @@ defmodule MMGOWeb.MapLive do
           class="absolute inset-0"
         />
 
-        <header class="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-stone-950/95 via-stone-950/60 to-transparent px-3 pb-16 pt-3 text-stone-100">
-          <div class="pointer-events-auto mx-auto flex max-w-5xl flex-wrap items-start justify-between gap-3">
-            <div class="flex flex-wrap items-start gap-2">
-              <section
-                id="map-world-clock"
-                class="ovl-chip ovl-clock"
-                aria-label="Время мира"
-              >
-                <span class="ovl-clock__dial" aria-hidden="true">
-                  <span class="ovl-clock__arc"></span>
-                  <span class="ovl-clock__glyph">{@world_time.season_glyph}</span>
+        <header class="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-stone-950/90 via-stone-950/50 to-transparent px-3 pb-14 pt-3 text-stone-100">
+          <div class="pointer-events-auto mx-auto flex max-w-5xl items-start justify-between gap-3">
+            <section id="map-world-clock" class="ovl-chip ovl-clock" aria-label="Время мира">
+              <span class="ovl-clock__dial" aria-hidden="true">
+                <span class="ovl-clock__arc"></span>
+                <span class="ovl-clock__glyph">{@world_time.season_glyph}</span>
+              </span>
+              <span class="ovl-clock__text">
+                <span class="ovl-clock__date">{@world_time.day} {@world_time.month_name}</span>
+                <span class="ovl-clock__year">
+                  {@world_time.year} год · {@world_time.season_name}
                 </span>
-                <span class="ovl-clock__text">
-                  <span class="ovl-clock__date">{@world_time.day} {@world_time.month_name}</span>
-                  <span class="ovl-clock__year">
-                    {@world_time.year} год · {@world_time.season_name}
-                  </span>
-                </span>
-              </section>
+              </span>
+            </section>
 
-              <section id="map-character-panel" class="ovl-chip ovl-status">
-                <strong id="map-current-location" class="ovl-status__place">
-                  {location_name(@current_location)}
-                </strong>
-                <span class="ovl-status__food">Еда {@survival.food_units}</span>
-                <.link id="map-inventory-link" navigate={~p"/inventory"} class="ovl-status__continue">
-                  Котомка
-                </.link>
-                <.link id="map-realms-link" navigate={~p"/realms"} class="ovl-status__continue">
-                  Реалмы
-                </.link>
-                <.link
-                  :if={is_nil(@active_journey) and not is_nil(@current_location)}
-                  id="map-activity-link"
-                  navigate={~p"/event"}
-                  class="ovl-status__continue"
-                >
-                  Осмотреться
-                </.link>
-              </section>
-            </div>
-
-            <section class="rounded-lg border border-stone-700/70 bg-stone-950/80 px-3 py-2 text-right shadow-lg backdrop-blur">
-              <p class="font-serif text-sm text-amber-200">{@character.name}</p>
-              <p class="text-xs text-stone-400">ур. {@character.level} · {@realm.name}</p>
+            <section class="rounded-full border border-stone-700/70 bg-stone-950/80 px-3 py-2 text-right shadow-lg backdrop-blur">
+              <p class="font-sans text-xs font-bold text-amber-100">{@character.name}</p>
+              <p class="font-sans text-[0.65rem] text-stone-400">уровень {@character.level}</p>
             </section>
           </div>
         </header>
 
         <aside
-          id="map-nearby-actors"
-          class="absolute bottom-3 right-3 z-20 w-[min(18rem,calc(100vw-1.5rem))] rounded-lg border border-stone-700/80 bg-stone-950/90 p-3 text-stone-100 shadow-xl backdrop-blur"
+          :if={is_nil(@active_journey)}
+          id="map-character-panel"
+          class="absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-amber-500/25 bg-stone-950/92 p-4 text-stone-100 shadow-2xl shadow-black/50 backdrop-blur-xl"
         >
-          <p class="text-xs font-bold uppercase tracking-[0.16em] text-stone-400">Рядом</p>
-          <p :if={@nearby_characters == []} class="mt-2 text-sm text-stone-500">
-            Поблизости никого нет.
-          </p>
-          <ul :if={@nearby_characters != []} class="mt-2 space-y-1 text-sm">
-            <li :for={nearby <- @nearby_characters} id={"map-nearby-#{nearby.id}"}>
-              {nearby.name} <span class="text-stone-500">· ур. {nearby.level}</span>
-            </li>
-          </ul>
-        </aside>
-
-        <aside
-          id="map-notifications"
-          class="absolute bottom-3 left-3 z-20 w-[min(20rem,calc(100vw-1.5rem))] rounded-lg border border-stone-700/80 bg-stone-950/90 p-3 text-stone-100 shadow-xl backdrop-blur"
-        >
-          <p class="text-xs font-bold uppercase tracking-[0.16em] text-stone-400">Вести</p>
-          <p :if={@notifications == []} class="mt-2 text-sm text-stone-500">
-            Новых вестей пока нет.
-          </p>
-          <ul :if={@notifications != []} class="mt-2 space-y-2">
-            <li :for={notification <- @notifications} id={"map-notification-#{notification.id}"}>
-              <p class="text-sm text-stone-200">{notification_label(notification.kind)}</p>
-              <p class="text-xs text-stone-500">
-                {notification_status(notification.status)} · {format_datetime(
-                  notification.inserted_at
-                )}
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="font-sans text-[0.65rem] font-bold uppercase tracking-[0.16em] text-stone-500">
+                Вы сейчас
               </p>
-            </li>
-          </ul>
+              <h1 id="map-current-location" class="mt-1 font-serif text-xl text-amber-100">
+                {location_name(@current_location)}
+              </h1>
+            </div>
+            <span class="shrink-0 rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1 font-sans text-xs text-stone-300">
+              Еда: {@survival.food_units}
+            </span>
+          </div>
+
+          <p class="mt-2 font-sans text-sm leading-5 text-stone-400">
+            Чтобы отправиться в путь, выберите соседнее место на карте. Чтобы заняться делами здесь — откройте действия локации.
+          </p>
+
+          <div class="mt-4 flex items-center gap-3">
+            <.link
+              id="map-activity-link"
+              navigate={~p"/event"}
+              class="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 font-sans text-sm font-bold text-stone-950 transition hover:bg-amber-200"
+            >
+              <.icon name="hero-map-pin" class="size-4" /> Что здесь можно
+            </.link>
+            <span
+              :if={@nearby_characters != []}
+              id="map-nearby-count"
+              class="font-sans text-xs text-stone-400"
+            >
+              Рядом: {length(@nearby_characters)}
+            </span>
+          </div>
+
           <.link
+            :if={@notifications != []}
             id="map-notifications-history"
             navigate={~p"/notifications"}
-            class="mt-3 inline-flex text-xs text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+            class="mt-3 inline-flex items-center gap-1.5 font-sans text-xs text-sky-200 underline decoration-sky-500/40 underline-offset-4"
           >
-            Весь архив вестей
+            <.icon name="hero-bell" class="size-3.5" /> Новые вести: {length(@notifications)}
           </.link>
         </aside>
 
@@ -160,7 +141,7 @@ defmodule MMGOWeb.MapLive do
           :if={@active_journey}
           id="active-journey-card"
           navigate={~p"/travel"}
-          class="absolute bottom-3 left-1/2 z-20 w-[min(20rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-md border border-amber-500/45 bg-stone-950/90 px-3 py-2 text-sm text-stone-100 shadow-xl shadow-black/40 backdrop-blur"
+          class="absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-amber-500/45 bg-stone-950/92 px-4 py-3 text-sm text-stone-100 shadow-xl shadow-black/40 backdrop-blur"
         >
           <p class="font-semibold text-amber-200">
             {location_name(@active_journey.from_location)}
@@ -406,19 +387,6 @@ defmodule MMGOWeb.MapLive do
 
   defp format_datetime(nil), do: "неизвестно"
   defp format_datetime(datetime), do: Calendar.strftime(datetime, "%d.%m · %H:%M UTC")
-
-  defp notification_label("journey_arrived"), do: "Вы прибыли к месту назначения"
-  defp notification_label("scavenge_completed"), do: "Поиск ресурсов завершён"
-  defp notification_label("academy_completed"), do: "Академическая весть"
-
-  defp notification_label(kind),
-    do: kind |> to_string() |> String.replace("_", " ") |> String.capitalize()
-
-  defp notification_status(:pending), do: "ожидает отправки"
-  defp notification_status(:sent), do: "доставлено"
-  defp notification_status(:failed), do: "не доставлено"
-  defp notification_status(:discarded), do: "отменено"
-  defp notification_status(status), do: to_string(status)
 
   defp changeset_error(changeset) do
     changeset.errors

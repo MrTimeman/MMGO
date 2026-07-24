@@ -66,14 +66,16 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert {:error, {:live_redirect, %{to: "/play"}}} = live(conn, ~p"/spellbook")
   end
 
-  test "a character outside a Tower or owned base is redirected to the map", %{
+  test "a character outside a Tower or owned base can read but not change the spellbook", %{
     conn: conn,
     character: character
   } do
-    assert {:error, {:live_redirect, %{to: "/map", flash: flash}}} =
-             live(session_conn(conn, character), ~p"/spellbook")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
 
-    assert flash["error"] =~ "Здесь магию"
+    assert has_element?(view, "#spellbook-screen")
+    assert has_element?(view, "#spell-compose-locked")
+    assert has_element?(view, "#spellbook-read-only-note")
+    refute has_element?(view, "#spell-compose-form")
   end
 
   test "the composition form compiles an owned base spell at the Tower", %{
@@ -124,7 +126,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert has_element?(view, "#spellbook-location")
   end
 
-  test "a travelling character is redirected to the journey screen", %{
+  test "a travelling character can read but not change the spellbook", %{
     conn: conn,
     character: character,
     realm: realm,
@@ -134,10 +136,11 @@ defmodule MMGOWeb.SpellbookLiveTest do
   } do
     create_active_journey(character, realm, route, capital_city, the_tower)
 
-    assert {:error, {:live_redirect, %{to: "/travel", flash: flash}}} =
-             live(session_conn(conn, character), ~p"/spellbook")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
 
-    assert flash["error"] =~ "Вы в пути"
+    assert has_element?(view, "#spell-compose-locked")
+    assert has_element?(view, "#spellbook-read-only-note")
+    refute has_element?(view, "#spell-compose-form")
   end
 
   test "a forged foreign base ID produces a server-rendered validation error", %{

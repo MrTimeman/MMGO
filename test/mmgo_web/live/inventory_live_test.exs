@@ -63,7 +63,6 @@ defmodule MMGOWeb.InventoryLiveTest do
     assert has_element?(view, "#inventory-carry")
     assert has_element?(view, "#inventory-overload-state")
     assert has_element?(view, "#inventory-survival-state")
-    assert has_element?(view, "#inventory-food-summary")
     assert has_element?(view, "#inventory-items")
     assert has_element?(view, "#inventory-search-form")
   end

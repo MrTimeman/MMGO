@@ -18,11 +18,32 @@ Set `ECTO_SSL=false` only when the PostgreSQL connection is on a trusted local/p
 
 ## Container build and first start
 
+For the production topology documented below, use the checked-in `justfile`.
+It deploys only a clean Git commit and performs the release gate, immutable
+source archive, checksum verification, database backup, image build,
+migrations, idempotent seed, isolated smoke container, Compose switch,
+Telegram configuration, and private/public health checks:
+
 ```bash
-docker build -t mmgo:0.1.0-alpha.1 .
-docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.1 bin/migrate
-docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.1 bin/seed
-docker run --name mmgo --env-file /secure/path/mmgo.env -p 4000:4000 mmgo:0.1.0-alpha.1
+just deploy-plan
+just deploy
+just prod-status
+```
+
+The target defaults match the current MMGO infrastructure (`klara` as the jump
+host, `nova` as the application host, and `/opt/mmgo` as the runtime root).
+Override them without editing the recipe through `MMGO_JUMP_HOST`,
+`MMGO_APP_HOST`, `MMGO_REMOTE_ROOT`, `MMGO_PUBLIC_URL`, or
+`MMGO_PRIVATE_HEALTH_URL`. The recipe never reads production secrets locally
+and never packages ignored or uncommitted files.
+
+For a standalone container deployment, the equivalent low-level commands are:
+
+```bash
+docker build -t mmgo:0.1.0-alpha.3 .
+docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.3 bin/migrate
+docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.3 bin/seed
+docker run --name mmgo --env-file /secure/path/mmgo.env -p 4000:4000 mmgo:0.1.0-alpha.3
 ```
 
 `bin/seed` is idempotent and installs the canonical realm, treasury, routes, Academy content, construction resources, organisation anchors, and Tower dungeon topology. Run it on first deployment and after a release explicitly changes canonical seed content.

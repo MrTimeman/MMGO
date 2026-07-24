@@ -111,10 +111,21 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, status_text} = Commands.process_message(character, %{"text" => "/status"})
     assert status_text =~ "Botter"
     assert status_text =~ "Capital City"
-    assert status_text =~ "Food: 12"
+    assert status_text =~ "Еда: 12"
+    assert status_text =~ "Следующий шаг:"
 
     assert {:ok, inventory_text} = Commands.process_message(character, %{"text" => "/inventory"})
     assert inventory_text =~ "Bot Ration"
+  end
+
+  test "/help exposes only the small player-facing command surface", %{character: character} do
+    assert {:ok, help_text} = Commands.process_message(character, %{"text" => "/help"})
+    assert help_text =~ "/play"
+    assert help_text =~ "/status"
+    assert help_text =~ "Mini App"
+    refute help_text =~ "/admin"
+    refute help_text =~ "/combat cast"
+    refute help_text =~ "<realm-slug>"
   end
 
   test "/travel and /journey exercise travel from Telegram", %{character: character} do
@@ -429,7 +440,8 @@ defmodule MMGO.Telegram.CommandsTest do
     assert encounter_text =~ "Encounter combat started"
 
     assert {:ok, spells_text} = Commands.process_message(character, %{"text" => "/spells"})
-    assert spells_text =~ spell.id
+    assert spells_text =~ spell.name
+    refute spells_text =~ spell.id
 
     assert {:ok, cast_text} =
              Commands.process_message(character, %{"text" => "/combat cast #{spell.id}"})

@@ -26,7 +26,6 @@ defmodule MMGOWeb.InventoryLive do
          |> assign(:query, "")
          |> assign(:search_form, to_form(%{"q" => ""}, as: :inventory_search))
          |> assign(:selected, nil)
-         |> assign(:tagged, MapSet.new())
          |> assign_inventory_state(state)}
 
       {:error, _reason} ->
@@ -58,24 +57,6 @@ defmodule MMGOWeb.InventoryLive do
   @impl true
   def handle_event("close", _params, socket) do
     {:noreply, assign(socket, :selected, nil)}
-  end
-
-  @impl true
-  def handle_event("toggle_tag", %{"id" => id}, socket) do
-    tagged =
-      if MapSet.member?(socket.assigns.tagged, id),
-        do: MapSet.delete(socket.assigns.tagged, id),
-        else: MapSet.put(socket.assigns.tagged, id)
-
-    {:noreply, assign(socket, :tagged, tagged)}
-  end
-
-  @impl true
-  def handle_event("refresh", _params, socket) do
-    case Play.inventory_state(socket.assigns.character.id) do
-      {:ok, state} -> {:noreply, assign_inventory_state(socket, state)}
-      {:error, _reason} -> {:noreply, push_navigate(socket, to: ~p"/play")}
-    end
   end
 
   @impl true
@@ -162,45 +143,35 @@ defmodule MMGOWeb.InventoryLive do
             <li
               :for={item <- @visible}
               id={"inventory-item-#{item.id}"}
-              class={["inv-item", item.equipped && "inv-item--equipped"]}
-              phx-click="open"
-              phx-value-id={item.id}
             >
-              <.art_slot kind="icon" variant="dark" label={item.name} class="inv-item__icon" />
-              <div class="inv-item__body">
-                <span class="inv-item__name">
-                  {item.name}<span :if={item.quantity > 1} class="inv-item__qty">×{item.quantity}</span>
-                </span>
-                <div class="inv-item__meta">
-                  <span class="inv-chip inv-chip--tag">{item.category}</span>
-                  <span :if={item.equipped} class="inv-item__eq">активен</span>
-                  <span :if={item.reserved_quantity > 0} class="inv-item__eq">
-                    занято: {item.reserved_quantity}
+              <button
+                id={"inventory-open-#{item.id}"}
+                type="button"
+                class={["inv-item", item.equipped && "inv-item--equipped"]}
+                phx-click="open"
+                phx-value-id={item.id}
+                aria-label={"Подробнее: #{item.name}"}
+              >
+                <.art_slot kind="icon" variant="dark" label={item.name} class="inv-item__icon" />
+                <span class="inv-item__body">
+                  <span class="inv-item__name">
+                    {item.name}<span :if={item.quantity > 1} class="inv-item__qty">×{item.quantity}</span>
                   </span>
-                </div>
-              </div>
-              <div class="inv-item__right">
-                <button
-                  id={"inventory-tag-#{item.id}"}
-                  type="button"
-                  class={["inv-mark", MapSet.member?(@tagged, item.id) && "inv-mark--on"]}
-                  phx-click="toggle_tag"
-                  phx-value-id={item.id}
-                  title="Отметить локально для продажи"
-                >
-                  ❦
-                </button>
-                <span class="inv-item__weight">{item.weight * item.quantity}</span>
-              </div>
+                  <span class="inv-item__meta">
+                    <span class="inv-chip inv-chip--tag">{item.category}</span>
+                    <span :if={item.equipped} class="inv-item__eq">активен</span>
+                    <span :if={item.reserved_quantity > 0} class="inv-item__eq">
+                      занято: {item.reserved_quantity}
+                    </span>
+                  </span>
+                </span>
+                <span class="inv-item__right">
+                  <span class="inv-item__weight">{item.weight * item.quantity} ст.</span>
+                  <span class="inv-item__chevron" aria-hidden="true">›</span>
+                </span>
+              </button>
             </li>
           </ul>
-
-          <div class="trv-acts">
-            <p id="inventory-food-summary" class="trv-panel__sub">Еды в запасе: {@food_units} ед.</p>
-            <button id="inventory-refresh" type="button" class="trv-btn" phx-click="refresh">
-              Обновить котомку
-            </button>
-          </div>
 
           <%= if @selected_item do %>
             <div id="inventory-detail-scrim" class="inv-sheet-scrim" phx-click="close">
@@ -227,27 +198,7 @@ defmodule MMGOWeb.InventoryLive do
 
                 <p class="inv-sheet__desc">{@selected_item.description}</p>
 
-                <div :if={@selected_item.actions != []} class="inv-sheet__actions">
-                  <span :for={action <- @selected_item.actions} class="inv-act">
-                    {action}
-                  </span>
-                </div>
-
                 <div class="inv-sheet__actions">
-                  <button
-                    id="inventory-detail-toggle-tag"
-                    type="button"
-                    class={[
-                      "inv-act",
-                      MapSet.member?(@tagged, @selected_item.id) && "inv-act--marked"
-                    ]}
-                    phx-click="toggle_tag"
-                    phx-value-id={@selected_item.id}
-                  >
-                    ❦ {if MapSet.member?(@tagged, @selected_item.id),
-                      do: "Снять отметку",
-                      else: "Отметить для продажи"}
-                  </button>
                   <button id="inventory-detail-close" type="button" class="inv-act" phx-click="close">
                     Закрыть
                   </button>

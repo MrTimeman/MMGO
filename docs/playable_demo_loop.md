@@ -4,7 +4,7 @@ This document records the original vertical slice. It is retained as a regressio
 
 ## Local loop
 
-1. `/demo/start` creates isolated local player/opponent characters, places and funds them, grants starter food and construction resources, and redirects into the real map loop.
+1. In development and test only, `/demo/start` creates isolated local player/opponent characters, places and funds them, grants starter food and construction resources, and redirects into the real map loop. Production does not compile demo routes.
 2. `/map` loads the scoped character, canonical clock, current location, reachable routes, journey/event state, nearby actors, realm data, notifications, and organisation overlays.
 3. Journey actions resolve through `MMGO.Play` and `MMGO.Travel`, consume real supplies, persist arrival time, and schedule durable completion.
 4. `/spellbook` reads the owned spell library and grimoires and compiles only at a valid Tower/base location.

@@ -2,7 +2,7 @@
 
 A server-authoritative magic MMO roleplay engine built with Elixir/Phoenix, Telegram Mini App frontend, and AI-compiled spells.
 
-> **Status:** `0.1.0-alpha.1` — feature-complete for the releasable alpha scope. Production deployment still requires PostgreSQL, Telegram credentials, a federation identity/token, and either a Gemini or DeepSeek key.
+> **Status:** `0.1.0-alpha.3` — releasable public alpha with Telegram authentication, production deployment automation, and a simplified player-facing interface. Production credentials remain outside the repository.
 
 ## Architecture
 
@@ -10,9 +10,9 @@ MMGO is a deterministic, server-authoritative game server. Spells and ingredient
 
 ```
 ┌──────────────────────┐     ┌──────────────────────┐
-│  Telegram Bot (MVP)  │     │  Phoenix LiveView    │
-│  /travel /duel /shop │────▶│  Map, Spellbook, ... │
-│  /party /dungeon ... │     │  Mobile-first (375px)│
+│  Telegram companion  │     │  Phoenix LiveView    │
+│ /status /routes ...  │────▶│ Map, actions, items  │
+│  + Mini App launch   │     │  Mobile-first (375px)│
 └──────────────────────┘     └──────────────────────┘
          │                            │
          ▼                            ▼

@@ -43,7 +43,7 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
   test "command messages trigger Telegram sendMessage delivery", %{bypass: bypass} do
     Bypass.expect_once(bypass, "POST", "/bottest-bot-token/sendMessage", fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      assert body =~ "Welcome to MMGO"
+      assert body =~ "персонаж готов"
       assert body =~ "https://mmgo.test/play"
       assert body =~ "web_app"
       Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":{"message_id":1}}))

@@ -111,9 +111,9 @@ defmodule MMGOWeb.ActionHubLiveTest do
     assert has_element?(view, "#activity-world-date")
     assert has_element?(view, "#activity-option-academy")
     assert has_element?(view, "#activity-option-shops", "рынок, обмен и сделки")
-    assert has_element?(view, "#activity-open-inventory")
-    assert has_element?(view, "#activity-survival-state")
-    assert has_element?(view, "#atmosphere-audio[data-ambient-cue='city']")
+    assert has_element?(view, "#activity-guidance")
+    assert has_element?(view, "#game-primary-nav")
+    refute has_element?(view, "#atmosphere-audio")
   end
 
   test "a trusted event action navigates to its server-owned route", %{

@@ -136,6 +136,12 @@ defmodule MMGO.PlayTest do
          character: character
        } do
     nearby = character_fixture(realm, city, "nearby", "Nearby")
+    npc = character_fixture(realm, city, "academy-professor", "Academy Professor")
+
+    Account
+    |> Repo.get!(npc.account_id)
+    |> Ecto.Changeset.change(settings: %{"npc" => true})
+    |> Repo.update!()
 
     {:ok, other_realm} =
       Worlds.create_realm(%{slug: "other-realm", name: "Other Realm", is_default: false})
@@ -158,6 +164,7 @@ defmodule MMGO.PlayTest do
     assert state.world_time.month_number in 1..13
     nearby_ids = MapSet.new(Enum.map(state.nearby_characters, & &1.id))
     assert nearby.id in nearby_ids
+    refute npc.id in nearby_ids
     assert length(state.nearby_characters) == 2
     assert state.atmosphere.ambient_cue == "city"
     assert state.atmosphere.major_event_cue == nil
