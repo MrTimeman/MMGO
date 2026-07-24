@@ -475,9 +475,32 @@ defmodule MMGOWeb.BaseLive do
             </h2>
             <p class="mt-2 text-sm text-stone-400">
               {if @location.kind == :city,
-                do: "Городское жильё сразу даёт защищённое хранилище.",
-                else: "Полевое владение станет доступно после завершения строительства."}
+                do: "Городское жильё сразу даёт защищённое хранилище после оплаты.",
+                else:
+                  "Полевое владение станет доступно после оплаты, материалов и завершения строительства."}
             </p>
+            <div
+              id="base-acquisition-quote"
+              class="mt-4 rounded-lg border border-amber-400/20 bg-stone-950/45 p-4 text-sm"
+            >
+              <p class="font-medium text-amber-100">
+                Цена: {@acquisition_quote.subtotal} ◈ + налог {@acquisition_quote.tax_amount} ◈
+                ({format_tax_rate(@acquisition_quote.tax_rate_bps)}) = {@acquisition_quote.total_coin_cost} ◈
+              </p>
+              <p class="mt-1 text-stone-400">Ваш баланс: {@balance} ◈</p>
+              <p :if={@acquisition_quote.build_days > 0} class="mt-1 text-stone-400">
+                Срок: {@acquisition_quote.build_days} игровых дней
+              </p>
+              <ul
+                :if={@acquisition_quote.materials != []}
+                id="base-build-materials"
+                class="mt-2 space-y-1 text-stone-300"
+              >
+                <li :for={material <- @acquisition_quote.materials}>
+                  {material.code}: {material.available}/{material.quantity}
+                </li>
+              </ul>
+            </div>
             <.form
               for={@establish_form}
               id="base-establish-form"
@@ -493,7 +516,8 @@ defmodule MMGOWeb.BaseLive do
               <button
                 id="base-establish-submit"
                 type="submit"
-                class="mb-4 rounded-md bg-amber-300 px-4 py-3 font-semibold text-stone-950 transition hover:bg-amber-200"
+                disabled={not @can_afford_acquisition?}
+                class="mb-4 rounded-md bg-amber-300 px-4 py-3 font-semibold text-stone-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
               >
                 {if @location.kind == :city, do: "Оформить", else: "Начать"}
               </button>
@@ -571,6 +595,9 @@ defmodule MMGOWeb.BaseLive do
     |> assign(:storage_weight, state.storage_weight)
     |> assign(:storage_capacity, state.storage_capacity)
     |> assign(:can_establish?, state.can_establish?)
+    |> assign(:acquisition_quote, state.acquisition_quote)
+    |> assign(:balance, state.balance)
+    |> assign(:can_afford_acquisition?, state.can_afford_acquisition?)
     |> assign(:ownership, state.ownership)
     |> assign(:selected_base_id, if(state.active_base, do: state.active_base.id, else: nil))
     |> assign(:can_rest?, state.can_rest?)
@@ -642,6 +669,10 @@ defmodule MMGOWeb.BaseLive do
 
   defp format_time(nil), do: "ожидает расчёта"
   defp format_time(time), do: Calendar.strftime(time, "%d.%m %H:%M UTC")
+
+  defp format_tax_rate(tax_rate_bps) do
+    :erlang.float_to_binary(tax_rate_bps / 100, decimals: 2) <> "%"
+  end
 
   defp error_message(:travelling), do: "Нельзя пользоваться базой во время пути."
   defp error_message(:active_base_not_found), do: "Здесь нет активной базы."

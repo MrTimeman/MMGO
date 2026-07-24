@@ -25,8 +25,8 @@ jobs:
       - name: Install Erlang/OTP and Elixir
         uses: erlef/setup-elixir@v1
         with:
-          elixir-version: '1.20.0'
-          otp-version: '29.0'
+          elixir-version: '1.20.2'
+          otp-version: '29.0.3'
       - name: Cache Mix
         uses: actions/cache@v4
         with:
@@ -67,3 +67,34 @@ jobs:
           MMGO_DB_HOST: postgres
           MMGO_DB_USER: postgres
           MMGO_DB_PASSWORD: postgres
+
+  release:
+    runs-on: ubuntu-latest
+    env:
+      MIX_ENV: prod
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install Erlang/OTP and Elixir
+        uses: erlef/setup-elixir@v1
+        with:
+          elixir-version: '1.20.2'
+          otp-version: '29.0.3'
+      - name: Cache Mix
+        uses: actions/cache@v4
+        with:
+          path: |
+            deps
+            _build
+          key: ${{ runner.os }}-prod-mix-${{ hashFiles('**/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-prod-mix-
+      - name: Install production dependencies
+        run: mix deps.get --only prod
+      - name: Install asset tools
+        run: mix assets.setup
+      - name: Compile with warnings as errors
+        run: mix compile --warnings-as-errors
+      - name: Build assets
+        run: mix assets.deploy
+      - name: Build OTP release
+        run: mix release --overwrite

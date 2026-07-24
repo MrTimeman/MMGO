@@ -24,11 +24,17 @@ defmodule MMGOWeb.AlchemyLive do
 
   @impl true
   def handle_event("brew", %{"brew" => params}, socket) do
-    with {:ok, quantity} <- parse_positive(params["quantity"]),
-         {:ok, _state} <- Play.start_brew(socket.assigns.character, params["recipe_id"], quantity) do
+    with {:ok, _state} <-
+           Play.start_interpreted_brew(
+             socket.assigns.character,
+             Map.get(params, "ingredients", %{})
+           ) do
       {:noreply,
        socket
-       |> put_flash(:info, "Варка начата; результат появится по игровому времени.")
+       |> put_flash(
+         :info,
+         "Свойства ингредиентов истолкованы; варка начата по игровому времени."
+       )
        |> refresh_alchemy()}
     else
       {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
@@ -122,36 +128,57 @@ defmodule MMGOWeb.AlchemyLive do
             class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
           >
             <h2 class="font-serif text-2xl text-violet-100">Начать варку</h2>
-            <p :if={@recipes == []} id="alchemy-recipes-empty" class="mt-3 text-sm text-stone-400">
-              Для этого мира ещё не записаны рецепты.
+            <p class="mt-2 text-sm leading-6 text-stone-400">
+              Выберите до шести ингредиентов. Мир передаст ИИ только их неизменные примитивы,
+              а движок отклонит любое новое или слишком сильное состояние.
+            </p>
+            <p
+              :if={@ingredients == []}
+              id="alchemy-ingredients-empty"
+              class="mt-3 text-sm text-stone-400"
+            >
+              В котомке нет ингредиентов с алхимическими примитивами.
             </p>
             <.form
-              :if={@recipes != []}
+              :if={@ingredients != []}
               for={@brew_form}
               id="alchemy-brew-form"
               phx-submit="brew"
-              class="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end"
+              class="mt-4 space-y-3"
             >
-              <.input
-                field={@brew_form[:recipe_id]}
-                type="select"
-                label="Рецепт"
-                prompt="Выберите рецепт"
-                options={@recipe_options}
-              />
-              <.input
-                field={@brew_form[:quantity]}
-                type="number"
-                label="Количество"
-                min="1"
-                inputmode="numeric"
-              />
+              <div id="alchemy-ingredient-list" class="space-y-2">
+                <div
+                  :for={item <- @ingredients}
+                  id={"alchemy-ingredient-#{item.id}"}
+                  class="grid gap-3 rounded-lg border border-violet-400/15 bg-stone-950/45 p-3 sm:grid-cols-[1fr_7rem] sm:items-end"
+                >
+                  <div>
+                    <p class="font-medium text-stone-100">
+                      {item.item_template.name} · доступно {item.quantity - item.reserved_quantity}
+                    </p>
+                    <p class="mt-1 text-xs text-violet-200/70">
+                      {primitive_list(item.item_template.metadata)}
+                    </p>
+                  </div>
+                  <.input
+                    id={"alchemy-ingredient-quantity-#{item.id}"}
+                    name={"brew[ingredients][#{item.id}]"}
+                    value="0"
+                    type="number"
+                    label="В котёл"
+                    min="0"
+                    max={item.quantity - item.reserved_quantity}
+                    inputmode="numeric"
+                    class="w-full rounded-xl border border-violet-300/30 bg-stone-950 px-3 py-2 text-stone-100 outline-none transition focus:border-violet-200 focus:ring-2 focus:ring-violet-400/20"
+                  />
+                </div>
+              </div>
               <button
                 id="alchemy-start-brew"
                 type="submit"
-                class="mb-4 rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 hover:bg-violet-200"
+                class="rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 transition hover:bg-violet-200"
               >
-                Поставить
+                Истолковать и поставить
               </button>
             </.form>
           </section>
@@ -235,23 +262,23 @@ defmodule MMGOWeb.AlchemyLive do
     |> assign(:workspace, state.workspace)
     |> assign(:workspace_here?, state.workspace_here?)
     |> assign(:recipes, state.recipes)
+    |> assign(:ingredients, state.ingredients)
     |> assign(:jobs, state.jobs)
     |> assign(:installed_tool_codes, state.installed_tool_codes)
-    |> assign(:recipe_options, Enum.map(state.recipes, &{&1.name, &1.id}))
     |> assign(:workshop_form, to_form(%{"name" => ""}, as: :alchemy_workshop))
-    |> assign(:brew_form, to_form(%{"recipe_id" => "", "quantity" => "1"}, as: :brew))
+    |> assign(:brew_form, to_form(%{}, as: :brew))
   end
 
-  defp parse_positive(value) when is_binary(value) do
-    case Integer.parse(value) do
-      {number, ""} when number > 0 -> {:ok, number}
-      _other -> {:error, :invalid_quantity}
-    end
-  end
-
-  defp parse_positive(_value), do: {:error, :invalid_quantity}
   defp tool_list([]), do: "нет"
   defp tool_list(codes), do: Enum.join(codes, ", ")
+
+  defp primitive_list(metadata) do
+    metadata
+    |> Map.get("alchemical_primitives", %{})
+    |> Enum.sort_by(fn {primitive, _amount} -> primitive end)
+    |> Enum.map_join(" · ", fn {primitive, amount} -> "#{primitive} #{amount}" end)
+  end
+
   defp format_time(nil), do: "ожидает расчёта"
   defp format_time(time), do: Calendar.strftime(time, "%d.%m %H:%M UTC")
 
@@ -261,6 +288,7 @@ defmodule MMGOWeb.AlchemyLive do
   defp error_message(:alchemy_recipe_not_found), do: "Рецепт больше недоступен."
   defp error_message(:brew_job_not_found), do: "Варка больше недоступна."
   defp error_message(:invalid_quantity), do: "Укажите положительное количество."
+  defp error_message(:invalid_ingredients), do: "Выберите доступные ингредиенты для варки."
 
   defp error_message(_reason),
     do: "Команда не выполнена: проверьте специализацию, инструменты и ингредиенты."

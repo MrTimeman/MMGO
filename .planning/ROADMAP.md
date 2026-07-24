@@ -14,14 +14,14 @@ This roadmap turns the existing domain-rich Phoenix prototype into the complete 
 - [x] **Phase 2: Living World, Activities, and Survival** - Make map time, location hubs, overworld interactions, scavenging, and survival real player state. (completed 2026-07-10)
 - [x] **Phase 3: Real Spellbook and Loadouts** - Replace spell/grimoire demo UI with location-gated, owned spell composition and loadout commands. (completed 2026-07-10)
 - [x] **Phase 4: Timed, Bounded Combat** - Deliver durable simultaneous turns, caster/tool actions, runtime AI orchestration, and complete combat UI flows. (completed 2026-07-11)
-- [ ] **Phase 5: Economy, Bases, and Workshops** - Wire inventory, markets, base storage/building, crafting, alchemy, and financial consequences.
-- [ ] **Phase 6: Social Parties and Live Coordination** - Deliver player interaction, parties, readiness, notifications, and realtime social state.
-- [ ] **Phase 7: Playable Dungeon Expeditions** - Expose the existing dungeon engine as a full party expedition loop with survival, combat, extraction, and sacrifice.
-- [ ] **Phase 8: Academy and Academia Careers** - Complete terms, clubs, ranking, research, professor ties, and thesis defense state flows.
-- [ ] **Phase 9: Realm Discovery and Migration** - Surface notifications, realm browsing, and accurate federation migration to players.
-- [ ] **Phase 10: Organisations, Assets, and Shares** - Turn organisation v1 into real web play and add treasury, ownership, and share-aware assets.
-- [ ] **Phase 11: Governance, Territory, and Diplomacy** - Add enforceable governance blocks, collective decisions, territory data, and real map filters.
-- [ ] **Phase 12: Atmosphere, Product Quality, and GDD Audit** - Add semantic audio/accessibility/reliability polish and prove the literal GDD completion target.
+- [x] **Phase 5: Economy, Bases, and Workshops** - Wire inventory, markets, base storage/building, crafting, alchemy, and financial consequences. (verified 2026-07-22)
+- [x] **Phase 6: Social Parties and Live Coordination** - Deliver player interaction, parties, readiness, notifications, and realtime social state. (verified 2026-07-22)
+- [x] **Phase 7: Playable Dungeon Expeditions** - Expose the existing dungeon engine as a full party expedition loop with survival, combat, extraction, and sacrifice. (verified 2026-07-22)
+- [x] **Phase 8: Academy and Academia Careers** - Complete terms, clubs, ranking, research, professor ties, and thesis defense state flows. (verified 2026-07-22)
+- [x] **Phase 9: Realm Discovery and Migration** - Surface notifications, realm browsing, and accurate federation migration to players. (verified 2026-07-22)
+- [x] **Phase 10: Organisations, Assets, and Shares** - Turn organisation v1 into real web play and add treasury, ownership, and share-aware assets. (verified 2026-07-22)
+- [x] **Phase 11: Governance, Territory, and Diplomacy** - Add enforceable governance blocks, collective decisions, territory data, and real map filters. (verified 2026-07-22)
+- [x] **Phase 12: Atmosphere, Product Quality, and GDD Audit** - Add semantic audio/accessibility/reliability polish and prove the literal GDD completion target. (verified 2026-07-22)
 
 ## Phase Details
 
@@ -102,7 +102,7 @@ Plans:
   3. A player can acquire/use a base for storage, rest, composition, and permitted construction work.
   4. Crafting and alchemy jobs can be started, monitored, collected, and recovered from through the browser using real materials/recipes/tools.
   5. Financial and inventory commands cannot trust client authority or leave partial state after a failure.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 6: Social Parties and Live Coordination
 **Goal**: Players can encounter each other, create/coordinate parties, and receive live authoritative social updates.
@@ -112,7 +112,7 @@ Plans:
   1. Players can find authorized nearby players, greet/trade/attack/avoid, and see the resulting persisted social/event state.
   2. Players can create, invite, join, leave, and configure real parties with readiness, supplies, and loot choices visible to members.
   3. Character, party, journey, combat, and notification updates reach affected LiveViews only after committed changes.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 7: Playable Dungeon Expeditions
 **Goal**: A party can complete a real dungeon expedition through the browser using the existing graph, maintenance, combat, survival, loot, extraction, and sacrifice systems.
@@ -123,7 +123,7 @@ Plans:
   2. Dungeon encounters, combat, scavenging, rest/micro-village choices, food/weight pressure, resources, and loot run through real state.
   3. Ascents, return ritual, extraction, defeat, sacrifice losses, retained XP, and return-to-surface consequences are visible and durable.
   4. Focused end-to-end tests prove a player-owned expedition rather than a static dungeon screen.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 8: Academy and Academia Careers
 **Goal**: Students and academics complete real term, club, research, professor, and thesis-defense loops.
@@ -135,7 +135,7 @@ Plans:
   3. Club events and professor/advisor/course/publication/reputation actions produce their promised persisted effects.
   4. Thesis defenses support scheduling, spectators, a valid three-professor panel, votes, rework/rejection, and worker resolution without an invalid state transition.
   5. All Academy/Academia screens use scoped session data and focused integration tests instead of demo assigns.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 9: Realm Discovery and Migration
 **Goal**: Players can see notification history, discover real realms, and understand/perform federation migration correctly.
@@ -145,7 +145,7 @@ Plans:
   1. A player can view their own in-app notifications and the relationship to Telegram delivery state.
   2. A player can browse registered realms with truthful rules/population/activity data and select a migration destination.
   3. The migration UI accurately represents/executes freeze, identity, XP/currency conversion, inventory/base retention, and spell-library incompatibility rules.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 10: Organisations, Assets, and Shares
 **Goal**: Organisation v1 becomes real player web functionality and v2 adds transactional collective assets.
@@ -156,7 +156,7 @@ Plans:
   2. Organisation-linked fast travel and member roles work from the browser without mock org data.
   3. Organisations have durable treasury, asset/property/infrastructure ownership, and share-aware profit/permission behavior.
   4. Asset and money transitions are transactional, auditable, and covered by ownership/permission tests.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 11: Governance, Territory, and Diplomacy
 **Goal**: Organisations can govern collectively and visibly shape the realm map through generic, enforced data rules.
@@ -167,7 +167,7 @@ Plans:
   2. Players can create/participate in elections, referenda, share-weighted decisions, alliances, rivalries, and conflict outcomes according to their organisation rules.
   3. Political, infrastructure, economic, and diplomacy map overlays render real control/relationship data and respect player access.
   4. Organisation tests prove that changing a browser parameter cannot bypass governance or ownership rules.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ### Phase 12: Atmosphere, Product Quality, and GDD Audit
 **Goal**: Complete semantic ambience, resilient/accessibile UX, automated quality evidence, and a literal final GDD compliance audit.
@@ -179,7 +179,7 @@ Plans:
   3. Every requirement has focused domain/LiveView coverage that exercises account-owned server-authoritative outcomes.
   4. `mix precommit` passes with stale demo tests/screens removed or migrated, and no prohibited monetisation mechanic exists.
   5. A final evidence-based audit maps every GDD section to implemented/verified behavior and finds no remaining demo-only player loop.
-**Plans**: TBD
+**Plans**: Implemented outside the original plan artifacts; verified by the alpha audit.
 
 ## Progress
 
@@ -191,11 +191,11 @@ Plans:
 | 2. Living World, Activities, and Survival | 4/4 | Complete | 2026-07-10 |
 | 3. Real Spellbook and Loadouts | 3/3 | Complete | 2026-07-10 |
 | 4. Timed, Bounded Combat | 4/4 | Complete | 2026-07-11 |
-| 5. Economy, Bases, and Workshops | 0/TBD | Not started | - |
-| 6. Social Parties and Live Coordination | 0/TBD | Not started | - |
-| 7. Playable Dungeon Expeditions | 0/TBD | Not started | - |
-| 8. Academy and Academia Careers | 0/TBD | Not started | - |
-| 9. Realm Discovery and Migration | 0/TBD | Not started | - |
-| 10. Organisations, Assets, and Shares | 0/TBD | Not started | - |
-| 11. Governance, Territory, and Diplomacy | 0/TBD | Not started | - |
-| 12. Atmosphere, Product Quality, and GDD Audit | 0/TBD | Not started | - |
+| 5. Economy, Bases, and Workshops | Implemented outside tracker | Complete | 2026-07-22 |
+| 6. Social Parties and Live Coordination | Implemented outside tracker | Complete | 2026-07-22 |
+| 7. Playable Dungeon Expeditions | Implemented outside tracker | Complete | 2026-07-22 |
+| 8. Academy and Academia Careers | Implemented outside tracker | Complete | 2026-07-22 |
+| 9. Realm Discovery and Migration | Implemented outside tracker | Complete | 2026-07-22 |
+| 10. Organisations, Assets, and Shares | Implemented outside tracker | Complete | 2026-07-22 |
+| 11. Governance, Territory, and Diplomacy | Implemented outside tracker | Complete | 2026-07-22 |
+| 12. Atmosphere, Product Quality, and GDD Audit | Implemented outside tracker | Complete | 2026-07-22 |

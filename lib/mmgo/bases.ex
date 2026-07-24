@@ -4,17 +4,78 @@ defmodule MMGO.Bases do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Bases.{Base, CompleteBaseBuildWorker, Ownership, StorageItem}
+  alias MMGO.Economy
   alias MMGO.Inventory
-  alias MMGO.Inventory.InventoryItem
+  alias MMGO.Inventory.{InventoryItem, ItemTemplate}
   alias MMGO.Notifications
   alias MMGO.Organizations.{Membership, Organization, Role}
   alias MMGO.Repo
   alias MMGO.Survival
   alias MMGO.Travel.Clock
+  alias MMGO.Worlds
   alias MMGO.Worlds.Location
 
   @city_storage_capacity 250
   @custom_storage_capacity 350
+  @default_city_purchase_price 500
+  @default_custom_build_price 250
+  @default_custom_build_days 28
+  @default_build_materials %{"construction_material" => 5}
+
+  @doc "Returns server-owned price, tax, material, and timing terms for acquiring a base."
+  def acquisition_quote(%Character{} = character, %Location{} = location) do
+    if character.realm_id == location.realm_id do
+      ruleset = Worlds.realm_ruleset(character.realm_id)
+      tax_rate_bps = ruleset["legal_market_tax_rate_bps"]
+
+      case location.kind do
+        :city ->
+          subtotal =
+            positive_metadata_integer(
+              location,
+              "base_purchase_price",
+              @default_city_purchase_price
+            )
+
+          tax_amount = div(subtotal * tax_rate_bps, 10_000)
+
+          {:ok,
+           %{
+             kind: :city_purchase,
+             subtotal: subtotal,
+             tax_rate_bps: tax_rate_bps,
+             tax_amount: tax_amount,
+             total_coin_cost: subtotal + tax_amount,
+             build_days: 0,
+             materials: []
+           }}
+
+        _other ->
+          subtotal =
+            positive_metadata_integer(location, "base_build_price", @default_custom_build_price)
+
+          tax_amount = div(subtotal * tax_rate_bps, 10_000)
+
+          {:ok,
+           %{
+             kind: :custom_build,
+             subtotal: subtotal,
+             tax_rate_bps: tax_rate_bps,
+             tax_amount: tax_amount,
+             total_coin_cost: subtotal + tax_amount,
+             build_days:
+               positive_metadata_integer(
+                 location,
+                 "base_build_game_days",
+                 @default_custom_build_days
+               ),
+             materials: build_material_requirements(location)
+           }}
+      end
+    else
+      {:error, base_changeset("location must belong to the same realm")}
+    end
+  end
 
   def list_bases_for_character(character_id) when is_binary(character_id) do
     Repo.all(
@@ -167,6 +228,8 @@ defmodule MMGO.Bases do
       character = lock_character!(character.id)
       location = Repo.get!(Location, location.id)
       validate_city_purchase!(character, location)
+      {:ok, quote} = acquisition_quote(character, location)
+      charge_acquisition!(character, location, quote)
 
       %Base{}
       |> Base.changeset(%{
@@ -177,7 +240,7 @@ defmodule MMGO.Bases do
         kind: :city_purchase,
         status: :active,
         storage_weight_capacity: attrs["storage_weight_capacity"] || @city_storage_capacity,
-        metadata: attrs["metadata"] || %{},
+        metadata: acquisition_metadata(attrs["metadata"], quote),
         built_at: DateTime.utc_now()
       })
       |> Repo.insert!()
@@ -194,14 +257,26 @@ defmodule MMGO.Bases do
       ) do
     attrs = stringify_keys(attrs)
     started_at = Keyword.get(opts, :started_at, DateTime.utc_now())
-    build_days = Keyword.get(opts, :build_days, 28)
 
     Repo.transaction(fn ->
       character = lock_character!(character.id)
       location = Repo.get!(Location, location.id)
       validate_custom_build!(character, location)
+      {:ok, quoted_terms} = acquisition_quote(character, location)
 
-      ready_at = Clock.arrival_at(started_at, build_days)
+      quote =
+        case Keyword.fetch(opts, :build_days) do
+          {:ok, build_days} when is_integer(build_days) and build_days > 0 ->
+            Map.put(quoted_terms, :build_days, build_days)
+
+          _other ->
+            quoted_terms
+        end
+
+      charge_acquisition!(character, location, quote)
+      consume_build_materials!(character, quote.materials)
+
+      ready_at = Clock.arrival_at(started_at, quote.build_days)
 
       base =
         %Base{}
@@ -213,7 +288,7 @@ defmodule MMGO.Bases do
           kind: :custom_build,
           status: :building,
           storage_weight_capacity: attrs["storage_weight_capacity"] || @custom_storage_capacity,
-          metadata: Map.put(attrs["metadata"] || %{}, "build_days", build_days),
+          metadata: acquisition_metadata(attrs["metadata"], quote),
           build_started_at: started_at,
           ready_at: ready_at
         })
@@ -578,6 +653,123 @@ defmodule MMGO.Bases do
       })
 
     inventory_item
+  end
+
+  defp charge_acquisition!(%Character{} = character, %Location{} = location, quote) do
+    {:ok, payer_account} = Economy.ensure_character_account(character)
+    treasury_account = Economy.treasury_account_for_realm(character.realm_id)
+
+    if is_nil(treasury_account) do
+      Repo.rollback(base_changeset("realm treasury is unavailable"))
+    end
+
+    case Economy.transfer(payer_account, treasury_account, quote.total_coin_cost, %{
+           entry_type: "tax",
+           source: "base_acquisition",
+           location_id: location.id,
+           acquisition_kind: to_string(quote.kind),
+           subtotal: quote.subtotal,
+           tax_rate_bps: quote.tax_rate_bps,
+           tax_amount: quote.tax_amount
+         }) do
+      {:ok, _result} -> :ok
+      {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp consume_build_materials!(%Character{} = character, requirements) do
+    Enum.each(requirements, fn %{code: code, quantity: quantity} ->
+      items =
+        InventoryItem
+        |> join(:inner, [item], template in ItemTemplate,
+          on: template.id == item.item_template_id
+        )
+        |> where(
+          [item, template],
+          item.character_id == ^character.id and template.code == ^code and
+            item.quantity - item.reserved_quantity > 0
+        )
+        |> order_by([item, _template], asc: item.inserted_at)
+        |> lock("FOR UPDATE OF i0")
+        |> Repo.all()
+
+      {remaining, _items} =
+        Enum.reduce_while(items, {quantity, []}, fn item, {remaining, consumed} ->
+          if remaining <= 0 do
+            {:halt, {remaining, consumed}}
+          else
+            taken = min(Inventory.available_quantity(item), remaining)
+            next_quantity = item.quantity - taken
+
+            if next_quantity == 0 do
+              Repo.delete!(item)
+            else
+              item
+              |> InventoryItem.changeset(%{
+                quantity: next_quantity,
+                reserved_quantity: item.reserved_quantity
+              })
+              |> Repo.update!()
+            end
+
+            {:cont, {remaining - taken, [item.id | consumed]}}
+          end
+        end)
+
+      if remaining > 0 do
+        Repo.rollback(base_changeset("missing construction material #{code}"))
+      end
+    end)
+  end
+
+  defp acquisition_metadata(metadata, quote) do
+    metadata = if is_map(metadata), do: stringify_keys(metadata), else: %{}
+
+    Map.put(metadata, "acquisition", %{
+      "subtotal" => quote.subtotal,
+      "tax_rate_bps" => quote.tax_rate_bps,
+      "tax_amount" => quote.tax_amount,
+      "total_coin_cost" => quote.total_coin_cost,
+      "build_days" => quote.build_days,
+      "materials" =>
+        Enum.map(quote.materials, fn material ->
+          %{"code" => material.code, "quantity" => material.quantity}
+        end)
+    })
+  end
+
+  defp build_material_requirements(%Location{} = location) do
+    case Map.get(location.metadata || %{}, "base_build_materials") do
+      requirements when is_map(requirements) ->
+        requirements
+        |> Enum.flat_map(fn
+          {code, quantity} when is_binary(code) and is_integer(quantity) and quantity > 0 ->
+            [%{code: code, quantity: quantity}]
+
+          _invalid ->
+            []
+        end)
+        |> case do
+          [] -> default_build_material_requirements()
+          normalized -> Enum.sort_by(normalized, & &1.code)
+        end
+
+      _other ->
+        default_build_material_requirements()
+    end
+  end
+
+  defp default_build_material_requirements do
+    Enum.map(@default_build_materials, fn {code, quantity} ->
+      %{code: code, quantity: quantity}
+    end)
+  end
+
+  defp positive_metadata_integer(%Location{} = location, key, default) do
+    case Map.get(location.metadata || %{}, key) do
+      value when is_integer(value) and value > 0 -> value
+      _other -> default
+    end
   end
 
   defp lock_character!(character_id) do

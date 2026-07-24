@@ -478,6 +478,7 @@ defmodule MMGO.PlayTest do
     city: city
   } do
     base_spell = spell_fixture(character, "Basebound Spark")
+    fund_base_acquisition!(city.realm_id |> Worlds.get_realm!(), character)
     assert {:ok, _base} = Bases.purchase_city_base(character, city)
 
     assert {:ok, state} = Play.spellbook_state(character)

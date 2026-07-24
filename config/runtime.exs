@@ -1,5 +1,12 @@
 import Config
 
+required_env! = fn name ->
+  case System.get_env(name) do
+    value when is_binary(value) and value != "" -> value
+    _missing -> raise "environment variable #{name} is required in production"
+  end
+end
+
 # config/runtime.exs is executed for all environments, including
 # during releases. It is executed after compilation and before the
 # system starts, so it is typically used to load production configuration
@@ -24,6 +31,21 @@ config :mmgo, MMGOWeb.Endpoint, http: [port: String.to_integer(System.get_env("P
 
 telegram_config = Application.get_env(:mmgo, MMGO.Telegram, [])
 
+telegram_bot_token = System.get_env("TELEGRAM_BOT_TOKEN") || telegram_config[:bot_token]
+
+telegram_webhook_secret =
+  System.get_env("TELEGRAM_WEBHOOK_SECRET") || telegram_config[:webhook_secret]
+
+if config_env() == :prod do
+  if telegram_bot_token in [nil, ""] do
+    raise "environment variable TELEGRAM_BOT_TOKEN is required in production"
+  end
+
+  if telegram_webhook_secret in [nil, ""] do
+    raise "environment variable TELEGRAM_WEBHOOK_SECRET is required in production"
+  end
+end
+
 allow_insecure_webhook? =
   config_env() != :prod and
     (System.get_env("TELEGRAM_ALLOW_INSECURE_WEBHOOK") == "true" or
@@ -31,17 +53,25 @@ allow_insecure_webhook? =
 
 web_app_auth_max_age_seconds =
   System.get_env("TELEGRAM_WEB_APP_AUTH_MAX_AGE_SECONDS") ||
-    to_string(telegram_config[:web_app_auth_max_age_seconds] || 300)
+    to_string(telegram_config[:web_app_auth_max_age_seconds] || 86_400)
+
+telegram_mini_app_url =
+  System.get_env("TELEGRAM_MINI_APP_URL") ||
+    case System.get_env("PHX_HOST") do
+      host when is_binary(host) and host != "" -> "https://#{host}/play"
+      _missing -> telegram_config[:mini_app_url]
+    end
 
 config :mmgo, MMGO.Telegram,
   api_base_url:
     System.get_env("TELEGRAM_API_BASE_URL") || telegram_config[:api_base_url] ||
       "https://api.telegram.org",
-  bot_token: System.get_env("TELEGRAM_BOT_TOKEN") || telegram_config[:bot_token],
-  webhook_secret: System.get_env("TELEGRAM_WEBHOOK_SECRET") || telegram_config[:webhook_secret],
+  bot_token: telegram_bot_token,
+  webhook_secret: telegram_webhook_secret,
   webhook_path: telegram_config[:webhook_path] || "/api/telegram/webhook",
   allow_insecure_webhook?: allow_insecure_webhook?,
-  web_app_auth_max_age_seconds: String.to_integer(web_app_auth_max_age_seconds)
+  web_app_auth_max_age_seconds: String.to_integer(web_app_auth_max_age_seconds),
+  mini_app_url: telegram_mini_app_url
 
 # Keep the deterministic local demo useful while developing or running the
 # browser-loop tests, but never expose it as a production authentication path.
@@ -57,6 +87,11 @@ gemini_api_key = System.get_env("GEMINI_API_KEY") || gemini_config[:api_key]
 gemini_env_api_key = System.get_env("GEMINI_API_KEY")
 deepseek_api_key = System.get_env("DEEPSEEK_API_KEY")
 
+if config_env() == :prod and gemini_api_key in [nil, ""] and deepseek_api_key in [nil, ""] and
+     System.get_env("MMGO_ALLOW_MOCK_AI_IN_PROD") != "true" do
+  raise "GEMINI_API_KEY or DEEPSEEK_API_KEY is required in production (set MMGO_ALLOW_MOCK_AI_IN_PROD=true only for an explicit fallback-only deployment)"
+end
+
 default_provider =
   cond do
     config_env() == :test -> ai_config[:default_provider]
@@ -65,14 +100,34 @@ default_provider =
     true -> ai_config[:default_provider]
   end
 
+provider_model = fn generic_env, gemini_env, configured ->
+  System.get_env(generic_env) || System.get_env(gemini_env) ||
+    if(default_provider == MMGO.AI.Providers.DeepSeek, do: "deepseek-chat", else: configured)
+end
+
 config :mmgo, MMGO.AI,
   default_provider: default_provider,
   models: %{
-    spell_compile: System.get_env("GEMINI_SPELL_MODEL") || ai_config[:models][:spell_compile],
+    spell_compile:
+      provider_model.("AI_SPELL_MODEL", "GEMINI_SPELL_MODEL", ai_config[:models][:spell_compile]),
+    alchemy_brew:
+      provider_model.(
+        "AI_ALCHEMY_MODEL",
+        "GEMINI_ALCHEMY_MODEL",
+        ai_config[:models][:alchemy_brew]
+      ),
     combat_orchestration:
-      System.get_env("GEMINI_COMBAT_MODEL") || ai_config[:models][:combat_orchestration],
+      provider_model.(
+        "AI_COMBAT_MODEL",
+        "GEMINI_COMBAT_MODEL",
+        ai_config[:models][:combat_orchestration]
+      ),
     turn_narration:
-      System.get_env("GEMINI_NARRATION_MODEL") || ai_config[:models][:turn_narration]
+      provider_model.(
+        "AI_NARRATION_MODEL",
+        "GEMINI_NARRATION_MODEL",
+        ai_config[:models][:turn_narration]
+      )
   },
   prompt_versions: ai_config[:prompt_versions]
 
@@ -102,7 +157,59 @@ config :mmgo, MMGO.PVP,
       System.get_env("DUEL_TAX_RATE_BPS") || to_string(pvp_config[:duel_tax_rate_bps] || 500)
     )
 
+black_market_config = Application.get_env(:mmgo, MMGO.BlackMarket, [])
+
+black_market_detection_enabled? =
+  case System.get_env("BLACK_MARKET_DETECTION_ENABLED") do
+    nil -> black_market_config[:detection_enabled] != false
+    value -> value in ["true", "1"]
+  end
+
+config :mmgo, MMGO.BlackMarket,
+  detection_enabled: black_market_detection_enabled?,
+  delivery_game_days:
+    String.to_integer(
+      System.get_env("BLACK_MARKET_DELIVERY_GAME_DAYS") ||
+        to_string(black_market_config[:delivery_game_days] || 7)
+    ),
+  detection_base_chance_bps:
+    String.to_integer(
+      System.get_env("BLACK_MARKET_BASE_CHANCE_BPS") ||
+        to_string(black_market_config[:detection_base_chance_bps] || 300)
+    ),
+  detection_price_scale_bps:
+    String.to_integer(
+      System.get_env("BLACK_MARKET_PRICE_SCALE_BPS") ||
+        to_string(black_market_config[:detection_price_scale_bps] || 2)
+    ),
+  detection_max_chance_bps:
+    String.to_integer(
+      System.get_env("BLACK_MARKET_MAX_CHANCE_BPS") ||
+        to_string(black_market_config[:detection_max_chance_bps] || 5_000)
+    ),
+  detection_fine_multiplier:
+    String.to_integer(
+      System.get_env("BLACK_MARKET_FINE_MULTIPLIER") ||
+        to_string(black_market_config[:detection_fine_multiplier] || 3)
+    )
+
 federation_config = Application.get_env(:mmgo, MMGO.Federation, [])
+
+federation_public_base_url =
+  System.get_env("FEDERATION_PUBLIC_BASE_URL") || federation_config[:public_base_url]
+
+federation_import_token =
+  System.get_env("FEDERATION_IMPORT_TOKEN") || federation_config[:import_token]
+
+if config_env() == :prod do
+  if federation_public_base_url in [nil, ""] do
+    raise "environment variable FEDERATION_PUBLIC_BASE_URL is required in production"
+  end
+
+  if federation_import_token in [nil, ""] do
+    raise "environment variable FEDERATION_IMPORT_TOKEN is required in production"
+  end
+end
 
 config :mmgo, MMGO.Federation,
   freeze_game_days:
@@ -120,22 +227,16 @@ config :mmgo, MMGO.Federation,
       System.get_env("FEDERATION_XP_RETENTION_BPS") ||
         to_string(federation_config[:xp_retention_bps] || 700)
     ),
-  public_base_url:
-    System.get_env("FEDERATION_PUBLIC_BASE_URL") || federation_config[:public_base_url],
-  import_token: System.get_env("FEDERATION_IMPORT_TOKEN") || federation_config[:import_token]
+  public_base_url: federation_public_base_url,
+  import_token: federation_import_token
 
 if config_env() == :prod do
-  database_url =
-    System.get_env("DATABASE_URL") ||
-      raise """
-      environment variable DATABASE_URL is missing.
-      For example: ecto://USER:PASS@HOST/DATABASE
-      """
+  database_url = required_env!.("DATABASE_URL")
 
   maybe_ipv6 = if System.get_env("ECTO_IPV6") in ~w(true 1), do: [:inet6], else: []
 
   config :mmgo, MMGO.Repo,
-    # ssl: true,
+    ssl: System.get_env("ECTO_SSL", "true") in ["true", "1"],
     url: database_url,
     pool_size: String.to_integer(System.get_env("POOL_SIZE") || "10"),
     # For machines with several cores, consider starting multiple pools of `pool_size`
@@ -147,14 +248,9 @@ if config_env() == :prod do
   # want to use a different value for prod and you most likely don't want
   # to check this value into version control, so we use an environment
   # variable instead.
-  secret_key_base =
-    System.get_env("SECRET_KEY_BASE") ||
-      raise """
-      environment variable SECRET_KEY_BASE is missing.
-      You can generate one by calling: mix phx.gen.secret
-      """
+  secret_key_base = required_env!.("SECRET_KEY_BASE")
 
-  host = System.get_env("PHX_HOST") || "example.com"
+  host = required_env!.("PHX_HOST")
 
   config :mmgo, :dns_cluster_query, System.get_env("DNS_CLUSTER_QUERY")
 

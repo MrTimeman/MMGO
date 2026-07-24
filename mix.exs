@@ -4,12 +4,19 @@ defmodule MMGO.MixProject do
   def project do
     [
       app: :mmgo,
-      version: "0.1.0",
-      elixir: "~> 1.15",
+      version: "0.1.0-alpha.2",
+      elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
+      hex: [
+        # These two Cowlib findings arrive only through Bypass/optional Cowboy
+        # adapters used outside the Bandit production release. Cowlib 2.18.0 is
+        # the latest available release; keep the exceptions narrow and remove
+        # them when a patched Cowlib is published.
+        ignore_advisories: ["CVE-2026-43966", "CVE-2026-43969"]
+      ],
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader]
     ]
@@ -91,7 +98,13 @@ defmodule MMGO.MixProject do
         "esbuild mmgo --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: [
+        "hex.audit",
+        "compile --warnings-as-errors",
+        "deps.unlock --unused",
+        "format",
+        "test"
+      ]
     ]
   end
 end

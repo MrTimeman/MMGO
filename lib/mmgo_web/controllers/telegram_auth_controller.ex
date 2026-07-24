@@ -1,6 +1,8 @@
 defmodule MMGOWeb.TelegramAuthController do
   use MMGOWeb, :controller
 
+  require Logger
+
   alias MMGO.Accounts
   alias MMGO.Play
   alias MMGO.Telegram.WebAppAuth
@@ -16,8 +18,18 @@ defmodule MMGOWeb.TelegramAuthController do
   def create(conn, _params), do: authentication_failed(conn)
 
   defp authenticate(conn, init_data) do
-    with {:ok, telegram_user} <- WebAppAuth.authenticate(init_data),
-         {:ok, %{account: account, character: character}} <-
+    case WebAppAuth.authenticate(init_data) do
+      {:ok, telegram_user} ->
+        provision_player(conn, telegram_user)
+
+      {:error, reason} ->
+        Logger.warning("Telegram Mini App authentication rejected: #{reason}")
+        authentication_failed(conn)
+    end
+  end
+
+  defp provision_player(conn, telegram_user) do
+    with {:ok, %{account: account, character: character}} <-
            Accounts.provision_from_telegram(telegram_user),
          {:ok, character} <- Play.ensure_character_usable(character) do
       conn
@@ -28,7 +40,9 @@ defmodule MMGOWeb.TelegramAuthController do
       |> put_session(:current_character_id, character.id)
       |> redirect(to: ~p"/map")
     else
-      _reason -> authentication_failed(conn)
+      _reason ->
+        Logger.error("Telegram player provisioning failed after valid authentication")
+        authentication_failed(conn)
     end
   end
 

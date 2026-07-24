@@ -88,6 +88,7 @@ defmodule MMGOWeb.Router do
     pipe_through :api
 
     get "/healthz", HealthController, :show
+    get "/livez", HealthController, :live
   end
 
   scope "/api", MMGOWeb do

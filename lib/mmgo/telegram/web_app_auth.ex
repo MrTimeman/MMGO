@@ -7,7 +7,7 @@ defmodule MMGO.Telegram.WebAppAuth do
   init data because it contains an authentication proof and user profile data.
   """
 
-  @default_max_age_seconds 300
+  @default_max_age_seconds 86_400
 
   @type authentication_error ::
           :missing_init_data
@@ -75,7 +75,7 @@ defmodule MMGO.Telegram.WebAppAuth do
   end
 
   defp expected_hash(bot_token, signed_params) do
-    secret_key = :crypto.mac(:hmac, :sha256, bot_token, "WebAppData")
+    secret_key = :crypto.mac(:hmac, :sha256, "WebAppData", bot_token)
 
     signed_params
     |> data_check_string()

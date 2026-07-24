@@ -5,6 +5,8 @@ defmodule MMGO.Telegram do
     config()[:webhook_path] || "/api/telegram/webhook"
   end
 
+  def mini_app_url, do: config()[:mini_app_url]
+
   def authorized_webhook_secret?(provided_secret) do
     case config()[:webhook_secret] do
       secret when secret in [nil, ""] ->
@@ -32,8 +34,33 @@ defmodule MMGO.Telegram do
     |> Client.set_webhook()
   end
 
+  def configure_bot(base_url) when is_binary(base_url) do
+    with mini_app_url when is_binary(mini_app_url) <- mini_app_url(),
+         {:ok, true} <- set_webhook(base_url),
+         {:ok, true} <- Client.set_chat_menu_button(mini_app_url),
+         {:ok, true} <- Client.set_commands(default_commands()) do
+      {:ok, %{webhook: true, menu_button: true, commands: true}}
+    else
+      nil -> {:error, :missing_mini_app_url}
+      error -> error
+    end
+  end
+
   defdelegate bot_info, to: Client, as: :get_me
   defdelegate send_message(chat_id, text, opts \\ []), to: Client
+
+  defp default_commands do
+    [
+      %{command: "start", description: "Создать персонажа и открыть MMGO"},
+      %{command: "play", description: "Открыть игру"},
+      %{command: "help", description: "Показать игровые команды"},
+      %{command: "status", description: "Состояние персонажа"},
+      %{command: "inventory", description: "Показать инвентарь"},
+      %{command: "routes", description: "Доступные маршруты"},
+      %{command: "journey", description: "Текущий путь"},
+      %{command: "spells", description: "Книга заклинаний"}
+    ]
+  end
 
   defp config do
     Application.get_env(:mmgo, __MODULE__, [])

@@ -26,6 +26,7 @@ defmodule MMGOWeb.BaseLiveTest do
       })
 
     character = character_fixture(realm, city)
+    fund_base_acquisition!(realm, character)
 
     {:ok, template} =
       Inventory.create_item_template(%{

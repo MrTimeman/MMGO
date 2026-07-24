@@ -11,5 +11,6 @@ defmodule MMGOWeb.GameEntryLiveTest do
     assert has_element?(view, "#telegram-auth-form[phx-hook='TelegramAuth']")
     assert has_element?(view, "#telegram-auth-init-data[name='telegram_auth[init_data]']")
     assert has_element?(view, "#telegram-auth-normal-browser")
+    assert has_element?(view, "#telegram-auth-open-bot[href*='t.me/mmgo_bot']")
   end
 end

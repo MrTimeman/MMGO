@@ -4,6 +4,7 @@ defmodule MMGO.BasesTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Bases
   alias MMGO.Bases.{Base, CompleteBaseBuildWorker}
+  alias MMGO.Economy
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Repo
@@ -36,6 +37,7 @@ defmodule MMGO.BasesTest do
       })
 
     character = character_fixture(realm, city, "baser", "Baser")
+    fund_base_acquisition!(realm, character)
 
     {:ok, ore_template} =
       Inventory.create_item_template(%{
@@ -104,6 +106,7 @@ defmodule MMGO.BasesTest do
     _grimoire = grimoire_fixture(character, spell, "Travel Grimoire", 7)
 
     %{
+      realm: realm,
       character: character,
       city: city,
       wilderness: wilderness,
@@ -113,26 +116,56 @@ defmodule MMGO.BasesTest do
     }
   end
 
-  test "purchase_city_base/3 creates an active city base", %{character: character, city: city} do
+  test "purchase_city_base/3 charges the realm price and tax before activating", %{
+    realm: realm,
+    character: character,
+    city: city
+  } do
+    {:ok, character_account} = Economy.ensure_character_account(character)
+    treasury = Economy.treasury_account_for_realm(realm.id)
+
     assert {:ok, %Base{} = base} = Bases.purchase_city_base(character, city)
     assert base.status == :active
     assert base.kind == :city_purchase
+    assert base.metadata["acquisition"]["subtotal"] == 500
+    assert base.metadata["acquisition"]["tax_amount"] == 25
+    assert Economy.get_account!(character_account.id).current_balance == 1_475
+    assert Economy.get_account!(treasury.id).current_balance == 98_525
   end
 
   test "start_custom_base_build/4 schedules base construction and completion", %{
     character: character,
     wilderness: wilderness
   } do
+    construction_item =
+      Repo.get_by!(Inventory.InventoryItem,
+        character_id: character.id,
+        item_template_id: Repo.get_by!(Inventory.ItemTemplate, code: "construction_material").id
+      )
+
     assert {:ok, %{base: base, worker_job: worker_job}} =
              Bases.start_custom_base_build(character, wilderness, %{}, build_days: 1)
 
     assert base.status == :building
+    assert base.metadata["acquisition"]["total_coin_cost"] == 262
     assert worker_job.args == %{"base_id" => base.id}
+    assert Inventory.get_inventory_item!(construction_item.id).quantity == 5
 
     assert :ok = CompleteBaseBuildWorker.perform(%Oban.Job{args: %{"base_id" => base.id}})
 
     updated_base = Bases.get_base!(base.id)
     assert updated_base.status == :active
+  end
+
+  test "base acquisition leaves no partial ownership when funds are insufficient", %{
+    realm: realm,
+    city: city
+  } do
+    unfunded = character_fixture(realm, city, "unfunded-baser", "Unfunded Baser")
+
+    assert {:error, changeset} = Bases.purchase_city_base(unfunded, city)
+    assert %{current_balance: ["is insufficient for this transfer"]} = errors_on(changeset)
+    assert Bases.list_bases_for_character(unfunded.id) == []
   end
 
   test "deposit and withdraw move stackable and non-stackable items between inventory and storage",

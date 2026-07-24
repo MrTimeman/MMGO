@@ -27,6 +27,7 @@ defmodule MMGOWeb.ConnCase do
       # Import conveniences for testing with connections
       import Plug.Conn
       import Phoenix.ConnTest
+      import MMGO.BaseFixtures
       import MMGOWeb.ConnCase
     end
   end

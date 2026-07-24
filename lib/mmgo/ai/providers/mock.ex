@@ -6,6 +6,7 @@ defmodule MMGO.AI.Providers.Mock do
 
     case decoded_payload["task"] do
       "orchestrate_combat_turn" -> {:ok, mock_orchestration(decoded_payload)}
+      "interpret_alchemy" -> {:ok, mock_alchemy(decoded_payload)}
       _other -> {:ok, mock_compiled_spell(decoded_payload)}
     end
   end
@@ -73,6 +74,32 @@ defmodule MMGO.AI.Providers.Mock do
     %{
       "casts" => casts,
       "narrative_ru" => "Запечатанные формулы находят дозволенные движком проявления."
+    }
+  end
+
+  defp mock_alchemy(payload) do
+    constraints = payload["engine_constraints"] || %{}
+    allowed_states = constraints["allowed_states"] || ["impact"]
+    max_intensity = constraints["max_intensity"] || 1
+    state = List.first(allowed_states) || "impact"
+    restorative? = state in ["regenerating", "empowered", "shielded"]
+
+    %{
+      "name" => "Пробный алхимический настой",
+      "description" => "Смесь проявляет только свойства выбранных ингредиентов.",
+      "targeting" => if(restorative?, do: "self", else: "enemy"),
+      "brew_time_game_days" => 1,
+      "difficulty" => 1,
+      "effects" => [
+        %{
+          "applies_to" => if(restorative?, do: "caster", else: "target"),
+          "state" => state,
+          "intensity" => min(max_intensity, 4),
+          "variance" => 0,
+          "duration" => if(state == "impact", do: 0, else: 1),
+          "tags" => ["alchemy", "mock"]
+        }
+      ]
     }
   end
 

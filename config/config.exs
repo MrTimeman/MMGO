@@ -29,17 +29,20 @@ config :mmgo, MMGO.Telegram,
   webhook_path: "/api/telegram/webhook",
   webhook_secret: nil,
   allow_insecure_webhook?: false,
-  web_app_auth_max_age_seconds: 300
+  web_app_auth_max_age_seconds: 86_400,
+  mini_app_url: nil
 
 config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
   models: %{
     spell_compile: "gemini-3-flash",
+    alchemy_brew: "gemini-3-flash",
     combat_orchestration: "g3f-lite",
     turn_narration: "g3f-lite"
   },
   prompt_versions: %{
     spell_compile: "2026-03-27.spell-compile.v1",
+    alchemy_brew: "2026-07-22.alchemy-brew.v1",
     combat_orchestration: "2026-07-11.combat-orchestration.v1",
     turn_narration: "2026-03-27.turn-narration.v1"
   }
@@ -51,6 +54,14 @@ config :mmgo, MMGO.AI.Providers.Gemini,
 config :mmgo, MMGO.Operator, handles: []
 
 config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
+
+config :mmgo, MMGO.BlackMarket,
+  detection_enabled: true,
+  delivery_game_days: 7,
+  detection_base_chance_bps: 300,
+  detection_price_scale_bps: 2,
+  detection_max_chance_bps: 5_000,
+  detection_fine_multiplier: 3
 
 config :mmgo, MMGO.Federation,
   freeze_game_days: 28,

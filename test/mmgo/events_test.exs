@@ -43,6 +43,7 @@ defmodule MMGO.EventsTest do
       })
 
     character = character_fixture(realm, city, "eventer", "Eventer")
+    fund_base_acquisition!(realm, character)
 
     %{
       realm: realm,

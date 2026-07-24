@@ -3,12 +3,14 @@ defmodule MMGO.BlackMarket do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
-  alias MMGO.BlackMarket.{Deal, Offer}
+  alias MMGO.BlackMarket.{Deal, ExpireDealWorker, Offer}
   alias MMGO.Economy
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Reputation
   alias MMGO.Repo
+  alias MMGO.Travel.Clock
+  alias MMGO.Worlds
 
   def list_active_offers(realm_id) when is_binary(realm_id) do
     Repo.all(
@@ -93,7 +95,31 @@ defmodule MMGO.BlackMarket do
     |> normalize_transaction_result()
   end
 
-  def accept_offer(%Offer{} = offer, %Character{} = buyer) do
+  @doc "Returns the server-owned NPC detection odds and fine for one untaxed deal."
+  def detection_terms(total_price, tax_rate_bps)
+      when is_integer(total_price) and total_price > 0 and is_integer(tax_rate_bps) and
+             tax_rate_bps >= 0 do
+    config = config()
+    base_chance = config[:detection_base_chance_bps] || 300
+    price_scale = config[:detection_price_scale_bps] || 2
+    max_chance = config[:detection_max_chance_bps] || 5_000
+    fine_multiplier = config[:detection_fine_multiplier] || 3
+    evaded_tax = div(total_price * tax_rate_bps, 10_000)
+
+    %{
+      chance_bps: min(base_chance + total_price * price_scale, max_chance),
+      evaded_tax: evaded_tax,
+      fine_amount: evaded_tax * fine_multiplier,
+      fine_multiplier: fine_multiplier
+    }
+  end
+
+  def accept_offer(%Offer{} = offer, %Character{} = buyer, opts \\ []) do
+    accepted_at = Keyword.get(opts, :accepted_at, DateTime.utc_now())
+
+    delivery_game_days =
+      Keyword.get(opts, :delivery_game_days, config()[:delivery_game_days] || 7)
+
     Repo.transaction(fn ->
       offer = lock_offer!(offer.id)
       buyer = lock_character!(buyer.id)
@@ -117,6 +143,8 @@ defmodule MMGO.BlackMarket do
              }
            ) do
         {:ok, ledger_result} ->
+          delivery_due_at = Clock.arrival_at(accepted_at, delivery_game_days)
+
           deal =
             %Deal{}
             |> Deal.changeset(%{
@@ -128,10 +156,19 @@ defmodule MMGO.BlackMarket do
               quantity: offer.quantity,
               total_price: offer.total_price,
               status: :awaiting_delivery,
-              paid_at: DateTime.utc_now(),
-              metadata: %{}
+              paid_at: accepted_at,
+              metadata: %{"delivery_due_at" => DateTime.to_iso8601(delivery_due_at)}
             })
             |> Repo.insert!()
+
+          {deal, detection} = apply_detection!(deal, seller, opts)
+
+          worker_job =
+            %{"deal_id" => deal.id}
+            |> ExpireDealWorker.new(
+              schedule_in: max(DateTime.diff(delivery_due_at, DateTime.utc_now(), :second), 0)
+            )
+            |> Oban.insert!()
 
           updated_offer =
             offer
@@ -142,7 +179,9 @@ defmodule MMGO.BlackMarket do
             deal:
               Repo.preload(deal, [:item_template, :seller_character, :buyer_character, :offer]),
             offer: updated_offer,
-            economy: ledger_result
+            economy: ledger_result,
+            detection: detection,
+            worker_job: worker_job
           }
 
         {:error, %Changeset{} = changeset} ->
@@ -199,35 +238,40 @@ defmodule MMGO.BlackMarket do
     |> normalize_transaction_result()
   end
 
-  def default_deal(%Deal{} = deal, %Character{} = seller, reason \\ nil) do
+  def default_deal(%Deal{} = deal, %Character{} = actor, reason \\ nil, opts \\ []) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
+
     Repo.transaction(fn ->
       deal = lock_deal!(deal.id)
-      validate_fulfillment!(deal, seller)
+      actor = lock_character!(actor.id)
+      seller = lock_character!(deal.seller_character_id)
+      validate_default!(deal, actor, now)
 
-      updated_deal =
-        deal
-        |> Deal.changeset(%{
-          status: :defaulted,
-          defaulted_at: DateTime.utc_now(),
-          metadata: maybe_put_reason(deal.metadata || %{}, reason)
-        })
-        |> Repo.update!()
+      apply_default!(deal, seller, reason, now)
+    end)
+    |> normalize_transaction_result()
+  end
 
-      updated_offer =
-        deal.offer_id
-        |> lock_offer!()
-        |> Offer.changeset(%{status: :defaulted, defaulted_at: DateTime.utc_now()})
-        |> Repo.update!()
+  @doc "Expires one overdue delivery idempotently for the durable Oban worker."
+  def expire_deal_by_id(deal_id, opts \\ []) when is_binary(deal_id) do
+    now = Keyword.get(opts, :now, DateTime.utc_now())
 
-      {:ok, _crime_result} =
-        Reputation.record_black_market_default(seller, deal.total_price, %{
-          deal_id: deal.id,
-          offer_id: deal.offer_id,
-          buyer_character_id: deal.buyer_character_id,
-          reason: reason
-        })
+    Repo.transaction(fn ->
+      deal = lock_deal!(deal_id)
 
-      %{deal: updated_deal, offer: updated_offer}
+      cond do
+        deal.status != :awaiting_delivery ->
+          %{deal: deal, expired?: false}
+
+        not delivery_due?(deal, now) ->
+          Repo.rollback(deal_changeset("deal delivery deadline has not passed"))
+
+        true ->
+          seller = lock_character!(deal.seller_character_id)
+
+          apply_default!(deal, seller, "delivery deadline expired", now)
+          |> Map.put(:expired?, true)
+      end
     end)
     |> normalize_transaction_result()
   end
@@ -291,6 +335,129 @@ defmodule MMGO.BlackMarket do
 
       true ->
         :ok
+    end
+  end
+
+  defp validate_default!(%Deal{} = deal, %Character{} = actor, now) do
+    cond do
+      deal.status != :awaiting_delivery ->
+        Repo.rollback(deal_changeset("deal is not awaiting delivery"))
+
+      actor.id == deal.seller_character_id ->
+        :ok
+
+      actor.id == deal.buyer_character_id and delivery_due?(deal, now) ->
+        :ok
+
+      actor.id == deal.buyer_character_id ->
+        Repo.rollback(deal_changeset("deal delivery deadline has not passed"))
+
+      true ->
+        Repo.rollback(deal_changeset("deal does not belong to this character"))
+    end
+  end
+
+  defp apply_default!(%Deal{} = deal, %Character{} = seller, reason, now) do
+    updated_deal =
+      deal
+      |> Deal.changeset(%{
+        status: :defaulted,
+        defaulted_at: now,
+        metadata: maybe_put_reason(deal.metadata || %{}, reason)
+      })
+      |> Repo.update!()
+
+    updated_offer =
+      deal.offer_id
+      |> lock_offer!()
+      |> Offer.changeset(%{status: :defaulted, defaulted_at: now})
+      |> Repo.update!()
+
+    {:ok, _crime_result} =
+      Reputation.record_black_market_default(seller, deal.total_price, %{
+        deal_id: deal.id,
+        offer_id: deal.offer_id,
+        buyer_character_id: deal.buyer_character_id,
+        reason: reason
+      })
+
+    %{deal: updated_deal, offer: updated_offer}
+  end
+
+  defp apply_detection!(%Deal{} = deal, %Character{} = seller, opts) do
+    tax_rate_bps = Worlds.realm_ruleset(deal.realm_id)["legal_market_tax_rate_bps"]
+    terms = detection_terms(deal.total_price, tax_rate_bps)
+    explicit_roll? = Keyword.has_key?(opts, :detection_roll)
+    enabled? = explicit_roll? or config()[:detection_enabled] != false
+    roll = if enabled?, do: detection_roll(opts), else: nil
+    caught? = enabled? and roll < terms.chance_bps
+
+    detection =
+      terms
+      |> Map.merge(%{caught?: caught?, roll: roll})
+
+    detection_metadata = %{
+      "caught" => caught?,
+      "chance_bps" => terms.chance_bps,
+      "roll" => roll,
+      "evaded_tax" => terms.evaded_tax,
+      "fine_amount" => terms.fine_amount,
+      "fine_multiplier" => terms.fine_multiplier
+    }
+
+    updated_deal =
+      deal
+      |> Deal.changeset(%{
+        metadata: Map.put(deal.metadata || %{}, "npc_detection", detection_metadata)
+      })
+      |> Repo.update!()
+
+    if caught? do
+      severity = min(10 + div(deal.total_price, 50), 50)
+
+      {:ok, _crime_result} =
+        Reputation.record_crime(Repo, seller, :black_market_detection, %{
+          severity: severity,
+          reputation_delta: -severity,
+          fine_amount: terms.fine_amount,
+          market_ban_game_days: max(div(severity, 2), 3),
+          status: if(terms.fine_amount > 0, do: :open, else: :resolved),
+          metadata: %{
+            deal_id: deal.id,
+            offer_id: deal.offer_id,
+            evaded_tax: terms.evaded_tax,
+            detection_chance_bps: terms.chance_bps,
+            detection_roll: roll
+          }
+        })
+
+      if terms.fine_amount > 0 do
+        # Settle only what the offender can currently afford. The crime and
+        # any remainder stay durable instead of rolling back the illegal deal.
+        _ = Reputation.pay_fine(seller)
+      end
+    end
+
+    {updated_deal, detection}
+  end
+
+  defp detection_roll(opts) do
+    case Keyword.get(opts, :detection_roll) do
+      roll when is_integer(roll) -> max(min(roll, 9_999), 0)
+      _other -> :rand.uniform(10_000) - 1
+    end
+  end
+
+  defp delivery_due?(%Deal{} = deal, now) do
+    case Map.get(deal.metadata || %{}, "delivery_due_at") do
+      due_at when is_binary(due_at) ->
+        case DateTime.from_iso8601(due_at) do
+          {:ok, parsed, _offset} -> DateTime.compare(now, parsed) != :lt
+          _invalid -> true
+        end
+
+      _missing ->
+        true
     end
   end
 
@@ -358,6 +525,8 @@ defmodule MMGO.BlackMarket do
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)
   end
+
+  defp config, do: Application.get_env(:mmgo, __MODULE__, [])
 
   defp offer_changeset(message) do
     %Offer{}

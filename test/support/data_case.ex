@@ -23,6 +23,7 @@ defmodule MMGO.DataCase do
       import Ecto
       import Ecto.Changeset
       import Ecto.Query
+      import MMGO.BaseFixtures
       import MMGO.DataCase
     end
   end

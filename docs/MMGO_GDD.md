@@ -6,6 +6,8 @@ Version 0.9 — Complete Draft
 
 July 2026
 
+> Implementation status (22 July 2026): the `0.1.0-alpha.1` release scope implements this draft's server-authoritative player loops and the four v0.9 operator decisions. Deployment inputs and deliberate alpha limits are tracked in `docs/ALPHA_SCOPE.md`.
+
 ## Table of Contents
 
 - [1. Overview](#1-overview)
@@ -1128,7 +1130,7 @@ Filters are the primary way organisational power becomes *visible*: a growing cu
 
 ## 17.7 Implementation Roadmap
 
-- **v1 (exists)** — founding (4 kinds), ranked roles with permissions, invitations, memberships, org-linked fast travel. Backend + Telegram commands; web UI pending.
-- **v2** — org treasury (economy account per org), ownership registry with shares, org-owned property.
-- **v3** — governance blocks engine (constitution as data, generic enforcement, elections/votes).
-- **v4** — territory influence, map political filter driven by real control data, diplomacy (alliances, rivalries, wars).
+- **v1 (alpha complete)** — founding (4 kinds), ranked roles with permissions, invitations, memberships, org-linked fast travel, Telegram commands, and scoped web UI.
+- **v2 (alpha complete)** — transactional organisation treasuries, member shares, shared base/property custody, and infrastructure ownership.
+- **v3 (alpha complete)** — data-backed leadership/spending rules, member and share-weighted elections, and treasury referenda.
+- **v4 (alpha complete)** — real-control map overlays and durable diplomacy relationships (alliances, rivalries, wars). Post-alpha work expands balance and content depth rather than client authority.

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: Audit 2026-07-13 found all 52 v1 requirements implemented and tested; remaining work is the four GDD v0.9 decision deltas.
-last_updated: "2026-07-13T17:10:00+03:00"
-last_activity: 2026-07-13 -- Code audit; this file had gone stale at "Phase 4 complete / 381 tests" while the working tree contains phases 5-12 work with 618 green tests.
+status: complete
+stopped_at: Alpha 0.1.0-alpha.1 release candidate verified; no source requirement remains open.
+last_updated: "2026-07-22T14:52:00+03:00"
+last_activity: 2026-07-22 -- Completed four GDD v0.9 deltas, release packaging, clean-database setup smoke test, and 625-test precommit gate.
 progress:
   total_phases: 12
   completed_phases: 12
   total_plans: 15
   completed_plans: 15
-  percent: 96
+  percent: 100
 ---
 
 # Project State
@@ -21,16 +21,16 @@ progress:
 See: `.planning/PROJECT.md` (updated 2026-07-09)
 
 **Core value:** Account-owned, meaningful decisions in a persistent social magical world.
-**Current focus:** Phase 05 — economy-bases-workshops
+**Current focus:** Alpha release handoff and deployment configuration
 
 ## Current Position
 
-Phase: post-audit — all 52 v1 requirements verified complete against code + tests (2026-07-13)
-Plan: implement the four GDD v0.9 decision deltas (configurable tax, black-market NPC detection, base acquisition costs, AI-interpreted alchemy over item primitives) — see REQUIREMENTS.md "GDD v0.9 Decision Deltas"
-Status: `mix precommit` fully green (compile --warnings-as-errors, format, 618 tests). Phases 05-12 were implemented outside this tracker; per-phase artifacts for 05-12 were never written.
-Last activity: 2026-07-13 -- full audit of REQUIREMENTS.md against implementation; tracker corrected
+Phase: alpha milestone complete — all 52 v1 requirements and four GDD v0.9 deltas verified
+Plan: deploy `0.1.0-alpha.1` using `docs/DEPLOYMENT.md`, then collect alpha feedback
+Status: `mix precommit` fully green (compile --warnings-as-errors, format, 625 tests). Production release and clean-database migrate/seed/health flows are verified.
+Last activity: 2026-07-22 -- alpha release candidate verification completed
 
-Progress: █████████░ 96%
+Progress: ██████████ 100%
 
 ## Performance Metrics
 
@@ -66,17 +66,17 @@ Progress: █████████░ 96%
 
 ### Pending Todos
 
-None yet.
+- Supply environment-owned Telegram, AI, federation, database, and TLS values for the target host.
+- Add licensed audio assets when content/licensing is available; missing audio remains graceful.
+- Run production load and disaster-recovery exercises after an environment is provisioned.
 
 ### Blockers/Concerns
 
-- Planning artifacts could not be committed because the environment denied git index writes due to a tool usage-limit escalation; files remain safely uncommitted in the working tree.
-- The full working tree, including Phase 01 code and planning artifacts, remains uncommitted because git-index escalation was denied. Preserve it while building future phases.
-- Expedition-level food depletion remains a Phase 07 integration task; Phase 02 exposes a reusable survival-consequence API instead of simulating an unfinished dungeon loop.
-- Phase 05 starts from a clean `mix precommit` run (381 tests). Preserve unrelated existing dirty UI/design files while replacing a surface only through its scoped facade.
+- No source blocker remains for alpha. Deployment still requires real environment-owned credentials, a reachable PostgreSQL database, TLS/hostname configuration, and the target platform.
+- Licensed soundtrack recordings and production load/disaster-recovery exercises are external content/operations work, not source-code blockers.
 
 ## Session Continuity
 
-Last session: 2026-07-10 Europe/Moscow
-Stopped at: Phase 04 complete; Phase 05 reconnaissance and implementation.
+Last session: 2026-07-22 Europe/Moscow
+Stopped at: Alpha 0.1.0-alpha.1 release candidate complete and verified.
 Resume file: None

@@ -44,6 +44,26 @@ defmodule MMGO.Telegram.ClientTest do
     assert {:ok, true} = Client.set_webhook("https://mmgo.test/api/telegram/webhook")
   end
 
+  test "sets the Mini App menu button and command list", %{bypass: bypass} do
+    Bypass.expect_once(bypass, "POST", "/bottest-bot-token/setChatMenuButton", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "https://mmgo.test/play"
+      assert body =~ "web_app"
+      Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":true}))
+    end)
+
+    assert {:ok, true} = Client.set_chat_menu_button("https://mmgo.test/play")
+
+    Bypass.expect_once(bypass, "POST", "/bottest-bot-token/setMyCommands", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ ~s("command":"start")
+      Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":true}))
+    end)
+
+    assert {:ok, true} =
+             Client.set_commands([%{command: "start", description: "Open MMGO"}])
+  end
+
   test "missing bot token returns an error" do
     original = Application.get_env(:mmgo, MMGO.Telegram)
 

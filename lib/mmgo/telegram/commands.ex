@@ -57,6 +57,10 @@ defmodule MMGO.Telegram.Commands do
      |> Enum.join("\n")}
   end
 
+  defp dispatch("play", _args, character) do
+    {:ok, "Откройте MMGO кнопкой ниже, #{character.name}."}
+  end
+
   defp dispatch("help", _args, _character) do
     {:ok,
      [

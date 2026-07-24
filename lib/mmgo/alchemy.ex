@@ -5,10 +5,10 @@ defmodule MMGO.Alchemy do
   alias MMGO.Accounts.Character
   alias MMGO.Academy
   alias MMGO.Academy.StarterOutcomes
-  alias MMGO.Alchemy.{BrewJob, CompleteBrewJobWorker, Recipe, Workshop}
+  alias MMGO.Alchemy.{BrewJob, CompleteBrewJobWorker, Interpreter, Recipe, Workshop}
   alias MMGO.Bases.Base
   alias MMGO.Inventory
-  alias MMGO.Inventory.InventoryItem
+  alias MMGO.Inventory.{InventoryItem, ItemTemplate}
   alias MMGO.Notifications
   alias MMGO.Progression
   alias MMGO.Repo
@@ -112,6 +112,57 @@ defmodule MMGO.Alchemy do
     %Recipe{}
     |> Recipe.changeset(stringify_keys(attrs))
     |> Repo.insert()
+  end
+
+  @doc "Lists owned inventory ingredients that expose fixed alchemical primitives."
+  def interpretable_ingredients(%Character{} = character) do
+    character.id
+    |> Inventory.list_inventory_for_character()
+    |> Enum.filter(fn item ->
+      item.item_template.item_type == :ingredient and
+        normalize_primitives(item.item_template.metadata) != %{} and
+        Inventory.available_quantity(item) > 0
+    end)
+  end
+
+  @doc "Interprets an owned ingredient mixture, caches its formula, and starts one durable brew."
+  def brew_from_ingredients(
+        %Character{} = character,
+        %Workshop{} = workspace,
+        selections,
+        opts \\ []
+      ) do
+    with :ok <- validate_interpreted_context(character, workspace),
+         {:ok, mixture} <- build_mixture(character, selections),
+         {:ok, recipe, interpretation, cached?} <-
+           resolve_interpreted_recipe(character, mixture, opts),
+         {:ok, brew_result} <- brew(character, workspace, recipe, 1, opts) do
+      {:ok,
+       brew_result
+       |> Map.put(:interpretation, interpretation.result)
+       |> Map.put(:ai_request, interpretation.ai_request)
+       |> Map.put(:fallback?, interpretation.fallback?)
+       |> Map.put(:formula_cached?, cached?)}
+    end
+  end
+
+  defp resolve_interpreted_recipe(%Character{} = character, mixture, opts) do
+    case get_recipe_by_code(interpreted_recipe_code(mixture)) do
+      %Recipe{} = recipe ->
+        interpretation = %{
+          result: recipe.metadata["interpretation"] || %{},
+          ai_request: nil,
+          fallback?: recipe.metadata["fallback"] == true
+        }
+
+        {:ok, recipe, interpretation, true}
+
+      nil ->
+        with {:ok, interpretation} <- Interpreter.interpret(character, mixture, opts),
+             {:ok, recipe, cached?} <- ensure_interpreted_recipe(mixture, interpretation) do
+          {:ok, recipe, interpretation, cached?}
+        end
+    end
   end
 
   def brew(
@@ -225,6 +276,332 @@ defmodule MMGO.Alchemy do
     |> Repo.all()
     |> Enum.map(fn brew_job -> complete_brew_job_by_id(brew_job.id, now: now, force: true) end)
   end
+
+  defp validate_interpreted_context(%Character{} = character, %Workshop{} = workspace) do
+    specialization = Academy.active_specialization(character.id)
+
+    cond do
+      workspace.status != :active ->
+        {:error, workspace_changeset("workshop is not active")}
+
+      workspace.owner_character_id != character.id ->
+        {:error, workspace_changeset("workshop does not belong to this character")}
+
+      character.realm_id != workspace.realm_id ->
+        {:error, workspace_changeset("workshop must belong to the same realm")}
+
+      character.current_location_id != workspace.location_id ->
+        {:error, workspace_changeset("character must be at the workshop location")}
+
+      is_nil(active_owned_base_at_location(character, workspace.location_id)) ->
+        {:error, workspace_changeset("workshop must be installed at an active owned base")}
+
+      active_brew_job(character.id) ->
+        {:error, brew_job_changeset("character already has an active brew job")}
+
+      is_nil(specialization) or specialization.track != :alchemy ->
+        {:error, brew_job_changeset("character must be specialized in alchemy")}
+
+      true ->
+        :ok
+    end
+  end
+
+  defp build_mixture(%Character{} = character, selections) do
+    with {:ok, normalized} <- normalize_selections(selections),
+         {:ok, ingredients} <- resolve_selected_ingredients(character, normalized) do
+      ingredient_summary =
+        ingredients
+        |> Enum.group_by(& &1.item_template_id)
+        |> Enum.map(fn {_template_id, selected_items} ->
+          first = hd(selected_items)
+
+          %{
+            item_template_id: first.item_template_id,
+            code: first.code,
+            name: first.name,
+            quantity: Enum.sum(Enum.map(selected_items, & &1.quantity)),
+            primitives: first.primitives
+          }
+        end)
+        |> Enum.sort_by(& &1.code)
+
+      primitive_totals =
+        Enum.reduce(ingredient_summary, %{}, fn ingredient, totals ->
+          Enum.reduce(ingredient.primitives, totals, fn {primitive, amount}, inner_totals ->
+            Map.update(inner_totals, primitive, amount * ingredient.quantity, fn current ->
+              current + amount * ingredient.quantity
+            end)
+          end)
+        end)
+
+      fingerprint_payload = %{
+        realm_id: character.realm_id,
+        ingredients:
+          Enum.map(ingredient_summary, fn ingredient ->
+            %{
+              code: ingredient.code,
+              quantity: ingredient.quantity,
+              primitives: ingredient.primitives
+            }
+          end)
+      }
+
+      fingerprint =
+        fingerprint_payload
+        |> Jason.encode!()
+        |> then(&:crypto.hash(:sha256, &1))
+        |> Elixir.Base.encode16(case: :lower)
+
+      {:ok,
+       %{
+         fingerprint: fingerprint,
+         ingredients: ingredient_summary,
+         primitive_totals: primitive_totals
+       }}
+    end
+  end
+
+  defp normalize_selections(selections) when is_map(selections) do
+    selections
+    |> Enum.reduce_while({:ok, []}, fn {inventory_item_id, quantity}, {:ok, normalized} ->
+      case normalize_selected_quantity(quantity) do
+        :skip ->
+          {:cont, {:ok, normalized}}
+
+        {:ok, parsed} when is_binary(inventory_item_id) ->
+          {:cont, {:ok, [%{inventory_item_id: inventory_item_id, quantity: parsed} | normalized]}}
+
+        _invalid ->
+          {:halt, {:error, brew_job_changeset("ingredient quantities are invalid")}}
+      end
+    end)
+    |> validate_selection_bounds()
+  end
+
+  defp normalize_selections(selections) when is_list(selections) do
+    selections
+    |> Enum.reduce_while({:ok, []}, fn selection, {:ok, normalized} ->
+      item_id = selection[:inventory_item_id] || selection["inventory_item_id"]
+      quantity = selection[:quantity] || selection["quantity"]
+
+      case normalize_selected_quantity(quantity) do
+        {:ok, parsed} when is_binary(item_id) ->
+          {:cont, {:ok, [%{inventory_item_id: item_id, quantity: parsed} | normalized]}}
+
+        _invalid ->
+          {:halt, {:error, brew_job_changeset("ingredient quantities are invalid")}}
+      end
+    end)
+    |> validate_selection_bounds()
+  end
+
+  defp normalize_selections(_selections),
+    do: {:error, brew_job_changeset("ingredient selection is required")}
+
+  defp validate_selection_bounds({:error, _changeset} = error), do: error
+
+  defp validate_selection_bounds({:ok, selections}) do
+    selections = Enum.reverse(selections)
+
+    cond do
+      selections == [] ->
+        {:error, brew_job_changeset("select at least one ingredient")}
+
+      length(selections) > 6 ->
+        {:error, brew_job_changeset("select at most six ingredients")}
+
+      Enum.sum(Enum.map(selections, & &1.quantity)) > 12 ->
+        {:error, brew_job_changeset("a brew may use at most twelve ingredient units")}
+
+      true ->
+        {:ok, selections}
+    end
+  end
+
+  defp normalize_selected_quantity(value) when value in [nil, "", 0, "0"], do: :skip
+  defp normalize_selected_quantity(value) when is_integer(value) and value > 0, do: {:ok, value}
+
+  defp normalize_selected_quantity(value) when is_binary(value) do
+    case Integer.parse(value) do
+      {quantity, ""} when quantity > 0 -> {:ok, quantity}
+      _invalid -> :error
+    end
+  end
+
+  defp normalize_selected_quantity(_value), do: :error
+
+  defp resolve_selected_ingredients(%Character{} = character, selections) do
+    inventory_by_id =
+      character.id
+      |> Inventory.list_inventory_for_character()
+      |> Map.new(&{&1.id, &1})
+
+    selections
+    |> Enum.reduce_while({:ok, []}, fn selection, {:ok, resolved} ->
+      case Map.get(inventory_by_id, selection.inventory_item_id) do
+        %InventoryItem{} = item ->
+          primitives = normalize_primitives(item.item_template.metadata)
+
+          cond do
+            item.item_template.item_type != :ingredient ->
+              {:halt, {:error, brew_job_changeset("selected item is not an ingredient")}}
+
+            primitives == %{} ->
+              {:halt,
+               {:error, brew_job_changeset("selected ingredient has no alchemical primitives")}}
+
+            selection.quantity > Inventory.available_quantity(item) ->
+              {:halt, {:error, brew_job_changeset("selected ingredient quantity is unavailable")}}
+
+            true ->
+              selected = %{
+                inventory_item_id: item.id,
+                item_template_id: item.item_template_id,
+                code: item.item_template.code,
+                name: item.item_template.name,
+                quantity: selection.quantity,
+                primitives: primitives
+              }
+
+              {:cont, {:ok, [selected | resolved]}}
+          end
+
+        nil ->
+          {:halt, {:error, brew_job_changeset("selected ingredient is unavailable")}}
+      end
+    end)
+    |> case do
+      {:ok, resolved} -> {:ok, Enum.reverse(resolved)}
+      error -> error
+    end
+  end
+
+  defp normalize_primitives(metadata) when is_map(metadata) do
+    case Map.get(metadata, "alchemical_primitives") do
+      primitives when is_map(primitives) ->
+        primitives
+        |> Enum.flat_map(fn
+          {primitive, amount}
+          when is_binary(primitive) and is_integer(amount) and amount > 0 and amount <= 10 ->
+            if primitive in Interpreter.primitive_keys(), do: [{primitive, amount}], else: []
+
+          _invalid ->
+            []
+        end)
+        |> Map.new()
+
+      _missing ->
+        %{}
+    end
+  end
+
+  defp normalize_primitives(_metadata), do: %{}
+
+  defp ensure_interpreted_recipe(mixture, interpretation) do
+    code = interpreted_recipe_code(mixture)
+
+    case get_recipe_by_code(code) do
+      %Recipe{} = recipe ->
+        {:ok, recipe, true}
+
+      nil ->
+        Repo.transaction(fn ->
+          case get_recipe_by_code(code) do
+            %Recipe{} = recipe ->
+              {recipe, true}
+
+            nil ->
+              item_template = ensure_interpreted_item_template!(code, mixture, interpretation)
+              recipe = ensure_interpreted_recipe!(code, item_template, mixture, interpretation)
+              {recipe, false}
+          end
+        end)
+        |> case do
+          {:ok, {recipe, cached?}} -> {:ok, recipe, cached?}
+          {:error, %Changeset{} = changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  defp ensure_interpreted_item_template!(code, mixture, interpretation) do
+    result = interpretation.result
+
+    attrs = %{
+      code: code,
+      name: result["name"],
+      item_type: :potion,
+      stackable: true,
+      weight: 1,
+      max_durability: 0,
+      nutrition_units: 0,
+      tags: ["alchemy", "interpreted"],
+      metadata: %{
+        "alchemy_fingerprint" => mixture.fingerprint,
+        "primitive_totals" => mixture.primitive_totals,
+        "description" => result["description"],
+        "fallback" => interpretation.fallback?
+      },
+      actions: [
+        %{
+          key: "use",
+          action_kind: :throw,
+          targeting: result["targeting"],
+          quantity_cost: 1,
+          durability_cost: 0,
+          tags: ["alchemy"],
+          effects: result["effects"]
+        }
+      ]
+    }
+
+    case Repo.get_by(ItemTemplate, code: code) do
+      %ItemTemplate{} = template ->
+        template
+
+      nil ->
+        case Inventory.create_item_template(attrs) do
+          {:ok, template} -> template
+          {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+        end
+    end
+  end
+
+  defp ensure_interpreted_recipe!(code, item_template, mixture, interpretation) do
+    result = interpretation.result
+
+    requirements =
+      Enum.map(mixture.ingredients, fn ingredient ->
+        %{item_template_id: ingredient.item_template_id, quantity: ingredient.quantity}
+      end)
+
+    attrs = %{
+      code: code,
+      name: result["name"],
+      result_item_template_id: item_template.id,
+      brew_time_game_days: result["brew_time_game_days"],
+      difficulty: result["difficulty"],
+      required_tool_codes: [],
+      result_quantity: 1,
+      requirements: requirements,
+      metadata: %{
+        "interpreted_alchemy" => true,
+        "ingredient_fingerprint" => mixture.fingerprint,
+        "primitive_totals" => mixture.primitive_totals,
+        "fallback" => interpretation.fallback?,
+        "interpretation" => result,
+        "ai_request_id" => interpretation.ai_request && interpretation.ai_request.id
+      }
+    }
+
+    case create_recipe(attrs) do
+      {:ok, recipe} -> Repo.preload(recipe, :result_item_template)
+      {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+    end
+  end
+
+  defp interpreted_recipe_code(mixture),
+    do: "alchemy_" <> String.slice(mixture.fingerprint, 0, 32)
 
   defp validate_brew_start!(
          %Character{} = character,

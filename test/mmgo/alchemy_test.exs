@@ -27,6 +27,9 @@ defmodule MMGO.AlchemyTest do
     alchemist = character_fixture(realm, tower, "alchemist", "Alchemist")
     novice = character_fixture(realm, tower, "novice", "Novice")
 
+    fund_base_acquisition!(realm, alchemist)
+    fund_base_acquisition!(realm, novice)
+
     specialize_alchemy(alchemist)
 
     {:ok, %{base: building_base}} =
@@ -45,7 +48,10 @@ defmodule MMGO.AlchemyTest do
         weight: 1,
         max_durability: 0,
         nutrition_units: 0,
-        actions: []
+        actions: [],
+        metadata: %{
+          "alchemical_primitives" => %{"restoration" => 3, "binding" => 1}
+        }
       })
 
     {:ok, flask_template} =
@@ -154,6 +160,66 @@ defmodule MMGO.AlchemyTest do
       )
 
     assert potion_stack.quantity == 1
+  end
+
+  test "ingredient brewing is AI-interpreted within fixed primitives and cached by mixture", %{
+    alchemist: alchemist,
+    workspace: workspace,
+    herb_template: herb_template
+  } do
+    herb_item =
+      Repo.get_by!(Inventory.InventoryItem,
+        character_id: alchemist.id,
+        item_template_id: herb_template.id
+      )
+
+    assert {:ok, first} =
+             Alchemy.brew_from_ingredients(
+               alchemist,
+               workspace,
+               %{herb_item.id => "2"},
+               started_at: ~U[2026-07-22 12:00:00Z]
+             )
+
+    assert first.brew_job.status == :active
+    refute first.formula_cached?
+    refute first.fallback?
+    assert first.ai_request.kind == :alchemy_brew
+
+    generated_recipe = Alchemy.get_recipe!(first.brew_job.recipe_id)
+    assert generated_recipe.metadata["interpreted_alchemy"]
+
+    assert generated_recipe.metadata["primitive_totals"] == %{
+             "binding" => 2,
+             "restoration" => 6
+           }
+
+    [action] = generated_recipe.result_item_template.actions
+
+    assert Enum.all?(action.effects, fn effect ->
+             effect.state in MMGO.Alchemy.Interpreter.allowed_states(%{
+               "binding" => 2,
+               "restoration" => 6
+             })
+           end)
+
+    assert {:ok, _completed} =
+             Alchemy.complete_brew_job_by_id(first.brew_job.id, force: true)
+
+    {:ok, _more_herbs} = Inventory.grant_item(alchemist, herb_template, %{quantity: 2})
+
+    refreshed_herb =
+      Repo.get_by!(Inventory.InventoryItem,
+        character_id: alchemist.id,
+        item_template_id: herb_template.id
+      )
+
+    assert {:ok, second} =
+             Alchemy.brew_from_ingredients(alchemist, workspace, %{refreshed_herb.id => 2})
+
+    assert second.formula_cached?
+    assert second.brew_job.recipe_id == generated_recipe.id
+    assert length(MMGO.AI.list_requests(:alchemy_brew)) == 1
   end
 
   test "brew/5 rejects characters without alchemy specialization", %{

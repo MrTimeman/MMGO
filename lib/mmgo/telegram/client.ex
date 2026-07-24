@@ -13,6 +13,22 @@ defmodule MMGO.Telegram.Client do
     request(:post, "/setWebhook", json: payload)
   end
 
+  def set_chat_menu_button(url) when is_binary(url) do
+    request(:post, "/setChatMenuButton",
+      json: %{
+        menu_button: %{
+          type: "web_app",
+          text: "Играть",
+          web_app: %{url: url}
+        }
+      }
+    )
+  end
+
+  def set_commands(commands) when is_list(commands) do
+    request(:post, "/setMyCommands", json: %{commands: commands})
+  end
+
   def send_message(chat_id, text, opts \\ []) do
     payload =
       opts

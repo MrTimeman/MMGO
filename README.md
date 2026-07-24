@@ -2,11 +2,11 @@
 
 A server-authoritative magic MMO roleplay engine built with Elixir/Phoenix, Telegram Mini App frontend, and AI-compiled spells.
 
-> **Status:** foundation complete — core game systems, Telegram bot integration, and first frontend surfaces are live.
+> **Status:** `0.1.0-alpha.1` — feature-complete for the releasable alpha scope. Production deployment still requires PostgreSQL, Telegram credentials, a federation identity/token, and either a Gemini or DeepSeek key.
 
 ## Architecture
 
-MMGO is a deterministic, event-sourced game server. Spells are compiled from player descriptions into validated schemas at authoring time; during combat, a bounded runtime-AI layer may describe only the already-approved snapshot effects and Russian narration. It cannot alter targets, costs, rewards, shared HP, or state primitives, and a deterministic fallback is persisted when a provider fails. All game state is persisted via Ecto/PostgreSQL, with Oban for deferred job scheduling.
+MMGO is a deterministic, server-authoritative game server. Spells and ingredient mixtures are interpreted into validated schemas; during combat, a bounded runtime-AI layer may describe only already-approved snapshot effects and Russian narration. It cannot alter targets, costs, rewards, shared HP, or state primitives, and deterministic fallbacks are persisted when a provider fails. Game state is persisted via Ecto/PostgreSQL, with Oban for deferred work.
 
 ```
 ┌──────────────────────┐     ┌──────────────────────┐
@@ -27,7 +27,7 @@ MMGO is a deterministic, event-sourced game server. Spells are compiled from pla
          ▼                            ▼
 ┌────────────────┐          ┌────────────────┐
 │  PostgreSQL    │          │  Oban Workers  │
-│  (Ecto/ETS)    │          │  Journeys,     │
+│  (Ecto)        │          │  Journeys,     │
 │                │          │  Brewing,      │
 │                │          │  Construction  │
 └────────────────┘          └────────────────┘
@@ -42,25 +42,25 @@ MMGO is a deterministic, event-sourced game server. Spells are compiled from pla
 - **Grimoires** — loadouts of prepared spells per character
 - **Economy** — append-only ledgers, treasury accounts, exchange rates, migration
 - **Inventory** — item templates, carry capacity, encumbrance
-- **Market & Black Market** — taxed listings, escrow, untaxed deals with default risk
+- **Market & Black Market** — realm-taxed listings, escrow, untaxed deals with detection/default risk
 - **Dungeons** — graph-based runs with links, nodes, encounters, resources, loot
 - **PvP** — duel challenges, wager escrow, settlement
 - **Academy** — enrollments, specializations, timed completion
 - **Academia** — research, publications, professor progression
-- **Alchemy** — workspaces, recipes, brewing jobs
-- **Bases** — ownership, construction, protection
+- **Alchemy** — fixed ingredient primitives, schema-bounded AI interpretation, durable brewing jobs
+- **Bases** — taxed purchase, coin/material construction, ownership, storage, protection
 - **Academy Clubs & Organizations** — social groups, hierarchies, travel networks
 - **Overworld** — road encounters, ambushes, scavenging
 - **Survival** — food consumption, carry capacity
 - **Reputation** — crime records, fines, market sanctions
 - **Notifications** — outbox delivery via Telegram
-- **AI** — provider abstraction (Gemini + Mock), prompt pipelines, audit logs
+- **AI** — provider abstraction (Gemini, DeepSeek, Mock), bounded prompt pipelines, audit logs
 - **Operator** — live reports, maintenance sweeps, observability
 
 ## Requirements
 
-- **Elixir** 1.19+ (1.20.0 used in dev)
-- **Erlang/OTP** 28+
+- **Elixir** 1.20.x
+- **Erlang/OTP** 29.x
 - **PostgreSQL** 16 (Docker compose provided)
 - **Docker Desktop** or local PostgreSQL
 
@@ -104,20 +104,31 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 | Endpoint | Purpose |
 |---|---|
 | `GET /healthz` | Health check |
+| `GET /livez` | Process liveness check |
 | `POST /api/telegram/webhook` | Telegram bot webhook handler |
 | `GET /` | Phoenix LiveView frontend |
 
 ## AI configuration
 
-By default the app uses a mock AI provider for local dev. Set `GEMINI_API_KEY` to switch to the Gemini provider at runtime.
+By default the app uses a mock AI provider for local development and tests. Production requires `GEMINI_API_KEY` or `DEEPSEEK_API_KEY`, unless the operator explicitly enables fallback-only mode.
+
+Telegram Mini App entry validates `Telegram.WebApp.initData` with Telegram's
+documented `WebAppData` HMAC derivation. A verified login creates or resumes the
+account and refreshes the signed Telegram profile name, username, locale, and
+avatar URL.
 
 | Env var | Default |
 |---|---|
 | `GEMINI_API_KEY` | _(unset — uses mock)_ |
 | `GEMINI_API_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
 | `GEMINI_SPELL_MODEL` | `gemini-3-flash` |
+| `GEMINI_ALCHEMY_MODEL` | `gemini-3-flash` |
 | `GEMINI_COMBAT_MODEL` | `g3f-lite` |
 | `GEMINI_NARRATION_MODEL` | `g3f-lite` |
+
+## Alpha release
+
+The checked-in `Dockerfile` builds an OTP release with compiled assets. See [Alpha scope](docs/ALPHA_SCOPE.md) for the acceptance boundary and [Deployment](docs/DEPLOYMENT.md) for required variables, migrations, seeding, health checks, and rollback guidance.
 
 ## Project structure
 

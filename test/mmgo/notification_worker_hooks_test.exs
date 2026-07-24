@@ -65,6 +65,7 @@ defmodule MMGO.NotificationWorkerHooksTest do
       })
 
     character = character_fixture(realm, city, "worker", "Worker Mage", 999_001)
+    fund_base_acquisition!(realm, character)
     {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 5})
 
     %{realm: realm, city: city, tower: tower, route: route, character: character}

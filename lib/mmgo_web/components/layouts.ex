@@ -19,11 +19,82 @@ defmodule MMGOWeb.Layouts do
     default: nil,
     doc: "optional server-derived semantic audio state for an in-world screen"
 
+  attr :public, :boolean,
+    default: false,
+    doc: "renders the immersive public shell instead of the authenticated game chrome"
+
   slot :inner_block, required: true
 
   def app(assigns) do
     ~H"""
-    <div class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_22rem),linear-gradient(180deg,_#f7f1e8_0%,_#f3ede2_42%,_#efe7da_100%)] text-stone-900">
+    <div
+      :if={@public}
+      id="public-shell"
+      class="relative min-h-screen overflow-hidden bg-[#090807] text-stone-100"
+    >
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(217,169,54,0.16),transparent_28rem),radial-gradient(circle_at_88%_72%,rgba(124,43,34,0.14),transparent_32rem),linear-gradient(145deg,#0b0907_0%,#15100a_52%,#080706_100%)]"
+      >
+      </div>
+      <div
+        aria-hidden="true"
+        class="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:3rem_3rem] [mask-image:radial-gradient(circle_at_center,black,transparent_78%)]"
+      >
+      </div>
+
+      <header class="relative z-20 border-b border-white/10 bg-black/20 backdrop-blur-xl">
+        <div class="mx-auto flex min-h-18 max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+          <.link
+            navigate={~p"/"}
+            id="public-brand"
+            class="group flex min-w-0 items-center gap-3"
+          >
+            <div class="relative flex size-11 shrink-0 items-center justify-center rounded-[1rem] border border-amber-300/45 bg-[conic-gradient(from_45deg,#2a1d0b,#9a6a18,#2a1d0b,#d5a72f,#2a1d0b)] p-px shadow-[0_0_2rem_rgba(217,169,54,0.12)] transition duration-300 group-hover:rotate-3 group-hover:scale-105">
+              <div class="flex size-full items-center justify-center rounded-[0.94rem] bg-[#120f0b] font-[family-name:var(--font-serif)] text-lg font-black text-amber-200">
+                M
+              </div>
+            </div>
+            <div class="min-w-0 leading-none">
+              <p class="truncate font-[family-name:var(--font-sans)] text-[0.62rem] font-bold uppercase tracking-[0.28em] text-amber-200/65 sm:text-[0.68rem]">
+                Ministry of MaGic Online
+              </p>
+              <p class="mt-1.5 font-[family-name:var(--font-serif)] text-lg font-bold tracking-[0.08em] text-stone-50">
+                MMGO
+              </p>
+            </div>
+          </.link>
+
+          <div class="flex shrink-0 items-center gap-2">
+            <span class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 font-[family-name:var(--font-sans)] text-[0.65rem] font-bold uppercase tracking-[0.16em] text-stone-400 sm:inline-flex">
+              Public alpha
+            </span>
+            <a
+              id="public-bot-link"
+              href="https://t.me/mmgo_bot?start=play"
+              target="_blank"
+              rel="noreferrer"
+              class="inline-flex min-h-10 items-center gap-2 rounded-full border border-amber-300/30 bg-amber-200 px-4 font-[family-name:var(--font-sans)] text-xs font-bold text-stone-950 shadow-[0_0.75rem_2.5rem_rgba(217,169,54,0.12)] transition duration-300 hover:-translate-y-0.5 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+            >
+              <.icon name="hero-paper-airplane" class="size-4" />
+              <span class="hidden sm:inline">Открыть бота</span>
+              <span class="sm:hidden">Играть</span>
+            </a>
+          </div>
+        </div>
+      </header>
+
+      <main id="public-content" class="relative z-10">
+        {render_slot(@inner_block)}
+      </main>
+
+      <.flash_group flash={@flash} />
+    </div>
+
+    <div
+      :if={not @public}
+      class="min-h-screen bg-[radial-gradient(circle_at_top,_rgba(251,191,36,0.2),_transparent_22rem),linear-gradient(180deg,_#f7f1e8_0%,_#f3ede2_42%,_#efe7da_100%)] text-stone-900"
+    >
       <header class="border-b border-stone-200/80 bg-white/70 backdrop-blur">
         <div class="mx-auto flex max-w-6xl flex-col gap-4 px-4 py-4 sm:px-6 lg:flex-row lg:items-center lg:justify-between lg:px-8">
           <.link navigate={~p"/"} class="flex items-center gap-3">
@@ -39,6 +110,31 @@ defmodule MMGOWeb.Layouts do
           </.link>
 
           <nav class="flex flex-wrap items-center gap-3 text-sm text-stone-600">
+            <.link
+              :if={@current_scope}
+              id="telegram-player-profile"
+              navigate={~p"/map"}
+              class="flex items-center gap-2 rounded-full border border-amber-300/80 bg-amber-50 px-2 py-1.5 pr-3 text-stone-800 shadow-sm transition hover:-translate-y-0.5 hover:border-amber-500"
+            >
+              <img
+                :if={avatar_url(@current_scope)}
+                id="telegram-player-avatar"
+                src={avatar_url(@current_scope)}
+                alt=""
+                referrerpolicy="no-referrer"
+                class="size-8 rounded-full border border-amber-200 object-cover"
+              />
+              <span
+                :if={is_nil(avatar_url(@current_scope))}
+                id="telegram-player-avatar-fallback"
+                class="flex size-8 items-center justify-center rounded-full bg-amber-200 text-xs font-black uppercase text-amber-950"
+              >
+                {profile_initial(@current_scope)}
+              </span>
+              <span class="max-w-32 truncate font-semibold">
+                {@current_scope.character.name}
+              </span>
+            </.link>
             <a
               href={~p"/healthz"}
               class="rounded-full border border-stone-300 bg-white px-4 py-2 font-medium transition hover:-translate-y-0.5 hover:border-stone-900 hover:text-stone-950"
@@ -72,6 +168,24 @@ defmodule MMGOWeb.Layouts do
     </div>
     """
   end
+
+  defp avatar_url(%{account: %{settings: %{"telegram_photo_url" => url}}})
+       when is_binary(url) and url != "",
+       do: url
+
+  defp avatar_url(_scope), do: nil
+
+  defp profile_initial(%{character: %{name: name}}) when is_binary(name) do
+    name
+    |> String.trim()
+    |> String.first()
+    |> case do
+      nil -> "M"
+      initial -> String.upcase(initial)
+    end
+  end
+
+  defp profile_initial(_scope), do: "M"
 
   attr :cue, :map, required: true
 
@@ -147,7 +261,11 @@ defmodule MMGOWeb.Layouts do
 
   def flash_group(assigns) do
     ~H"""
-    <div id={@id} aria-live="polite" class="fixed right-4 top-4 z-50 flex max-w-sm flex-col gap-3">
+    <div
+      id={@id}
+      aria-live="polite"
+      class="fixed left-3 right-3 top-3 z-50 flex flex-col gap-3 sm:left-auto sm:right-4 sm:top-4 sm:w-full sm:max-w-sm"
+    >
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
 

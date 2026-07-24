@@ -4,7 +4,7 @@
 
 MMGO is a server-authoritative, text-first MMO played through a Telegram Mini App and bot. Players inhabit persistent realms: they travel a hex world, study or craft, build spell libraries and loadouts, form parties, trade, descend into a living dungeon, and eventually create organisations that shape the realm.
 
-The existing Phoenix application already contains substantial persisted domain logic. This delivery program turns that foundation into a complete player product, replacing demo-only screens with real account-owned gameplay and closing the GDD mechanics that are not yet implemented.
+The Phoenix application is now an alpha-complete, account-owned player product built on substantial persisted domain logic. Demo-only screens have been replaced by real gameplay, and the GDD mechanics selected for the alpha contract are implemented and verified.
 
 ## Core Value
 
@@ -19,14 +19,14 @@ A player can make meaningful, account-owned decisions in a persistent social mag
 - ✓ A thin `MMGO.Play` orchestration facade can supply a browser gameplay loop without moving rules into LiveViews — existing codebase.
 - ✓ Core backend contexts exist for combat, spells, grimoires, survival, crafting, alchemy, academy, dungeon, party, organisations, notifications, and federation — existing codebase.
 
-### Active
+### Alpha Milestone Validated
 
-- [ ] A real Telegram Mini App player can enter an account-owned, location-gated game session instead of a shared demo session.
-- [ ] Every GDD player activity has an authoritative command/read model and a playable LiveView surface.
-- [ ] Combat supports the GDD's simultaneous timed turns, caster and tool-user inputs, runtime AI orchestration/narration, and meaningful combat locations.
-- [ ] The map reflects live player, event, realm, calendar, and organisation information rather than hard-coded demo overlays.
-- [ ] Social systems, economy, survival, dungeon expeditions, Academy careers, and organisations work as connected player loops.
-- [ ] The product remains testable locally using mock AI and deterministic fixtures, with external credentials only required for deployment.
+- [x] A real Telegram Mini App player can enter an account-owned, location-gated game session instead of a shared demo session.
+- [x] Every GDD player activity has an authoritative command/read model and a playable LiveView surface.
+- [x] Combat supports the GDD's simultaneous timed turns, caster and tool-user inputs, runtime AI orchestration/narration, and meaningful combat locations.
+- [x] The map reflects live player, event, realm, calendar, and organisation information rather than hard-coded demo overlays.
+- [x] Social systems, economy, survival, dungeon expeditions, Academy careers, and organisations work as connected player loops.
+- [x] The product remains testable locally using mock AI and deterministic fixtures, with external credentials only required for deployment.
 
 ### Out of Scope
 
@@ -55,15 +55,15 @@ A player can make meaningful, account-owned decisions in a persistent social mag
 
 | Decision | Rationale | Outcome |
 |----------|-----------|---------|
-| Treat `docs/MMGO_GDD.md` as the completion contract | The user asked to finish everything after a GDD audit | — Pending |
-| Prioritize real account ownership before visual rewrites | Shared demo sessions make every other browser loop unsafe or non-persistent | — Pending |
+| Treat `docs/MMGO_GDD.md` as the completion contract | The user asked to finish everything after a GDD audit | ✓ Good |
+| Prioritize real account ownership before visual rewrites | Shared demo sessions make every other browser loop unsafe or non-persistent | ✓ Good |
 | Wire existing contexts through small facades | Preserves server authority and prevents web-layer sprawl | ✓ Good |
-| Keep deterministic engine limits around AI decisions | The GDD requires AI flavor and orchestration without permitting arbitrary state mutation | — Pending |
-| Ship a semantic audio system before content recordings | It delivers GDD state-driven behavior without unsafe licensing assumptions | — Pending |
-| Tax rate is realm-configurable, canonical default 5% | Owner decision 2026-07-13; consistent with §6.1 operator customization; matches current `Play` default | — Pending |
-| Black market uses probabilistic NPC detection (catch chance scales with deal size; fine = multiple of evaded tax + reputation hit) | Owner decision 2026-07-13; deterministic and testable for Phase 5; org enforcement layers on later | — Pending |
-| Bases: city purchase is coins-only; building requires coins + materials + game-time construction | Owner decision 2026-07-13; full GDD fidelity, Phase 5 must design material requirements | — Pending |
-| Alchemy is AI-interpreted brewing over fixed per-item primitives, ingredients picked from inventory | Owner decision 2026-07-13; mirrors spell compiler boundary — AI composes within constant item properties, never invents effects | — Pending |
+| Keep deterministic engine limits around AI decisions | The GDD requires AI flavor and orchestration without permitting arbitrary state mutation | ✓ Good |
+| Ship a semantic audio system before content recordings | It delivers GDD state-driven behavior without unsafe licensing assumptions | ✓ Good |
+| Tax rate is realm-configurable, canonical default 5% | Owner decision 2026-07-13; consistent with §6.1 operator customization; matches current `Play` default | ✓ Good |
+| Black market uses probabilistic NPC detection (catch chance scales with deal size; fine = multiple of evaded tax + reputation hit) | Owner decision 2026-07-13; deterministic and testable for Phase 5; org enforcement layers on later | ✓ Good |
+| Bases: city purchase is coins-only; building requires coins + materials + game-time construction | Owner decision 2026-07-13; full GDD fidelity, Phase 5 must design material requirements | ✓ Good |
+| Alchemy is AI-interpreted brewing over fixed per-item primitives, ingredients picked from inventory | Owner decision 2026-07-13; mirrors spell compiler boundary — AI composes within constant item properties, never invents effects | ✓ Good |
 
 ## Evolution
 
@@ -83,4 +83,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-07-09 after full-GDD completion program initialization*
+*Last updated: 2026-07-22 after alpha 0.1.0-alpha.1 implementation and release verification*

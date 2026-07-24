@@ -1,30 +1,24 @@
-# Concerns
+# Current Concerns
 
-## Product-completion risks
+## Alpha operations
 
-- The browser does not yet identify real players. `lib/mmgo_web/controllers/play_demo_controller.ex` and `lib/mmgo/play.ex` bootstrap fixed demo characters, while the GDD calls for Telegram Mini App identity.
-- `lib/mmgo_web/router.ex` still labels many primary routes as design-pass screens; several LiveViews hold hard-coded assigns instead of querying a context.
-- The real player loop currently covers map travel, inventory, and a local bot duel. High-value systems such as spell authoring, dungeon expeditions, parties, markets, workshops, bases, and organisations have backend support but incomplete player-facing flows.
-- `lib/mmgo_web/live/map_live.ex` displays static calendar/profile/notification data and sends `others: []` to the map hook, so social world state and multi-realm play are not live.
-- The `MMGO.Play` facade is a healthy seam, but it has only begun to expose read models and commands for the broader game. New LiveViews must use it or another narrow orchestration boundary instead of composing contexts themselves.
+- Production credentials, public Telegram webhook registration, a PostgreSQL service, and federation identity are external deployment inputs. Startup now fails closed when required values are absent.
+- The release has readiness/liveness endpoints and a Docker health check, but public beta still requires load/soak testing, backup restoration practice, and a multi-node/federation exercise.
+- Operators should alert on Oban retries, failed Telegram delivery records, failed AI audit rows, and economy reconciliation anomalies.
 
-## Correctness and gameplay risks
+## Product and content
 
-- `lib/mmgo/combat/turn.ex` does not persist a turn deadline and no worker resolves expired turns. The combat engine can synthesize waits only when another caller triggers resolution.
-- The GDD specifies runtime AI spell interpretation/orchestration, whereas `README.md` documents author-time compilation plus deterministic combat. `lib/mmgo/combat/narrator.ex` has no production integration. This is a product decision that must be reconciled in implementation and documentation.
-- `lib/mmgo/academia.ex` appears to move a thesis defense to `:under_review` after a vote, while `run_thesis_defense/2` accepts only `:pending_defense`; a panel-vote path needs regression coverage and repair.
-- `lib/mmgo/survival.ex` consumes all journey food at departure, leaving no player-facing gradual starvation and mid-journey recovery loop as described by the GDD.
-- `lib/mmgo/organizations.ex` covers a useful v1 membership/role layer, but organisation treasury, shared ownership, governance enforcement, territory, and diplomacy remain absent despite being defined in the GDD roadmap.
+- The canonical seed provides a complete playable topology, not launch-scale content volume or final economic balance.
+- Licensed recordings are intentionally absent. The semantic cue system is implemented; legally usable recordings remain an operations/content decision.
+- Some history-oriented LiveViews retain manual refresh controls. Authoritative state remains durable and gameplay-critical workers are idempotent.
 
-## Security and operations risks
+## Safety invariants to preserve
 
-- `lib/mmgo/telegram.ex` accepts webhook updates when `TELEGRAM_WEBHOOK_SECRET` is unset. Production configuration should fail closed or make the development exception explicit.
-- `config/runtime.exs` selects DeepSeek when its credential exists. This can unintentionally change test/runtime behavior from the Gemini/mock path; focused verification should control the provider deliberately.
-- `lib/mmgo_web/router.ex` has no authenticated LiveView session/current scope for browser gameplay. Introducing identity must protect character ownership across every command path, not only controllers.
-- There is no checked-in CI workflow or coverage threshold, as noted by the map in `TESTING.md`. `mix precommit` remains the main local quality gate.
+- All browser commands derive the actor from `current_scope`; never accept character or realm authority from client params.
+- Money, inventory, escrow, ownership, and job transitions remain transactional and server-priced.
+- AI providers may compose only within fixed schemas/primitives. Deterministic snapshots and fallbacks remain the mechanical authority.
+- Realm migrations, Academy schedules, black-market deadlines, base builds, and production jobs must stay retry-safe under Oban.
 
-## Planning guidance
+## Verification
 
-- Prioritize a complete vertical path before cosmetic screens: identity -> location-gated activity -> persisted command -> updated LiveView -> focused integration test.
-- Treat external Telegram production credentials, a deployed Mini App URL, and live AI keys as deployment configuration, never test fixtures or committed values.
-- Keep potentially destructive migration/data changes reversible and validate existing demo fixtures while real-player sessions are introduced.
+The release gate is `mix precommit`, followed by a production asset/release build. Deployment acceptance is documented in `docs/ALPHA_SCOPE.md` and `docs/DEPLOYMENT.md`.

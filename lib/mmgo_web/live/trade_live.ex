@@ -126,6 +126,15 @@ defmodule MMGOWeb.TradeLive do
   end
 
   @impl true
+  def handle_event("default_black_deal", %{"deal-id" => deal_id}, socket) do
+    transact(
+      socket,
+      fn -> Play.default_black_market_deal(socket.assigns.character, deal_id) end,
+      "Срок доставки истёк. Нарушение записано, продавцу назначены санкции."
+    )
+  end
+
+  @impl true
   def handle_event("refresh", _params, socket), do: {:noreply, refresh_trade(socket)}
 
   @impl true
@@ -420,7 +429,13 @@ defmodule MMGOWeb.TradeLive do
                 id={"trade-black-offer-#{offer.id}"}
                 class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
               >
-                <span>{offer.item_template.name} ×{offer.quantity} · {offer.total_price} ◈</span>
+                <span>
+                  {offer.item_template.name} ×{offer.quantity} · {offer.total_price} ◈
+                  <small class="block text-violet-200/70">
+                    риск дозора {format_bps(Map.fetch!(@black_market_risks, offer.id).chance_bps)} ·
+                    штраф при поимке {Map.fetch!(@black_market_risks, offer.id).fine_amount} ◈
+                  </small>
+                </span>
                 <button
                   :if={offer.seller_character_id != @character.id}
                   id={"trade-accept-black-offer-#{offer.id}"}
@@ -441,7 +456,18 @@ defmodule MMGOWeb.TradeLive do
                 id={"trade-black-deal-#{deal.id}"}
                 class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
               >
-                <span>{deal.item_template.name} ×{deal.quantity} · {deal.status}</span>
+                <span>
+                  {deal.item_template.name} ×{deal.quantity} · {deal.status}
+                  <small class="block text-stone-400">
+                    срок доставки {delivery_due_label(deal)}
+                  </small>
+                  <small
+                    :if={get_in(deal.metadata || %{}, ["npc_detection", "caught"]) == true}
+                    class="block text-rose-300"
+                  >
+                    Сделку заметил дозор; штраф списан, репутация снижена.
+                  </small>
+                </span>
                 <button
                   :if={
                     deal.seller_character_id == @character.id and deal.status == :awaiting_delivery
@@ -453,6 +479,16 @@ defmodule MMGOWeb.TradeLive do
                   class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
                 >
                   Доставить
+                </button>
+                <button
+                  :if={default_available?(deal, @character)}
+                  id={"trade-default-black-deal-#{deal.id}"}
+                  type="button"
+                  phx-click="default_black_deal"
+                  phx-value-deal-id={deal.id}
+                  class="rounded border border-rose-300/50 px-3 py-1.5 text-rose-100"
+                >
+                  Заявить о срыве
                 </button>
               </article>
             </div>
@@ -517,6 +553,7 @@ defmodule MMGOWeb.TradeLive do
     |> assign(:market_listings, state.market_listings)
     |> assign(:black_market_offers, state.black_market_offers)
     |> assign(:black_market_deals, state.black_market_deals)
+    |> assign(:black_market_risks, state.black_market_risks)
     |> assign(:grimoire_tiers, state.grimoire_tiers)
     |> assign(:legal_market_tax_rate_bps, state.legal_market_tax_rate_bps)
     |> assign(
@@ -561,6 +598,41 @@ defmodule MMGOWeb.TradeLive do
   end
 
   defp parse_positive(_value), do: {:error, :invalid_quantity}
+
+  defp default_available?(deal, character) do
+    deal.status == :awaiting_delivery and deal.buyer_character_id == character.id and
+      delivery_due?(deal)
+  end
+
+  defp delivery_due?(deal) do
+    case Map.get(deal.metadata || %{}, "delivery_due_at") do
+      due_at when is_binary(due_at) ->
+        case DateTime.from_iso8601(due_at) do
+          {:ok, parsed, _offset} -> DateTime.compare(DateTime.utc_now(), parsed) != :lt
+          _invalid -> true
+        end
+
+      _missing ->
+        true
+    end
+  end
+
+  defp delivery_due_label(deal) do
+    case Map.get(deal.metadata || %{}, "delivery_due_at") do
+      due_at when is_binary(due_at) ->
+        case DateTime.from_iso8601(due_at) do
+          {:ok, parsed, _offset} -> Calendar.strftime(parsed, "%d.%m %H:%M UTC")
+          _invalid -> "не определён"
+        end
+
+      _missing ->
+        "не определён"
+    end
+  end
+
+  defp format_bps(bps) when is_integer(bps) do
+    :erlang.float_to_binary(bps / 100, decimals: 2) <> "%"
+  end
 
   defp error_message(:invalid_quantity), do: "Укажите положительное количество и цену."
   defp error_message(:inventory_item_not_found), do: "Выбранного предмета нет в вашей котомке."

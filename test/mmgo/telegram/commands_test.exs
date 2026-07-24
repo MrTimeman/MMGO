@@ -76,6 +76,7 @@ defmodule MMGO.Telegram.CommandsTest do
       })
 
     character = character_fixture(realm, city, "botter", "Botter")
+    fund_base_acquisition!(realm, character)
     {:ok, _rations} = Inventory.grant_item(character, ration_template, %{quantity: 12})
 
     %{realm: realm, city: city, tower: tower, route: route, character: character}

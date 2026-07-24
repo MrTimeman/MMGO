@@ -25,7 +25,8 @@ defmodule MMGO.AccountsTest do
       "username" => "arcanist",
       "first_name" => "Arc",
       "last_name" => "Anist",
-      "language_code" => "en"
+      "language_code" => "en",
+      "photo_url" => "https://t.me/i/userpic/320/arcanist.jpg"
     }
 
     assert {:ok, %{account: account, telegram_identity: identity, character: character}} =
@@ -33,6 +34,10 @@ defmodule MMGO.AccountsTest do
 
     assert account.display_name == "Arc Anist"
     assert account.handle =~ ~r/^arcanist-/
+
+    assert account.settings["telegram_photo_url"] ==
+             "https://t.me/i/userpic/320/arcanist.jpg"
+
     assert identity.telegram_user_id == 1001
     assert character.realm_id == realm.id
     assert character.level == 1
@@ -54,10 +59,17 @@ defmodule MMGO.AccountsTest do
                "id" => 2002,
                "username" => "emberqueen",
                "first_name" => "Ember",
-               "last_name" => "Queen"
+               "last_name" => "Queen",
+               "photo_url" => "https://t.me/i/userpic/320/emberqueen.jpg"
              })
 
     assert same_account.id == account.id
+    assert same_account.display_name == "Ember Queen"
+    assert same_account.settings["telegram_username"] == "emberqueen"
+
+    assert same_account.settings["telegram_photo_url"] ==
+             "https://t.me/i/userpic/320/emberqueen.jpg"
+
     assert identity.telegram_username == "emberqueen"
     assert Repo.aggregate(Account, :count, :id) == 1
     assert Repo.aggregate(TelegramIdentity, :count, :id) == 1

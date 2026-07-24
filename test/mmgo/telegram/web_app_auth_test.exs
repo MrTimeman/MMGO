@@ -5,6 +5,7 @@ defmodule MMGO.Telegram.WebAppAuthTest do
 
   @bot_token "test-bot-token"
   @now ~U[2026-07-09 12:00:00Z]
+  @max_age_seconds 86_400
 
   test "authenticates a valid signed Mini App user" do
     assert {:ok, user} =
@@ -14,6 +15,23 @@ defmodule MMGO.Telegram.WebAppAuthTest do
     assert user["username"] == "towerwalker"
   end
 
+  test "matches Telegram's documented WebAppData key derivation order" do
+    init_data =
+      URI.encode_query(%{
+        "auth_date" => "1770000000",
+        "query_id" => "AAEAAA",
+        "user" => ~s({"id":101001,"first_name":"Tower"}),
+        "hash" => "088de064b732fb5acd0261e3ea058e180a53941bda2556075bc9c516edfb2b24"
+      })
+
+    assert {:ok, %{"id" => 101_001, "first_name" => "Tower"}} =
+             WebAppAuth.authenticate(init_data,
+               bot_token: @bot_token,
+               now: 1_770_000_000,
+               max_age_seconds: 0
+             )
+  end
+
   test "rejects a tampered signed field" do
     init_data = signed_init_data() |> String.replace("Tower", "Impostor")
 
@@ -21,15 +39,33 @@ defmodule MMGO.Telegram.WebAppAuthTest do
              WebAppAuth.authenticate(init_data, bot_token: @bot_token, now: @now)
   end
 
-  test "rejects expired and future auth dates" do
-    expired = signed_init_data(%{"auth_date" => Integer.to_string(DateTime.to_unix(@now) - 301)})
+  test "accepts a Telegram webview session for one day and rejects older or future dates" do
+    within_window =
+      signed_init_data(%{
+        "auth_date" => Integer.to_string(DateTime.to_unix(@now) - @max_age_seconds)
+      })
+
+    expired =
+      signed_init_data(%{
+        "auth_date" => Integer.to_string(DateTime.to_unix(@now) - @max_age_seconds - 1)
+      })
+
     future = signed_init_data(%{"auth_date" => Integer.to_string(DateTime.to_unix(@now) + 1)})
+
+    assert {:ok, %{"id" => 101_001}} =
+             WebAppAuth.authenticate(within_window, bot_token: @bot_token, now: @now)
 
     assert {:error, :expired_auth_date} =
              WebAppAuth.authenticate(expired, bot_token: @bot_token, now: @now)
 
     assert {:error, :expired_auth_date} =
              WebAppAuth.authenticate(future, bot_token: @bot_token, now: @now)
+  end
+
+  test "authenticates the current payload shape with Telegram's third-party signature field" do
+    assert {:ok, %{"id" => 101_001}} =
+             signed_init_data(%{"signature" => "base64url-third-party-signature"})
+             |> WebAppAuth.authenticate(bot_token: @bot_token, now: @now)
   end
 
   test "rejects missing hash, auth date, and bot token" do
@@ -78,7 +114,7 @@ defmodule MMGO.Telegram.WebAppAuthTest do
   end
 
   defp expected_hash(fields) do
-    secret_key = :crypto.mac(:hmac, :sha256, @bot_token, "WebAppData")
+    secret_key = :crypto.mac(:hmac, :sha256, "WebAppData", @bot_token)
 
     fields
     |> Enum.sort_by(fn {key, _value} -> key end)

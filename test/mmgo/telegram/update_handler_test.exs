@@ -12,7 +12,8 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
       api_base_url: "http://localhost:#{bypass.port}",
       bot_token: "test-bot-token",
       webhook_secret: "test-webhook-secret",
-      webhook_path: "/api/telegram/webhook"
+      webhook_path: "/api/telegram/webhook",
+      mini_app_url: "https://mmgo.test/play"
     )
 
     on_exit(fn ->
@@ -43,6 +44,8 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
     Bypass.expect_once(bypass, "POST", "/bottest-bot-token/sendMessage", fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
       assert body =~ "Welcome to MMGO"
+      assert body =~ "https://mmgo.test/play"
+      assert body =~ "web_app"
       Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":{"message_id":1}}))
     end)
 

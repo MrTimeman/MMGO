@@ -172,19 +172,28 @@ defmodule MMGO.Accounts do
 
   defp refresh_telegram_account(identity, telegram_attrs) do
     identity = Repo.preload(identity, :account)
+    display_name = display_name_from_telegram(telegram_attrs)
+    account_settings = telegram_account_settings(identity.account.settings, telegram_attrs)
 
     with %Realm{} = realm <- Worlds.get_default_realm() do
       Multi.new()
+      |> Multi.update(
+        :account,
+        Account.registration_changeset(identity.account, %{
+          display_name: display_name,
+          settings: account_settings
+        })
+      )
       |> Multi.update(:telegram_identity, TelegramIdentity.changeset(identity, telegram_attrs))
-      |> Multi.run(:character, fn repo, _changes ->
-        ensure_default_character(repo, identity.account, realm)
+      |> Multi.run(:character, fn repo, %{account: account} ->
+        ensure_default_character(repo, account, realm)
       end)
       |> Repo.transaction()
       |> case do
-        {:ok, %{telegram_identity: telegram_identity, character: character}} ->
+        {:ok, %{account: account, telegram_identity: telegram_identity, character: character}} ->
           {:ok,
            %{
-             account: identity.account,
+             account: account,
              telegram_identity: telegram_identity,
              character: character
            }}
@@ -217,7 +226,7 @@ defmodule MMGO.Accounts do
     %{
       display_name: display_name,
       handle: unique_handle(telegram_attrs.telegram_username || display_name),
-      settings: %{"locale" => telegram_attrs.language_code}
+      settings: telegram_account_settings(%{}, telegram_attrs)
     }
   end
 
@@ -232,6 +241,7 @@ defmodule MMGO.Accounts do
          last_name: fetch_value(attrs, "last_name"),
          language_code: fetch_value(attrs, "language_code"),
          is_bot: fetch_value(attrs, "is_bot") || false,
+         photo_url: normalize_photo_url(fetch_value(attrs, "photo_url")),
          auth_data: stringify_keys(attrs),
          last_seen_at: DateTime.utc_now()
        }}
@@ -249,6 +259,28 @@ defmodule MMGO.Accounts do
       name -> name
     end
   end
+
+  defp telegram_account_settings(existing_settings, telegram_attrs) do
+    profile_settings =
+      %{
+        "locale" => telegram_attrs.language_code,
+        "telegram_username" => telegram_attrs.telegram_username,
+        "telegram_photo_url" => telegram_attrs.photo_url
+      }
+      |> Enum.reject(fn {_key, value} -> is_nil_or_empty?(value) end)
+      |> Map.new()
+
+    Map.merge(existing_settings || %{}, profile_settings)
+  end
+
+  defp normalize_photo_url(value) when is_binary(value) do
+    case URI.new(value) do
+      {:ok, %URI{scheme: "https", host: host}} when is_binary(host) and host != "" -> value
+      _other -> nil
+    end
+  end
+
+  defp normalize_photo_url(_value), do: nil
 
   defp unique_handle(base) do
     base

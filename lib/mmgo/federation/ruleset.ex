@@ -7,6 +7,7 @@ defmodule MMGO.Federation.Ruleset do
       "overworld_pvp_enabled" => true,
       "dungeon_pvp_enabled" => true,
       "legal_market_enabled" => true,
+      "legal_market_tax_rate_bps" => 500,
       "black_market_enabled" => true,
       "travel_food_units_per_day" => 1,
       "carry_capacity_scale_bps" => 1000
@@ -35,6 +36,11 @@ defmodule MMGO.Federation.Ruleset do
 
       not is_boolean(ruleset["legal_market_enabled"]) ->
         {:error, "legal_market_enabled must be a boolean"}
+
+      not is_integer(ruleset["legal_market_tax_rate_bps"]) or
+        ruleset["legal_market_tax_rate_bps"] < 0 or
+          ruleset["legal_market_tax_rate_bps"] > 10_000 ->
+        {:error, "legal_market_tax_rate_bps must be an integer between 0 and 10000"}
 
       not is_boolean(ruleset["black_market_enabled"]) ->
         {:error, "black_market_enabled must be a boolean"}

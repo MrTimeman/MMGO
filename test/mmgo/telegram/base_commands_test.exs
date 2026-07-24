@@ -33,6 +33,7 @@ defmodule MMGO.Telegram.BaseCommandsTest do
       })
 
     character = character_fixture(realm, city, "basebot", "Base Bot")
+    fund_base_acquisition!(realm, character)
 
     {:ok, ore_template} =
       Inventory.create_item_template(%{

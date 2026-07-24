@@ -3,9 +3,12 @@ alias MMGO.Academy
 alias MMGO.Academia.Professor
 alias MMGO.Dungeons
 alias MMGO.Economy
+alias MMGO.Inventory
+alias MMGO.Inventory.ItemTemplate
 alias MMGO.Organizations
 alias MMGO.Organizations.Organization
 alias MMGO.Repo
+alias MMGO.Scavenging
 alias MMGO.Worlds
 alias MMGO.Worlds.Realm
 
@@ -36,6 +39,8 @@ upsert_location = fn realm, attrs ->
 
     loc ->
       loc
+      |> Worlds.change_location(attrs)
+      |> Repo.update!()
   end
 end
 
@@ -61,7 +66,8 @@ capital_city =
     y: 1040,
     safe_zone: true,
     metadata: %{
-      "description" => "Главный город королевства. Здесь расположены Академия, рынки и таверны."
+      "description" => "Главный город королевства. Здесь расположены Академия, рынки и таверны.",
+      "base_purchase_price" => 500
     }
   })
 
@@ -128,7 +134,10 @@ tower =
     y: 385,
     safe_zone: false,
     metadata: %{
-      "description" => "Единственное место, где работает магия. Здесь начинается подземелье."
+      "description" => "Единственное место, где работает магия. Здесь начинается подземелье.",
+      "base_build_price" => 400,
+      "base_build_game_days" => 35,
+      "base_build_materials" => %{"construction_material" => 8}
     }
   })
 
@@ -141,7 +150,8 @@ northeast_city =
     y: 600,
     safe_zone: true,
     metadata: %{
-      "description" => "Торговый город на востоке. Известен рынками редких ингредиентов."
+      "description" => "Торговый город на востоке. Известен рынками редких ингредиентов.",
+      "base_purchase_price" => 650
     }
   })
 
@@ -154,7 +164,8 @@ south_town =
     y: 1345,
     safe_zone: true,
     metadata: %{
-      "description" => "Небольшой укреплённый город на юге. Отправная точка для экспедиций."
+      "description" => "Небольшой укреплённый город на юге. Отправная точка для экспедиций.",
+      "base_purchase_price" => 425
     }
   })
 
@@ -166,7 +177,12 @@ far_south_village =
     x: 945,
     y: 1840,
     safe_zone: false,
-    metadata: %{"description" => "Отдалённое поселение. Опасно, но богато редкими травами."}
+    metadata: %{
+      "description" => "Отдалённое поселение. Опасно, но богато редкими травами.",
+      "base_build_price" => 225,
+      "base_build_game_days" => 21,
+      "base_build_materials" => %{"construction_material" => 5}
+    }
   })
 
 mountain_watchtower =
@@ -178,9 +194,44 @@ mountain_watchtower =
     y: 855,
     safe_zone: false,
     metadata: %{
-      "description" => "Заброшенная сторожевая башня в горах. Говорят, здесь есть тайные пути."
+      "description" => "Заброшенная сторожевая башня в горах. Говорят, здесь есть тайные пути.",
+      "base_build_price" => 300,
+      "base_build_game_days" => 28,
+      "base_build_materials" => %{"construction_material" => 6}
     }
   })
+
+construction_material =
+  Repo.get_by(ItemTemplate, code: "construction_material") ||
+    case Inventory.create_item_template(%{
+           code: "construction_material",
+           name: "Строевой камень",
+           item_type: :ingredient,
+           stackable: true,
+           weight: 2,
+           max_durability: 0,
+           nutrition_units: 0,
+           tags: ["construction", "scavenged"],
+           actions: [],
+           metadata: %{
+             "alchemical_primitives" => %{"earth" => 3, "binding" => 2}
+           }
+         }) do
+      {:ok, template} -> template
+      {:error, _changeset} -> Repo.get_by!(ItemTemplate, code: "construction_material")
+    end
+
+for location <- [tower, far_south_village, mountain_watchtower] do
+  {:ok, _cache} =
+    Scavenging.ensure_resource_cache(location, %{
+      resource_code: "construction_material",
+      item_template_id: construction_material.id,
+      quantity_total: 12,
+      quantity_remaining: 12,
+      respawn_game_days: 21,
+      metadata: %{"purpose" => "base_construction"}
+    })
+end
 
 secret_cult_account =
   Repo.get_by(Account, handle: "secret-cult-keeper") ||

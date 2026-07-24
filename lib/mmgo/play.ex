@@ -73,9 +73,10 @@ defmodule MMGO.Play do
   @starter_ration_code "demo_travel_ration"
   @starter_reagent_code "demo_lumen_dust"
   @starter_reagent_quantity 6
+  @starter_build_material_code "construction_material"
+  @starter_build_material_quantity 8
   @starter_spell_name "Ember Spark"
   @demo_duel_stake 100
-  @legal_market_tax_rate_bps 500
   @overworld_actions ~w(greet trade attack avoid)
   @organization_permissions ~w(invite_members manage_roles manage_treasury grant_fast_travel)
   @activity_actions %{
@@ -206,6 +207,7 @@ defmodule MMGO.Play do
     with :ok <- fund_character(character, @starter_currency, "demo_character_funding"),
          {:ok, _food} <- ensure_starter_food(character, @starter_food_units),
          {:ok, _reagent} <- ensure_starter_reagents(character),
+         {:ok, _materials} <- ensure_starter_build_materials(character),
          {:ok, _spell} <- ensure_starter_spell(character) do
       {:ok, reload_character(character.id)}
     end
@@ -222,6 +224,7 @@ defmodule MMGO.Play do
     with :ok <- fund_character(character, @starter_currency, "starter_character_funding"),
          {:ok, _food} <- ensure_starter_food(character, @starter_food_units),
          {:ok, _reagent} <- ensure_starter_reagents(character),
+         {:ok, _materials} <- ensure_starter_build_materials(character),
          {:ok, _spell} <- ensure_starter_spell(character) do
       {:ok, reload_character(character.id)}
     end
@@ -2135,6 +2138,16 @@ defmodule MMGO.Play do
               if(active_base, do: Bases.list_storage_items(active_base.id), else: [])
 
             survival = Survival.summary(character)
+            carried_items = Inventory.list_inventory_for_character(character.id)
+            {:ok, economy_account} = Economy.ensure_character_account(character)
+            {:ok, acquisition_quote} = Bases.acquisition_quote(character, state.current_location)
+
+            acquisition_quote =
+              Map.put(
+                acquisition_quote,
+                :materials,
+                material_availability(acquisition_quote.materials, carried_items)
+              )
 
             {:ok,
              %{
@@ -2146,7 +2159,12 @@ defmodule MMGO.Play do
                requires_base_selection?: is_nil(active_base) and active_bases != [],
                building_base: building_base,
                storage_items: storage_items,
-               carried_items: Inventory.list_inventory_for_character(character.id),
+               carried_items: carried_items,
+               acquisition_quote: acquisition_quote,
+               balance: economy_account.current_balance,
+               can_afford_acquisition?:
+                 economy_account.current_balance >= acquisition_quote.total_coin_cost and
+                   Enum.all?(acquisition_quote.materials, &(&1.available >= &1.quantity)),
                storage_weight: if(active_base, do: Bases.storage_weight(active_base), else: 0),
                storage_capacity:
                  if(active_base, do: active_base.storage_weight_capacity, else: 0),
@@ -2311,8 +2329,16 @@ defmodule MMGO.Play do
            own_black_market_offers:
              Enum.filter(black_market_offers, &(&1.seller_character_id == character.id)),
            black_market_deals: BlackMarket.list_deals_for_character(character.id),
+           black_market_risks:
+             Map.new(black_market_offers, fn offer ->
+               {offer.id,
+                BlackMarket.detection_terms(
+                  offer.total_price,
+                  ruleset["legal_market_tax_rate_bps"]
+                )}
+             end),
            grimoire_tiers: Grimoires.purchase_tiers(),
-           legal_market_tax_rate_bps: @legal_market_tax_rate_bps
+           legal_market_tax_rate_bps: ruleset["legal_market_tax_rate_bps"]
          }}
       end
     end
@@ -2464,6 +2490,22 @@ defmodule MMGO.Play do
   def fulfill_black_market_deal(_character_or_id, _deal_id),
     do: {:error, :black_market_deal_not_found}
 
+  def default_black_market_deal(character_or_id, deal_id) when is_binary(deal_id) do
+    with {:ok, state} <- trade_state(character_or_id),
+         deal when not is_nil(deal) <-
+           find_owned_black_market_deal(state.black_market_deals, deal_id),
+         {:ok, _result} <-
+           BlackMarket.default_deal(deal, state.character, "delivery deadline claimed by buyer") do
+      trade_state(state.character)
+    else
+      nil -> {:error, :black_market_deal_not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def default_black_market_deal(_character_or_id, _deal_id),
+    do: {:error, :black_market_deal_not_found}
+
   @doc """
   Returns the scoped player's balance, relevant append-only ledger entries,
   and public realm accounts needed to explain taxes, tuition, and charity.
@@ -2529,6 +2571,7 @@ defmodule MMGO.Play do
          workspace_here?:
            not is_nil(alchemy_workshop) and alchemy_workshop.location_id == base.location_id,
          recipes: Alchemy.list_recipes_for_character(character),
+         ingredients: Alchemy.interpretable_ingredients(character),
          jobs: Alchemy.list_brew_jobs_for_character(character.id),
          inventory: Inventory.list_inventory_for_character(character.id),
          installed_tool_codes: installed_tool_codes(character)
@@ -2570,6 +2613,20 @@ defmodule MMGO.Play do
   end
 
   def start_brew(_character_or_id, _recipe_id, _quantity), do: {:error, :invalid_quantity}
+
+  def start_interpreted_brew(character_or_id, selections) when is_map(selections) do
+    with {:ok, state} <- alchemy_state(character_or_id),
+         true <- state.workspace_here? || {:error, :alchemy_workshop_not_here},
+         {:ok, _result} <-
+           Alchemy.brew_from_ingredients(state.character, state.workspace, selections) do
+      alchemy_state(state.character)
+    else
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def start_interpreted_brew(_character_or_id, _selections),
+    do: {:error, :invalid_ingredients}
 
   def collect_brew(character_or_id, brew_job_id) when is_binary(brew_job_id) do
     with {:ok, state} <- alchemy_state(character_or_id),
@@ -4786,6 +4843,17 @@ defmodule MMGO.Play do
 
   defp stored_food?(_storage_item), do: false
 
+  defp material_availability(requirements, carried_items) do
+    Enum.map(requirements, fn requirement ->
+      available =
+        carried_items
+        |> Enum.filter(&(&1.item_template.code == requirement.code))
+        |> Enum.reduce(0, fn item, total -> total + Inventory.available_quantity(item) end)
+
+      Map.put(requirement, :available, available)
+    end)
+  end
+
   defp selected_base(active_bases, %Character{} = character, nil) do
     case Enum.find(active_bases, &(&1.owner_character_id == character.id)) do
       %Base{} = owned_base ->
@@ -5258,14 +5326,57 @@ defmodule MMGO.Play do
       nutrition_units: 0,
       tags: ["starter", "spell_ingredient"],
       actions: [],
-      metadata: %{"source" => "local_play_session"}
+      metadata: %{
+        "source" => "local_play_session",
+        "alchemical_primitives" => %{"clarity" => 2, "volatility" => 1}
+      }
+    })
+  end
+
+  defp ensure_starter_build_materials(character) do
+    template = get_or_create_starter_build_material!()
+
+    current_quantity =
+      character.id
+      |> Inventory.list_inventory_for_character()
+      |> Enum.filter(&(&1.item_template_id == template.id))
+      |> Enum.reduce(0, fn item, total -> total + Inventory.available_quantity(item) end)
+
+    if current_quantity >= @starter_build_material_quantity do
+      {:ok, :already_stocked}
+    else
+      Inventory.grant_item(character, template, %{
+        quantity: @starter_build_material_quantity - current_quantity,
+        metadata: %{"source" => "starter_kit"}
+      })
+    end
+  end
+
+  defp get_or_create_starter_build_material! do
+    get_or_create_item_template!(%{
+      code: @starter_build_material_code,
+      name: "Строевой камень",
+      item_type: :ingredient,
+      stackable: true,
+      weight: 2,
+      max_durability: 0,
+      nutrition_units: 0,
+      tags: ["starter", "construction"],
+      actions: [],
+      metadata: %{
+        "source" => "starter_kit",
+        "alchemical_primitives" => %{"earth" => 3, "binding" => 2}
+      }
     })
   end
 
   defp get_or_create_item_template!(attrs) do
     case Repo.get_by(ItemTemplate, code: attrs.code) do
       %ItemTemplate{} = template ->
-        template
+        case template |> ItemTemplate.changeset(attrs) |> Repo.update() do
+          {:ok, updated_template} -> updated_template
+          {:error, _changeset} -> template
+        end
 
       nil ->
         case Inventory.create_item_template(attrs) do

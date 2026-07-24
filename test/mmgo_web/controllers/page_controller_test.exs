@@ -3,6 +3,9 @@ defmodule MMGOWeb.PageControllerTest do
 
   test "GET /", %{conn: conn} do
     conn = get(conn, ~p"/")
-    assert html_response(conn, 200) =~ "Ministry of MaGic Online starts here"
+    html = html_response(conn, 200)
+
+    assert html =~ "Ministry of"
+    assert html =~ "Начать в Telegram"
   end
 end

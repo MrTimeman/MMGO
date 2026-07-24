@@ -46,6 +46,20 @@ defmodule MMGO.AI do
     )
   end
 
+  def interpret_alchemy(prompt_payload, opts \\ []) when is_map(prompt_payload) do
+    {schema, prompt_payload} = Map.pop(prompt_payload, :schema)
+
+    run(:alchemy_brew, prompt_payload, opts,
+      result_key: :alchemy_brew,
+      stored_request_payload: Map.put(prompt_payload, :schema, schema),
+      response_payload: & &1,
+      request_attrs: fn metadata -> %{character_id: metadata["character_id"]} end,
+      call: fn provider, payload, call_opts ->
+        provider.structured_completion(payload, schema, call_opts)
+      end
+    )
+  end
+
   def update_request(%Request{} = request, attrs) when is_map(attrs) do
     request
     |> Request.changeset(attrs)

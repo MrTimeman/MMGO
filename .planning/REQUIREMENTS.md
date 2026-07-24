@@ -92,12 +92,12 @@
 
 ## GDD v0.9 Decision Deltas (added 2026-07-13)
 
-Owner decisions on 2026-07-13 resolved four GDD TBDs (see `docs/MMGO_GDD.md` v0.9). Each creates new work against the updated contract:
+Owner decisions on 2026-07-13 resolved four GDD TBDs (see `docs/MMGO_GDD.md` v0.9). The resulting work against the updated contract is complete:
 
-- [ ] **DELTA-01**: Legal-transaction tax rate is realm-operator-configurable (canonical default 5%) instead of the hardcoded `@legal_market_tax_rate_bps` in `MMGO.Play`.
-- [ ] **DELTA-02**: Untaxed black-market deals carry probabilistic NPC detection scaling with deal size; caught → fine (multiple of evaded tax, via `MMGO.Reputation.record_crime`) + reputation hit. (Only deal-default penalties exist today.)
-- [ ] **DELTA-03**: Base acquisition has real costs: city purchase charges coins at a listed taxed price; building anywhere requires coins + gathered materials + game-days of construction. (Currently free.)
-- [ ] **DELTA-04**: Alchemy is AI-interpreted brewing over fixed per-item alchemical primitives with inventory ingredient selection, schema-bounded like the spell compiler. (Current implementation is fixed-recipe brewing.)
+- [x] **DELTA-01**: Legal-transaction tax rate is realm-operator-configurable (canonical default 5%) instead of the hardcoded `@legal_market_tax_rate_bps` in `MMGO.Play`.
+- [x] **DELTA-02**: Untaxed black-market deals carry probabilistic NPC detection scaling with deal size; caught → fine (multiple of evaded tax, via `MMGO.Reputation.record_crime`) + reputation hit.
+- [x] **DELTA-03**: Base acquisition has real costs: city purchase charges coins at a listed taxed price; building anywhere requires coins + gathered materials + game-days of construction.
+- [x] **DELTA-04**: Alchemy is AI-interpreted brewing over fixed per-item alchemical primitives with inventory ingredient selection, schema-bounded like the spell compiler.
 
 ## v2 Requirements
 
@@ -167,12 +167,17 @@ No deliberate deferrals: the user explicitly requested full GDD completion. Prod
 | QUALITY-02 | Phase 4 | Complete |
 | QUALITY-03 | Phase 12 | Complete |
 | QUALITY-04 | Phase 12 | Complete |
+| DELTA-01 | Alpha release | Complete |
+| DELTA-02 | Alpha release | Complete |
+| DELTA-03 | Alpha release | Complete |
+| DELTA-04 | Alpha release | Complete |
 
 **Coverage:**
 - v1 requirements: 52 total
-- Mapped to phases: 52
+- GDD v0.9 decision deltas: 4 total
+- Mapped and complete: 56
 - Unmapped: 0 ✓
 
 ---
 *Requirements defined: 2026-07-09*
-*Last updated: 2026-07-13 — code audit found the tracker badly stale: all 52 v1 requirements verified against implementation + tests (618 tests green, `mix precommit` clean: compile --warnings-as-errors, format, test). Evidence: `MMGO.Play` facade covers every requirement family; every domain context and every LiveView has a focused test file. Added v0.9 decision deltas as new open items.*
+*Last updated: 2026-07-22 — all 52 v1 requirements and four GDD v0.9 decision deltas are implemented. Alpha verification: 625 tests green, `mix precommit` clean, production release built, and packaged migration/seed/health smoke tests passed.*

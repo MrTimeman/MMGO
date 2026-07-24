@@ -44,7 +44,7 @@ defmodule MMGO.Telegram.UpdateHandler do
         {:ok, nil}
 
       {:ok, response_text} when is_binary(response_text) ->
-        Telegram.send_message(chat_id, response_text)
+        Telegram.send_message(chat_id, response_text, reply_options(message))
 
       {:error, reason} ->
         {:error, reason}
@@ -52,4 +52,33 @@ defmodule MMGO.Telegram.UpdateHandler do
   end
 
   defp maybe_reply(_character, _message), do: {:ok, nil}
+
+  defp reply_options(%{"text" => text}) when is_binary(text) do
+    command =
+      text
+      |> String.trim()
+      |> String.split(~r/\s+/, parts: 2)
+      |> List.first()
+      |> to_string()
+      |> String.trim_leading("/")
+      |> String.split("@")
+      |> List.first()
+      |> String.downcase()
+
+    case {command, Telegram.mini_app_url()} do
+      {command, url} when command in ["start", "play"] and is_binary(url) ->
+        [
+          reply_markup: %{
+            inline_keyboard: [
+              [%{text: "Открыть MMGO", web_app: %{url: url}}]
+            ]
+          }
+        ]
+
+      _other ->
+        []
+    end
+  end
+
+  defp reply_options(_message), do: []
 end

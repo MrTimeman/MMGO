@@ -287,6 +287,7 @@ defmodule MMGO.AcademyTest do
       |> Character.travel_changeset(%{current_location_id: laboratory.id})
       |> Repo.update!()
 
+    fund_base_acquisition!(realm, graduate)
     assert {:ok, _base} = Bases.purchase_city_base(graduate, laboratory)
 
     {:ok, workshop} =
@@ -888,12 +889,15 @@ defmodule MMGO.AcademyTest do
     complete_term_with_club(character, enrollment, club_founder, 95, "Student Merit Circle")
 
     assert {:ok, %{enrollment: peer_completed_enrollment}} =
-             Academy.complete_enrollment_by_id(peer_enrollment.id, force: true)
+             Academy.complete_enrollment_by_id(peer_enrollment.id,
+               force: true,
+               now: started_at
+             )
 
     refute peer_completed_enrollment.metadata["valedictorian"]
 
     assert {:ok, %{enrollment: completed_enrollment}} =
-             Academy.complete_enrollment_by_id(enrollment.id, force: true)
+             Academy.complete_enrollment_by_id(enrollment.id, force: true, now: started_at)
 
     assert completed_enrollment.metadata["gpa"] == 95.0
     assert completed_enrollment.metadata["cohort_rank"] == 1
@@ -977,14 +981,17 @@ defmodule MMGO.AcademyTest do
     complete_term_with_club(character, enrollment, club_founder, 72, "Later Merit Circle")
 
     assert {:ok, %{enrollment: first_completed}} =
-             Academy.complete_enrollment_by_id(peer_enrollment.id, force: true)
+             Academy.complete_enrollment_by_id(peer_enrollment.id,
+               force: true,
+               now: started_at
+             )
 
     refute first_completed.metadata["valedictorian"]
     refute first_completed.metadata["honors"]
     refute first_completed.metadata["merit_scholarship_eligible"]
 
     assert {:ok, %{enrollment: last_completed}} =
-             Academy.complete_enrollment_by_id(enrollment.id, force: true)
+             Academy.complete_enrollment_by_id(enrollment.id, force: true, now: started_at)
 
     refute last_completed.metadata["valedictorian"]
 
@@ -1168,11 +1175,12 @@ defmodule MMGO.AcademyTest do
   end
 
   defp complete_term_with_club(character, enrollment, club_founder, score, club_name) do
-    {:ok, term} = Academy.begin_term(enrollment.id)
-    {:ok, _lecture_term} = Academy.open_lecture_phase(character.id, term.id)
+    now = enrollment.started_at
+    {:ok, term} = Academy.begin_term(enrollment.id, now: now)
+    {:ok, _lecture_term} = Academy.open_lecture_phase(character.id, term.id, now: now)
 
     Enum.each(1..3, fn _lecture ->
-      assert {:ok, _updated_term} = Academy.attend_lecture(character.id, term.id)
+      assert {:ok, _updated_term} = Academy.attend_lecture(character.id, term.id, now: now)
     end)
 
     {:ok, %{club: club}} =
@@ -1182,9 +1190,9 @@ defmodule MMGO.AcademyTest do
     assert {:ok, _membership} = Clubs.accept_invitation(invitation, character)
     {:ok, event} = Clubs.create_event(club, %{kind: :general_meeting})
     {:ok, _attendance} = Clubs.attend_event(event, character)
-    {:ok, _midterm_term} = Academy.close_club_window(character.id, term.id)
-    {:ok, _final_term} = Academy.submit_midterm(character.id, term.id, score)
-    {:ok, _completed_term} = Academy.submit_final(character.id, term.id, score)
+    {:ok, _midterm_term} = Academy.close_club_window(character.id, term.id, now: now)
+    {:ok, _final_term} = Academy.submit_midterm(character.id, term.id, score, now: now)
+    {:ok, _completed_term} = Academy.submit_final(character.id, term.id, score, now: now)
   end
 
   defp course_fixture(realm, code) do

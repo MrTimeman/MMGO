@@ -35,6 +35,7 @@ defmodule MMGOWeb.ProductionLiveTest do
     city: city
   } do
     character = character_fixture(realm, city, "alch-live", "Alchemy Live")
+    fund_base_acquisition!(realm, character)
     specialize(character, :alchemy)
     {:ok, _base} = Bases.purchase_city_base(character, city)
 
@@ -42,7 +43,7 @@ defmodule MMGOWeb.ProductionLiveTest do
     {:ok, herb} = item_template("alch-live-herb", "Herb", :ingredient)
     {:ok, potion} = item_template("alch-live-potion", "Potion", :potion)
     {:ok, _tool} = Inventory.grant_item(character, cauldron)
-    {:ok, _herbs} = Inventory.grant_item(character, herb, %{quantity: 2})
+    {:ok, herbs} = Inventory.grant_item(character, herb, %{quantity: 2})
 
     {:ok, recipe} =
       Alchemy.create_recipe(%{
@@ -66,11 +67,14 @@ defmodule MMGOWeb.ProductionLiveTest do
     assert has_element?(view, "#alchemy-brew-form")
 
     view
-    |> form("#alchemy-brew-form", %{"brew" => %{"recipe_id" => recipe.id, "quantity" => "1"}})
+    |> form("#alchemy-brew-form", %{
+      "brew" => %{"ingredients" => %{herbs.id => "1"}}
+    })
     |> render_submit()
 
     [job] = Alchemy.list_brew_jobs_for_character(character.id)
-    assert job.recipe_id == recipe.id
+    assert job.recipe_id != recipe.id
+    assert job.recipe.metadata["interpreted_alchemy"]
     assert has_element?(view, "#alchemy-job-#{job.id}")
   end
 
@@ -80,6 +84,7 @@ defmodule MMGOWeb.ProductionLiveTest do
     city: city
   } do
     character = character_fixture(realm, city, "craft-live", "Craft Live")
+    fund_base_acquisition!(realm, character)
     specialize(character, :mastery)
     {:ok, _base} = Bases.purchase_city_base(character, city)
 
@@ -129,7 +134,8 @@ defmodule MMGOWeb.ProductionLiveTest do
       weight: 1,
       max_durability: 0,
       nutrition_units: 0,
-      actions: template_actions(item_type)
+      actions: template_actions(item_type),
+      metadata: template_metadata(item_type)
     })
   end
 
@@ -145,6 +151,11 @@ defmodule MMGOWeb.ProductionLiveTest do
     })
     |> Repo.insert!()
   end
+
+  defp template_metadata(:ingredient),
+    do: %{"alchemical_primitives" => %{"restoration" => 2, "binding" => 1}}
+
+  defp template_metadata(_item_type), do: %{}
 
   defp template_actions(:ingredient), do: []
 

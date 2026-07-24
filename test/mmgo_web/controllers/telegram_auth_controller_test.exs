@@ -93,7 +93,7 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
         })
     }
 
-    secret_key = :crypto.mac(:hmac, :sha256, @bot_token, "WebAppData")
+    secret_key = :crypto.mac(:hmac, :sha256, "WebAppData", @bot_token)
 
     hash =
       fields

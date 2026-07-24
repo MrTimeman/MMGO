@@ -3,9 +3,11 @@ defmodule MMGO.BlackMarketTest do
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.BlackMarket
+  alias MMGO.BlackMarket.ExpireDealWorker
   alias MMGO.Economy
   alias MMGO.Inventory
   alias MMGO.Repo
+  alias MMGO.Reputation
   alias MMGO.Worlds
 
   setup do
@@ -125,6 +127,63 @@ defmodule MMGO.BlackMarketTest do
     assert Economy.get_account!(treasury.id).current_balance == 800
   end
 
+  test "NPC detection scales with deal size and atomically applies the evaded-tax fine", %{
+    realm: realm,
+    seller: seller,
+    buyer: buyer,
+    ore_item: ore_item
+  } do
+    {:ok, seller_account} = Economy.ensure_character_account(seller)
+    treasury = Economy.treasury_account_for_realm(realm.id)
+
+    {:ok, %{offer: offer}} =
+      BlackMarket.create_offer(seller, ore_item, %{quantity: 2, unit_price: 15})
+
+    assert {:ok, %{deal: deal, detection: detection}} =
+             BlackMarket.accept_offer(offer, buyer, detection_roll: 0)
+
+    assert detection.caught?
+    assert detection.evaded_tax == 1
+    assert detection.fine_amount == 3
+    assert deal.metadata["npc_detection"]["caught"]
+    assert Economy.get_account!(seller_account.id).current_balance == 27
+    assert Economy.get_account!(treasury.id).current_balance == 803
+
+    profile = Reputation.profile_for_character!(seller.id)
+    assert profile.reputation_score < 0
+    assert profile.outstanding_fine == 0
+
+    assert hd(Reputation.list_crimes_for_character(seller.id)).crime_type ==
+             "black_market_detection"
+
+    small = BlackMarket.detection_terms(10, 500)
+    large = BlackMarket.detection_terms(1_000, 500)
+    assert large.chance_bps > small.chance_bps
+  end
+
+  test "an unaffordable detection fine remains outstanding without undoing the deal", %{
+    realm: realm,
+    seller: seller,
+    buyer: buyer,
+    ore_item: ore_item
+  } do
+    ruleset = Map.put(Worlds.realm_ruleset(realm), "legal_market_tax_rate_bps", 10_000)
+
+    realm
+    |> MMGO.Worlds.Realm.changeset(%{ruleset: ruleset})
+    |> Repo.update!()
+
+    {:ok, %{offer: offer}} =
+      BlackMarket.create_offer(seller, ore_item, %{quantity: 2, unit_price: 15})
+
+    assert {:ok, %{deal: deal, detection: detection}} =
+             BlackMarket.accept_offer(offer, buyer, detection_roll: 0)
+
+    assert deal.status == :awaiting_delivery
+    assert detection.fine_amount == 90
+    assert Reputation.profile_for_character!(seller.id).outstanding_fine == 60
+  end
+
   test "fulfill_deal/2 transfers stackable goods to the buyer", %{
     seller: seller,
     buyer: buyer,
@@ -185,6 +244,39 @@ defmodule MMGO.BlackMarketTest do
     assert defaulted_deal.status == :defaulted
     assert defaulted_deal.metadata["default_reason"] == "never delivered"
     assert defaulted_offer.status == :defaulted
+  end
+
+  test "buyer and durable worker can close an overdue undelivered deal", %{
+    seller: seller,
+    buyer: buyer,
+    ore_item: ore_item
+  } do
+    accepted_at = ~U[2020-07-22 10:00:00Z]
+
+    {:ok, %{offer: offer}} =
+      BlackMarket.create_offer(seller, ore_item, %{quantity: 1, unit_price: 10})
+
+    {:ok, %{deal: deal}} =
+      BlackMarket.accept_offer(offer, buyer,
+        accepted_at: accepted_at,
+        delivery_game_days: 1,
+        detection_roll: 9_999
+      )
+
+    assert {:error, early_changeset} =
+             BlackMarket.default_deal(deal, buyer, "too early", now: accepted_at)
+
+    assert %{status: ["deal delivery deadline has not passed"]} = errors_on(early_changeset)
+
+    due_at = deal.metadata["delivery_due_at"] |> DateTime.from_iso8601() |> elem(1)
+
+    assert :ok =
+             ExpireDealWorker.perform(%Oban.Job{
+               args: %{"deal_id" => deal.id},
+               scheduled_at: due_at
+             })
+
+    assert BlackMarket.get_deal!(deal.id).status == :defaulted
   end
 
   test "fulfill_deal/2 fails if the seller no longer has the promised goods", %{

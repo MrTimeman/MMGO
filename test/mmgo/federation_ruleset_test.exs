@@ -11,6 +11,38 @@ defmodule MMGO.FederationRulesetTest do
   alias MMGO.Spells
   alias MMGO.Worlds
 
+  test "legal transaction tax is realm-configurable with a canonical five-percent default" do
+    {:ok, canonical_realm} =
+      Worlds.create_realm(%{
+        slug: "canonical-tax",
+        name: "Canonical Tax Realm",
+        is_default: true,
+        currency_code: "GLD"
+      })
+
+    assert Worlds.realm_ruleset(canonical_realm)["legal_market_tax_rate_bps"] == 500
+
+    {:ok, low_tax_realm} =
+      Worlds.create_realm(%{
+        slug: "low-tax",
+        name: "Low Tax Realm",
+        currency_code: "GLD",
+        ruleset: %{"legal_market_tax_rate_bps" => 175}
+      })
+
+    assert Worlds.realm_ruleset(low_tax_realm)["legal_market_tax_rate_bps"] == 175
+
+    assert {:error, changeset} =
+             Worlds.create_realm(%{
+               slug: "invalid-tax",
+               name: "Invalid Tax Realm",
+               currency_code: "GLD",
+               ruleset: %{"legal_market_tax_rate_bps" => 10_001}
+             })
+
+    assert %{ruleset: [_message]} = errors_on(changeset)
+  end
+
   test "canonical ruleset suppresses magic in wilderness duels while global ruleset allows it" do
     {:ok, canonical_realm} =
       Worlds.create_realm(%{

@@ -32,6 +32,8 @@ defmodule MMGO.BasesOwnershipTest do
     custodian = character_fixture(realm, city, "base-custodian", "Base Custodian")
     member = character_fixture(realm, city, "base-member", "Base Member")
 
+    fund_base_acquisition!(realm, owner)
+
     {:ok, template} =
       Inventory.create_item_template(%{
         code: "shared_base_ration",
@@ -176,6 +178,7 @@ defmodule MMGO.BasesOwnershipTest do
              Bases.configure_organization_share(first_base, owner, first_organization, 5_000)
 
     second_owner = character_fixture(realm, city, "second-base-owner", "Second Base Owner")
+    fund_base_acquisition!(realm, second_owner)
 
     {:ok, second_base} =
       Bases.purchase_city_base(second_owner, city, %{name: "Second Shared Hall"})
