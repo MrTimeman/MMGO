@@ -112,7 +112,8 @@ defmodule MMGOWeb.ActionHubLiveTest do
     assert has_element?(view, "#activity-option-academy")
     assert has_element?(view, "#activity-option-shops", "рынок, обмен и сделки")
     assert has_element?(view, "#activity-guidance")
-    assert has_element?(view, "#game-primary-nav")
+    assert has_element?(view, "#activity-back-to-map")
+    refute has_element?(view, "#game-primary-nav")
     refute has_element?(view, "#atmosphere-audio")
   end
 

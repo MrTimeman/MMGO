@@ -100,7 +100,6 @@ defmodule MMGOWeb.CombatLive do
       flash={@flash}
       current_scope={@current_scope}
       atmosphere={@atmosphere}
-      game_nav={false}
     >
       <main
         id="combat-screen"

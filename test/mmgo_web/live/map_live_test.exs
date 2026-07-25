@@ -74,10 +74,9 @@ defmodule MMGOWeb.MapLiveTest do
     assert has_element?(view, "#map-character-panel")
     assert has_element?(view, "#map-panel-close")
     assert has_element?(view, "#map-nearby-count", "Рядом: 1")
-    assert has_element?(view, "#game-primary-nav")
-    refute has_element?(view, "#game-nav-event")
-    refute has_element?(view, "#game-nav-inventory")
-    refute has_element?(view, "#game-nav-spellbook")
+    refute has_element?(view, "#game-primary-nav")
+    assert has_element?(view, "#map-account-menu-toggle[aria-expanded='false']")
+    refute has_element?(view, "#map-account-menu")
     refute has_element?(view, "#map-notifications-history")
     refute has_element?(view, "#atmosphere-audio")
     refute has_element?(view, "a[href='/healthz']")
@@ -95,6 +94,14 @@ defmodule MMGOWeb.MapLiveTest do
 
     view |> render_hook("map_location_selected", %{"selected" => false})
     assert has_element?(view, "#map-character-panel")
+
+    view |> element("#map-account-menu-toggle") |> render_click()
+    assert has_element?(view, "#map-account-menu-toggle[aria-expanded='true']")
+    assert has_element?(view, "#map-account-menu")
+    assert has_element?(view, "#map-account-inventory[href='/inventory']")
+
+    view |> render_click("close_account_menu")
+    refute has_element?(view, "#map-account-menu")
   end
 
   defp scoped_conn(conn, character) do

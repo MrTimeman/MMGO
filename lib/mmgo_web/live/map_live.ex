@@ -21,6 +21,7 @@ defmodule MMGOWeb.MapLive do
       |> assign(:page_title, "Карта мира")
       |> assign(:map_panel_open?, true)
       |> assign(:map_location_selected?, false)
+      |> assign(:account_menu_open?, false)
       |> refresh_world()
       |> schedule_refresh()
 
@@ -67,6 +68,16 @@ defmodule MMGOWeb.MapLive do
   end
 
   @impl true
+  def handle_event("toggle_account_menu", _params, socket) do
+    {:noreply, update(socket, :account_menu_open?, &(!&1))}
+  end
+
+  @impl true
+  def handle_event("close_account_menu", _params, socket) do
+    {:noreply, assign(socket, :account_menu_open?, false)}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
@@ -93,10 +104,49 @@ defmodule MMGOWeb.MapLive do
               </span>
             </section>
 
-            <section class="rounded-full border border-stone-700/70 bg-stone-950/80 px-3 py-2 text-right shadow-lg backdrop-blur">
-              <p class="font-sans text-xs font-bold text-amber-100">{@character.name}</p>
-              <p class="font-sans text-[0.65rem] text-stone-400">уровень {@character.level}</p>
-            </section>
+            <div class="relative" phx-click-away="close_account_menu">
+              <button
+                id="map-account-menu-toggle"
+                type="button"
+                phx-click="toggle_account_menu"
+                aria-haspopup="menu"
+                aria-expanded={to_string(@account_menu_open?)}
+                aria-controls="map-account-menu"
+                class="group flex min-h-11 items-center gap-2 rounded-full border border-stone-700/70 bg-stone-950/80 px-3 py-2 text-right shadow-lg backdrop-blur transition hover:border-amber-300/45 hover:bg-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+              >
+                <span>
+                  <span class="block font-sans text-xs font-bold text-amber-100">
+                    {@character.name}
+                  </span>
+                  <span class="block font-sans text-[0.65rem] text-stone-400">
+                    уровень {@character.level}
+                  </span>
+                </span>
+                <.icon
+                  name="hero-chevron-down"
+                  class={[
+                    "size-3.5 text-stone-400 transition duration-150",
+                    @account_menu_open? && "rotate-180 text-amber-200"
+                  ]}
+                />
+              </button>
+
+              <div
+                :if={@account_menu_open?}
+                id="map-account-menu"
+                role="menu"
+                class="absolute right-0 top-[calc(100%+0.5rem)] w-48 overflow-hidden rounded-xl border border-stone-700/80 bg-stone-950/95 p-1.5 text-left shadow-2xl shadow-black/50 backdrop-blur-xl"
+              >
+                <.link
+                  id="map-account-inventory"
+                  navigate={~p"/inventory"}
+                  role="menuitem"
+                  class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 font-sans text-sm font-semibold text-stone-200 transition hover:bg-amber-200/10 hover:text-amber-100 focus-visible:bg-amber-200/10 focus-visible:text-amber-100 focus-visible:outline-none"
+                >
+                  <.icon name="hero-archive-box" class="size-4 text-amber-300" /> Инвентарь
+                </.link>
+              </div>
+            </div>
           </div>
         </header>
 

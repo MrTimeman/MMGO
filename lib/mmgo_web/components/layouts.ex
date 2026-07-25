@@ -23,10 +23,6 @@ defmodule MMGOWeb.Layouts do
     default: false,
     doc: "renders the immersive public shell instead of the authenticated game chrome"
 
-  attr :game_nav, :boolean,
-    default: true,
-    doc: "shows the four primary game destinations for an authenticated player"
-
   slot :inner_block, required: true
 
   def app(assigns) do
@@ -98,28 +94,11 @@ defmodule MMGOWeb.Layouts do
     <div
       :if={not @public and not is_nil(@current_scope)}
       id="game-shell"
-      class={["game-shell", @game_nav && "game-shell--with-nav"]}
+      class="game-shell"
     >
       <main id="game-content" class="game-content">
         {render_slot(@inner_block)}
       </main>
-
-      <nav
-        :if={@game_nav}
-        id="game-primary-nav"
-        aria-label="Основные разделы игры"
-        class="game-primary-nav"
-      >
-        <.link
-          id="game-nav-map"
-          navigate={~p"/map"}
-          class="game-primary-nav__item"
-          aria-label="Карта мира"
-        >
-          <.icon name="hero-map" class="size-5" />
-          <span>Карта</span>
-        </.link>
-      </nav>
 
       <.flash_group flash={@flash} />
       <.atmosphere_audio

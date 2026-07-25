@@ -23,7 +23,7 @@ defmodule MMGOWeb.DefeatLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <Layouts.app flash={@flash} current_scope={@current_scope} game_nav={false}>
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
       <main id="defeat-screen" class="min-h-full bg-stone-950 px-4 py-10 text-stone-100">
         <div class="mx-auto w-full max-w-3xl space-y-6">
           <header class="rounded-2xl border border-violet-400/25 bg-gradient-to-br from-violet-950/45 via-stone-950 to-stone-900 p-7 shadow-2xl">
