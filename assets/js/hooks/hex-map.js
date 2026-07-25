@@ -30,6 +30,7 @@ export const HexMapHook = {
     this.locations = []
     this.player = null
     this.selected = null
+    this.sheetOpen = false
 
     this.mapData = null
     this.spriteManifest = null
@@ -429,7 +430,15 @@ export const HexMapHook = {
   // -- input ---------------------------------------------------------------
 
   bindInput() {
+    const interactiveTarget = target =>
+      target instanceof Element && target.closest("button, a, input, select, textarea, [role='button']")
+
     const down = event => {
+      // The location sheet lives inside the map hook. Capturing a pointer that
+      // started on its Travel button retargets the following click to the map
+      // root, so the button never fires.
+      if (interactiveTarget(event.target)) return
+
       try {
         this.el.setPointerCapture?.(event.pointerId)
       } catch (_error) {
@@ -484,6 +493,8 @@ export const HexMapHook = {
     }
 
     const up = event => {
+      if (!this.lastPointers.has(event.pointerId)) return
+
       this.lastPointers.delete(event.pointerId)
       try {
         this.el.releasePointerCapture?.(event.pointerId)
@@ -505,6 +516,8 @@ export const HexMapHook = {
     }
 
     const wheel = event => {
+      if (interactiveTarget(event.target)) return
+
       event.preventDefault()
       const rect = this.el.getBoundingClientRect()
       const point = { x: event.clientX - rect.left, y: event.clientY - rect.top }
@@ -595,6 +608,7 @@ export const HexMapHook = {
       .join("")
 
     this.sheet.hidden = false
+    this.setSheetOpen(true)
     this.sheet.innerHTML = `
       <div>
         <h2>${escapeHtml(loc.name)}</h2>
@@ -609,9 +623,9 @@ export const HexMapHook = {
     if (button) {
       button.addEventListener(
         "click",
-        () => {
+        event => {
+          event.stopPropagation()
           this.pushEvent("location_clicked", { slug: loc.slug })
-          this.closeSheet()
         },
         { once: true }
       )
@@ -640,6 +654,14 @@ export const HexMapHook = {
     this.sheet.hidden = true
     this.sheet.innerHTML = ""
     this.pathPreview = null
+    this.setSheetOpen(false)
+  },
+
+  setSheetOpen(open) {
+    if (this.sheetOpen === open) return
+
+    this.sheetOpen = open
+    this.pushEvent("map_location_selected", { selected: open })
   },
 
   // -- render loop -----------------------------------------------------------

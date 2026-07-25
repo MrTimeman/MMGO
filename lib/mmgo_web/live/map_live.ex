@@ -20,6 +20,7 @@ defmodule MMGOWeb.MapLive do
       socket
       |> assign(:page_title, "Карта мира")
       |> assign(:map_panel_open?, true)
+      |> assign(:map_location_selected?, false)
       |> refresh_world()
       |> schedule_refresh()
 
@@ -52,6 +53,12 @@ defmodule MMGOWeb.MapLive do
   @impl true
   def handle_event("preview_path", %{"slug" => slug}, socket) do
     {:noreply, push_path_preview(socket, slug)}
+  end
+
+  @impl true
+  def handle_event("map_location_selected", %{"selected" => selected}, socket)
+      when is_boolean(selected) do
+    {:noreply, assign(socket, :map_location_selected?, selected)}
   end
 
   @impl true
@@ -94,7 +101,7 @@ defmodule MMGOWeb.MapLive do
         </header>
 
         <aside
-          :if={is_nil(@active_journey) and @map_panel_open?}
+          :if={is_nil(@active_journey) and @map_panel_open? and not @map_location_selected?}
           id="map-character-panel"
           class="absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-amber-500/25 bg-stone-950/92 p-4 text-stone-100 shadow-2xl shadow-black/50 backdrop-blur-xl"
         >
@@ -155,7 +162,7 @@ defmodule MMGOWeb.MapLive do
         </aside>
 
         <button
-          :if={is_nil(@active_journey) and not @map_panel_open?}
+          :if={is_nil(@active_journey) and not @map_panel_open? and not @map_location_selected?}
           id="map-panel-open"
           type="button"
           phx-click="toggle_map_panel"

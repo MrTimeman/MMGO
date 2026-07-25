@@ -75,6 +75,9 @@ defmodule MMGOWeb.MapLiveTest do
     assert has_element?(view, "#map-panel-close")
     assert has_element?(view, "#map-nearby-count", "Рядом: 1")
     assert has_element?(view, "#game-primary-nav")
+    refute has_element?(view, "#game-nav-event")
+    refute has_element?(view, "#game-nav-inventory")
+    refute has_element?(view, "#game-nav-spellbook")
     refute has_element?(view, "#map-notifications-history")
     refute has_element?(view, "#atmosphere-audio")
     refute has_element?(view, "a[href='/healthz']")
@@ -84,6 +87,13 @@ defmodule MMGOWeb.MapLiveTest do
     assert has_element?(view, "#map-panel-open")
 
     view |> element("#map-panel-open") |> render_click()
+    assert has_element?(view, "#map-character-panel")
+
+    view |> render_hook("map_location_selected", %{"selected" => true})
+    refute has_element?(view, "#map-character-panel")
+    refute has_element?(view, "#map-panel-open")
+
+    view |> render_hook("map_location_selected", %{"selected" => false})
     assert has_element?(view, "#map-character-panel")
   end
 

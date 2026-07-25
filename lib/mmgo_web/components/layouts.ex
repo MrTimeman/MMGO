@@ -119,33 +119,6 @@ defmodule MMGOWeb.Layouts do
           <.icon name="hero-map" class="size-5" />
           <span>Карта</span>
         </.link>
-        <.link
-          id="game-nav-event"
-          navigate={~p"/event"}
-          class="game-primary-nav__item"
-          aria-label="Действия в текущем месте"
-        >
-          <.icon name="hero-map-pin" class="size-5" />
-          <span>Действия</span>
-        </.link>
-        <.link
-          id="game-nav-inventory"
-          navigate={~p"/inventory"}
-          class="game-primary-nav__item"
-          aria-label="Инвентарь персонажа"
-        >
-          <.icon name="hero-archive-box" class="size-5" />
-          <span>Инвентарь</span>
-        </.link>
-        <.link
-          id="game-nav-spellbook"
-          navigate={~p"/spellbook"}
-          class="game-primary-nav__item"
-          aria-label="Книга заклинаний"
-        >
-          <.icon name="hero-sparkles" class="size-5" />
-          <span>Заклинания</span>
-        </.link>
       </nav>
 
       <.flash_group flash={@flash} />
