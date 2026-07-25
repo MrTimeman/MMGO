@@ -37,6 +37,9 @@ defmodule MMGOWeb.BulletinBoardLiveTest do
 
     assert has_element?(view, "#bulletin-hall-of-fame")
     assert has_element?(view, "#bulletin-valedictorian-#{enrollment.id}")
+    assert has_element?(view, "#bulletin-courses .bb-table-wrap")
+    assert has_element?(view, "#bulletin-back-to-academy")
+    assert has_element?(view, "#bulletin-study-desk-link")
   end
 
   defp character_fixture(realm, location) do

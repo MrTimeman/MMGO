@@ -110,21 +110,41 @@ defmodule MMGOWeb.Layouts do
         aria-label="Основные разделы игры"
         class="game-primary-nav"
       >
-        <.link id="game-nav-map" navigate={~p"/map"} class="game-primary-nav__item">
+        <.link
+          id="game-nav-map"
+          navigate={~p"/map"}
+          class="game-primary-nav__item"
+          aria-label="Карта мира"
+        >
           <.icon name="hero-map" class="size-5" />
-          <span>Мир</span>
+          <span>Карта</span>
         </.link>
-        <.link id="game-nav-event" navigate={~p"/event"} class="game-primary-nav__item">
+        <.link
+          id="game-nav-event"
+          navigate={~p"/event"}
+          class="game-primary-nav__item"
+          aria-label="Действия в текущем месте"
+        >
           <.icon name="hero-map-pin" class="size-5" />
-          <span>Здесь</span>
+          <span>Действия</span>
         </.link>
-        <.link id="game-nav-inventory" navigate={~p"/inventory"} class="game-primary-nav__item">
+        <.link
+          id="game-nav-inventory"
+          navigate={~p"/inventory"}
+          class="game-primary-nav__item"
+          aria-label="Инвентарь персонажа"
+        >
           <.icon name="hero-archive-box" class="size-5" />
-          <span>Вещи</span>
+          <span>Инвентарь</span>
         </.link>
-        <.link id="game-nav-spellbook" navigate={~p"/spellbook"} class="game-primary-nav__item">
+        <.link
+          id="game-nav-spellbook"
+          navigate={~p"/spellbook"}
+          class="game-primary-nav__item"
+          aria-label="Книга заклинаний"
+        >
           <.icon name="hero-sparkles" class="size-5" />
-          <span>Магия</span>
+          <span>Заклинания</span>
         </.link>
       </nav>
 

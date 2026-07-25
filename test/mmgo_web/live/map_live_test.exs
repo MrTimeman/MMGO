@@ -72,11 +72,19 @@ defmodule MMGOWeb.MapLiveTest do
     assert has_element?(view, "#map-current-location")
     assert has_element?(view, "#map-activity-link")
     assert has_element?(view, "#map-character-panel")
+    assert has_element?(view, "#map-panel-close")
     assert has_element?(view, "#map-nearby-count", "Рядом: 1")
     assert has_element?(view, "#game-primary-nav")
     refute has_element?(view, "#map-notifications-history")
     refute has_element?(view, "#atmosphere-audio")
     refute has_element?(view, "a[href='/healthz']")
+
+    view |> element("#map-panel-close") |> render_click()
+    refute has_element?(view, "#map-character-panel")
+    assert has_element?(view, "#map-panel-open")
+
+    view |> element("#map-panel-open") |> render_click()
+    assert has_element?(view, "#map-character-panel")
   end
 
   defp scoped_conn(conn, character) do

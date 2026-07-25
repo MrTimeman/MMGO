@@ -562,13 +562,82 @@
   text-align: center; margin: 0 0 0.7rem; text-shadow: 0 1px 2px rgba(0,0,0,0.5);
 }
 /* pinned-note look for rows */
-.bb-table { width: 100%; border-collapse: collapse; background: var(--parch-paper);
+.bb-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  border-radius: 3px;
+  box-shadow: 0 4px 10px -3px rgba(0,0,0,0.6);
+  -webkit-overflow-scrolling: touch;
+}
+.bb-table { width: 100%; min-width: 34rem; border-collapse: collapse; background: var(--parch-paper);
   color: var(--parch-ink); border-radius: 3px; overflow: hidden;
-  box-shadow: 0 4px 10px -3px rgba(0,0,0,0.6); }
+}
 .bb-table th { font-family: var(--font-sans); font-size: 0.6rem; letter-spacing: 0.08em;
   text-transform: uppercase; text-align: left; padding: 0.5rem 0.6rem;
   background: var(--parch-paper-dark); color: var(--parch-ink-faint); }
 .bb-table td { padding: 0.5rem 0.6rem; border-top: 1px solid var(--parch-vignette); font-size: 0.85rem; }
+
+@media (max-width: 36rem) {
+  .bulletin-board {
+    padding-inline: 0.65rem;
+  }
+
+  .bb-section {
+    padding-inline: 0.7rem;
+  }
+
+  .bb-table {
+    min-width: 0;
+  }
+
+  .bb-table thead {
+    display: none;
+  }
+
+  .bb-table,
+  .bb-table tbody,
+  .bb-table tr,
+  .bb-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .bb-table tr {
+    padding: 0.35rem 0.65rem;
+    border-top: 1px solid var(--parch-vignette);
+  }
+
+  .bb-table tr:first-child {
+    border-top: 0;
+  }
+
+  .bb-table td {
+    display: grid;
+    grid-template-columns: minmax(5.5rem, 0.8fr) minmax(0, 1.4fr);
+    gap: 0.65rem;
+    padding: 0.35rem 0;
+    border: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .bb-table td::before {
+    content: attr(data-label);
+    color: var(--parch-ink-faint);
+    font-family: var(--font-sans);
+    font-size: 0.62rem;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+  }
+
+  .bb-table__empty td {
+    display: block;
+  }
+
+  .bb-table__empty td::before {
+    content: none;
+  }
+}
 .bb-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .bb-list li {
   background: var(--parch-paper); color: var(--parch-ink); padding: 0.6rem 0.75rem;

@@ -35,40 +35,46 @@ defmodule MMGOWeb.BulletinBoardLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
       <div class="bulletin-board">
-        <a href={~p"/academy"} class="map-back-link">← В холл Академии</a>
+        <.link id="bulletin-back-to-academy" navigate={~p"/academy"} class="map-back-link">
+          ← В холл Академии
+        </.link>
         <h1>Доска объявлений</h1>
 
-        <section class="bb-section">
+        <section id="bulletin-courses" class="bb-section">
           <h2>Курсы семестра</h2>
-          <table class="bb-table">
-            <thead>
-              <tr>
-                <th>Курс</th>
-                <th>Путь</th>
-                <th>Профессор</th>
-                <th>Источник</th>
-              </tr>
-            </thead>
-            <tbody>
-              <%= for course <- @courses do %>
+          <div class="bb-table-wrap">
+            <table class="bb-table">
+              <thead>
                 <tr>
-                  <td>{course.title}</td>
-                  <td>{course.track || "—"}</td>
-                  <td>{course.npc_professor_code || "игрок-профессор"}</td>
-                  <td>{source_label(course.source)}</td>
+                  <th>Курс</th>
+                  <th>Путь</th>
+                  <th>Профессор</th>
+                  <th>Источник</th>
                 </tr>
-              <% end %>
-              <%= if @courses == [] do %>
-                <tr>
-                  <td colspan="4">
-                    <div class="acd-empty">
-                      Курсы ещё не вывешены. Писарь оставил место для первого листка.
-                    </div>
-                  </td>
-                </tr>
-              <% end %>
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                <%= for course <- @courses do %>
+                  <tr>
+                    <td data-label="Курс">{course.title}</td>
+                    <td data-label="Путь">{course.track || "—"}</td>
+                    <td data-label="Профессор">
+                      {course.npc_professor_code || "игрок-профессор"}
+                    </td>
+                    <td data-label="Источник">{source_label(course.source)}</td>
+                  </tr>
+                <% end %>
+                <%= if @courses == [] do %>
+                  <tr class="bb-table__empty">
+                    <td colspan="4">
+                      <div class="acd-empty">
+                        Курсы ещё не вывешены. Писарь оставил место для первого листка.
+                      </div>
+                    </td>
+                  </tr>
+                <% end %>
+              </tbody>
+            </table>
+          </div>
         </section>
 
         <section class="bb-section">
@@ -142,7 +148,9 @@ defmodule MMGOWeb.BulletinBoardLive do
         </section>
 
         <div class="bb-nav">
-          <.link navigate={~p"/academy/study-desk"}>К своему столу</.link>
+          <.link id="bulletin-study-desk-link" navigate={~p"/academy/study-desk"}>
+            К своему столу
+          </.link>
         </div>
       </div>
     </Layouts.app>

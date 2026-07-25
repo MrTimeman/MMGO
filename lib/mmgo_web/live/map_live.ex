@@ -19,6 +19,7 @@ defmodule MMGOWeb.MapLive do
     socket =
       socket
       |> assign(:page_title, "Карта мира")
+      |> assign(:map_panel_open?, true)
       |> refresh_world()
       |> schedule_refresh()
 
@@ -54,10 +55,15 @@ defmodule MMGOWeb.MapLive do
   end
 
   @impl true
+  def handle_event("toggle_map_panel", _params, socket) do
+    {:noreply, update(socket, :map_panel_open?, &(!&1))}
+  end
+
+  @impl true
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
-      <main class="game-root" aria-label="Карта мира">
+      <main class="game-root game-root--viewport" aria-label="Карта мира">
         <div
           id="world-map"
           phx-hook="HexMap"
@@ -88,7 +94,7 @@ defmodule MMGOWeb.MapLive do
         </header>
 
         <aside
-          :if={is_nil(@active_journey)}
+          :if={is_nil(@active_journey) and @map_panel_open?}
           id="map-character-panel"
           class="absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-amber-500/25 bg-stone-950/92 p-4 text-stone-100 shadow-2xl shadow-black/50 backdrop-blur-xl"
         >
@@ -101,13 +107,24 @@ defmodule MMGOWeb.MapLive do
                 {location_name(@current_location)}
               </h1>
             </div>
-            <span class="shrink-0 rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1 font-sans text-xs text-stone-300">
-              Еда: {@survival.food_units}
-            </span>
+            <div class="flex shrink-0 items-center gap-2">
+              <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1 font-sans text-xs text-stone-300">
+                Еда: {@survival.food_units}
+              </span>
+              <button
+                id="map-panel-close"
+                type="button"
+                phx-click="toggle_map_panel"
+                aria-label="Скрыть подсказку"
+                class="inline-flex size-8 items-center justify-center rounded-full border border-stone-700 bg-stone-900 text-stone-300 transition hover:border-amber-300/60 hover:text-amber-100"
+              >
+                <.icon name="hero-x-mark" class="size-4" />
+              </button>
+            </div>
           </div>
 
           <p class="mt-2 font-sans text-sm leading-5 text-stone-400">
-            Чтобы отправиться в путь, выберите соседнее место на карте. Чтобы заняться делами здесь — откройте действия локации.
+            Нажмите соседнее место, чтобы увидеть маршрут. Остаться и заняться делами можно через кнопку ниже.
           </p>
 
           <div class="mt-4 flex items-center gap-3">
@@ -116,7 +133,7 @@ defmodule MMGOWeb.MapLive do
               navigate={~p"/event"}
               class="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 font-sans text-sm font-bold text-stone-950 transition hover:bg-amber-200"
             >
-              <.icon name="hero-map-pin" class="size-4" /> Что здесь можно
+              <.icon name="hero-map-pin" class="size-4" /> Дела в {location_name(@current_location)}
             </.link>
             <span
               :if={@nearby_characters != []}
@@ -136,6 +153,16 @@ defmodule MMGOWeb.MapLive do
             <.icon name="hero-bell" class="size-3.5" /> Новые вести: {length(@notifications)}
           </.link>
         </aside>
+
+        <button
+          :if={is_nil(@active_journey) and not @map_panel_open?}
+          id="map-panel-open"
+          type="button"
+          phx-click="toggle_map_panel"
+          class="absolute bottom-3 left-1/2 z-20 inline-flex min-h-11 -translate-x-1/2 items-center gap-2 rounded-full border border-amber-500/35 bg-stone-950/92 px-4 font-sans text-sm font-bold text-amber-100 shadow-xl backdrop-blur transition hover:border-amber-300/60 hover:bg-stone-900"
+        >
+          <.icon name="hero-information-circle" class="size-4" /> Что делать
+        </button>
 
         <.link
           :if={@active_journey}

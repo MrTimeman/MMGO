@@ -357,10 +357,17 @@ code {
 .game-root {
   position: fixed;
   inset: 0;
-  overflow: hidden;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  -webkit-overflow-scrolling: touch;
   background-color: var(--color-bg);
   color: var(--color-text);
   font-family: var(--font-serif);
+}
+
+.game-root--viewport {
+  overflow: hidden;
 }
 
 .game-shell {
@@ -430,6 +437,11 @@ code {
   background: rgba(217, 169, 54, 0.1);
   outline: none;
   transform: translateY(-1px);
+}
+
+.game-primary-nav__item[aria-current="page"] {
+  color: #fef3c7;
+  background: rgba(217, 169, 54, 0.12);
 }
 
 /* ============================================================
