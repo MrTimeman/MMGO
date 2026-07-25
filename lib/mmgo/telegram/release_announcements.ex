@@ -13,6 +13,7 @@ defmodule MMGO.Telegram.ReleaseAnnouncements do
 
   @channel_key "release_updates"
   @max_chat_id 9_223_372_036_854_775_807
+  @max_release_description_length 3_000
 
   def process_message(%{"text" => text} = message) when is_binary(text) do
     case parse_command(text) do
@@ -42,23 +43,34 @@ defmodule MMGO.Telegram.ReleaseAnnouncements do
     Repo.get_by(ReleaseChannel, key: @channel_key)
   end
 
-  def announce_release(version, source_sha, public_url)
-      when is_binary(version) and is_binary(source_sha) and is_binary(public_url) do
-    case current_channel() do
-      nil ->
-        {:ok, :not_configured}
+  def announce_release(version, description)
+      when is_binary(version) and is_binary(description) do
+    description = String.trim(description)
 
-      channel ->
-        text =
-          [
-            "🪄 MMGO обновлён",
-            "Версия: #{version}",
-            "Коммит: #{String.slice(source_sha, 0, 12)}",
-            "Открыть игру: #{public_url}"
-          ]
-          |> Enum.join("\n")
+    cond do
+      description == "" ->
+        {:error, :empty_release_description}
 
-        Telegram.send_message(channel.chat_id, text, disable_web_page_preview: true)
+      String.length(description) > @max_release_description_length ->
+        {:error, :release_description_too_long}
+
+      true ->
+        case current_channel() do
+          nil ->
+            {:ok, :not_configured}
+
+          channel ->
+            text =
+              [
+                "🪄 Обновление закрытой альфы MMGO",
+                "Версия #{version}",
+                "",
+                description
+              ]
+              |> Enum.join("\n")
+
+            Telegram.send_message(channel.chat_id, text, disable_web_page_preview: true)
+        end
     end
   end
 

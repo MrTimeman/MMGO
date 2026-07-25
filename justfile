@@ -40,7 +40,7 @@ deploy: release-check
     public_url='{{public_url}}'
     private_health_url='{{private_health_url}}'
 
-    for command in git gzip mktemp scp shasum ssh; do
+    for command in base64 git gzip mktemp scp shasum ssh; do
       command -v "$command" >/dev/null || {
         printf 'Missing required command: %s\n' "$command" >&2
         exit 1
@@ -65,6 +65,8 @@ deploy: release-check
 
     source_sha="$(git rev-parse HEAD)"
     short_sha="${source_sha:0:12}"
+    release_notes="${MMGO_RELEASE_NOTES:-Небольшие исправления и улучшения закрытой альфы.}"
+    release_notes_base64="$(printf '%s' "$release_notes" | base64 | tr -d '\n')"
     image="${app}:${version}"
     archive="$(mktemp "${TMPDIR:-/tmp}/${app}-${version}-${short_sha}.XXXXXX.tgz")"
     remote_archive="/tmp/${app}-${version}-${short_sha}.tgz"
@@ -88,7 +90,8 @@ deploy: release-check
       "$remote_archive" \
       "$checksum" \
       "$public_url" \
-      "$private_health_url" <<'REMOTE'
+      "$private_health_url" \
+      "$release_notes_base64" <<'REMOTE'
     set -Eeuo pipefail
 
     app="$1"
@@ -99,6 +102,7 @@ deploy: release-check
     expected_checksum="$6"
     public_url="$7"
     private_health_url="$8"
+    release_notes_base64="$9"
 
     image="${app}:${version}"
     short_sha="${source_sha:0:12}"
@@ -229,7 +233,7 @@ deploy: release-check
       "case MMGO.Telegram.configure_bot(\"${public_url}\") do {:ok, _} -> IO.puts(\"telegram_config=ok\"); other -> IO.inspect(other, label: \"telegram_config\") end"
 
     docker exec mmgo-app /app/bin/mmgo rpc \
-      "case MMGO.Telegram.ReleaseAnnouncements.announce_release(\"${version}\", \"${source_sha}\", \"${public_url}\") do {:ok, :not_configured} -> IO.puts(\"release_announcement=not_configured\"); {:ok, _} -> IO.puts(\"release_announcement=sent\"); other -> IO.inspect(other, label: \"release_announcement\") end"
+      "release_notes = Base.decode64!(\"${release_notes_base64}\"); case MMGO.Telegram.ReleaseAnnouncements.announce_release(\"${version}\", release_notes) do {:ok, :not_configured} -> IO.puts(\"release_announcement=not_configured\"); {:ok, _} -> IO.puts(\"release_announcement=sent\"); other -> IO.inspect(other, label: \"release_announcement\") end"
 
     docker inspect mmgo-app \
       --format 'image={{{{.Config.Image}} status={{{{.State.Status}} health={{{{.State.Health.Status}}'

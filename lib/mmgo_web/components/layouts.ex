@@ -71,7 +71,7 @@ defmodule MMGOWeb.Layouts do
 
           <div class="flex shrink-0 items-center gap-2">
             <span class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 font-[family-name:var(--font-sans)] text-[0.65rem] font-bold uppercase tracking-[0.16em] text-stone-400 sm:inline-flex">
-              Public alpha
+              Closed alpha
             </span>
             <a
               id="public-bot-link"

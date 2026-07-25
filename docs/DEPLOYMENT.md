@@ -12,7 +12,7 @@ Copy `.env.example` into your secret manager, not into source control. Productio
 - `FEDERATION_PUBLIC_BASE_URL`, `FEDERATION_IMPORT_TOKEN`
 - `GEMINI_API_KEY` or `DEEPSEEK_API_KEY`
 
-`MMGO_ALLOW_MOCK_AI_IN_PROD=true` is an explicit fallback-only exception for a closed test deployment. It is not the recommended public-alpha configuration.
+`MMGO_ALLOW_MOCK_AI_IN_PROD=true` is an explicit fallback-only exception for a closed test deployment. It is not the recommended closed-alpha configuration.
 
 Set `ECTO_SSL=false` only when the PostgreSQL connection is on a trusted local/private network that does not support TLS. Generate a release secret with `mix phx.gen.secret`; do not reuse development values.
 
@@ -26,9 +26,13 @@ Telegram configuration, and private/public health checks:
 
 ```bash
 just deploy-plan
-just deploy
+MMGO_RELEASE_NOTES='Исправили путешествия и упростили навигацию по карте.' just deploy
 just prod-status
 ```
+
+`MMGO_RELEASE_NOTES` becomes the player-facing Telegram announcement. Keep it
+short, concrete, and free of internal commit details; the bot adds the closed
+alpha heading and version automatically.
 
 The target defaults match the current MMGO infrastructure (`klara` as the jump
 host, `nova` as the application host, and `/opt/mmgo` as the runtime root).

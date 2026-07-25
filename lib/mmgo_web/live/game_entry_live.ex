@@ -33,7 +33,7 @@ defmodule MMGOWeb.GameEntryLive do
             <div class="inline-flex items-center gap-2 rounded-full border border-amber-200/15 bg-amber-200/5 px-3 py-1.5 font-[family-name:var(--font-sans)] text-[0.65rem] font-bold uppercase tracking-[0.2em] text-amber-200/70">
               <span class="size-1.5 rounded-full bg-amber-300 shadow-[0_0_0.8rem_rgba(252,211,77,0.8)]">
               </span>
-              Public alpha
+              Closed alpha
             </div>
 
             <h1 class="mt-6 max-w-xl font-[family-name:var(--font-serif)] text-4xl font-bold leading-[0.98] tracking-[-0.035em] text-stone-50 sm:text-6xl lg:text-7xl">
