@@ -228,6 +228,9 @@ deploy: release-check
     docker exec mmgo-app /app/bin/mmgo rpc \
       "case MMGO.Telegram.configure_bot(\"${public_url}\") do {:ok, _} -> IO.puts(\"telegram_config=ok\"); other -> IO.inspect(other, label: \"telegram_config\") end"
 
+    docker exec mmgo-app /app/bin/mmgo rpc \
+      "case MMGO.Telegram.ReleaseAnnouncements.announce_release(\"${version}\", \"${source_sha}\", \"${public_url}\") do {:ok, :not_configured} -> IO.puts(\"release_announcement=not_configured\"); {:ok, _} -> IO.puts(\"release_announcement=sent\"); other -> IO.inspect(other, label: \"release_announcement\") end"
+
     docker inspect mmgo-app \
       --format 'image={{{{.Config.Image}} status={{{{.State.Status}} health={{{{.State.Health.Status}}'
     printf 'database_backup=%s\n' "$database_backup"

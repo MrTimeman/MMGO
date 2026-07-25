@@ -2,6 +2,7 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
   use MMGO.DataCase, async: false
 
   alias MMGO.Telegram.UpdateHandler
+  alias MMGO.Telegram.ReleaseAnnouncements
   alias MMGO.Worlds
 
   setup do
@@ -64,5 +65,42 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
     }
 
     assert {:ok, %{handled: true, type: "message"}} = UpdateHandler.handle(update)
+  end
+
+  test "the release administrator can select an updates group through the webhook path", %{
+    bypass: bypass
+  } do
+    Application.put_env(:mmgo, MMGO.Telegram,
+      api_base_url: "http://localhost:#{bypass.port}",
+      bot_token: "test-bot-token",
+      webhook_secret: "test-webhook-secret",
+      webhook_path: "/api/telegram/webhook",
+      mini_app_url: "https://mmgo.test/play",
+      release_admin_user_id: 1_265_881_543
+    )
+
+    Bypass.expect_once(bypass, "POST", "/bottest-bot-token/sendMessage", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "-1001234567890"
+      assert body =~ "будет получать сообщения"
+      Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":{"message_id":2}}))
+    end)
+
+    update = %{
+      "update_id" => 2,
+      "message" => %{
+        "message_id" => 2,
+        "chat" => %{"id" => -1_001_234_567_890, "title" => "MMGO Updates"},
+        "text" => "/updates_here",
+        "from" => %{
+          "id" => 1_265_881_543,
+          "username" => "owner",
+          "first_name" => "Owner"
+        }
+      }
+    }
+
+    assert {:ok, %{handled: true, type: "message"}} = UpdateHandler.handle(update)
+    assert ReleaseAnnouncements.current_channel().chat_id == -1_001_234_567_890
   end
 end

@@ -62,6 +62,10 @@ telegram_mini_app_url =
       _missing -> telegram_config[:mini_app_url]
     end
 
+telegram_release_admin_user_id =
+  System.get_env("TELEGRAM_RELEASE_ADMIN_USER_ID") ||
+    to_string(telegram_config[:release_admin_user_id] || 1_265_881_543)
+
 config :mmgo, MMGO.Telegram,
   api_base_url:
     System.get_env("TELEGRAM_API_BASE_URL") || telegram_config[:api_base_url] ||
@@ -71,7 +75,8 @@ config :mmgo, MMGO.Telegram,
   webhook_path: telegram_config[:webhook_path] || "/api/telegram/webhook",
   allow_insecure_webhook?: allow_insecure_webhook?,
   web_app_auth_max_age_seconds: String.to_integer(web_app_auth_max_age_seconds),
-  mini_app_url: telegram_mini_app_url
+  mini_app_url: telegram_mini_app_url,
+  release_admin_user_id: String.to_integer(telegram_release_admin_user_id)
 
 # Keep the deterministic local demo useful while developing or running the
 # browser-loop tests, but never expose it as a production authentication path.

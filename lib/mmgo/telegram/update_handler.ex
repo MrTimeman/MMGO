@@ -1,7 +1,7 @@
 defmodule MMGO.Telegram.UpdateHandler do
   alias MMGO.Accounts
   alias MMGO.Telegram
-  alias MMGO.Telegram.Commands
+  alias MMGO.Telegram.{Commands, ReleaseAnnouncements}
 
   def handle(%{"message" => %{"from" => from} = message, "update_id" => update_id}) do
     with {:ok, %{account: account, character: character}} <-
@@ -39,7 +39,7 @@ defmodule MMGO.Telegram.UpdateHandler do
   def handle(_update), do: {:error, :invalid_update}
 
   defp maybe_reply(character, %{"chat" => %{"id" => chat_id}} = message) do
-    case Commands.process_message(character, message) do
+    case command_response(character, message) do
       {:ok, nil} ->
         {:ok, nil}
 
@@ -52,6 +52,13 @@ defmodule MMGO.Telegram.UpdateHandler do
   end
 
   defp maybe_reply(_character, _message), do: {:ok, nil}
+
+  defp command_response(character, message) do
+    case ReleaseAnnouncements.process_message(message) do
+      {:ok, nil} -> Commands.process_message(character, message)
+      response -> response
+    end
+  end
 
   defp reply_options(%{"text" => text}) when is_binary(text) do
     command =

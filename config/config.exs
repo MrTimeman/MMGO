@@ -30,7 +30,8 @@ config :mmgo, MMGO.Telegram,
   webhook_secret: nil,
   allow_insecure_webhook?: false,
   web_app_auth_max_age_seconds: 86_400,
-  mini_app_url: nil
+  mini_app_url: nil,
+  release_admin_user_id: 1_265_881_543
 
 config :mmgo, MMGO.AI,
   default_provider: MMGO.AI.Providers.Mock,
