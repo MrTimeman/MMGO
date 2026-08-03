@@ -4,6 +4,7 @@ defmodule MMGO.TravelTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Inventory
   alias MMGO.Repo
+  alias MMGO.Spells.Creation, as: SpellCreation
   alias MMGO.Travel
   alias MMGO.Travel.{Clock, CompleteJourneyWorker, Journey}
   alias MMGO.Worlds
@@ -100,6 +101,24 @@ defmodule MMGO.TravelTest do
       )
 
     assert ration_stack.quantity == 10
+  end
+
+  test "ordinary travel cannot start while a world-clock spell ritual is unrevealed", %{
+    character: character,
+    city: city,
+    route: route
+  } do
+    assert {:ok, %{attempt: attempt}} =
+             SpellCreation.begin(character, city.id, %{
+               "school" => "fire",
+               "actio" => "Ictus",
+               "tempus" => "Momentum"
+             })
+
+    assert attempt.status == :queued
+    assert {:error, changeset} = Travel.start_journey(character, route)
+    assert %{route_id: ["spell creation ritual is still active"]} = errors_on(changeset)
+    assert Travel.active_journey(character.id) == nil
   end
 
   test "start_journey/3 rejects characters with an existing active journey", %{

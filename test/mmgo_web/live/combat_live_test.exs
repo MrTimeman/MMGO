@@ -43,7 +43,8 @@ defmodule MMGOWeb.CombatLiveTest do
     spell =
       spell_fixture(challenger, %{
         name: "Live Ultima",
-        formula: "Ignis Ultima Suprema",
+        formula: "Vocatio Sustineo",
+        incantation_slots: %{"actio" => "Vocatio", "tempus" => "Sustineo"},
         effects: [
           %{applies_to: :target, state: "impact", intensity: 100, variance: 0, duration: 0}
         ],
@@ -105,6 +106,70 @@ defmodule MMGOWeb.CombatLiveTest do
     assert has_element?(view, "#combat-action-kind")
     assert has_element?(view, "#combat-cast-spell option[value=\"#{spell.id}\"]")
     assert has_element?(view, "#combat-target-#{defender_participant.id}")
+
+    assert has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot[title='Actio · действие']",
+             "A"
+           )
+
+    assert has_element?(view, "#combat-incantation-slots .cbt-slot[title='Forma · форма']", "F")
+    assert has_element?(view, "#combat-incantation-slots .cbt-slot[title='Vis · сила']", "V")
+    assert has_element?(view, "#combat-incantation-slots .cbt-slot[title='Tempus · время']", "T")
+
+    assert has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot[title='Mutatio · изменение']",
+             "M"
+           )
+
+    assert has_element?(view, "#combat-incantation-slots .cbt-slot[title='Pretium · цена']", "P")
+
+    assert has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Actio · действие']"
+           )
+
+    assert has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Tempus · время']"
+           )
+
+    refute has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Forma · форма']"
+           )
+
+    refute has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Vis · сила']"
+           )
+
+    assert has_element?(view, "#combat-incantation-slots .cbt-slots__count", "2/6")
+
+    view
+    |> form("#combat-action-form", %{
+      "combat_action" => %{
+        "spell_id" => spell.id,
+        "incantation" => "vocatio sustineo"
+      }
+    })
+    |> render_change()
+
+    assert has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Actio · действие']"
+           )
+
+    assert has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Tempus · время']"
+           )
+
+    refute has_element?(
+             view,
+             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Forma · форма']"
+           )
 
     refute has_element?(view, "#atmosphere-audio")
 

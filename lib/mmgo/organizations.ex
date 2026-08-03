@@ -7,6 +7,7 @@ defmodule MMGO.Organizations do
   alias MMGO.Notifications
   alias MMGO.Organizations.{Invitation, Membership, Organization, Role}
   alias MMGO.Repo
+  alias MMGO.Spells.Creation, as: SpellCreation
   alias MMGO.Travel
   alias MMGO.Worlds.{Location, Realm}
 
@@ -1568,6 +1569,9 @@ defmodule MMGO.Organizations do
           Repo.rollback(
             organization_changeset("character cannot use fast travel while travelling")
           )
+
+        not is_nil(SpellCreation.active_attempt(character.id)) ->
+          Repo.rollback(organization_changeset("spell creation ritual is still active"))
 
         organization.status != :active or not organization.fast_travel_enabled ->
           Repo.rollback(organization_changeset("organization fast travel is not active"))

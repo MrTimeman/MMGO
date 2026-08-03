@@ -8,6 +8,12 @@ defmodule MMGO.Travel.ClockTest do
     assert Clock.game_days_to_real_seconds(10) == 2_374
   end
 
+  test "game_hours_to_real_seconds/1 follows the continuously running world clock" do
+    assert Clock.game_hours_to_real_seconds(0) == 0
+    assert Clock.game_hours_to_real_seconds(1) == 10
+    assert Clock.game_hours_to_real_seconds(24) == Clock.game_days_to_real_seconds(1)
+  end
+
   test "arrival_at/2 adds compressed travel duration" do
     started_at = ~U[2026-03-27 12:00:00Z]
     assert Clock.arrival_at(started_at, 10) == ~U[2026-03-27 12:39:34Z]

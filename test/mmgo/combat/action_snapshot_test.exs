@@ -88,7 +88,33 @@ defmodule MMGO.Combat.ActionSnapshotTest do
     assert %{"kind" => "cast_spell", "incantation" => "Ignis Radius"} =
              action.payload["snapshot"]
 
+    assert action.payload["snapshot"]["spell"]["incantation_slots"] == %{
+             "actio" => "Ignis",
+             "forma" => "Minima"
+           }
+
     refute Map.has_key?(action.payload, "invented_effect")
+  end
+
+  test "submission rejects every malformed incantation without crashing", %{
+    combat: combat,
+    attacker: attacker,
+    spell: spell
+  } do
+    combat = Combat.get_combat!(combat.id)
+    participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    for incantation <- [String.duplicate("A", 181), String.duplicate("A", 33), 42] do
+      assert {:error, :invalid_incantation} =
+               Combat.submit_action(combat, participant.id, %{
+                 "action_type" => "cast_spell",
+                 "spell_id" => spell.id,
+                 "target_side" => "defenders",
+                 "incantation" => incantation
+               })
+    end
+
+    assert Repo.aggregate(Action, :count, :id) == 0
   end
 
   test "submission seals valid break conditions and rejects unknown persisted snapshot values", %{
@@ -315,6 +341,38 @@ defmodule MMGO.Combat.ActionSnapshotTest do
              Repo.get_by!(Event, combat_id: combat.id, event_type: "invalid_action").payload
   end
 
+  test "a snapshot whose keyed seals contradict its formula fails closed", %{
+    combat: combat,
+    attacker: attacker,
+    spell: spell
+  } do
+    combat = Combat.get_combat!(combat.id)
+    participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    assert {:ok, action} =
+             Combat.submit_action(combat, participant.id, %{
+               action_type: :cast_spell,
+               spell_id: spell.id,
+               target_side: "defenders"
+             })
+
+    malformed_payload =
+      put_in(
+        action.payload,
+        ["snapshot", "spell", "incantation_slots", "actio"],
+        "Aqua"
+      )
+
+    action
+    |> Action.changeset(%{payload: malformed_payload})
+    |> Repo.update!()
+
+    assert {:ok, _resolved_combat} = Combat.resolve_turn(combat, force?: true)
+
+    assert %{"reason" => "invalid_snapshot"} =
+             Repo.get_by!(Event, combat_id: combat.id, event_type: "invalid_action").payload
+  end
+
   defp activate_grimoire(character, spell) do
     {:ok, grimoire} =
       Grimoires.create_grimoire(character, %{name: "Snapshot Grimoire", capacity: 4, weight: 1})
@@ -327,6 +385,7 @@ defmodule MMGO.Combat.ActionSnapshotTest do
     defaults = %{
       name: name,
       formula: "Ignis Minima",
+      incantation_slots: %{"actio" => "Ignis", "forma" => "Minima"},
       school: :fire,
       description: "A snapshot test spell.",
       targeting: :enemy,

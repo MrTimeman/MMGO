@@ -199,6 +199,70 @@ deploy: release-check
     smoke_play_html="$(curl -fsS --max-time 5 "${smoke_url}/play")"
     grep -Fq 'Министерство' <<<"$smoke_home_html"
     grep -Fq 'Предъявить приглашение' <<<"$smoke_play_html"
+
+    ai_runtime="$(
+      docker exec "$smoke_name" /app/bin/mmgo rpc '
+        config = Application.fetch_env!(:mmgo, MMGO.AI)
+        provider = config[:default_provider]
+        model = get_in(config, [:models, :spell_compile])
+        IO.puts("ai_provider=#{inspect(provider)}")
+        IO.puts("ai_spell_model=#{inspect(model)}")
+
+        if provider == MMGO.AI.Providers.DeepSeek and is_binary(model) and
+             String.trim(model) != "" do
+          IO.puts("ai_runtime=ok")
+        else
+          IO.puts("ai_runtime=invalid")
+        end
+      '
+    )"
+    printf '%s\n' "$ai_runtime"
+    grep -Fqx 'ai_provider=MMGO.AI.Providers.DeepSeek' <<<"$ai_runtime"
+    grep -Fqx 'ai_runtime=ok' <<<"$ai_runtime"
+
+    deepseek_probe="$(
+      docker exec "$smoke_name" /app/bin/mmgo rpc '
+        config = Application.fetch_env!(:mmgo, MMGO.AI)
+        model = get_in(config, [:models, :spell_compile])
+        prompt = %{
+          system_prompt: "You are a deployment health probe. Return only the requested JSON.",
+          user_prompt: ~s|Return exactly {"status":"ok"} and nothing else.|
+        }
+        schema = %{
+          type: "object",
+          properties: %{status: %{type: "string", enum: ["ok"]}},
+          required: ["status"]
+        }
+
+        result =
+          try do
+            case MMGO.AI.Providers.DeepSeek.structured_completion(
+                   prompt,
+                   schema,
+                   model: model
+                 ) do
+              {:ok, %{"status" => "ok"}} -> :ok
+              {:ok, _other} -> :invalid_response
+              {:error, {:deepseek_api, status, _details}} -> {:api, status}
+              {:error, %Req.TransportError{}} -> :network
+              {:error, :missing_api_key} -> :configuration
+              {:error, _reason} -> :provider_error
+            end
+          rescue
+            _exception -> :probe_exception
+          catch
+            _kind, _reason -> :probe_exception
+          end
+
+        case result do
+          :ok -> IO.puts("ai_deepseek_probe=ok")
+          {:api, status} -> IO.puts("ai_deepseek_probe=api_#{status}")
+          reason -> IO.puts("ai_deepseek_probe=#{reason}")
+        end
+      '
+    )"
+    printf '%s\n' "$deepseek_probe"
+    grep -Fqx 'ai_deepseek_probe=ok' <<<"$deepseek_probe"
     docker stop --timeout 15 "$smoke_name" >/dev/null
 
     compose_backup="${backup_dir}/docker-compose.prod.yml.pre-${version}-${timestamp}"

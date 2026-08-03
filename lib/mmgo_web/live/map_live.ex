@@ -635,5 +635,17 @@ defmodule MMGOWeb.MapLive do
 
   defp world_seasons, do: @world_seasons
 
-  defp changeset_error(_changeset), do: "Этот путь сейчас недоступен."
+  defp changeset_error(%Ecto.Changeset{} = changeset) do
+    if changeset_message?(changeset, "spell creation ritual is still active") do
+      "Дождитесь завершения ритуала создания заклинания, прежде чем отправляться в путь."
+    else
+      "Этот путь сейчас недоступен."
+    end
+  end
+
+  defp changeset_message?(changeset, expected_message) do
+    Enum.any?(changeset.errors, fn {_field, {message, _metadata}} ->
+      message == expected_message
+    end)
+  end
 end

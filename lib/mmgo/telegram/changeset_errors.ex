@@ -157,6 +157,7 @@ defmodule MMGO.Telegram.ChangesetErrors do
       "маршрут должен находиться в том же мире, что и персонаж",
     "sealed spirit cannot use ordinary roads" =>
       "запечатанный дух не может пользоваться обычными дорогами",
+    "spell creation ritual is still active" => "ритуал создания заклинания ещё не завершён",
     "sealed grimoires cannot be modified" => "запечатанный гримуар нельзя изменить",
     "spell is already inscribed" => "заклинание уже записано в гримуар",
     "term is not active" => "учебный триместр уже не активен",

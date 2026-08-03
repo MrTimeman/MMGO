@@ -153,6 +153,17 @@ defmodule MMGOWeb.PlayApiController do
     }
   end
 
-  defp format_changeset(_changeset),
-    do: "Путь не удалось начать. Проверьте место назначения и состояние персонажа."
+  defp format_changeset(%Ecto.Changeset{} = changeset) do
+    if changeset_message?(changeset, "spell creation ritual is still active") do
+      "Дождитесь завершения ритуала создания заклинания, прежде чем отправляться в путь."
+    else
+      "Путь не удалось начать. Проверьте место назначения и состояние персонажа."
+    end
+  end
+
+  defp changeset_message?(changeset, expected_message) do
+    Enum.any?(changeset.errors, fn {_field, {message, _metadata}} ->
+      message == expected_message
+    end)
+  end
 end

@@ -5,6 +5,7 @@ defmodule MMGO.Travel do
   alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Parties
   alias MMGO.Repo
+  alias MMGO.Spells.Creation, as: SpellCreation
   alias MMGO.Survival
   alias MMGO.Travel.{Clock, CompleteJourneyWorker, Journey}
   alias MMGO.Worlds.Route
@@ -36,6 +37,10 @@ defmodule MMGO.Travel do
 
         if CharacterProfiles.sealed_spirit?(character) do
           Repo.rollback(route_changeset("sealed spirit cannot use ordinary roads"))
+        end
+
+        if SpellCreation.active_attempt(character.id) do
+          Repo.rollback(route_changeset("spell creation ritual is still active"))
         end
 
         if character.realm_id != route.realm_id do

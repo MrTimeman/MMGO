@@ -118,6 +118,7 @@ defmodule MMGO.Combat.Orchestrator do
          "target_side" => resolved_action.target_side,
          "spell_id" => spell.id,
          "formula" => spell.formula,
+         "incantation_slots" => spell.incantation_slots || %{},
          "school" => to_string(spell.school),
          "caster_level" => level,
          "active_states" => Enum.map(active_states || [], &Map.get(&1, "state")),

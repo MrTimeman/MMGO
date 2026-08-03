@@ -9,6 +9,14 @@ defmodule MMGOWeb.SpellbookLive do
   use MMGOWeb, :live_view
 
   alias MMGO.Play
+  alias MMGO.Spells.{Creation, SpellFailure}
+  alias MMGO.Travel.Clock
+
+  @max_visible_rejection_bytes 360
+  @ritual_game_hours 1
+  @rejection_control_pattern ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u
+  @rejection_cyrillic_pattern ~r/[А-Яа-яЁё]/u
+  @rejection_latin_pattern ~r/[A-Za-z]/u
 
   @school_labels %{
     "fire" => "Огонь",
@@ -36,6 +44,10 @@ defmodule MMGOWeb.SpellbookLive do
   def mount(_params, _session, socket) do
     character = socket.assigns.current_scope.character
 
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(MMGO.PubSub, Creation.character_topic(character.id))
+    end
+
     case Play.spellbook_state(character) do
       {:ok, state} ->
         {:ok,
@@ -47,7 +59,8 @@ defmodule MMGOWeb.SpellbookLive do
          |> assign(:view, :cast)
          |> assign(:grimoire_order, nil)
          |> assign(:inscription_form, inscription_form())
-         |> assign_spellbook_state(state)}
+         |> assign_spellbook_state(state)
+         |> restore_recent_spell_creation(state)}
 
       {:error, reason} ->
         {:ok, redirect_for_spellbook_error(socket, reason)}
@@ -70,16 +83,7 @@ defmodule MMGOWeb.SpellbookLive do
 
   @impl true
   def handle_event("hook_mounted", %{"hook" => "SpellCircle"}, socket) do
-    {:noreply,
-     push_event(socket, "spell_circle_init", %{
-       slots:
-         spell_circle_slots(
-           socket.assigns.permitted_schools,
-           socket.assigns.spells,
-           socket.assigns.spell_circle_tier
-         ),
-       current: %{}
-     })}
+    {:noreply, push_spell_circle(socket)}
   end
 
   def handle_event("hook_mounted", %{"hook" => "GrimoireShelf"}, socket) do
@@ -87,16 +91,26 @@ defmodule MMGOWeb.SpellbookLive do
   end
 
   @impl true
-  def handle_event("spell_compile", params, socket) when is_map(params) do
-    {:noreply, compile_spell(socket, params, true)}
-  end
+  def handle_event("spell_compile", params, socket) do
+    case Play.begin_spell_creation(socket.assigns.current_scope.character, params) do
+      {:ok, %{attempt: attempt}} ->
+        {:noreply,
+         socket
+         |> assign(:spell_creation_attempt, attempt)
+         |> assign(:compose_error, nil)
+         |> assign(:last_spell, nil)
+         |> assign(:action_feedback, nil)}
 
-  def handle_event("spell_compile", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:compose_error, spellbook_error_message(:invalid_composition))
-     |> assign(:last_spell, nil)
-     |> push_event("spell_result", %{ok: false})}
+      {:error, :spell_creation_in_progress} ->
+        {:noreply, socket |> reload_spellbook() |> push_spell_circle()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:compose_error, spellbook_error_message(reason))
+         |> assign(:last_spell, nil)
+         |> push_event("spell_result", %{ok: false})}
+    end
   end
 
   @impl true
@@ -236,22 +250,30 @@ defmodule MMGOWeb.SpellbookLive do
     {:noreply, socket |> assign(:grimoire_order, new_order) |> push_shelf()}
   end
 
-  defp compile_spell(socket, attrs, notify_circle?) do
-    case Play.compile_structured_spell(socket.assigns.current_scope.character, attrs) do
-      {:ok, result} ->
-        socket
-        |> reload_spellbook()
-        |> assign(:last_spell, compiled_spell(result))
-        |> assign(:compose_error, nil)
-        |> assign(:action_feedback, nil)
-        |> maybe_refresh_spell_circle(notify_circle?)
-        |> maybe_push_spell_result(notify_circle?, true)
+  @impl true
+  def handle_info({:spell_creation_revealed, attempt_id}, socket) do
+    case Play.spell_creation_result(socket.assigns.current_scope.character, attempt_id) do
+      {:ok, spell} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:last_spell, spell)
+         |> assign(:compose_error, nil)
+         |> assign(:action_feedback, nil)
+         |> push_spell_circle()
+         |> push_event("spell_result", %{ok: true})}
 
-      {:error, reason} ->
-        socket
-        |> assign(:compose_error, spellbook_error_message(reason))
-        |> assign(:last_spell, nil)
-        |> maybe_push_spell_result(notify_circle?, false)
+      {:error, {:spell_creation_failure, outcome}} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:compose_error, spell_creation_failure_message(outcome))
+         |> assign(:last_spell, nil)
+         |> push_spell_circle()
+         |> push_event("spell_result", %{ok: false})}
+
+      {:error, _reason} ->
+        {:noreply, reload_spellbook(socket)}
     end
   end
 
@@ -315,11 +337,7 @@ defmodule MMGOWeb.SpellbookLive do
                     <% end %>
                   </p>
 
-                  <%= if spell_circle_available?(
-                    @composition_available?,
-                    @spell_circle_tier,
-                    @spells
-                  ) do %>
+                  <%= if @composition_available? do %>
                     <p id="spell-circle-instruction" class="spell-ritual__hint">
                       {spell_circle_instruction(@spell_circle_tier)}
                     </p>
@@ -331,30 +349,12 @@ defmodule MMGOWeb.SpellbookLive do
                       aria-label="Ритуальный круг создания заклинания"
                     />
                   <% else %>
-                    <div
-                      :if={not @composition_available?}
-                      id="spell-compose-locked"
-                      class="spellbook-note spellbook-note--locked"
-                    >
+                    <div id="spell-compose-locked" class="spellbook-note spellbook-note--locked">
                       <span class="spellbook-note__pin" aria-hidden="true"></span>
                       <p class="spellbook-note__kicker">Круг молчит</p>
                       <p>{composition_lock_message(@composition_lock_reason)}</p>
                       <p id="spellbook-read-only-note" class="spellbook-note__aside">
                         Заклинания и переплёты остаются доступны на соседних закладках.
-                      </p>
-                    </div>
-
-                    <div
-                      :if={
-                        @composition_available? and @spell_circle_tier == :trained and
-                          @spells == []
-                      }
-                      id="spell-library-empty"
-                      class="spellbook-note"
-                    >
-                      <p class="spellbook-note__kicker">Чистая страница</p>
-                      <p>
-                        Для полного академического круга нужна известная основа заклинания.
                       </p>
                     </div>
                   <% end %>
@@ -639,11 +639,32 @@ defmodule MMGOWeb.SpellbookLive do
     |> assign(:active_grimoire, state.active_grimoire)
     |> assign(:permitted_schools, state.permitted_schools)
     |> assign(:spell_circle_tier, state.spell_circle_tier)
+    |> assign(:spell_creation_attempt, Map.get(state, :spell_creation_attempt))
     |> assign(:composition_location, state.composition_location)
     |> assign(:composition_available?, state.composition_available?)
     |> assign(:composition_lock_reason, state.composition_lock_reason)
     |> assign(:writable_grimoires, Map.get(state, :writable_grimoires, []))
   end
+
+  defp restore_recent_spell_creation(
+         socket,
+         %{recent_spell_creation_attempt: %{outcome: %{"kind" => "success"}, spell: %{} = spell}}
+       ) do
+    socket
+    |> assign(:last_spell, spell)
+    |> assign(:compose_error, nil)
+  end
+
+  defp restore_recent_spell_creation(
+         socket,
+         %{recent_spell_creation_attempt: %{outcome: %{"kind" => "failure"} = outcome}}
+       ) do
+    socket
+    |> assign(:last_spell, nil)
+    |> assign(:compose_error, spell_creation_failure_message(outcome))
+  end
+
+  defp restore_recent_spell_creation(socket, _state), do: socket
 
   defp composition_lock_message(:travelling),
     do: "В пути нельзя менять гримуар. После прибытия доберитесь до Башни или своей базы."
@@ -663,14 +684,9 @@ defmodule MMGOWeb.SpellbookLive do
     |> push_navigate(to: ~p"/play")
   end
 
-  defp maybe_push_spell_result(socket, false, _ok?), do: socket
+  defp push_spell_circle(socket) do
+    attempt = socket.assigns.spell_creation_attempt
 
-  defp maybe_push_spell_result(socket, true, ok?),
-    do: push_event(socket, "spell_result", %{ok: ok?})
-
-  defp maybe_refresh_spell_circle(socket, false), do: socket
-
-  defp maybe_refresh_spell_circle(socket, true) do
     push_event(socket, "spell_circle_init", %{
       slots:
         spell_circle_slots(
@@ -678,17 +694,35 @@ defmodule MMGOWeb.SpellbookLive do
           socket.assigns.spells,
           socket.assigns.spell_circle_tier
         ),
-      current: %{}
+      current: spell_creation_circle(attempt),
+      ritual_duration_ms: ritual_duration_ms(),
+      ritual: spell_creation_ritual(attempt)
     })
+  end
+
+  defp spell_creation_circle(%{input: %{"circle" => circle}}) when is_map(circle), do: circle
+  defp spell_creation_circle(_attempt), do: %{}
+
+  defp spell_creation_ritual(nil), do: %{active: false, remaining_ms: 0}
+
+  defp spell_creation_ritual(%{completes_at: %DateTime{} = completes_at}) do
+    %{
+      active: true,
+      remaining_ms: max(DateTime.diff(completes_at, DateTime.utc_now(), :millisecond), 0)
+    }
+  end
+
+  defp ritual_duration_ms do
+    Clock.game_hours_to_real_seconds(@ritual_game_hours) * 1_000
   end
 
   defp spell_circle_slots(permitted_schools, _spells, :novice) do
     school_options = spell_circle_school_options(permitted_schools)
 
     [
-      %{key: "school", label: "Школа", required: true, kind: "select", options: school_options},
-      %{key: "actio", label: "Акцио", required: true, kind: "text"},
-      %{key: "tempus", label: "Темпус", required: true, kind: "text"}
+      %{key: "school", label: "Schola", required: true, kind: "select", options: school_options},
+      %{key: "actio", label: "Actio", required: true, kind: "text"},
+      %{key: "tempus", label: "Tempus", required: true, kind: "text"}
     ]
   end
 
@@ -698,17 +732,17 @@ defmodule MMGOWeb.SpellbookLive do
     spell_options = Enum.map(spells, &%{value: &1.id, label: &1.name})
 
     [
-      %{key: "school", label: "Школа", required: true, kind: "select", options: school_options},
-      %{key: "actio", label: "Акцио", required: true, kind: "text"},
-      %{key: "forma", label: "Форма", required: false, kind: "text"},
-      %{key: "vis", label: "Вис", required: false, kind: "text"},
-      %{key: "tempus", label: "Темпус", required: false, kind: "text"},
-      %{key: "mutatio", label: "Мутацио", required: false, kind: "text"},
-      %{key: "pretium", label: "Прециум", required: false, kind: "text"},
+      %{key: "school", label: "Schola", required: true, kind: "select", options: school_options},
+      %{key: "actio", label: "Actio", required: true, kind: "text"},
+      %{key: "forma", label: "Forma", required: false, kind: "text"},
+      %{key: "vis", label: "Vis", required: false, kind: "text"},
+      %{key: "tempus", label: "Tempus", required: false, kind: "text"},
+      %{key: "mutatio", label: "Mutatio", required: false, kind: "text"},
+      %{key: "pretium", label: "Pretium", required: false, kind: "text"},
       %{
         key: "base",
-        label: "Основа",
-        required: true,
+        label: "Fundamen",
+        required: false,
         kind: "select",
         options: spell_options
       }
@@ -730,24 +764,17 @@ defmodule MMGOWeb.SpellbookLive do
     school_options
   end
 
-  defp spell_circle_available?(false, _tier, _spells), do: false
-  defp spell_circle_available?(true, :novice, _spells), do: true
-  defp spell_circle_available?(true, :trained, spells), do: spells != []
-
   defp spell_circle_instruction(:novice),
     do:
-      "Круг самоучки: выберите школу и впишите по одному слову в печати Акцио и Темпус. Все три печати обязательны."
+      "Круг самоучки: выберите школу и впишите по одному латинскому слову в печати Actio и Tempus. Все три печати обязательны."
 
   defp spell_circle_instruction(:trained),
     do:
-      "Полный академический круг: обязательны Школа, Акцио и Основа; остальные печати уточняют действие."
+      "Полный академический круг: обязательны Schola и Actio. Остальные печати уточняют действие, а Fundamen связывает новую формулу с известным заклинанием."
 
   defp inscription_form do
     to_form(%{"grimoire_id" => "", "spell_id" => ""}, as: :inscription)
   end
-
-  defp compiled_spell(%{spell: spell}), do: spell
-  defp compiled_spell(spell), do: spell
 
   defp spell_options(spells), do: Enum.map(spells, &{"#{&1.name} — #{&1.formula}", &1.id})
 
@@ -818,22 +845,208 @@ defmodule MMGOWeb.SpellbookLive do
   defp spellbook_error_message(:invalid_spell_circle), do: generic_composition_error()
 
   defp spellbook_error_message(:incomplete_spell_circle),
-    do: "Заполните все обязательные печати круга."
+    do: "Обязательная печать осталась немой, и круг не смог замкнуться."
 
   defp spellbook_error_message(:invalid_spell_circle_word),
-    do: "В каждой словесной печати должно быть ровно одно слово из букв, не длиннее 32 байт."
+    do:
+      "Одна из словесных печатей треснула: круг принимает в неё только одно латинское слово без пробелов."
 
-  defp spellbook_error_message(:missing_spell_foundation),
-    do: "Выберите известное заклинание для печати Основа."
+  defp spellbook_error_message(:invalid_school),
+    do: "Печать Schola не узнала выбранную школу и погасла."
+
+  defp spellbook_error_message(:school_not_permitted),
+    do: "Печать Schola вспыхнула и погасла: эта школа пока не признаёт вашего обучения."
+
+  defp spellbook_error_message(:spell_creation_in_progress),
+    do: "Предыдущий ритуал ещё не завершён на мировых часах Башни."
+
+  defp spellbook_error_message(:location_changed),
+    do: "Круг потерял опору: место ритуала изменилось прежде, чем легла первая печать."
+
+  defp spellbook_error_message(%SpellFailure{reason: reason}) do
+    case safe_rejection_reason(reason) do
+      {:ok, safe_reason} -> "Толкователь отверг формулу: «#{safe_reason}»"
+      :error -> generic_spell_rejection()
+    end
+  end
+
+  defp spellbook_error_message(:missing_api_key),
+    do:
+      "Связующая печать Башни не настроена, поэтому круг не может обратиться к толкователю. Формула здесь ни при чём; попробуйте позже."
+
+  defp spellbook_error_message(reason)
+       when reason in [:timeout, :econnrefused, :nxdomain, :closed, :enetunreach],
+       do: provider_connection_error()
+
+  defp spellbook_error_message(%Req.TransportError{}), do: provider_connection_error()
+
+  defp spellbook_error_message(reason)
+       when reason in [:invalid_response, :empty_response],
+       do:
+         "Ответ толкователя пришёл искажённым, и круг рассеял его ради безопасности. Повторите ритуал."
+
+  defp spellbook_error_message(%Jason.DecodeError{}),
+    do:
+      "Ответ толкователя пришёл искажённым, и круг рассеял его ради безопасности. Повторите ритуал."
+
+  defp spellbook_error_message({provider, status, _details})
+       when provider in [:deepseek_api, :gemini_api] and is_integer(status),
+       do: provider_status_error(status)
 
   defp spellbook_error_message(:invalid_inscription),
     do: "Выберите свой переплёт и заклинание для записи."
 
   defp spellbook_error_message(:invalid_grimoire), do: "Выберите гримуар из своей библиотеки."
-  defp spellbook_error_message(%Ecto.Changeset{}), do: generic_composition_error()
-  defp spellbook_error_message(_reason), do: generic_composition_error()
+
+  defp spellbook_error_message(%Ecto.Changeset{} = changeset) do
+    error_fields = Keyword.keys(changeset.errors)
+
+    cond do
+      :base_spell_id in error_fields ->
+        "Печать Fundamen не признала выбранную основу и разорвала связь с формулой."
+
+      :school in error_fields ->
+        "Печать Schola не признала выбранную школу и погасла."
+
+      :formula in error_fields ->
+        "Словесные печати не удержали формулу, и круг рассыпался до толкования."
+
+      true ->
+        spell_persistence_error()
+    end
+  end
+
+  defp spellbook_error_message(_reason),
+    do:
+      "Круг погас из-за сбоя в Башне, а не из-за вашей формулы. Попробуйте повторить ритуал позже."
+
+  defp spell_creation_failure_message(%{
+         "failure_kind" => "spell_rejected",
+         "reason" => reason
+       }) do
+    case safe_rejection_reason(reason) do
+      {:ok, safe_reason} -> "Толкователь отверг формулу: «#{safe_reason}»"
+      :error -> generic_spell_rejection()
+    end
+  end
+
+  defp spell_creation_failure_message(%{"failure_kind" => "spell_rejected"}),
+    do: generic_spell_rejection()
+
+  defp spell_creation_failure_message(%{
+         "failure_kind" => "user_error",
+         "code" => code
+       }) do
+    case code do
+      "invalid_composition" -> spellbook_error_message(:invalid_composition)
+      "invalid_spell_circle" -> spellbook_error_message(:invalid_spell_circle)
+      "incomplete_spell_circle" -> spellbook_error_message(:incomplete_spell_circle)
+      "invalid_spell_circle_word" -> spellbook_error_message(:invalid_spell_circle_word)
+      "invalid_school" -> spellbook_error_message(:invalid_school)
+      "school_not_permitted" -> spellbook_error_message(:school_not_permitted)
+      "spellbook_location" -> spellbook_error_message(:spellbook_location)
+      "travelling" -> spellbook_error_message(:travelling)
+      "location_changed" -> spellbook_error_message(:location_changed)
+      _other -> generic_composition_error()
+    end
+  end
+
+  defp spell_creation_failure_message(%{
+         "failure_kind" => "validation",
+         "fields" => fields
+       })
+       when is_list(fields) do
+    cond do
+      "base_spell_id" in fields ->
+        "Печать Fundamen не признала выбранную основу и разорвала связь с формулой."
+
+      "school" in fields ->
+        "Печать Schola не признала выбранную школу и погасла."
+
+      "formula" in fields or "incantation_slots" in fields ->
+        "Словесные печати не удержали формулу, и круг рассыпался до толкования."
+
+      true ->
+        spell_persistence_error()
+    end
+  end
+
+  defp spell_creation_failure_message(%{
+         "failure_kind" => "provider_configuration"
+       }),
+       do: spellbook_error_message(:missing_api_key)
+
+  defp spell_creation_failure_message(%{"failure_kind" => "transport_error"}),
+    do: provider_connection_error()
+
+  defp spell_creation_failure_message(%{
+         "failure_kind" => "invalid_provider_response"
+       }),
+       do:
+         "Ответ толкователя пришёл искажённым, и круг рассеял его ради безопасности. Повторите ритуал."
+
+  defp spell_creation_failure_message(%{
+         "failure_kind" => "provider_error",
+         "provider_status" => status
+       })
+       when is_integer(status),
+       do: provider_status_error(status)
+
+  defp spell_creation_failure_message(_outcome),
+    do:
+      "Круг погас из-за сбоя в Башне, а не из-за вашей формулы. Попробуйте повторить ритуал позже."
+
+  defp safe_rejection_reason(reason) when is_binary(reason) do
+    if String.valid?(reason) do
+      normalized_reason =
+        reason
+        |> String.trim()
+        |> String.replace(~r/\s+/u, " ")
+
+      cond do
+        normalized_reason == "" -> :error
+        byte_size(normalized_reason) > @max_visible_rejection_bytes -> :error
+        Regex.match?(@rejection_control_pattern, normalized_reason) -> :error
+        not Regex.match?(@rejection_cyrillic_pattern, normalized_reason) -> :error
+        Regex.match?(@rejection_latin_pattern, normalized_reason) -> :error
+        true -> {:ok, normalized_reason}
+      end
+    else
+      :error
+    end
+  end
+
+  defp safe_rejection_reason(_reason), do: :error
+
+  defp provider_status_error(status) when status in [401, 403] do
+    "Печать допуска к дальнему толкователю погасла. Формула здесь ни при чём; Башне требуется вмешательство хранителя."
+  end
+
+  defp provider_status_error(429) do
+    "Дальний хор толкователей перегружен. Круг не стал искажать замысел; повторите ритуал немного позже."
+  end
+
+  defp provider_status_error(status) when status >= 500 do
+    "Дальний толкователь сейчас молчит. Формула здесь ни при чём; повторите ритуал, когда связь с Башней укрепится."
+  end
+
+  defp provider_status_error(_status) do
+    "Толкователь отвернулся до чтения формулы. Круг можно начертить снова немного позже."
+  end
+
+  defp provider_connection_error do
+    "Связь Башни с дальним толкователем оборвалась прежде, чем он прочёл формулу. Попробуйте повторить ритуал."
+  end
+
+  defp spell_persistence_error do
+    "Книга не смогла закрепить уже сложившиеся печати. Формула здесь ни при чём; повторите ритуал."
+  end
+
+  defp generic_spell_rejection do
+    "Толкователь отверг формулу, но письмена причины расплылись по странице. Измените сочетание печатей и попробуйте снова."
+  end
 
   defp generic_composition_error do
-    "Формула не сложилась. Проверьте обязательные печати и впишите в каждую словесную печать ровно одно слово."
+    "Печати не узнали начертание и рассыпались прежде, чем круг успел призвать толкователя."
   end
 end

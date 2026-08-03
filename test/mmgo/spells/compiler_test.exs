@@ -14,9 +14,11 @@ defmodule MMGO.Spells.CompilerTest do
     def structured_completion(_prompt_payload, _schema, _opts) do
       {:ok,
        %{
-         "name" => "Broken Spell",
+         "outcome" => "created",
+         "name" => "Сломанное заклинание",
          "formula" => "Maledictum",
          "school" => "fire",
+         "description" => "Намеренно некорректный результат для проверки валидации.",
          "targeting" => "enemy",
          "delivery_form" => "sphere",
          "effects" => [
@@ -34,6 +36,19 @@ defmodule MMGO.Spells.CompilerTest do
            "backlash_damage" => 0
          }
        }}
+    end
+
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
+  end
+
+  defmodule MissingOutcomeProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(prompt_payload, schema, opts) do
+      {:ok, compiled_spell} =
+        MMGO.AI.Providers.Mock.structured_completion(prompt_payload, schema, opts)
+
+      {:ok, Map.delete(compiled_spell, "outcome")}
     end
 
     def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
@@ -97,10 +112,10 @@ defmodule MMGO.Spells.CompilerTest do
       {:ok,
        %{
          "outcome" => "created",
-         "name" => "Unbounded Root",
+         "name" => "Неограниченный корень",
          "formula" => "Provider Formula",
          "school" => "chaos",
-         "description" => "An intentionally excessive provider result.",
+         "description" => "Намеренно чрезмерный результат толкователя.",
          "level_requirement" => 80,
          "fatigue_cost" => 90,
          "cooldown_turns" => 30,
@@ -238,6 +253,27 @@ defmodule MMGO.Spells.CompilerTest do
     assert Repo.aggregate(Spell, :count, :id) == 1
   end
 
+  test "compile_and_store/3 rejects a complete provider result without an explicit outcome", %{
+    character: character,
+    base_spell: base_spell
+  } do
+    assert {:error, changeset} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 formula: "Ignis Radius",
+                 school: "fire",
+                 base_spell_id: base_spell.id
+               },
+               provider: MissingOutcomeProvider,
+               model: "missing-outcome-test-model"
+             )
+
+    assert %{outcome: ["is invalid"]} = errors_on(changeset)
+    assert Repo.aggregate(Request, :count, :id) == 1
+    assert Repo.aggregate(Spell, :count, :id) == 1
+  end
+
   test "compile_and_store/3 rejects malformed incantations before AI execution", %{
     character: character,
     base_spell: base_spell
@@ -349,7 +385,8 @@ defmodule MMGO.Spells.CompilerTest do
              Compiler.compile_and_store(
                character,
                %{
-                 name: "Player Intent",
+                 name: "Замысел игрока",
+                 description: "Описание игрока остаётся неизменным.",
                  formula: "  ignis   radius  ",
                  school: "fire",
                  base_spell_id: base_spell.id
@@ -361,6 +398,39 @@ defmodule MMGO.Spells.CompilerTest do
     assert spell.formula == "Ignis Radius"
     assert spell.school == :fire
     assert spell.source_spell_id == base_spell.id
+    assert spell.name == "Замысел игрока"
+    assert spell.description == "Описание игрока остаётся неизменным."
+  end
+
+  test "compiler rejects non-Russian generated identity fields", %{
+    character: character,
+    base_spell: base_spell
+  } do
+    assert {:error, :invalid_response} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 formula: "Ignis Radius",
+                 school: "fire",
+                 base_spell_id: base_spell.id
+               },
+               provider: DriftedSpellProvider,
+               model: "non-russian-output-test-model"
+             )
+
+    assert Repo.aggregate(Request, :count, :id) == 1
+    assert Repo.aggregate(Spell, :count, :id) == 1
+  end
+
+  test "spell persistence rejects seal maps that contradict the canonical formula", %{
+    base_spell: base_spell
+  } do
+    assert {:error, changeset} =
+             Spells.update_spell(base_spell, %{
+               incantation_slots: %{"actio" => "Aqua", "forma" => "Minima"}
+             })
+
+    assert %{incantation_slots: ["contains invalid seal data"]} = errors_on(changeset)
   end
 
   test "novice root spells are bounded by server policy", %{character: character} do

@@ -1,8 +1,21 @@
 import Config
 
+normalize_runtime_value = fn
+  value when is_binary(value) ->
+    case String.trim(value) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+
+  _missing ->
+    nil
+end
+
+env_value = fn name -> normalize_runtime_value.(System.get_env(name)) end
+
 required_env! = fn name ->
-  case System.get_env(name) do
-    value when is_binary(value) and value != "" -> value
+  case env_value.(name) do
+    value when is_binary(value) -> value
     _missing -> raise "environment variable #{name} is required in production"
   end
 end
@@ -97,26 +110,41 @@ config :mmgo, local_demo_enabled: local_demo_enabled?
 
 ai_config = Application.get_env(:mmgo, MMGO.AI, [])
 gemini_config = Application.get_env(:mmgo, MMGO.AI.Providers.Gemini, [])
-gemini_api_key = System.get_env("GEMINI_API_KEY") || gemini_config[:api_key]
-gemini_env_api_key = System.get_env("GEMINI_API_KEY")
-deepseek_api_key = System.get_env("DEEPSEEK_API_KEY")
+gemini_env_api_key = env_value.("GEMINI_API_KEY")
+gemini_api_key = gemini_env_api_key || normalize_runtime_value.(gemini_config[:api_key])
+deepseek_api_key = env_value.("DEEPSEEK_API_KEY")
+allow_mock_ai_in_prod? = env_value.("MMGO_ALLOW_MOCK_AI_IN_PROD") == "true"
 
-if config_env() == :prod and gemini_api_key in [nil, ""] and deepseek_api_key in [nil, ""] and
-     System.get_env("MMGO_ALLOW_MOCK_AI_IN_PROD") != "true" do
-  raise "GEMINI_API_KEY or DEEPSEEK_API_KEY is required in production (set MMGO_ALLOW_MOCK_AI_IN_PROD=true only for an explicit fallback-only deployment)"
+if config_env() == :prod and is_nil(deepseek_api_key) and not allow_mock_ai_in_prod? do
+  raise "DEEPSEEK_API_KEY is required in production (set MMGO_ALLOW_MOCK_AI_IN_PROD=true only for an explicit fallback-only deployment)"
 end
 
 default_provider =
   cond do
     config_env() == :test -> ai_config[:default_provider]
+    config_env() == :prod and deepseek_api_key -> MMGO.AI.Providers.DeepSeek
+    config_env() == :prod -> ai_config[:default_provider]
     deepseek_api_key -> MMGO.AI.Providers.DeepSeek
     gemini_env_api_key -> MMGO.AI.Providers.Gemini
     true -> ai_config[:default_provider]
   end
 
 provider_model = fn generic_env, gemini_env, configured ->
-  System.get_env(generic_env) || System.get_env(gemini_env) ||
-    if(default_provider == MMGO.AI.Providers.DeepSeek, do: "deepseek-chat", else: configured)
+  generic_model = env_value.(generic_env)
+
+  cond do
+    generic_model ->
+      generic_model
+
+    default_provider == MMGO.AI.Providers.DeepSeek ->
+      "deepseek-chat"
+
+    default_provider == MMGO.AI.Providers.Gemini ->
+      env_value.(gemini_env) || normalize_runtime_value.(configured)
+
+    true ->
+      normalize_runtime_value.(configured)
+  end
 end
 
 config :mmgo, MMGO.AI,

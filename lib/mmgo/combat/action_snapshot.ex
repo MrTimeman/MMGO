@@ -52,6 +52,7 @@ defmodule MMGO.Combat.ActionSnapshot do
   }
 
   @environment_modes %{"none" => :none, "add" => :add, "replace" => :replace}
+  @incantation_slot_keys ~w(actio forma vis tempus mutatio pretium)
   @applies_to %{"target" => :target, "caster" => :caster, "environment" => :environment}
 
   @action_kinds %{
@@ -274,9 +275,7 @@ defmodule MMGO.Combat.ActionSnapshot do
 
     case Incantation.normalize(incantation) do
       {:ok, normalized} -> {:ok, normalized}
-      {:error, :empty_formula} -> {:error, :invalid_incantation}
-      {:error, :too_many_words} -> {:error, :invalid_incantation}
-      {:error, :invalid_word} -> {:error, :invalid_incantation}
+      {:error, _reason} -> {:error, :invalid_incantation}
     end
   end
 
@@ -408,6 +407,7 @@ defmodule MMGO.Combat.ActionSnapshot do
       "id" => spell.id,
       "name" => spell.name,
       "formula" => spell.formula,
+      "incantation_slots" => spell.incantation_slots || %{},
       "school" => to_string(spell.school),
       "fatigue_cost" => spell.fatigue_cost,
       "cooldown_turns" => spell.cooldown_turns,
@@ -468,6 +468,9 @@ defmodule MMGO.Combat.ActionSnapshot do
   defp spell_from_snapshot(snapshot) when is_map(snapshot) do
     with id when is_binary(id) <- Map.get(snapshot, "id"),
          formula when is_binary(formula) and formula != "" <- Map.get(snapshot, "formula"),
+         incantation_slots when is_map(incantation_slots) <-
+           Map.get(snapshot, "incantation_slots", %{}),
+         true <- valid_incantation_slots?(incantation_slots, formula),
          {:ok, school} <- enum_value(Map.get(snapshot, "school"), @schools),
          {:ok, targeting} <- enum_value(Map.get(snapshot, "targeting"), @targeting_modes),
          {:ok, delivery_form} <- enum_value(Map.get(snapshot, "delivery_form"), @delivery_forms),
@@ -488,6 +491,7 @@ defmodule MMGO.Combat.ActionSnapshot do
          id: id,
          name: Map.get(snapshot, "name") || formula,
          formula: formula,
+         incantation_slots: incantation_slots,
          school: school,
          fatigue_cost: fatigue_cost,
          cooldown_turns: cooldown_turns,
@@ -505,6 +509,32 @@ defmodule MMGO.Combat.ActionSnapshot do
   end
 
   defp spell_from_snapshot(_snapshot), do: {:error, :invalid_snapshot}
+
+  defp valid_incantation_slots?(slots, formula) do
+    valid_seals? =
+      Enum.all?(slots, fn
+        {key, value} when key in @incantation_slot_keys and is_binary(value) ->
+          match?({:ok, ^value}, Incantation.normalize(value)) and
+            not String.contains?(value, " ")
+
+        _invalid ->
+          false
+      end)
+
+    valid_seals? and
+      (map_size(slots) == 0 or incantation_formula(slots) == formula)
+  end
+
+  defp incantation_formula(slots) do
+    @incantation_slot_keys
+    |> Enum.flat_map(fn key ->
+      case Map.get(slots, key) do
+        nil -> []
+        word -> [word]
+      end
+    end)
+    |> Enum.join(" ")
+  end
 
   defp item_action_from_snapshot(snapshot) when is_map(snapshot) do
     with key when is_binary(key) and key != "" <- Map.get(snapshot, "key"),

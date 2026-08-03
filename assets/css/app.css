@@ -3076,6 +3076,12 @@ code {
 
 .sc__slot--optional { border-width: 2px; }
 
+.sc__slot--unavailable {
+  cursor: default;
+  opacity: 0.52;
+  filter: grayscale(0.65);
+}
+
 /* Caption — a small-caps Latin label under the medallion, like a
    diagram caption. Faded sepia, letterspaced serif, never competing
    with the handwritten word inside. */
@@ -3474,20 +3480,31 @@ code {
   gap: 0.5rem;
 }
 
-/* Compile button — a wax seal you press down to stamp. Dull/unlit at
-   rest; warms up to a lit crimson with a gold rim as the circle
-   charges — a slow transition, not a flash switching on. */
+/* Compile button — a wax seal you can always press to attempt the ritual.
+   An incomplete circle stays visually quiet but remains actionable; a
+   complete circle warms to crimson and gold before it is spoken. */
 .sc__compile {
   width: 100%;
   padding: 0.65rem 1rem;
   background: var(--parch-paper-dark);
   border: 2px solid var(--parch-ink-faint);
   border-radius: 6px;
-  color: var(--parch-ink-faint);
+  color: var(--parch-ink);
   font-family: var(--font-serif);
   font-size: 0.95rem;
-  cursor: not-allowed;
+  cursor: pointer;
+  box-shadow: 0 2px 0 rgba(55,43,25,0.28), 0 4px 8px rgba(0,0,0,0.18);
   transition: background 0.9s ease-in-out, border-color 0.9s ease-in-out, color 0.9s ease-in-out, box-shadow 0.9s ease-in-out;
+}
+
+.sc__compile:not(.sc__compile--ready):not(.sc__compile--casting):hover {
+  border-color: var(--parch-red);
+  color: var(--parch-red);
+}
+
+.sc__compile:not(.sc__compile--ready):not(.sc__compile--casting):active {
+  transform: translateY(2px);
+  box-shadow: 0 0 0 rgba(55,43,25,0.28), 0 2px 4px rgba(0,0,0,0.2);
 }
 
 .sc__compile--ready {
@@ -3532,6 +3549,14 @@ code {
   box-shadow: 0 4px 12px rgba(55,43,25,0.14);
   /* Slow settle-in when the ritual ends and the card is finally shown. */
   transition: opacity 0.8s ease 0.25s, filter 0.8s ease 0.25s, transform 0.8s ease 0.25s;
+}
+
+/* LiveView may receive the verdict before the game-hour ritual finishes.
+   Keep the server-rendered result sealed until the hook releases the circle. */
+.sc--casting ~ .sc-result {
+  visibility: hidden;
+  opacity: 0;
+  pointer-events: none;
 }
 
 .sc-result--working {

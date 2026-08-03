@@ -1,6 +1,7 @@
 defmodule MMGO.Travel.Clock do
   @seconds_per_real_day 86_400
   @game_days_per_real_day 364
+  @game_hours_per_day 24
   @game_days_per_year 364
   @days_per_month 28
   @world_epoch ~U[2026-01-01 00:00:00Z]
@@ -24,6 +25,12 @@ defmodule MMGO.Travel.Clock do
 
   def game_days_to_real_seconds(game_days) when is_integer(game_days) and game_days >= 0 do
     round(game_days * @seconds_per_real_day / @game_days_per_real_day)
+  end
+
+  @doc "Converts whole game hours to their compressed real-time duration."
+  def game_hours_to_real_seconds(game_hours)
+      when is_integer(game_hours) and game_hours >= 0 do
+    round(game_hours * @seconds_per_real_day / (@game_days_per_real_day * @game_hours_per_day))
   end
 
   def real_seconds_to_game_days(real_seconds)

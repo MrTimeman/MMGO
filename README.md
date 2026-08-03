@@ -110,7 +110,11 @@ mix mmgo.realm.export canonical priv/realms/canonical_export.json
 
 ## AI configuration
 
-By default the app uses a mock AI provider for local development and tests. Production requires `GEMINI_API_KEY` or `DEEPSEEK_API_KEY`, unless the operator explicitly enables fallback-only mode.
+By default the app uses a mock AI provider for local development and tests. The
+supported production provider is DeepSeek and production startup requires a
+nonblank `DEEPSEEK_API_KEY`, unless the operator explicitly enables the
+fallback-only escape hatch. Empty or whitespace-only AI variables are treated
+as unset, so a blank model override cannot shadow the production default.
 
 Telegram Mini App entry validates `Telegram.WebApp.initData` with Telegram's
 documented `WebAppData` HMAC derivation. A verified login creates or resumes the
@@ -119,7 +123,12 @@ avatar URL.
 
 | Env var | Default |
 |---|---|
-| `GEMINI_API_KEY` | _(unset — uses mock)_ |
+| `DEEPSEEK_API_KEY` | _(required in production)_ |
+| `AI_SPELL_MODEL` | `deepseek-chat` with DeepSeek |
+| `AI_ALCHEMY_MODEL` | `deepseek-chat` with DeepSeek |
+| `AI_COMBAT_MODEL` | `deepseek-chat` with DeepSeek |
+| `AI_NARRATION_MODEL` | `deepseek-chat` with DeepSeek |
+| `GEMINI_API_KEY` | _(optional for local development)_ |
 | `GEMINI_API_BASE_URL` | `https://generativelanguage.googleapis.com/v1beta` |
 | `GEMINI_SPELL_MODEL` | `gemini-3-flash` |
 | `GEMINI_ALCHEMY_MODEL` | `gemini-3-flash` |

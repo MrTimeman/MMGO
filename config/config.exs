@@ -42,7 +42,7 @@ config :mmgo, MMGO.AI,
     turn_narration: "g3f-lite"
   },
   prompt_versions: %{
-    spell_compile: "2026-03-27.spell-compile.v1",
+    spell_compile: "2026-08-03.spell-compile.v2",
     alchemy_brew: "2026-07-22.alchemy-brew.v1",
     combat_orchestration: "2026-07-11.combat-orchestration.v1",
     turn_narration: "2026-03-27.turn-narration.v1"

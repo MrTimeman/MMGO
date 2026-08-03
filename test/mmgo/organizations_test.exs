@@ -7,6 +7,7 @@ defmodule MMGO.OrganizationsTest do
   alias MMGO.Notifications.Notification
   alias MMGO.Organizations
   alias MMGO.Repo
+  alias MMGO.Spells.Creation
   alias MMGO.Travel
   alias MMGO.Worlds
 
@@ -266,6 +267,24 @@ defmodule MMGO.OrganizationsTest do
 
     assert Economy.treasury_account_for_realm(realm.id) == nil
     assert Repo.get_by(EconomyAccount, character_id: invitee.id, owner_type: :character) == nil
+  end
+
+  test "organization fast travel cannot bypass an active spell ritual", %{
+    city: city,
+    tower: tower,
+    founder: founder,
+    invitee: invitee
+  } do
+    %{organization: organization} =
+      fast_travel_organization_fixture(founder, invitee, city, tower)
+
+    assert {:ok, %{attempt: _attempt}} = Creation.begin(invitee, city.id, %{})
+
+    assert {:error, changeset} =
+             Organizations.use_fast_travel(invitee, organization, tower)
+
+    assert %{status: ["spell creation ritual is still active"]} = errors_on(changeset)
+    assert Repo.get!(Character, invitee.id).current_location_id == city.id
   end
 
   test "invalid destinations and active journeys fail before a configured toll is charged",

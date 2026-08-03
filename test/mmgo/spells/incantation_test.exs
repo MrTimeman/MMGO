@@ -13,6 +13,7 @@ defmodule MMGO.Spells.IncantationTest do
 
   test "normalize/1 keeps an unknown but valid Latin word for AI interpretation" do
     assert {:ok, "Aeternitas"} = Incantation.normalize("aeternitas")
+    assert {:ok, "Āether"} = Incantation.normalize("āether")
   end
 
   test "normalize/1 rejects formulas with too many words" do
@@ -22,6 +23,7 @@ defmodule MMGO.Spells.IncantationTest do
 
   test "normalize/1 rejects invalid characters" do
     assert {:error, :invalid_word} = Incantation.normalize("ignis 123")
+    assert {:error, :invalid_word} = Incantation.normalize("огонь")
   end
 
   test "normalize/1 bounds formula bytes and individual words before canonicalizing" do

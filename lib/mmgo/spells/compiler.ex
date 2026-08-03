@@ -9,6 +9,8 @@ defmodule MMGO.Spells.Compiler do
   @max_spell_name_bytes 120
   @max_spell_description_bytes 1_200
   @control_character_pattern ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u
+  @cyrillic_pattern ~r/[А-Яа-яЁё]/u
+  @latin_pattern ~r/[A-Za-z]/u
   @targeting_modes ~w(self ally enemy zone)
   @delivery_forms ~w(single_target beam cone sphere wall zone self link delayed_trigger)
   @novice_root_max_intensity 12
@@ -33,7 +35,7 @@ defmodule MMGO.Spells.Compiler do
             school_secondary: schools[:secondary]
           },
           environment_tags: environment_tags,
-          request: request,
+          request: prompt_request(request, opts),
           base_spell: base_spell_summary(base_spell),
           circle_tier: Keyword.get(opts, :circle_tier, :trained),
           library: owned_library_summary(character),
@@ -50,10 +52,13 @@ defmodule MMGO.Spells.Compiler do
              AI.compile_spell(prompt_payload, ai_opts) do
         case compile_outcome(compiled_spell) do
           :created ->
-            compiled_spell = enforce_circle_limits(compiled_spell, base_spell, opts)
-
-            with spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell),
-                 {:ok, spell} <- Spells.create_spell(character, spell_attrs),
+            with :ok <- validate_created_player_facing_output(request, compiled_spell),
+                 compiled_spell <- enforce_circle_limits(compiled_spell, base_spell, opts),
+                 spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell, opts),
+                 {:ok, spell} <-
+                   Spells.create_spell(character, spell_attrs,
+                     creation_attempt_id: Keyword.get(opts, :creation_attempt_id)
+                   ),
                  {:ok, updated_request} <- AI.update_request(ai_request, %{spell_id: spell.id}) do
               {:ok, %{spell: spell, ai_request: updated_request, compiled_spell: compiled_spell}}
             end
@@ -69,7 +74,7 @@ defmodule MMGO.Spells.Compiler do
   end
 
   defp compile_outcome(compiled_spell) do
-    case Map.get(compiled_spell, "outcome") || Map.get(compiled_spell, :outcome) || "created" do
+    case Map.get(compiled_spell, "outcome") || Map.get(compiled_spell, :outcome) do
       "created" -> :created
       :created -> :created
       "failed" -> :failed
@@ -114,19 +119,85 @@ defmodule MMGO.Spells.Compiler do
     end
   end
 
-  defp merge_spell_attrs(request, base_spell, compiled_spell) do
+  defp prompt_request(request, opts) do
+    case Keyword.get(opts, :incantation_slots) do
+      slots when is_map(slots) -> Map.put(request, "incantation_slots", slots)
+      _missing -> request
+    end
+  end
+
+  defp merge_spell_attrs(request, base_spell, compiled_spell, opts) do
     compiled_spell
     |> Map.merge(%{
-      "name" => Map.get(compiled_spell, "name") || Map.get(request, "name"),
+      "name" => Map.get(request, "name") || output_value(compiled_spell, "name"),
       "formula" => Map.fetch!(request, "formula"),
       "school" => Map.fetch!(request, "school"),
-      "description" => Map.get(compiled_spell, "description") || Map.get(request, "description"),
+      "description" =>
+        Map.get(request, "description") || output_value(compiled_spell, "description"),
       "targeting" =>
         Map.get(compiled_spell, "targeting") || Map.get(request, "targeting") || "enemy",
       "delivery_form" =>
         Map.get(compiled_spell, "delivery_form") || Map.get(request, "delivery_form") || "sphere",
-      "source_spell_id" => base_spell && base_spell.id
+      "source_spell_id" => base_spell && base_spell.id,
+      "incantation_slots" => incantation_slots(opts)
     })
+  end
+
+  defp validate_created_player_facing_output(request, compiled_spell) do
+    with :ok <-
+           validate_generated_russian_text(
+             Map.get(request, "name"),
+             output_value(compiled_spell, "name"),
+             @max_spell_name_bytes
+           ),
+         :ok <-
+           validate_generated_russian_text(
+             Map.get(request, "description"),
+             output_value(compiled_spell, "description"),
+             @max_spell_description_bytes
+           ) do
+      :ok
+    end
+  end
+
+  # Explicit, normalized caller text remains authoritative. When the compiler
+  # must generate player-facing prose, however, the Russian-only contract is
+  # enforced server-side rather than trusted to prompt adherence.
+  defp validate_generated_russian_text(request_text, _compiled_text, _max_bytes)
+       when is_binary(request_text),
+       do: :ok
+
+  defp validate_generated_russian_text(nil, compiled_text, max_bytes)
+       when is_binary(compiled_text) do
+    if String.valid?(compiled_text) do
+      normalized_text = String.trim(compiled_text)
+
+      if normalized_text != "" and byte_size(compiled_text) <= max_bytes and
+           not Regex.match?(@control_character_pattern, compiled_text) and
+           Regex.match?(@cyrillic_pattern, compiled_text) and
+           not Regex.match?(@latin_pattern, compiled_text) do
+        :ok
+      else
+        {:error, :invalid_response}
+      end
+    else
+      {:error, :invalid_response}
+    end
+  end
+
+  defp validate_generated_russian_text(nil, _compiled_text, _max_bytes),
+    do: {:error, :invalid_response}
+
+  defp output_value(map, "name"), do: Map.get(map, "name") || Map.get(map, :name)
+
+  defp output_value(map, "description"),
+    do: Map.get(map, "description") || Map.get(map, :description)
+
+  defp incantation_slots(opts) do
+    case Keyword.get(opts, :incantation_slots) do
+      slots when is_map(slots) -> slots
+      _missing -> %{}
+    end
   end
 
   # The server-selected circle tier, not spell lineage, owns the mechanical
@@ -358,6 +429,7 @@ defmodule MMGO.Spells.Compiler do
       name: spell.name,
       formula: spell.formula,
       school: spell.school,
+      incantation_slots: spell.incantation_slots,
       source_spell_id: spell.source_spell_id
     }
   end
@@ -370,6 +442,7 @@ defmodule MMGO.Spells.Compiler do
       name: spell.name,
       formula: spell.formula,
       school: spell.school,
+      incantation_slots: spell.incantation_slots,
       description: bounded_prompt_text(spell.description, @max_spell_description_bytes),
       effects: Enum.map(spell.effects, &effect_summary/1)
     }

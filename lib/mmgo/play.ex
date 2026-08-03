@@ -54,7 +54,7 @@ defmodule MMGO.Play do
   alias MMGO.Scavenging.{Attempt, ResourceCache}
   alias MMGO.SecretCult
   alias MMGO.Spells
-  alias MMGO.Spells.{Compiler, Spell}
+  alias MMGO.Spells.{Compiler, Creation, Incantation, Spell}
   alias MMGO.Survival
   alias MMGO.Crafting
   alias MMGO.Travel
@@ -299,6 +299,10 @@ defmodule MMGO.Play do
           Repo.rollback(:destination_outside_realm)
         end
 
+        if Creation.active_attempt(character.id) do
+          Repo.rollback(:spell_creation_in_progress)
+        end
+
         if Travel.active_journey(character.id) do
           Repo.rollback(:journey_active)
         end
@@ -507,6 +511,14 @@ defmodule MMGO.Play do
       spells = Spells.list_spells_for_character(character.id)
       grimoires = Grimoires.list_grimoires_for_character(character.id)
       circle_tier = spellbook_circle_tier(character)
+      spell_creation_attempt = Creation.active_attempt(character.id)
+      latest_spell_creation_attempt = Creation.recent_attempt(character.id)
+
+      recent_spell_creation_attempt =
+        case latest_spell_creation_attempt do
+          %{status: :revealed} = attempt -> attempt
+          _active_or_missing -> nil
+        end
 
       {composition_location, composition_lock_reason} =
         case spellbook_location(character) do
@@ -523,6 +535,8 @@ defmodule MMGO.Play do
          writable_grimoires: Enum.filter(grimoires, &(&1.status == :draft)),
          permitted_schools: permitted_spellbook_schools(character, spells),
          spell_circle_tier: circle_tier,
+         spell_creation_attempt: spell_creation_attempt,
+         recent_spell_creation_attempt: recent_spell_creation_attempt,
          composition_location: composition_location,
          composition_available?: not is_nil(composition_location),
          composition_lock_reason: composition_lock_reason
@@ -544,32 +558,176 @@ defmodule MMGO.Play do
     "pretium" => :pretium,
     "base" => :base
   }
-  @spellbook_word_pattern ~r/^\p{L}+(?:-\p{L}+)*$/u
-
   @doc """
   Compiles a spell from the server-owned circle schema.
 
   This is the only player-facing compilation boundary. It never accepts a
   ready-made formula: the server selects the slots available to this
   character's training tier, validates each seal as one bounded word, and
-  assembles the incantation itself. A novice has exactly School, Actio, and
-  Tempus; an Academy-trained wizard receives the expanded circle and must
-  choose an owned foundation spell.
+  assembles the incantation itself. A novice has exactly Schola, Actio, and
+  Tempus; an Academy-trained wizard receives the expanded circle and may
+  optionally choose an owned Fundamen.
   """
-  def compile_structured_spell(character_or_id, slots) when is_map(slots) do
+  def compile_structured_spell(character_or_id, slots) do
     with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, spell} <- compile_structured_spell_at(character, slots) do
+      {:ok, spell}
+    end
+  end
+
+  @doc "Starts a durable spell ritual on the continuously running world clock."
+  def begin_spell_creation(character_or_id, raw_circle) do
+    case spellbook_character_id(character_or_id) do
+      character_id when is_binary(character_id) ->
+        begin_spell_creation_by_id(character_id, raw_circle)
+
+      _invalid ->
+        {:error, :not_found}
+    end
+  end
+
+  defp begin_spell_creation_by_id(character_id, raw_circle) do
+    case Repo.transaction(fn ->
+           character =
+             Character
+             |> where([candidate], candidate.id == ^character_id)
+             |> lock("FOR UPDATE")
+             |> preload(:current_location)
+             |> Repo.one()
+
+           if is_nil(character), do: Repo.rollback(:not_found)
+
+           location =
+             case spellbook_location(character) do
+               {:ok, location} -> location
+               {:error, reason} -> Repo.rollback(reason)
+             end
+
+           case Creation.begin(character, location.id, raw_circle) do
+             {:ok, result} -> result
+             {:error, reason} -> Repo.rollback(reason)
+           end
+         end) do
+      {:ok, result} -> {:ok, result}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  @doc false
+  def resolve_spell_creation_attempt(attempt_id) when is_binary(attempt_id) do
+    with {:ok, %{attempt: attempt, action: action}} <- Creation.claim_resolution(attempt_id) do
+      resolve_claimed_spell_creation(attempt, action)
+    end
+  end
+
+  def resolve_spell_creation_attempt(_attempt_id), do: {:error, :not_found}
+
+  @doc "Returns a revealed ritual outcome only to the character who created it."
+  def spell_creation_result(character_or_id, attempt_id) when is_binary(attempt_id) do
+    character_id = spellbook_character_id(character_or_id)
+
+    case Creation.get_attempt(attempt_id) do
+      %{character_id: ^character_id, status: :revealed, outcome: %{"kind" => "success"}} =
+          attempt ->
+        case attempt.spell do
+          %Spell{} = spell -> {:ok, spell}
+          _missing -> {:error, :spell_not_found}
+        end
+
+      %{character_id: ^character_id, status: :revealed, outcome: %{"kind" => "failure"} = outcome} ->
+        {:error, {:spell_creation_failure, outcome}}
+
+      %{character_id: ^character_id} ->
+        {:error, :spell_creation_in_progress}
+
+      _missing_or_foreign ->
+        {:error, :not_found}
+    end
+  end
+
+  def spell_creation_result(_character_or_id, _attempt_id), do: {:error, :not_found}
+
+  defp resolve_claimed_spell_creation(%{status: :revealed} = attempt, :noop) do
+    normalize_spell_creation_finalization(Creation.reveal(attempt.id))
+  end
+
+  defp resolve_claimed_spell_creation(_attempt, :noop), do: :ok
+
+  defp resolve_claimed_spell_creation(attempt, :recover_success) do
+    result =
+      with {:ok, character} <- reload_spellbook_character(attempt.character_id),
+           :ok <- ensure_spell_creation_location(character, attempt) do
+        :ok
+      end
+
+    case result do
+      :ok ->
+        normalize_spell_creation_finalization(Creation.finalize_success(attempt.id))
+
+      {:error, reason} ->
+        normalize_spell_creation_finalization(Creation.finalize_failure(attempt.id, reason))
+    end
+  end
+
+  defp resolve_claimed_spell_creation(attempt, :resolve) do
+    result =
+      with {:ok, character} <- reload_spellbook_character(attempt.character_id),
+           :ok <- ensure_spell_creation_location(character, attempt),
+           {:ok, spell} <-
+             compile_structured_spell_at(character, spell_creation_circle(attempt),
+               creation_attempt_id: attempt.id
+             ),
+           {:ok, current_character} <- reload_spellbook_character(character.id),
+           :ok <- ensure_spell_creation_location(current_character, attempt) do
+        {:ok, spell}
+      end
+
+    case result do
+      {:ok, _spell} ->
+        normalize_spell_creation_finalization(Creation.finalize_success(attempt.id))
+
+      {:error, reason} ->
+        normalize_spell_creation_finalization(Creation.finalize_failure(attempt.id, reason))
+    end
+  end
+
+  defp compile_structured_spell_at(%Character{} = character, slots, extra_compiler_opts \\ []) do
+    with true <- is_map(slots),
          spells <- Spells.list_spells_for_character(character.id),
          tier <- spellbook_circle_tier(character),
          {:ok, school} <- permitted_spellbook_school(character, spells, slots),
          {:ok, attrs, compiler_opts} <-
            structured_spellbook_attrs(character, spells, school, tier, slots),
+         compiler_opts <- Keyword.merge(compiler_opts, extra_compiler_opts),
          {:ok, %{spell: spell}} <- Compiler.compile_and_store(character, attrs, compiler_opts) do
       {:ok, spell}
+    else
+      false -> {:error, :invalid_spell_circle}
+      {:error, reason} -> {:error, reason}
     end
   end
 
-  def compile_structured_spell(_character_or_id, _slots),
-    do: {:error, :invalid_spell_circle}
+  defp ensure_spell_creation_location(%Character{} = character, attempt) do
+    with true <- character.current_location_id == attempt.location_id,
+         {:ok, _location} <- spellbook_location(character) do
+      :ok
+    else
+      false -> {:error, :spellbook_location}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  defp spell_creation_circle(%{input: %{"circle" => circle}}) when is_map(circle), do: circle
+  defp spell_creation_circle(_attempt), do: :invalid_spell_circle
+
+  defp normalize_spell_creation_finalization({:ok, _attempt}), do: :ok
+  defp normalize_spell_creation_finalization({:error, reason}), do: {:error, reason}
+
+  defp spellbook_character_id(%Character{id: character_id}) when is_binary(character_id),
+    do: character_id
+
+  defp spellbook_character_id(character_id) when is_binary(character_id), do: character_id
+  defp spellbook_character_id(_character_or_id), do: nil
 
   @doc "Activates one of the caster's own grimoires as their loadout."
   def activate_grimoire(character_or_id, grimoire_id) when is_binary(grimoire_id) do
@@ -1770,67 +1928,103 @@ defmodule MMGO.Play do
     end
   end
 
-  defp structured_spellbook_attrs(_character, spells, school, :novice, slots) do
-    with {:ok, words} <-
-           normalize_spellbook_words(slots, @novice_spellbook_slots, @novice_spellbook_slots) do
-      base_spell = Enum.find(spells, &(to_string(&1.school) == school))
-
+  defp structured_spellbook_attrs(_character, _spells, school, :novice, slots) do
+    with {:ok, seals} <-
+           normalize_spellbook_seals(slots, @novice_spellbook_slots, @novice_spellbook_slots) do
       attrs = %{
         "school" => school,
-        "formula" => Enum.join(words, " "),
-        "base_spell_id" => base_spell && base_spell.id
+        "formula" => spellbook_formula(seals, @novice_spellbook_slots)
       }
 
-      {:ok, attrs, [allow_root_spell: true, circle_tier: :novice]}
+      {:ok, attrs, [allow_root_spell: true, circle_tier: :novice, incantation_slots: seals]}
     end
   end
 
   defp structured_spellbook_attrs(_character, _spells, school, :trained, slots) do
-    with {:ok, words} <- normalize_spellbook_words(slots, @trained_spellbook_slots, ["actio"]),
-         base_spell_id when is_binary(base_spell_id) <- normalized_slot(slots, "base"),
-         true <- String.trim(base_spell_id) != "" do
-      {:ok,
-       %{
-         "school" => school,
-         "formula" => Enum.join(words, " "),
-         "base_spell_id" => base_spell_id
-       }, [circle_tier: :trained]}
-    else
-      _other -> {:error, :missing_spell_foundation}
+    with {:ok, seals} <-
+           normalize_spellbook_seals(slots, @trained_spellbook_slots, ["actio"]),
+         {:ok, base_spell_id} <- optional_spellbook_base(slots) do
+      attrs = %{
+        "school" => school,
+        "formula" => spellbook_formula(seals, @trained_spellbook_slots)
+      }
+
+      attrs = if base_spell_id, do: Map.put(attrs, "base_spell_id", base_spell_id), else: attrs
+
+      {:ok, attrs, [allow_root_spell: true, circle_tier: :trained, incantation_slots: seals]}
     end
   end
 
-  defp normalize_spellbook_words(slots, slot_names, required_slots) do
-    Enum.reduce_while(slot_names, {:ok, []}, fn slot_name, {:ok, words} ->
-      value = normalized_slot(slots, slot_name)
+  defp optional_spellbook_base(slots) do
+    case normalized_spellbook_slot(slots, "base") do
+      {:ok, value} -> {:ok, value}
+      {:error, _reason} = error -> error
+    end
+  end
 
-      cond do
-        value in [nil, ""] and slot_name in required_slots ->
-          {:halt, {:error, :incomplete_spell_circle}}
+  defp normalize_spellbook_seals(slots, slot_names, required_slots) do
+    Enum.reduce_while(slot_names, {:ok, %{}}, fn slot_name, {:ok, seals} ->
+      case normalized_spellbook_slot(slots, slot_name) do
+        {:ok, nil} ->
+          if slot_name in required_slots do
+            {:halt, {:error, :incomplete_spell_circle}}
+          else
+            {:cont, {:ok, seals}}
+          end
 
-        value in [nil, ""] ->
-          {:cont, {:ok, words}}
+        {:ok, value} ->
+          case Incantation.normalize(value) do
+            {:ok, normalized_value} ->
+              if String.contains?(normalized_value, " ") do
+                {:halt, {:error, :invalid_spell_circle_word}}
+              else
+                {:cont, {:ok, Map.put(seals, slot_name, normalized_value)}}
+              end
 
-        valid_spellbook_word?(value) ->
-          {:cont, {:ok, words ++ [value]}}
+            {:error, _reason} ->
+              {:halt, {:error, :invalid_spell_circle_word}}
+          end
 
-        true ->
-          {:halt, {:error, :invalid_spell_circle_word}}
+        {:error, _reason} = error ->
+          {:halt, error}
       end
     end)
   end
 
-  defp normalized_slot(slots, key) do
-    value = Map.get(slots, key) || Map.get(slots, Map.fetch!(@spellbook_slot_atom_keys, key))
+  defp spellbook_formula(seals, slot_names) do
+    slot_names
+    |> Enum.flat_map(fn slot_name ->
+      case Map.get(seals, slot_name) do
+        nil -> []
+        word -> [word]
+      end
+    end)
+    |> Enum.join(" ")
+  end
+
+  defp normalized_spellbook_slot(slots, key) do
+    value =
+      case Map.fetch(slots, key) do
+        {:ok, value} -> value
+        :error -> Map.get(slots, Map.fetch!(@spellbook_slot_atom_keys, key))
+      end
 
     case value do
-      value when is_binary(value) -> String.trim(value)
-      _other -> nil
+      nil -> {:ok, nil}
+      value when is_binary(value) -> normalize_optional_slot_text(value)
+      _other -> {:error, :invalid_spell_circle}
     end
   end
 
-  defp valid_spellbook_word?(word) do
-    byte_size(word) <= 32 and Regex.match?(@spellbook_word_pattern, word)
+  defp normalize_optional_slot_text(value) do
+    if String.valid?(value) do
+      case String.trim(value) do
+        "" -> {:ok, nil}
+        value -> {:ok, value}
+      end
+    else
+      {:error, :invalid_spell_circle}
+    end
   end
 
   defp owned_grimoire(%Character{} = character, grimoire_id) do

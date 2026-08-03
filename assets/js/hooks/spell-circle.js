@@ -86,12 +86,26 @@ void main() {
 `
 
 const DEFAULT_SLOTS = [
-  { key: 'school', label: 'Школа', required: true, kind: 'select', options: [] },
-  { key: 'actio', label: 'Акцио', required: true, kind: 'text' },
-  { key: 'tempus', label: 'Темпус', required: true, kind: 'text' },
+  { key: 'school', label: 'Schola', required: true, kind: 'select', options: [] },
+  { key: 'actio', label: 'Actio', required: true, kind: 'text' },
+  { key: 'tempus', label: 'Tempus', required: true, kind: 'text' },
 ]
 
 const RUNE_STR = 'ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ ᚹ ᚺ ᛊ ᛏ ᛒ ᛖ ᛗ ᛚ ᛜ ᛞ ᛟ · '
+const LATIN_WORD_PATTERN = /^\p{Script=Latin}+(?:-\p{Script=Latin}+)*$/u
+const DEFAULT_RITUAL_DURATION_MS = 10_000
+const RITUAL_FINISH_DURATION_MS = { success: 2_800, failure: 3_600 }
+
+function normalizedSlotValue(rawValue) {
+  return typeof rawValue === 'string' ? rawValue.trim() : ''
+}
+
+function slotValueValid(slot, rawValue) {
+  const value = normalizedSlotValue(rawValue)
+  if (!value) return !slot.required
+  if (slot.kind === 'text') return LATIN_WORD_PATTERN.test(value)
+  return slot.options.some(option => String(option.value) === value)
+}
 
 function svgEl(tag, attrs = {}) {
   const el = document.createElementNS(NS, tag)
@@ -304,27 +318,24 @@ export const SpellCircleHook = {
     this._firstRender = true
     // Casting is a distinct phase from entry: while filling in slots the
     // circle stays plain and the room stays lit — the ritual (blackout +
-    // ignition) only happens once the incantation is actually spoken, and
-    // holds for exactly as long as the AI takes to resolve it.
+    // ignition) only happens once the incantation is actually spoken. It
+    // lasts at least one game hour and remains active longer when the AI
+    // still has not resolved the attempt.
     this._casting = false
     this._castPhase = 'idle'
     this._castOutcome = null
     this._castStartedAt = 0
+    this._ritualDurationMs = DEFAULT_RITUAL_DURATION_MS
     this._castTimers = []
     this._resultPortals = []
+    this._pendingInit = null
 
     this.handleEvent('spell_circle_init', data => {
-      if (data.slots) {
-        this._slots = data.slots.map(s => ({
-          key: s.key,
-          label: s.label,
-          required: s.required,
-          kind: s.kind || 'text',
-          options: s.options || [],
-        }))
+      if (this._casting) {
+        this._pendingInit = data
+      } else {
+        this._applyCircleInit(data)
       }
-      if (data.current) Object.assign(this._sel, data.current)
-      this.render()
     })
 
     // The server tells us the AI has resolved (or failed) — that's the
@@ -334,6 +345,54 @@ export const SpellCircleHook = {
     })
 
     this.pushEvent('hook_mounted', { hook: 'SpellCircle' })
+  },
+
+  _applyCircleInit(data = {}) {
+    if (Number.isFinite(data.ritual_duration_ms) && data.ritual_duration_ms > 0) {
+      this._ritualDurationMs = data.ritual_duration_ms
+    }
+    if (data.slots) {
+      this._slots = data.slots.map(s => ({
+        key: s.key,
+        label: s.label,
+        required: s.required,
+        kind: s.kind || 'text',
+        options: s.options || [],
+      }))
+    }
+    if (Object.prototype.hasOwnProperty.call(data, 'current')) {
+      this._sel = { ...(data.current || {}) }
+    }
+
+    if (data.ritual?.active && !this._casting) {
+      this._resumeRitual(data.ritual)
+    } else {
+      this.render()
+    }
+  },
+
+  _resumeRitual(ritual = {}) {
+    const remainingMs = Number.isFinite(ritual.remaining_ms)
+      ? Math.max(0, Math.min(this._ritualDurationMs, ritual.remaining_ms))
+      : this._ritualDurationMs
+    const elapsedMs = this._ritualDurationMs - remainingMs
+
+    this._clearCastTimers()
+    this._casting = true
+    this._castPhase = elapsedMs < 2800 ? 'building' : 'weaving'
+    this._castOutcome = null
+    this._castStartedAt = Date.now() - elapsedMs
+    this._startDimKeepalive()
+
+    if (this._castPhase === 'building') {
+      this._setCastTimer(() => {
+        if (!this._casting || this._castPhase !== 'building') return
+        this._castPhase = 'weaving'
+        this.render()
+      }, Math.max(2800 - elapsedMs, 0))
+    }
+
+    this.render()
   },
 
   // `.book__page` is a normal LiveView-managed element (not phx-update
@@ -427,7 +486,8 @@ export const SpellCircleHook = {
 
   _finishCastingAfterMinimum(outcome = 'success') {
     const elapsed = Date.now() - this._castStartedAt
-    const wait = Math.max(6200 - elapsed, 0)
+    const finishDuration = RITUAL_FINISH_DURATION_MS[outcome] ?? RITUAL_FINISH_DURATION_MS.success
+    const wait = Math.max(this._ritualDurationMs - finishDuration - elapsed, 0)
 
     this._setCastTimer(() => {
       if (!this._casting) return
@@ -439,13 +499,20 @@ export const SpellCircleHook = {
         this._casting = false
         this._castPhase = 'idle'
         this._castOutcome = null
-        this._sel = {}
         this._prevSel = {}
         this._activeSlot = null
         this._wasCharged = false
         this._stopDimKeepalive()
-        this.render()
-      }, outcome === 'failure' ? 3600 : 2800)
+
+        const pendingInit = this._pendingInit
+        this._pendingInit = null
+        if (pendingInit) {
+          this._applyCircleInit(pendingInit)
+        } else {
+          this._sel = {}
+          this.render()
+        }
+      }, finishDuration)
     }, wait)
   },
 
@@ -469,10 +536,10 @@ export const SpellCircleHook = {
     const total = ringSlots.length
     const usedRingSlots =
       ringSlots
-        .map((slot, index) => ({ slot, index, value: this._sel[slot.key] }))
+        .map((slot, index) => ({ slot, index, value: normalizedSlotValue(this._sel[slot.key]) }))
         .filter(({ value }) => !!value)
-    const centerUsed = !!(centerSlot && this._sel[centerSlot.key])
-    const charged = this._slots.filter(s => s.required).every(s => this._sel[s.key])
+    const centerUsed = !!(centerSlot && normalizedSlotValue(this._sel[centerSlot.key]))
+    const charged = this._slots.every(slot => slotValueValid(slot, this._sel[slot.key]))
     const justCharged = charged && !this._wasCharged
     this._wasCharged = charged
 
@@ -521,10 +588,10 @@ export const SpellCircleHook = {
     ringSlots.forEach((slot, i) => {
       const size  = tileSize(total, slot.required)
       const pos   = slotPos(i, total, size)
-      const value = this._sel[slot.key] ?? ''
+      const value = normalizedSlotValue(this._sel[slot.key])
       const displayValue = this._displayValue(slot, value)
       const isActive = this._activeSlot === slot.key
-      const wasFilled = !!this._prevSel[slot.key]
+      const wasFilled = !!normalizedSlotValue(this._prevSel[slot.key])
       const justFilled = !!value && !wasFilled
 
       const wrap = document.createElement('div')
@@ -579,9 +646,10 @@ export const SpellCircleHook = {
     // has one, sitting still in the middle; otherwise today's empty center
     // with a decorative lit rune once charged.
     if (centerSlot) {
-      const value = this._sel[centerSlot.key] ?? ''
+      const value = normalizedSlotValue(this._sel[centerSlot.key])
       const displayValue = this._displayValue(centerSlot, value)
       const isActive = this._activeSlot === centerSlot.key
+      const centerAvailable = centerSlot.options.length > 0
 
       const centerBtn = document.createElement('button')
       centerBtn.type = 'button'
@@ -591,6 +659,7 @@ export const SpellCircleHook = {
         value ? 'sc__slot--filled' : '',
         isActive ? 'sc__slot--active' : '',
         'sc__slot--optional',
+        !centerAvailable ? 'sc__slot--unavailable' : '',
       ].filter(Boolean).join(' ')
 
       const val = document.createElement('span')
@@ -598,9 +667,13 @@ export const SpellCircleHook = {
       val.textContent = displayValue || '—'
       centerBtn.appendChild(val)
 
-      centerBtn.disabled = this._casting
+      centerBtn.disabled = this._casting || !centerAvailable
+      if (!centerAvailable) {
+        centerBtn.title = 'Fundamen необязателен; известных заклинаний для основы пока нет.'
+        centerBtn.setAttribute('aria-label', centerBtn.title)
+      }
       centerBtn.addEventListener('click', () => {
-        if (this._casting) return
+        if (this._casting || !centerAvailable) return
         this._activeSlot = this._activeSlot === centerSlot.key ? null : centerSlot.key
         this.render()
       })
@@ -657,15 +730,15 @@ export const SpellCircleHook = {
       this._casting ? 'sc__compile--casting' : '',
     ].filter(Boolean).join(' ')
     btn.type      = 'button'
-    btn.disabled  = !charged || this._casting
+    btn.disabled  = this._casting
     btn.textContent = this._casting ? 'Заклинание творится…' : 'Сотворить заклинание'
     btn.addEventListener('click', () => {
-      if (!charged || this._casting) return
-      // Speaking the incantation is the trigger — the room goes dark and
-      // the circle ignites right now, and holds in that state (not a fixed
-      // timer) until the server tells us the AI has actually resolved it.
+      if (this._casting) return
+      // Speaking the incantation is the trigger: the room goes dark now and
+      // stays in ritual state for the game-hour minimum, or longer until the
+      // server tells us that the AI has resolved the attempt.
       this._beginCasting()
-      this.pushEvent('spell_compile', { ...this._sel })
+      this.pushEvent('spell_compile', this._slotPayload())
       this.render()
     })
     footer.appendChild(btn)
@@ -899,6 +972,16 @@ export const SpellCircleHook = {
     return value
   },
 
+  // Submit exactly the server-owned circle schema, never the hook's whole
+  // scratch object. Every seal is present in the payload — including blank
+  // ones — so an incomplete or malformed circle reaches the server as an
+  // attempted ritual instead of becoming a client-side dead end.
+  _slotPayload() {
+    return Object.fromEntries(
+      this._slots.map(slot => [slot.key, normalizedSlotValue(this._sel[slot.key])])
+    )
+  },
+
   _buildInputSheet(key) {
     const slot = this._slots.find(s => s.key === key)
     const sheet = document.createElement('div')
@@ -909,11 +992,10 @@ export const SpellCircleHook = {
     title.textContent = slot?.label ?? key
     sheet.appendChild(title)
 
-    if (slot?.kind === 'select') {
-      sheet.appendChild(this._buildSelectField(slot, key))
-    } else {
-      sheet.appendChild(this._buildTextField(key))
-    }
+    const field = slot?.kind === 'select'
+      ? this._buildSelectField(slot, key)
+      : this._buildTextField(key)
+    sheet.appendChild(field)
 
     const actions = document.createElement('div')
     actions.className = 'sc__sheet-actions'
@@ -922,7 +1004,16 @@ export const SpellCircleHook = {
     accept.type = 'button'
     accept.className = 'sc__sheet-btn sc__sheet-btn--ok'
     accept.textContent = 'ОК'
-    accept.addEventListener('click', () => { this._activeSlot = null; this.render() })
+    accept.addEventListener('click', () => {
+      if (slot?.kind === 'text') {
+        const value = normalizedSlotValue(this._sel[key])
+        if (value) this._sel[key] = value
+        else delete this._sel[key]
+      }
+
+      this._activeSlot = null
+      this.render()
+    })
 
     const clear = document.createElement('button')
     clear.type = 'button'
@@ -945,11 +1036,15 @@ export const SpellCircleHook = {
     input.maxLength = 32
     input.autocomplete = 'off'
     input.spellcheck = false
-    input.setAttribute('aria-label', 'Одно слово из букв')
+    input.title = 'Одно латинское слово; внутри слова допустим дефис.'
+    input.setAttribute('aria-label', 'Одно слово латиницей')
     input.value = this._sel[key] ?? ''
     input.addEventListener('input', e => { this._sel[key] = e.target.value })
     input.addEventListener('keydown', e => {
-      if (e.key === 'Enter') { this._activeSlot = null; this.render() }
+      if (e.key === 'Enter') {
+        e.preventDefault()
+        input.closest('.sc__sheet')?.querySelector('.sc__sheet-btn--ok')?.click()
+      }
     })
     requestAnimationFrame(() => input.focus())
     return input

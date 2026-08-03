@@ -10,9 +10,14 @@ Copy `.env.example` into your secret manager, not into source control. Productio
 - `TELEGRAM_BOT_TOKEN`, `TELEGRAM_WEBHOOK_SECRET`
 - `TELEGRAM_MINI_APP_URL` (normally `https://<PHX_HOST>/play`)
 - `FEDERATION_PUBLIC_BASE_URL`, `FEDERATION_IMPORT_TOKEN`
-- `GEMINI_API_KEY` or `DEEPSEEK_API_KEY`
+- `DEEPSEEK_API_KEY`
 
-`MMGO_ALLOW_MOCK_AI_IN_PROD=true` is an explicit fallback-only exception for a closed test deployment. It is not the recommended closed-alpha configuration.
+DeepSeek is the authoritative production spell compiler. Empty or
+whitespace-only keys and model overrides count as unset; when no nonblank
+`AI_SPELL_MODEL` override is supplied, DeepSeek uses `deepseek-chat`.
+`MMGO_ALLOW_MOCK_AI_IN_PROD=true` remains an explicit runtime escape hatch for
+an isolated fallback-only test, but the standard `just deploy` production path
+deliberately rejects Mock or Gemini.
 
 Set `ECTO_SSL=false` only when the PostgreSQL connection is on a trusted local/private network that does not support TLS. Generate a release secret with `mix phx.gen.secret`; do not reuse development values.
 
@@ -29,6 +34,13 @@ just deploy-plan
 MMGO_RELEASE_NOTES='Исправили путешествия и упростили навигацию по карте.' just deploy
 just prod-status
 ```
+
+Before switching Compose, the smoke container must report DeepSeek as the
+resolved provider, a nonblank spell model, and a successful low-cost structured
+JSON completion from the live DeepSeek endpoint. A missing key, wrong provider,
+bad model, network failure, rejected API request, or malformed response aborts
+the deployment before production is replaced; the probe output never prints
+the API key or provider response body.
 
 `MMGO_RELEASE_NOTES` becomes the player-facing Telegram announcement. Keep it
 short, concrete, and free of internal commit details; the bot adds the closed

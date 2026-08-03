@@ -11,8 +11,10 @@ defmodule MMGOWeb.CombatLive do
   use MMGOWeb, :live_view
 
   alias MMGO.Play
+  alias MMGO.Spells.Incantation
 
   @refresh_interval 1_000
+  @incantation_slot_order ~w(actio forma vis tempus mutatio pretium)
 
   @impl true
   def mount(params, _session, socket) do
@@ -121,7 +123,10 @@ defmodule MMGOWeb.CombatLive do
       assigns
       |> assign(:enemy_side, enemy_side)
       |> assign(:ally_side, ally_side)
-      |> assign(:incantation_word_count, incantation_word_count(assigns.action_form))
+      |> assign(
+        :lit_incantation_slots,
+        lit_incantation_slots(assigns.action_form, assigns.combat_state.prepared_spells)
+      )
 
     ~H"""
     <Layouts.app
@@ -317,13 +322,16 @@ defmodule MMGOWeb.CombatLive do
                 aria-label="Строение формулы"
               >
                 <span
-                  :for={{{mark, title}, index} <- Enum.with_index(incantation_slots())}
-                  class={["cbt-slot", index < @incantation_word_count && "cbt-slot--lit"]}
+                  :for={{key, mark, title} <- incantation_slots()}
+                  class={[
+                    "cbt-slot",
+                    MapSet.member?(@lit_incantation_slots, key) && "cbt-slot--lit"
+                  ]}
                   title={title}
                 >
                   {mark}
                 </span>
-                <span class="cbt-slots__count">{@incantation_word_count}/6</span>
+                <span class="cbt-slots__count">{MapSet.size(@lit_incantation_slots)}/6</span>
               </div>
 
               <fieldset class="cbt-action-case">
@@ -766,21 +774,58 @@ defmodule MMGOWeb.CombatLive do
 
   defp incantation_slots do
     [
-      {"А", "Акцио · действие"},
-      {"Ф", "Форма · очертание"},
-      {"В", "Вис · сила"},
-      {"Т", "Темпус · время"},
-      {"М", "Мутацио · изменение"},
-      {"Ц", "Прециум · цена"}
+      {"actio", "A", "Actio · действие"},
+      {"forma", "F", "Forma · форма"},
+      {"vis", "V", "Vis · сила"},
+      {"tempus", "T", "Tempus · время"},
+      {"mutatio", "M", "Mutatio · изменение"},
+      {"pretium", "P", "Pretium · цена"}
     ]
   end
 
-  defp incantation_word_count(form) do
-    form[:incantation].value
-    |> to_string()
-    |> String.split(~r/\s+/, trim: true)
-    |> length()
-    |> min(6)
+  defp lit_incantation_slots(form, prepared_spells) do
+    selected_spell = Enum.find(prepared_spells, &(&1.id == form[:spell_id].value))
+    entered_formula = normalized_formula(form[:incantation].value)
+
+    case selected_spell do
+      %{formula: formula, incantation_slots: slots}
+      when is_map(slots) and map_size(slots) > 0 ->
+        if entered_formula == normalized_formula(formula) do
+          slots
+          |> Map.keys()
+          |> Enum.filter(&(&1 in @incantation_slot_order))
+          |> MapSet.new()
+        else
+          positional_incantation_slots(entered_formula)
+        end
+
+      _legacy_or_custom_formula ->
+        positional_incantation_slots(entered_formula)
+    end
+  end
+
+  defp positional_incantation_slots(formula) do
+    word_count = formula |> String.split(~r/\s+/, trim: true) |> length() |> min(6)
+
+    @incantation_slot_order
+    |> Enum.take(word_count)
+    |> MapSet.new()
+  end
+
+  defp normalized_formula(nil), do: ""
+
+  defp normalized_formula(formula) do
+    formula = to_string(formula)
+
+    case Incantation.normalize(formula) do
+      {:ok, normalized} ->
+        normalized
+
+      {:error, _reason} ->
+        formula
+        |> String.split(~r/\s+/, trim: true)
+        |> Enum.join(" ")
+    end
   end
 
   defp side_display_label(label) when is_binary(label) do

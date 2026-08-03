@@ -123,7 +123,7 @@ The game is built around interconnected systems. Circles represent mechanics (ac
 
 # 2. Magic System
 
-The magic system is the core feature of MMGO. Players create spells by combining a school, a base spell, and a Latin incantation of up to 6 words. An AI interprets the combination and produces situational effects that alter the state of the battle, rather than simple numeric damage.
+The magic system is the core feature of MMGO. Players create spells by combining a school, an optional base spell, and a Latin incantation of up to 6 words. An AI interprets the combination and produces situational effects that alter the state of the battle, rather than simple numeric damage.
 
 ## 2.1 Schools of Magic
 
@@ -151,11 +151,13 @@ Eight schools arranged in an elemental compass. Four base elements occupy the ca
 
 A spell is created through a server-defined ritual circle, never through an unrestricted formula field. An untrained caster receives exactly three required seals: **Schola** (school), **Actio** (action), and **Tempus** (duration). Actio and Tempus each accept one bounded word; the server assembles the incantation in the canonical order.
 
-Wizardry training unlocks the expanded circle: a foundation spell plus the optional Forma, Vis, Mutatio, and Pretium seals. Using fewer optional seals produces a cheaper, faster, but less predictable spell — the AI fills in unspecified parameters at its discretion.
+Wizardry training unlocks the expanded circle: the optional **Fundamen** (foundation spell), Forma, Vis, Mutatio, and Pretium seals. Using fewer optional seals produces a cheaper but less predictable spell — the AI fills in unspecified parameters at its discretion. The creation ritual still occupies one full hour of global game time regardless of how many seals were used.
+
+Pressing the ritual seal always launches an attempt; the client does not block incomplete or malformed combinations. Every authorized attempt keeps the ritual in progress for at least one hour of the continuously running world clock, including formulas that fail validation or are rejected by the interpreter. This is elapsed global game time, not a character-specific cooldown. The server persists the ritual with its world-clock start and completion instants before validating the seals, resolves it in a durable background job, and keeps both success and failure sealed until that shared deadline. Closing or reloading the client cannot reveal the result, start another ritual, expose the new spell to another subsystem, or permit ordinary travel before the hour has elapsed.
 
 ### 2.2.1 Base Spell
 
-The novice three-seal circle may create a modest root spell without an existing foundation. Once the caster has a spell in that school, later novice formulas inherit it automatically. The expanded academic circle requires the caster to choose an owned foundation spell. The library grows through the Academy, loot, trading, and every successfully created spell; spells beget spells.
+The novice three-seal circle always creates a modest root spell without an existing foundation. The expanded academic circle may also create an independent spell, or the caster may explicitly choose an owned spell as **Fundamen**. The library grows through the Academy, loot, trading, and every successfully created spell; spells can beget spells without making lineage mandatory.
 
 When a base spell is specified, the AI operates in "revamp" mode: it modifies the base spell according to the new incantation parameters rather than generating from scratch. This preserves lineage and encourages iterative refinement.
 
@@ -183,7 +185,7 @@ When a spell is cast, the server sends the incantation plus current battle state
 
 ### 2.3.1 AI Input
 
-The AI receives: the school, base spell reference, all incantation parameters (null for omitted slots), caster level, current environment states, and active states on all participants. This context prevents the AI from generating conflicting or nonsensical effects.
+The AI receives: the school, optional base spell reference, all incantation parameters (null for omitted slots), caster level, current environment states, and active states on all participants. This context prevents the AI from generating conflicting or nonsensical effects.
 
 ### 2.3.2 AI Output Schema
 
@@ -287,7 +289,7 @@ Combat uses a single engine for all modes. The difference between modes lies in 
 
 ### 3.3.1 Casters
 
-Casters see a text input field where they type their incantation (Latin words). The UI shows their grimoire (available base spells) for reference. The flow: select a base spell from grimoire → type incantation (1–6 words) → submit. The AI resolves the spell and the engine processes the result.
+Casters use a server-defined ritual circle rather than an unrestricted incantation field. Each visible word seal accepts one bounded Latin word; the optional Fundamen seal offers only owned spells. The server assembles the formula in canonical order, then the AI resolves it and the engine processes the result.
 
 ### 3.3.2 Tool Users
 
@@ -507,7 +509,7 @@ Spells enter the library through:
 
 - Personal creation (every successfully created spell is auto-added)
 
-- The library is the pool of base spells for the creation system — you can only build on spells you own
+- The library is the pool of optional Fundamen spells for the creation system — lineage can only build on a spell you own
 
 ## 7.2 Grimoires
 

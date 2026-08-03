@@ -3,12 +3,18 @@ defmodule MMGO.Spells do
 
   alias MMGO.Accounts.Character
   alias MMGO.Repo
-  alias MMGO.Spells.Spell
+  alias MMGO.Spells.{CreationAttempt, Spell}
 
   def list_spells_for_character(character_id) when is_binary(character_id) do
     Repo.all(
       from spell in Spell,
+        left_join: attempt in CreationAttempt,
+        on: attempt.id == spell.creation_attempt_id,
         where: spell.creator_character_id == ^character_id,
+        where:
+          is_nil(spell.creation_attempt_id) or
+            (attempt.status == :revealed and
+               fragment("?->>'kind' = 'success'", attempt.outcome)),
         order_by: [asc: spell.inserted_at]
     )
   end
@@ -25,18 +31,32 @@ defmodule MMGO.Spells do
   def get_owned_spell(%Character{} = character, spell_id) when is_binary(spell_id) do
     Repo.one(
       from spell in Spell,
+        left_join: attempt in CreationAttempt,
+        on: attempt.id == spell.creation_attempt_id,
         where:
           spell.id == ^spell_id and spell.creator_character_id == ^character.id and
-            spell.realm_id == ^character.realm_id
+            spell.realm_id == ^character.realm_id,
+        where:
+          is_nil(spell.creation_attempt_id) or
+            (attempt.status == :revealed and
+               fragment("?->>'kind' = 'success'", attempt.outcome))
     )
   end
 
   def get_owned_spell(_character, _spell_id), do: nil
 
-  def create_spell(%Character{} = character, attrs) when is_map(attrs) do
-    %Spell{creator_character_id: character.id, realm_id: character.realm_id}
-    |> Spell.changeset(attrs)
-    |> Repo.insert()
+  def create_spell(%Character{} = character, attrs, opts \\ [])
+      when is_map(attrs) and is_list(opts) do
+    case Keyword.get(opts, :creation_attempt_id) do
+      nil ->
+        insert_spell(character, attrs, nil)
+
+      creation_attempt_id when is_binary(creation_attempt_id) ->
+        create_attempt_spell(character, attrs, creation_attempt_id)
+
+      _invalid_creation_attempt_id ->
+        {:error, spell_error(attrs, :creation_attempt_id, "is invalid")}
+    end
   end
 
   def update_spell(%Spell{} = spell, attrs) do
@@ -65,4 +85,57 @@ defmodule MMGO.Spells do
   def opposed_schools?(:life, :death), do: true
   def opposed_schools?(:death, :life), do: true
   def opposed_schools?(_first_school, _second_school), do: false
+
+  defp create_attempt_spell(character, attrs, creation_attempt_id) do
+    Repo.transaction(fn ->
+      attempt =
+        CreationAttempt
+        |> where([attempt], attempt.id == ^creation_attempt_id)
+        |> lock("FOR UPDATE")
+        |> Repo.one()
+
+      existing_spell =
+        Repo.get_by(Spell,
+          creation_attempt_id: creation_attempt_id,
+          creator_character_id: character.id,
+          realm_id: character.realm_id
+        )
+
+      cond do
+        is_nil(attempt) ->
+          Repo.rollback(spell_error(attrs, :creation_attempt_id, "does not exist"))
+
+        attempt.character_id != character.id or attempt.realm_id != character.realm_id ->
+          Repo.rollback(spell_error(attrs, :creation_attempt_id, "does not belong to the caster"))
+
+        attempt.status != :resolving ->
+          Repo.rollback(spell_error(attrs, :creation_attempt_id, "is not resolving"))
+
+        not is_nil(existing_spell) ->
+          existing_spell
+
+        true ->
+          case insert_spell(character, attrs, creation_attempt_id) do
+            {:ok, spell} -> spell
+            {:error, changeset} -> Repo.rollback(changeset)
+          end
+      end
+    end)
+  end
+
+  defp insert_spell(character, attrs, creation_attempt_id) do
+    %Spell{
+      creator_character_id: character.id,
+      realm_id: character.realm_id,
+      creation_attempt_id: creation_attempt_id
+    }
+    |> Spell.changeset(attrs)
+    |> Repo.insert()
+  end
+
+  defp spell_error(attrs, field, message) do
+    %Spell{}
+    |> Spell.changeset(attrs)
+    |> Ecto.Changeset.add_error(field, message)
+  end
 end

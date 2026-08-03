@@ -6,8 +6,10 @@ defmodule MMGOWeb.SpellbookLiveTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Bases.Base
   alias MMGO.Grimoires
+  alias MMGO.Play
   alias MMGO.Repo
   alias MMGO.Spells
+  alias MMGO.Spells.{Creation, CreationAttempt, ResolveCreationAttemptWorker}
   alias MMGO.Travel.Journey
   alias MMGO.Worlds
 
@@ -83,7 +85,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     conn: conn,
     character: character,
     the_tower: the_tower,
-    base_spell: base_spell
+    base_spell: _base_spell
   } do
     character = move_to(character, the_tower)
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
@@ -98,8 +100,16 @@ defmodule MMGOWeb.SpellbookLiveTest do
     refute render(view) =~ "Записать формулу пером"
 
     render_hook(view, "hook_mounted", %{"hook" => "SpellCircle"})
-    assert_push_event(view, "spell_circle_init", %{slots: slots, current: %{}})
+
+    assert_push_event(view, "spell_circle_init", %{
+      slots: slots,
+      current: %{},
+      ritual_duration_ms: 10_000,
+      ritual: %{active: false, remaining_ms: 0}
+    })
+
     assert Enum.map(slots, & &1.key) == ["school", "actio", "tempus"]
+    assert Enum.map(slots, & &1.label) == ["Schola", "Actio", "Tempus"]
     assert Enum.all?(slots, & &1.required)
 
     render_hook(view, "spell_compile", %{
@@ -108,12 +118,24 @@ defmodule MMGOWeb.SpellbookLiveTest do
       "tempus" => "Momentum"
     })
 
+    assert %{status: :queued} = Creation.active_attempt(character.id)
+
+    assert is_nil(
+             Enum.find(
+               Spells.list_spells_for_character(character.id),
+               &(&1.formula == "Ignis Momentum")
+             )
+           )
+
+    assert %{status: :revealed, outcome: %{"kind" => "success"}} =
+             resolve_and_reveal_ritual(view, character)
+
     compiled_spell =
       character.id
       |> Spells.list_spells_for_character()
       |> Enum.find(&(&1.formula == "Ignis Momentum"))
 
-    assert compiled_spell.source_spell_id == base_spell.id
+    assert compiled_spell.source_spell_id == nil
     assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
 
     view
@@ -142,10 +164,153 @@ defmodule MMGOWeb.SpellbookLiveTest do
       "tempus" => "Momentum"
     })
 
+    assert %{status: :revealed, outcome: %{"kind" => "success"}} =
+             resolve_and_reveal_ritual(view, root_character)
+
     compiled_spell =
       root_character.id
       |> Spells.list_spells_for_character()
       |> Enum.find(&(&1.formula == "Ictus Momentum"))
+
+    assert compiled_spell.source_spell_id == nil
+    assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
+  end
+
+  test "reload restores one durable ritual without revealing or duplicating it", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    character = move_to(character, the_tower)
+    conn = session_conn(conn, character)
+    {:ok, first_view, _html} = live(conn, ~p"/spellbook")
+
+    render_hook(first_view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Ictus",
+      "tempus" => "Momentum"
+    })
+
+    attempt = Creation.active_attempt(character.id)
+    assert attempt.status == :queued
+
+    assert Spells.list_spells_for_character(character.id) |> Enum.map(& &1.formula) == [
+             "Ignis Prima"
+           ]
+
+    {:ok, restored_view, _html} = live(conn, ~p"/spellbook")
+    render_hook(restored_view, "hook_mounted", %{"hook" => "SpellCircle"})
+
+    assert_push_event(restored_view, "spell_circle_init", %{
+      current: %{"school" => "fire", "actio" => "Ictus", "tempus" => "Momentum"},
+      ritual: %{active: true, remaining_ms: remaining_ms},
+      ritual_duration_ms: 10_000
+    })
+
+    assert remaining_ms in 0..10_000
+
+    render_hook(restored_view, "spell_compile", %{
+      "school" => "air",
+      "actio" => "Captio",
+      "tempus" => "Momentum"
+    })
+
+    assert Repo.aggregate(CreationAttempt, :count, :id) == 1
+    assert Creation.active_attempt(character.id).id == attempt.id
+
+    assert %{status: :revealed, outcome: %{"kind" => "success"}} =
+             resolve_and_reveal_ritual(restored_view, character)
+
+    assert Enum.any?(Spells.list_spells_for_character(character.id), fn spell ->
+             spell.formula == "Ictus Momentum"
+           end)
+  end
+
+  test "a revealed failure is restored after the player reconnects", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    character = move_to(character, the_tower)
+
+    assert {:ok, %{attempt: attempt}} =
+             Play.begin_spell_creation(character, %{
+               "school" => "fire",
+               "actio" => "",
+               "tempus" => ""
+             })
+
+    assert :ok =
+             ResolveCreationAttemptWorker.perform(%Oban.Job{
+               args: %{"attempt_id" => attempt.id}
+             })
+
+    sealed_attempt = Creation.get_attempt(attempt.id)
+    assert sealed_attempt.status == :sealed_failure
+
+    assert {:ok, %{status: :revealed}} =
+             Creation.reveal(attempt.id, now: sealed_attempt.completes_at)
+
+    {:ok, restored_view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    assert has_element?(
+             restored_view,
+             "#spell-compose-error",
+             "Обязательная печать осталась немой, и круг не смог замкнуться."
+           )
+  end
+
+  test "a trained caster with an empty library gets an optional Fundamen", %{
+    conn: conn,
+    realm: realm,
+    the_tower: the_tower
+  } do
+    trained_character =
+      realm
+      |> character_fixture(the_tower, "trained-root-caster", "Trained Root Caster")
+      |> Character.changeset(%{metadata: %{"progression_tier" => "legendary"}})
+      |> Repo.update!()
+
+    {:ok, view, _html} = live(session_conn(conn, trained_character), ~p"/spellbook")
+
+    assert has_element?(view, "#spell-circle-root[data-circle-tier='trained']")
+    refute has_element?(view, "#spell-library-empty")
+
+    render_hook(view, "hook_mounted", %{"hook" => "SpellCircle"})
+
+    assert_push_event(view, "spell_circle_init", %{
+      slots: slots,
+      current: %{},
+      ritual_duration_ms: 10_000,
+      ritual: %{active: false, remaining_ms: 0}
+    })
+
+    assert Enum.map(slots, & &1.label) == [
+             "Schola",
+             "Actio",
+             "Forma",
+             "Vis",
+             "Tempus",
+             "Mutatio",
+             "Pretium",
+             "Fundamen"
+           ]
+
+    assert Enum.filter(slots, & &1.required) |> Enum.map(& &1.key) == ["school", "actio"]
+    assert %{required: false, options: []} = Enum.find(slots, &(&1.key == "base"))
+
+    render_hook(view, "spell_compile", %{
+      "school" => "air",
+      "actio" => "Vocatio"
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "success"}} =
+             resolve_and_reveal_ritual(view, trained_character)
+
+    compiled_spell =
+      trained_character.id
+      |> Spells.list_spells_for_character()
+      |> Enum.find(&(&1.formula == "Vocatio"))
 
     assert compiled_spell.source_spell_id == nil
     assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
@@ -187,7 +352,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     realm: realm,
     character: character,
     the_tower: the_tower,
-    base_spell: base_spell
+    base_spell: _base_spell
   } do
     foreign_character = character_fixture(realm, the_tower, "foreign-mage", "Foreign Mage")
     foreign_spell = spell_fixture(foreign_character, "Aqua Prima", "Aqua Prima", :water)
@@ -204,12 +369,15 @@ defmodule MMGOWeb.SpellbookLiveTest do
       "pretium" => "Sanguis"
     })
 
+    assert %{status: :revealed, outcome: %{"kind" => "success"}} =
+             resolve_and_reveal_ritual(view, character)
+
     compiled_spell =
       character.id
       |> Spells.list_spells_for_character()
       |> Enum.find(&(&1.formula == "Ignis Momentum"))
 
-    assert compiled_spell.source_spell_id == base_spell.id
+    assert compiled_spell.source_spell_id == nil
     refute compiled_spell.formula =~ "Injected"
     refute compiled_spell.formula =~ "Sanguis"
   end
@@ -229,7 +397,206 @@ defmodule MMGOWeb.SpellbookLiveTest do
       "tempus" => "Momentum"
     })
 
-    assert has_element?(view, "#spell-compose-error")
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Одна из словесных печатей треснула: круг принимает в неё только одно латинское слово без пробелов."
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
+  end
+
+  test "an incomplete circle resolves as a failed ritual instead of a client dead end", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "",
+      "tempus" => ""
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Обязательная печать осталась немой, и круг не смог замкнуться."
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
+  end
+
+  test "a Russian compiler rejection is shown as a bounded in-world explanation", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    configure_spell_provider(
+      {:ok,
+       %{
+         "outcome" => "failed",
+         "rejection_reason" =>
+           "  Огонь спорит с выбранным глаголом.\nПечати не удерживают замысел.  "
+       }}
+    )
+
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Sanatio",
+      "tempus" => "Momentum"
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Толкователь отверг формулу: «Огонь спорит с выбранным глаголом. Печати не удерживают замысел.»"
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
+  end
+
+  test "a non-Russian compiler rejection never leaks raw provider prose", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    configure_spell_provider(
+      {:ok,
+       %{
+         "outcome" => "failed",
+         "rejection_reason" =>
+           "Ошибка: Internal provider trace: upstream shard rejected request 7f3a."
+       }}
+    )
+
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Sanatio",
+      "tempus" => "Momentum"
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Толкователь отверг формулу, но письмена причины расплылись по странице. Измените сочетание печатей и попробуйте снова."
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
+  end
+
+  test "an oversized Russian compiler rejection is replaced instead of being rendered", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    configure_spell_provider(
+      {:ok,
+       %{
+         "outcome" => "failed",
+         "rejection_reason" => String.duplicate("Письмена продолжают расползаться. ", 20)
+       }}
+    )
+
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Sanatio",
+      "tempus" => "Momentum"
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Толкователь отверг формулу, но письмена причины расплылись по странице. Измените сочетание печатей и попробуйте снова."
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
+  end
+
+  test "a DeepSeek transport failure is distinguished from a bad formula", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    configure_spell_provider({:error, %Req.TransportError{reason: :timeout}})
+
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Ictus",
+      "tempus" => "Momentum"
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Связь Башни с дальним толкователем оборвалась прежде, чем он прочёл формулу. Попробуйте повторить ритуал."
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
+  end
+
+  test "a DeepSeek outage is shown without exposing the provider response", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    configure_spell_provider(
+      {:error,
+       {:deepseek_api, 503,
+        %{"error" => %{"message" => "internal gateway topology must remain secret"}}}}
+    )
+
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Ictus",
+      "tempus" => "Momentum"
+    })
+
+    assert %{status: :revealed, outcome: %{"kind" => "failure"}} =
+             resolve_and_reveal_ritual(view, character)
+
+    assert has_element?(
+             view,
+             "#spell-compose-error",
+             "Дальний толкователь сейчас молчит. Формула здесь ни при чём; повторите ритуал, когда связь с Башней укрепится."
+           )
+
+    assert_push_event(view, "spell_result", %{ok: false})
   end
 
   test "the player explicitly inscribes a selected spell and activates that grimoire", %{
@@ -270,6 +637,50 @@ defmodule MMGOWeb.SpellbookLiveTest do
     |> Plug.Test.init_test_session(%{})
     |> Plug.Conn.put_session(:current_account_id, character.account_id)
     |> Plug.Conn.put_session(:current_character_id, character.id)
+  end
+
+  defp resolve_and_reveal_ritual(view, character) do
+    attempt = Creation.active_attempt(character.id)
+    assert attempt
+
+    assert :ok =
+             ResolveCreationAttemptWorker.perform(%Oban.Job{
+               args: %{"attempt_id" => attempt.id}
+             })
+
+    resolved_attempt = Creation.get_attempt(attempt.id)
+    assert resolved_attempt.status in [:sealed_success, :sealed_failure, :revealed]
+
+    if resolved_attempt.status != :revealed do
+      assert {:ok, _revealed_attempt} =
+               Creation.reveal(attempt.id, now: resolved_attempt.completes_at)
+    end
+
+    _ = render(view)
+    Creation.get_attempt(attempt.id)
+  end
+
+  defp configure_spell_provider(result) do
+    ai_config = Application.fetch_env!(:mmgo, MMGO.AI)
+    previous_provider_result = Application.get_env(:mmgo, MMGO.TestSpellbookAIProvider)
+
+    Application.put_env(
+      :mmgo,
+      MMGO.AI,
+      Keyword.put(ai_config, :default_provider, MMGO.TestSpellbookAIProvider)
+    )
+
+    Application.put_env(:mmgo, MMGO.TestSpellbookAIProvider, result)
+
+    on_exit(fn ->
+      Application.put_env(:mmgo, MMGO.AI, ai_config)
+
+      if is_nil(previous_provider_result) do
+        Application.delete_env(:mmgo, MMGO.TestSpellbookAIProvider)
+      else
+        Application.put_env(:mmgo, MMGO.TestSpellbookAIProvider, previous_provider_result)
+      end
+    end)
   end
 
   defp move_to(character, location) do

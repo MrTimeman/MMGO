@@ -18,6 +18,7 @@ defmodule MMGO.PlayTest do
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Spells
+  alias MMGO.Spells.{Creation, Spell}
   alias MMGO.Travel
   alias MMGO.Travel.Journey
   alias MMGO.Worlds
@@ -393,7 +394,63 @@ defmodule MMGO.PlayTest do
     assert state.carry_capacity > state.carried_weight
   end
 
-  test "the trained Tower circle compiles an owned foundation with six bounded seals", %{
+  test "the trained Tower circle compiles the reported six-seal formula with an owned foundation",
+       %{
+         character: character,
+         tower: tower
+       } do
+    character =
+      character
+      |> move_to(tower)
+      |> Character.changeset(%{metadata: %{"progression_tier" => "legendary"}})
+      |> Repo.update!()
+
+    base_spell = spell_fixture(character, "Ember Spark")
+
+    assert {:ok, compiled_spell} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Permutatio",
+               "forma" => "Nexus",
+               "vis" => "Enormis",
+               "tempus" => "Sustineo",
+               "mutatio" => "Motus",
+               "pretium" => "Sanguis",
+               "base" => base_spell.id,
+               "formula" => "эта строка никогда не должна попасть в компилятор"
+             })
+
+    assert compiled_spell.creator_character_id == character.id
+    assert compiled_spell.source_spell_id == base_spell.id
+    assert compiled_spell.formula == "Permutatio Nexus Enormis Sustineo Motus Sanguis"
+
+    assert compiled_spell.incantation_slots == %{
+             "actio" => "Permutatio",
+             "forma" => "Nexus",
+             "vis" => "Enormis",
+             "tempus" => "Sustineo",
+             "mutatio" => "Motus",
+             "pretium" => "Sanguis"
+           }
+
+    assert Repo.aggregate(Request, :count, :id) == 1
+
+    request = Repo.one!(Request)
+    prompt_payload = Jason.decode!(request.request_payload["user_prompt"])
+
+    assert prompt_payload["request"]["incantation_slots"] == %{
+             "actio" => "Permutatio",
+             "forma" => "Nexus",
+             "vis" => "Enormis",
+             "tempus" => "Sustineo",
+             "mutatio" => "Motus",
+             "pretium" => "Sanguis"
+           }
+
+    assert prompt_payload["base_spell"]["id"] == base_spell.id
+  end
+
+  test "the trained Tower circle can create an independent spell without a foundation", %{
     character: character,
     tower: tower
   } do
@@ -403,25 +460,32 @@ defmodule MMGO.PlayTest do
       |> Character.changeset(%{metadata: %{"progression_tier" => "legendary"}})
       |> Repo.update!()
 
-    base_spell = spell_fixture(character, "Tower Spark")
-
     assert {:ok, compiled_spell} =
              Play.compile_structured_spell(character, %{
                "school" => "fire",
-               "actio" => "Ignis",
-               "forma" => "Radius",
-               "vis" => "Magnus",
-               "tempus" => "Velum",
-               "mutatio" => "Lumen",
-               "pretium" => "Nexus",
-               "base" => base_spell.id,
-               "formula" => "эта строка никогда не должна попасть в компилятор"
+               "actio" => "Vocatio",
+               "tempus" => "Sustineo",
+               "base" => "   "
              })
 
     assert compiled_spell.creator_character_id == character.id
-    assert compiled_spell.source_spell_id == base_spell.id
-    assert compiled_spell.formula == "Ignis Radius Magnus Velum Lumen Nexus"
+    assert compiled_spell.source_spell_id == nil
+    assert compiled_spell.formula == "Vocatio Sustineo"
+
+    assert compiled_spell.incantation_slots == %{
+             "actio" => "Vocatio",
+             "tempus" => "Sustineo"
+           }
+
     assert Repo.aggregate(Request, :count, :id) == 1
+
+    request = Repo.one!(Request)
+    prompt_payload = Jason.decode!(request.request_payload["user_prompt"])
+
+    assert prompt_payload["request"]["incantation_slots"] == %{
+             "actio" => "Vocatio",
+             "tempus" => "Sustineo"
+           }
   end
 
   test "an untrained caster receives the strict three-seal circle and can create a root spell", %{
@@ -446,17 +510,18 @@ defmodule MMGO.PlayTest do
              })
 
     assert spell.formula == "Captio Momentum"
+    assert spell.incantation_slots == %{"actio" => "Captio", "tempus" => "Momentum"}
     assert spell.school == :water
     assert spell.source_spell_id == nil
     assert Repo.aggregate(Request, :count, :id) == 1
   end
 
-  test "a known same-school base cannot lift the novice three-seal limits", %{
+  test "a known same-school spell is not silently attached to the novice circle", %{
     character: character,
     tower: tower
   } do
     character = move_to(character, tower)
-    base_spell = spell_fixture(character, "Known Tower Spark")
+    spell_fixture(character, "Known Tower Spark")
 
     assert {:ok, spell} =
              Play.compile_structured_spell(character, %{
@@ -465,7 +530,7 @@ defmodule MMGO.PlayTest do
                "tempus" => "Momentum"
              })
 
-    assert spell.source_spell_id == base_spell.id
+    assert spell.source_spell_id == nil
     assert spell.level_requirement == 1
     assert spell.fatigue_cost <= 12
     assert spell.cooldown_turns <= 3
@@ -499,10 +564,80 @@ defmodule MMGO.PlayTest do
                "tempus" => "Momentum"
              })
 
+    assert {:error, :invalid_spell_circle_word} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Удар",
+               "tempus" => "Momentum"
+             })
+
+    assert {:error, :invalid_spell_circle} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => <<255>>,
+               "tempus" => "Momentum"
+             })
+
+    assert {:error, :invalid_spell_circle} = Play.compile_structured_spell(character, "Ignis")
     assert Repo.aggregate(Request, :count, :id) == 0
   end
 
-  test "spellbook composition rejects a city without an owned base before creating an AI request",
+  test "resolution recovery rechecks the ritual location before sealing a hidden spell", %{
+    character: character,
+    city: city,
+    tower: tower
+  } do
+    character = move_to(character, tower)
+
+    assert {:ok, %{attempt: attempt}} =
+             Play.begin_spell_creation(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "tempus" => "Momentum"
+             })
+
+    assert {:ok, %{action: :resolve}} = Creation.claim_resolution(attempt.id)
+
+    assert {:ok, hidden_spell} =
+             Spells.create_spell(
+               character,
+               %{
+                 name: "Скрытая искра",
+                 formula: "Ignis Momentum",
+                 incantation_slots: %{"actio" => "Ignis", "tempus" => "Momentum"},
+                 school: :fire,
+                 description: "Заклинание ещё удерживается незавершённым ритуалом.",
+                 targeting: :enemy,
+                 delivery_form: :sphere,
+                 effects: [
+                   %{
+                     applies_to: :target,
+                     state: "impact",
+                     intensity: 10,
+                     variance: 0,
+                     duration: 0
+                   }
+                 ],
+                 failure_profile: %{
+                   difficulty: 5,
+                   base_success_rate: 90,
+                   partial_success_rate: 5
+                 }
+               },
+               creation_attempt_id: attempt.id
+             )
+
+    _moved_character = move_to(character, city)
+
+    assert :ok = Play.resolve_spell_creation_attempt(attempt.id)
+
+    recovered_attempt = Creation.get_attempt(attempt.id)
+    assert recovered_attempt.status == :sealed_failure
+    assert recovered_attempt.outcome["code"] == "spellbook_location"
+    assert Repo.get(Spell, hidden_spell.id) == nil
+  end
+
+  test "spellbook composition rejects a city without an active player base before creating an AI request",
        %{
          character: character
        } do
@@ -559,6 +694,13 @@ defmodule MMGO.PlayTest do
                "school" => "fire",
                "actio" => "Ignis",
                "base" => foreign_base.id
+             })
+
+    assert {:error, :invalid_spell_circle} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "base" => %{"id" => own_base.id}
              })
 
     assert {:error, :school_not_permitted} =
@@ -665,7 +807,7 @@ defmodule MMGO.PlayTest do
                "base" => base_spell.id
              })
 
-    assert compiled_spell.source_spell_id == base_spell.id
+    assert compiled_spell.source_spell_id == nil
     assert Repo.aggregate(Request, :count, :id) == 1
   end
 

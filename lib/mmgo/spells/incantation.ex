@@ -2,7 +2,7 @@ defmodule MMGO.Spells.Incantation do
   @max_words 6
   @max_formula_bytes 180
   @max_word_bytes 32
-  @word_pattern ~r/^[[:alpha:]-]+$/u
+  @word_pattern ~r/^\p{Latin}+(?:-\p{Latin}+)*$/u
   @known_words ~w(
     Ictus Captio Scutum Sanatio Vocatio
     Radius Sphaera Murus Conus Nexus
