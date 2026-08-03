@@ -4,7 +4,16 @@ defmodule MMGO.Spells.Spell do
   import Ecto.Changeset
 
   alias MMGO.Accounts.Character
-  alias MMGO.Spells.{CreationAttempt, FailureProfile, Incantation, InteractionRule, SpellEffect}
+
+  alias MMGO.Spells.{
+    CreationAttempt,
+    FailureProfile,
+    Incantation,
+    InteractionRule,
+    SchoolQuirk,
+    SpellEffect
+  }
+
   alias MMGO.Worlds.Realm
 
   @schools [:fire, :water, :earth, :air, :life, :death, :chaos, :order]
@@ -32,6 +41,7 @@ defmodule MMGO.Spells.Spell do
     field :formula, :string
     field :incantation_slots, :map, default: %{}
     field :school, Ecto.Enum, values: @schools
+    field :school_quirk, Ecto.Enum, values: SchoolQuirk.values()
     field :description, :string
     field :level_requirement, :integer, default: 1
     field :fatigue_cost, :integer, default: 0
@@ -62,6 +72,7 @@ defmodule MMGO.Spells.Spell do
       :formula,
       :incantation_slots,
       :school,
+      :school_quirk,
       :description,
       :level_requirement,
       :fatigue_cost,
@@ -95,6 +106,7 @@ defmodule MMGO.Spells.Spell do
     |> validate_length(:tags, max: 12)
     |> validate_length(:narrative_tags, max: 12)
     |> validate_length(:environment_tags, max: 8)
+    |> validate_school_quirk()
     |> foreign_key_constraint(:creation_attempt_id)
     |> unique_constraint(:creation_attempt_id)
     |> validate_incantation_slots()
@@ -144,6 +156,17 @@ defmodule MMGO.Spells.Spell do
 
   def effect_states do
     SpellEffect.supported_states()
+  end
+
+  defp validate_school_quirk(changeset) do
+    school = get_field(changeset, :school)
+    quirk = get_field(changeset, :school_quirk)
+
+    if is_nil(quirk) or SchoolQuirk.compatible?(school, quirk) do
+      changeset
+    else
+      add_error(changeset, :school_quirk, "does not belong to the spell school")
+    end
   end
 
   defp validate_effect_budget(changeset) do

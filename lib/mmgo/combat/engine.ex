@@ -38,7 +38,13 @@ defmodule MMGO.Combat.Engine do
 
     {participants_by_id, sides, environment, inventory_updates, _final_seq, events} =
       actions
-      |> Enum.sort_by(&RNG.order_key(combat.seed, [combat.turn_number, &1.participant_id]), :asc)
+      |> Enum.sort_by(
+        &{
+          action_school_priority(&1),
+          RNG.order_key(combat.seed, [combat.turn_number, &1.participant_id])
+        },
+        :asc
+      )
       |> Enum.reduce(
         {participants_by_id, sides, environment, %{}, starting_seq, events},
         fn action,
@@ -173,9 +179,16 @@ defmodule MMGO.Combat.Engine do
                 events_acc
               end
 
+            next_state =
+              if Map.get(state, "state") == "burning" and Map.get(state, "escalating") == true do
+                Map.update(state, "intensity", 2, &min(&1 + 2, 100))
+              else
+                state
+              end
+
             states_acc =
               if remaining_turns > 0 do
-                [Map.put(state, "remaining_turns", remaining_turns) | states_acc]
+                [Map.put(next_state, "remaining_turns", remaining_turns) | states_acc]
               else
                 states_acc
               end
@@ -546,6 +559,7 @@ defmodule MMGO.Combat.Engine do
          seq,
          events
        ) do
+    spell = apply_school_quirk_to_spell(spell)
     interaction_tags = interaction_tags(tags)
     environment_outcome = Runtime.environment_outcome(spell, interaction_tags)
 
@@ -731,6 +745,9 @@ defmodule MMGO.Combat.Engine do
     target_participant_id = resolve_target_participant_id(action, participants, target_side)
     effects = spell.effects ++ environment_outcome.bonus_states
 
+    {participants, harvest_payload} =
+      apply_harvest_quirk(spell, participant.id, target_participant_id, participants)
+
     {participants, state_breaks} =
       break_states_for_conditions(
         participants,
@@ -773,6 +790,7 @@ defmodule MMGO.Combat.Engine do
       |> Map.put("target_participant_id", target_participant_id)
       |> Map.update!("effects", &Enum.reverse(&1))
       |> Map.merge(empowerment_payload(empowerment))
+      |> maybe_put_school_quirk(spell.school_quirk, harvest_payload)
       |> maybe_put_state_breaks(state_breaks)
       |> maybe_put_accuracy_penalty(blindness_penalty)
 
@@ -1026,14 +1044,20 @@ defmodule MMGO.Combat.Engine do
 
       _other ->
         participants =
-          update_participant_state(participants, participant_id, %{
-            "state" => effect.state,
-            "intensity" => intensity,
-            "remaining_turns" => max(effect.duration, 1),
-            "applied_on_turn" => turn_number,
-            "source_id" => source_id(source),
-            "break_conditions" => effect.break_conditions || []
-          })
+          update_participant_state(
+            participants,
+            participant_id,
+            %{
+              "state" => effect.state,
+              "intensity" => intensity,
+              "remaining_turns" => max(effect.duration, 1),
+              "applied_on_turn" => turn_number,
+              "source_id" => source_id(source),
+              "break_conditions" => effect.break_conditions || []
+            }
+            |> maybe_mark_escalating(effect)
+            |> maybe_mark_persistent(effect)
+          )
 
         {participants, sides, tags,
          %{
@@ -1327,7 +1351,7 @@ defmodule MMGO.Combat.Engine do
       active_states =
         participant.active_states
         |> Enum.reduce([], fn state, acc ->
-          if periodic_state?(Map.get(state, "state")) do
+          if periodic_state?(Map.get(state, "state")) or Map.get(state, "persistent") == true do
             [state | acc]
           else
             if Map.get(state, "applied_on_turn") == turn_number do
@@ -1376,6 +1400,112 @@ defmodule MMGO.Combat.Engine do
   end
 
   defp periodic_state?(state), do: state in ["burning", "regenerating"]
+
+  defp action_school_priority(%Action{spell: %Spell{school_quirk: :tempo}}), do: 0
+
+  defp action_school_priority(%Action{payload: %{"snapshot" => %{"spell" => spell}}})
+       when is_map(spell) do
+    if Map.get(spell, "school_quirk") == "tempo", do: 0, else: 1
+  end
+
+  defp action_school_priority(_action), do: 1
+
+  defp apply_school_quirk_to_spell(%Spell{school_quirk: :environment_shift} = spell) do
+    %{spell | environment_mode: :replace}
+  end
+
+  defp apply_school_quirk_to_spell(%Spell{school_quirk: quirk} = spell)
+       when quirk in [:escalation, :persistence, :vitality, :volatility, :precision] do
+    effects = Enum.map(spell.effects, &apply_school_quirk_to_effect(&1, quirk))
+    %{spell | effects: effects}
+  end
+
+  defp apply_school_quirk_to_spell(spell), do: spell
+
+  defp apply_school_quirk_to_effect(%SpellEffect{state: "burning"} = effect, :escalation) do
+    %{effect | tags: Enum.uniq((effect.tags || []) ++ ["school_quirk:escalation"])}
+  end
+
+  defp apply_school_quirk_to_effect(%SpellEffect{state: state} = effect, :persistence)
+       when state not in ["impact", "burning", "regenerating"] do
+    %{
+      effect
+      | tags: Enum.uniq((effect.tags || []) ++ ["school_quirk:persistence"]),
+        break_conditions: Enum.uniq((effect.break_conditions || []) ++ ["physical_hit"])
+    }
+  end
+
+  defp apply_school_quirk_to_effect(%SpellEffect{state: "regenerating"} = effect, :vitality) do
+    %{effect | intensity: div(effect.intensity * 3 + 1, 2), duration: effect.duration + 1}
+  end
+
+  defp apply_school_quirk_to_effect(%SpellEffect{} = effect, :volatility) do
+    %{effect | variance: effect.intensity}
+  end
+
+  defp apply_school_quirk_to_effect(%SpellEffect{} = effect, :precision) do
+    %{effect | variance: 0}
+  end
+
+  defp apply_school_quirk_to_effect(effect, _quirk), do: effect
+
+  defp maybe_mark_escalating(state, %SpellEffect{tags: tags}) do
+    if "school_quirk:escalation" in (tags || []),
+      do: Map.put(state, "escalating", true),
+      else: state
+  end
+
+  defp maybe_mark_persistent(state, %SpellEffect{tags: tags}) do
+    if "school_quirk:persistence" in (tags || []),
+      do: Map.put(state, "persistent", true),
+      else: state
+  end
+
+  defp apply_harvest_quirk(
+         %Spell{school_quirk: :harvest},
+         caster_id,
+         target_id,
+         participants
+       )
+       when is_binary(target_id) do
+    target = Map.get(participants, target_id)
+    caster = Map.get(participants, caster_id)
+
+    with %Participant{} <- target,
+         %Participant{} <- caster,
+         states when states != [] <- target.active_states || [] do
+      {state, index} =
+        states
+        |> Enum.with_index()
+        |> Enum.max_by(fn {state, _index} ->
+          Map.get(state, "intensity", 0) * max(Map.get(state, "remaining_turns", 1), 1)
+        end)
+
+      value =
+        Map.get(state, "intensity", 0) * max(Map.get(state, "remaining_turns", 1), 1)
+
+      recovered_fatigue = min(max(div(value, 2), 1), 10)
+      target = %{target | active_states: List.delete_at(states, index)}
+      caster = %{caster | fatigue: max(caster.fatigue - recovered_fatigue, 0)}
+
+      {participants |> Map.put(target.id, target) |> Map.put(caster.id, caster),
+       %{
+         "consumed_state" => Map.get(state, "state"),
+         "recovered_fatigue" => recovered_fatigue
+       }}
+    else
+      _other -> {participants, %{}}
+    end
+  end
+
+  defp apply_harvest_quirk(_spell, _caster_id, _target_id, participants),
+    do: {participants, %{}}
+
+  defp maybe_put_school_quirk(payload, nil, _details), do: payload
+
+  defp maybe_put_school_quirk(payload, quirk, details) do
+    Map.put(payload, "school_quirk", %{"id" => to_string(quirk), "details" => details})
+  end
 
   defp participant_level(%Participant{combat_level: combat_level}) when is_integer(combat_level),
     do: combat_level

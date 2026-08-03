@@ -199,6 +199,16 @@ config :mmgo, MMGO.PVP,
       System.get_env("DUEL_TAX_RATE_BPS") || to_string(pvp_config[:duel_tax_rate_bps] || 500)
     )
 
+playtest_config = Application.get_env(:mmgo, MMGO.CombatPlaytest, [])
+
+playtest_unrestricted_combat? =
+  case System.get_env("PLAYTEST_UNRESTRICTED_COMBAT") do
+    nil -> playtest_config[:unrestricted?] == true
+    value -> value in ["true", "1"]
+  end
+
+config :mmgo, MMGO.CombatPlaytest, unrestricted?: playtest_unrestricted_combat?
+
 black_market_config = Application.get_env(:mmgo, MMGO.BlackMarket, [])
 
 black_market_detection_enabled? =

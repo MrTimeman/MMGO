@@ -115,6 +115,7 @@ defmodule MMGO.AI.Providers.Mock do
       "name" => name,
       "formula" => formula,
       "school" => school,
+      "school_quirk" => mock_school_quirk(school),
       "description" => "Пробное заклинание для локальной разработки и испытаний.",
       "level_requirement" => max(div(caster_level, 2), 1),
       "fatigue_cost" => 6,
@@ -136,6 +137,16 @@ defmodule MMGO.AI.Providers.Mock do
       }
     }
   end
+
+  defp mock_school_quirk("fire"), do: "escalation"
+  defp mock_school_quirk("water"), do: "environment_shift"
+  defp mock_school_quirk("earth"), do: "persistence"
+  defp mock_school_quirk("air"), do: "tempo"
+  defp mock_school_quirk("life"), do: "vitality"
+  defp mock_school_quirk("death"), do: "harvest"
+  defp mock_school_quirk("chaos"), do: "volatility"
+  defp mock_school_quirk("order"), do: "precision"
+  defp mock_school_quirk(_school), do: nil
 
   defp default_interactions("water") do
     [

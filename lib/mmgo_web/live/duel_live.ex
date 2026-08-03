@@ -1,11 +1,11 @@
 defmodule MMGOWeb.DuelLive do
   @moduledoc """
-  Scoped wagered-duel lobby.
+  Scoped consensual-duel lobby.
 
-  A player can challenge only a real, stationary character at the same
-  non-safe location. Acceptance transfers both players into the persisted
-  combat flow; this LiveView never invents a bot, accepts on behalf of an
-  opponent, or resolves a turn locally.
+  Permanent rules restrict challenges by location and wager. The temporary
+  beta sandbox exposes zero-stake challenges to every active player profile.
+  Acceptance still transfers both players into the persisted combat flow;
+  this LiveView never invents a bot or accepts on behalf of an opponent.
   """
   use MMGOWeb, :live_view
 
@@ -33,11 +33,11 @@ defmodule MMGOWeb.DuelLive do
         %{"duel_challenge" => %{"opponent_id" => opponent_id, "stake" => stake_raw}},
         socket
       ) do
-    with {:ok, stake} <- parse_stake(stake_raw),
+    with {:ok, stake} <- parse_stake(stake_raw, socket.assigns.unrestricted_playtest?),
          {:ok, _result} <- Play.challenge_duel(socket.assigns.character, opponent_id, stake) do
       {:noreply,
        socket
-       |> put_flash(:info, "Вызов отправлен. Ставка будет внесена только после принятия.")
+       |> put_flash(:info, challenge_sent_message(socket.assigns.unrestricted_playtest?))
        |> refresh_lobby()}
     else
       {:error, reason} -> {:noreply, assign(socket, :error, error_message(reason))}
@@ -95,7 +95,12 @@ defmodule MMGOWeb.DuelLive do
           </.link>
 
           <header class="duel-mast">
-            <p>круг поединка · {location_label(@location)}</p>
+            <p>
+              {if(@unrestricted_playtest?,
+                do: "испытательный круг · весь реалм",
+                else: "круг поединка · #{location_label(@location)}"
+              )}
+            </p>
             <h1>Вызов на дуэль</h1>
             <span id="duel-identity">{@character.name} · кошель {@balance} ◈</span>
           </header>
@@ -110,7 +115,11 @@ defmodule MMGOWeb.DuelLive do
               <p class="duel__salutation">Достопочтенный соперник,</p>
               <p class="duel__text">
                 Настоящим письмом {@character.name} предлагает честный поединок.
-                Ставка переходит под печать только после согласия обеих сторон.
+                <%= if @unrestricted_playtest? do %>
+                  Это свободная тренировочная дуэль без ставки и географических ограничений.
+                <% else %>
+                  Ставка переходит под печать только после согласия обеих сторон.
+                <% end %>
               </p>
 
               <div class="duel__vs-row">
@@ -126,7 +135,7 @@ defmodule MMGOWeb.DuelLive do
               </div>
 
               <p
-                :if={@location.safe_zone}
+                :if={not @unrestricted_playtest? and @location.safe_zone}
                 id="duel-safe-zone"
                 class="duel-seal-note duel-seal-note--safe"
               >
@@ -134,7 +143,7 @@ defmodule MMGOWeb.DuelLive do
               </p>
 
               <p
-                :if={not @location.safe_zone and @opponents == []}
+                :if={(@unrestricted_playtest? or not @location.safe_zone) and @opponents == []}
                 id="duel-opponents-empty"
                 class="duel__question"
               >
@@ -142,7 +151,7 @@ defmodule MMGOWeb.DuelLive do
               </p>
 
               <.form
-                :if={not @location.safe_zone and @opponents != []}
+                :if={(@unrestricted_playtest? or not @location.safe_zone) and @opponents != []}
                 for={@challenge_form}
                 id="duel-challenge-form"
                 phx-submit="challenge"
@@ -157,6 +166,13 @@ defmodule MMGOWeb.DuelLive do
                   class="duel-field"
                 />
                 <.input
+                  :if={@unrestricted_playtest?}
+                  field={@challenge_form[:stake]}
+                  type="hidden"
+                  value="0"
+                />
+                <.input
+                  :if={not @unrestricted_playtest?}
                   field={@challenge_form[:stake]}
                   type="number"
                   label="Ставка под печатью"
@@ -186,8 +202,12 @@ defmodule MMGOWeb.DuelLive do
                   <strong class="duel__vs-name">{duel.challenger_character.name}</strong>
                   <small>бросает вызов</small>
                 </span>
-                <span class="duel__vs-sep">ставка</span>
-                <span class="duel__stake">{duel.stake_amount} ◈</span>
+                <span class="duel__vs-sep">
+                  {if(duel.stake_amount == 0, do: "режим", else: "ставка")}
+                </span>
+                <span class="duel__stake">
+                  {if(duel.stake_amount == 0, do: "тренировка", else: "#{duel.stake_amount} ◈")}
+                </span>
               </div>
               <p class="duel__question">Примете ли вы условия?</p>
               <div class="duel__actions">
@@ -210,7 +230,12 @@ defmodule MMGOWeb.DuelLive do
                   Отклонить
                 </button>
               </div>
-              <p class="duel__ministry">— ставка с каждой стороны</p>
+              <p class="duel__ministry">
+                {if(duel.stake_amount == 0,
+                  do: "— без ставки, по взаимному согласию",
+                  else: "— ставка с каждой стороны"
+                )}
+              </p>
             </article>
           </section>
 
@@ -224,7 +249,11 @@ defmodule MMGOWeb.DuelLive do
               <span class="duel__badge">ожидает ответа</span>
               <p class="duel__salutation">{duel.opponent_character.name},</p>
               <p class="duel__text">
-                Вызов отправлен со ставкой <strong class="duel__stake">{duel.stake_amount} ◈</strong>.
+                <%= if duel.stake_amount == 0 do %>
+                  Свободный тренировочный вызов отправлен.
+                <% else %>
+                  Вызов отправлен со ставкой <strong class="duel__stake">{duel.stake_amount} ◈</strong>.
+                <% end %>
               </p>
               <button
                 id={"duel-cancel-#{duel.id}"}
@@ -272,13 +301,20 @@ defmodule MMGOWeb.DuelLive do
     |> assign(:character, state.character)
     |> assign(:location, state.location)
     |> assign(:balance, state.balance)
+    |> assign(:unrestricted_playtest?, state.unrestricted_playtest?)
     |> assign(:incoming, state.incoming)
     |> assign(:outgoing, state.outgoing)
     |> assign(:opponents, state.opponents)
     |> assign(:opponent_options, Enum.map(state.opponents, &{&1.name, &1.id}))
     |> assign(
       :challenge_form,
-      to_form(%{"opponent_id" => "", "stake" => "100"}, as: :duel_challenge)
+      to_form(
+        %{
+          "opponent_id" => "",
+          "stake" => if(state.unrestricted_playtest?, do: "0", else: "100")
+        },
+        as: :duel_challenge
+      )
     )
   end
 
@@ -290,14 +326,20 @@ defmodule MMGOWeb.DuelLive do
     end
   end
 
-  defp parse_stake(stake) when is_binary(stake) do
+  defp parse_stake(stake, unrestricted_playtest?) when is_binary(stake) do
     case Integer.parse(stake) do
+      {0, ""} when unrestricted_playtest? -> {:ok, 0}
       {amount, ""} when amount > 0 -> {:ok, amount}
       _other -> {:error, :invalid_stake}
     end
   end
 
-  defp parse_stake(_stake), do: {:error, :invalid_stake}
+  defp parse_stake(_stake, _unrestricted_playtest?), do: {:error, :invalid_stake}
+
+  defp challenge_sent_message(true), do: "Свободный тренировочный вызов отправлен."
+
+  defp challenge_sent_message(false),
+    do: "Вызов отправлен. Ставка будет внесена только после принятия."
 
   defp location_label(location), do: location.name
 

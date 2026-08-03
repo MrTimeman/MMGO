@@ -7,6 +7,7 @@ defmodule MMGO.PVP do
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Economy
   alias MMGO.PVP.Duel
+  alias MMGO.CombatPlaytest
   alias MMGO.Repo
   alias MMGO.Worlds.{Location, Realm}
 
@@ -128,21 +129,23 @@ defmodule MMGO.PVP do
       {:ok, escrow_account} =
         Economy.create_escrow_account(realm, %{duel_id: duel.id, type: "duel_wager"})
 
-      {:ok, _first_funding} =
-        Economy.transfer(challenger_account, escrow_account, duel.stake_amount, %{
-          entry_type: "wager",
-          source: "pvp_duel",
-          duel_id: duel.id,
-          role: "challenger"
-        })
+      if duel.stake_amount > 0 do
+        {:ok, _first_funding} =
+          Economy.transfer(challenger_account, escrow_account, duel.stake_amount, %{
+            entry_type: "wager",
+            source: "pvp_duel",
+            duel_id: duel.id,
+            role: "challenger"
+          })
 
-      {:ok, _second_funding} =
-        Economy.transfer(opponent_account, escrow_account, duel.stake_amount, %{
-          entry_type: "wager",
-          source: "pvp_duel",
-          duel_id: duel.id,
-          role: "opponent"
-        })
+        {:ok, _second_funding} =
+          Economy.transfer(opponent_account, escrow_account, duel.stake_amount, %{
+            entry_type: "wager",
+            source: "pvp_duel",
+            duel_id: duel.id,
+            role: "opponent"
+          })
+      end
 
       location_kind = location_kind(challenger.current_location_id)
 
@@ -276,16 +279,18 @@ defmodule MMGO.PVP do
       challenger.id == opponent.id ->
         Repo.rollback(duel_changeset("character cannot duel themselves"))
 
-      challenger.realm_id != opponent.realm_id ->
+      not CombatPlaytest.unrestricted?() and challenger.realm_id != opponent.realm_id ->
         Repo.rollback(duel_changeset("duel participants must belong to the same realm"))
 
-      challenger.current_location_id != opponent.current_location_id ->
+      not CombatPlaytest.unrestricted?() and
+          challenger.current_location_id != opponent.current_location_id ->
         Repo.rollback(duel_changeset("duel participants must be at the same location"))
 
-      duel_location_unavailable?(challenger.current_location_id) ->
+      not CombatPlaytest.unrestricted?() and
+          duel_location_unavailable?(challenger.current_location_id) ->
         Repo.rollback(duel_changeset("duels cannot start in a safe zone"))
 
-      stake_amount <= 0 ->
+      stake_amount < 0 or (stake_amount == 0 and not CombatPlaytest.unrestricted?()) ->
         Repo.rollback(duel_changeset("stake amount must be greater than zero"))
 
       active_open_duel?(challenger.id) ->
@@ -322,10 +327,12 @@ defmodule MMGO.PVP do
       Combat.active_combat_for_character(opponent.id) ->
         Repo.rollback(duel_changeset("opponent already has an active combat"))
 
-      challenger.current_location_id != opponent.current_location_id ->
+      not CombatPlaytest.unrestricted?() and
+          challenger.current_location_id != opponent.current_location_id ->
         Repo.rollback(duel_changeset("duel participants must be at the same location"))
 
-      duel_location_unavailable?(challenger.current_location_id) ->
+      not CombatPlaytest.unrestricted?() and
+          duel_location_unavailable?(challenger.current_location_id) ->
         Repo.rollback(duel_changeset("duels cannot start in a safe zone"))
 
       insufficient_funds?(challenger, duel.stake_amount) ->
@@ -340,6 +347,14 @@ defmodule MMGO.PVP do
   end
 
   defp payout_duel!(%Duel{} = duel, winner_character_id) do
+    if duel.stake_amount == 0 do
+      %{duel | winner_character_id: winner_character_id}
+    else
+      payout_wagered_duel!(duel, winner_character_id)
+    end
+  end
+
+  defp payout_wagered_duel!(%Duel{} = duel, winner_character_id) do
     escrow_account = Repo.get!(Economy.EconomyAccount, duel.escrow_account_id)
     winner_character = Repo.get!(Character, winner_character_id)
     {:ok, winner_account} = Economy.ensure_character_account(winner_character)
@@ -362,6 +377,14 @@ defmodule MMGO.PVP do
   end
 
   defp refund_duel!(%Duel{} = duel) do
+    if duel.stake_amount == 0 do
+      %{duel | winner_character_id: nil}
+    else
+      refund_wagered_duel!(duel)
+    end
+  end
+
+  defp refund_wagered_duel!(%Duel{} = duel) do
     escrow_account = Repo.get!(Economy.EconomyAccount, duel.escrow_account_id)
     challenger = Repo.get!(Character, duel.challenger_character_id)
     opponent = Repo.get!(Character, duel.opponent_character_id)

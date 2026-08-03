@@ -49,6 +49,7 @@ defmodule MMGO.Play do
   alias MMGO.Parties.{Expedition, Party}
   alias MMGO.PVP
   alias MMGO.PVP.Duel
+  alias MMGO.CombatPlaytest
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Scavenging.{Attempt, ResourceCache}
@@ -392,9 +393,9 @@ defmodule MMGO.Play do
   end
 
   @doc """
-  Loads the scoped, same-location duel lobby. Candidate IDs are only display
-  hints; every command below re-finds the opponent from the caller's current
-  stationary location before handing control to `MMGO.PVP`.
+  Loads the scoped duel lobby. Permanent play uses nearby stationary players;
+  the temporary beta sandbox exposes every active player profile. Candidate
+  IDs remain display hints and are revalidated before reaching `MMGO.PVP`.
   """
   def duel_lobby_state(character_or_id) do
     with {:ok, character} <- normalize_character(character_or_id) do
@@ -402,6 +403,9 @@ defmodule MMGO.Play do
       character = state.character
 
       cond do
+        CombatPlaytest.unrestricted?() ->
+          duel_lobby_payload(character, state)
+
         not is_nil(state.active_journey) ->
           {:error, :travelling}
 
@@ -409,31 +413,36 @@ defmodule MMGO.Play do
           {:error, :location_not_found}
 
         true ->
-          {:ok, account} = Economy.ensure_character_account(character)
-
-          pending_duels =
-            character.id
-            |> PVP.pending_duels_for_character()
-            |> Enum.map(&preload_duel/1)
-
-          {:ok,
-           %{
-             character: character,
-             location: state.current_location,
-             balance: account.current_balance,
-             active_duel: state.duel.active_duel,
-             opponents: nearby_stationary_characters(character, state.current_location),
-             incoming: Enum.filter(pending_duels, &(&1.opponent_character_id == character.id)),
-             outgoing: Enum.filter(pending_duels, &(&1.challenger_character_id == character.id))
-           }}
+          duel_lobby_payload(character, state)
       end
     end
   end
 
+  defp duel_lobby_payload(character, state) do
+    {:ok, account} = Economy.ensure_character_account(character)
+
+    pending_duels =
+      character.id
+      |> PVP.pending_duels_for_character()
+      |> Enum.map(&preload_duel/1)
+
+    {:ok,
+     %{
+       character: character,
+       location: state.current_location || %{name: "Весь мир", safe_zone: false},
+       balance: account.current_balance,
+       unrestricted_playtest?: CombatPlaytest.unrestricted?(),
+       active_duel: state.duel.active_duel,
+       opponents: duel_opponents(character, state.current_location),
+       incoming: Enum.filter(pending_duels, &(&1.opponent_character_id == character.id)),
+       outgoing: Enum.filter(pending_duels, &(&1.challenger_character_id == character.id))
+     }}
+  end
+
   @doc """
-  Creates a pending wagered duel against a real nearby player. The target and
-  stake are validated again by `MMGO.PVP`; no browser-provided actor, realm,
-  or protected-location authority is used.
+  Creates a pending consensual duel against a real eligible player. The target
+  and stake are validated again by `MMGO.PVP`; no browser-provided actor or
+  location authority is used.
   """
   def challenge_duel(character_or_id, opponent_id, stake_amount)
       when is_binary(opponent_id) and is_integer(stake_amount) do
@@ -441,8 +450,9 @@ defmodule MMGO.Play do
          state = state_for_character(character),
          :ok <- ensure_duel_lobby_available(state),
          %Character{} = opponent <-
-           find_nearby_character(state.character, state.current_location, opponent_id),
-         {:ok, duel} <- PVP.challenge_duel(state.character, opponent, stake_amount) do
+           find_duel_opponent(state.character, state.current_location, opponent_id),
+         duel_stake = if(CombatPlaytest.unrestricted?(), do: 0, else: stake_amount),
+         {:ok, duel} <- PVP.challenge_duel(state.character, opponent, duel_stake) do
       {:ok, %{duel: preload_duel(duel)}}
     else
       nil -> {:error, :opponent_not_found}
@@ -708,7 +718,8 @@ defmodule MMGO.Play do
   end
 
   defp ensure_spell_creation_location(%Character{} = character, attempt) do
-    with true <- character.current_location_id == attempt.location_id,
+    with true <-
+           CombatPlaytest.unrestricted?() or character.current_location_id == attempt.location_id,
          {:ok, _location} <- spellbook_location(character) do
       :ok
     else
@@ -1847,6 +1858,10 @@ defmodule MMGO.Play do
     current_location = character.current_location
 
     cond do
+      CombatPlaytest.unrestricted?() and character.status == :active and
+          not is_nil(current_location) ->
+        {:ok, spellbook_location_summary(current_location)}
+
       not is_nil(Travel.active_journey(character.id)) ->
         {:error, :travelling}
 
@@ -1869,28 +1884,32 @@ defmodule MMGO.Play do
   end
 
   defp permitted_spellbook_schools(%Character{} = character, spells) do
-    specialization_schools =
-      case Academy.active_specialization(character.id) do
-        %{track: :wizardry, primary_school: primary_school, secondary_school: secondary_school} ->
-          [primary_school, secondary_school]
-          |> Enum.filter(&is_atom/1)
-          |> Enum.map(&Atom.to_string/1)
+    if CombatPlaytest.unrestricted?() do
+      @spellbook_schools
+    else
+      specialization_schools =
+        case Academy.active_specialization(character.id) do
+          %{track: :wizardry, primary_school: primary_school, secondary_school: secondary_school} ->
+            [primary_school, secondary_school]
+            |> Enum.filter(&is_atom/1)
+            |> Enum.map(&Atom.to_string/1)
 
-        _other ->
-          case spells do
-            [] ->
-              @spellbook_schools
+          _other ->
+            case spells do
+              [] ->
+                @spellbook_schools
 
-            known_spells ->
-              known_spells
-              |> Enum.map(& &1.school)
-              |> Enum.filter(&is_atom/1)
-              |> Enum.map(&Atom.to_string/1)
-          end
-      end
+              known_spells ->
+                known_spells
+                |> Enum.map(& &1.school)
+                |> Enum.filter(&is_atom/1)
+                |> Enum.map(&Atom.to_string/1)
+            end
+        end
 
-    (specialization_schools ++ Academy.valedictorian_bonus_schools(character))
-    |> Enum.uniq()
+      (specialization_schools ++ Academy.valedictorian_bonus_schools(character))
+      |> Enum.uniq()
+    end
   end
 
   defp permitted_spellbook_school(%Character{} = character, spells, attrs) do
@@ -1917,6 +1936,9 @@ defmodule MMGO.Play do
 
   defp spellbook_circle_tier(%Character{} = character) do
     cond do
+      CombatPlaytest.unrestricted?() ->
+        :trained
+
       CharacterProfiles.legendary_progression?(character) ->
         :trained
 
@@ -4899,6 +4921,20 @@ defmodule MMGO.Play do
     )
   end
 
+  defp duel_opponents(%Character{} = character, location) do
+    if CombatPlaytest.unrestricted?() do
+      Accounts.list_active_playtest_characters(exclude_character_id: character.id)
+    else
+      nearby_stationary_characters(character, location)
+    end
+  end
+
+  defp find_duel_opponent(character, location, target_character_id) do
+    character
+    |> duel_opponents(location)
+    |> Enum.find(&(&1.id == target_character_id))
+  end
+
   defp find_nearby_character(character, location, target_character_id) do
     character
     |> nearby_stationary_characters(location)
@@ -5176,9 +5212,17 @@ defmodule MMGO.Play do
   defp ensure_overworld_available(%{current_location: nil}), do: {:error, :location_not_found}
   defp ensure_overworld_available(_state), do: :ok
 
-  defp ensure_duel_lobby_available(%{active_journey: %Journey{}}), do: {:error, :travelling}
-  defp ensure_duel_lobby_available(%{current_location: nil}), do: {:error, :location_not_found}
-  defp ensure_duel_lobby_available(_state), do: :ok
+  defp ensure_duel_lobby_available(state) do
+    if CombatPlaytest.unrestricted?(), do: :ok, else: restricted_duel_lobby_availability(state)
+  end
+
+  defp restricted_duel_lobby_availability(%{active_journey: %Journey{}}),
+    do: {:error, :travelling}
+
+  defp restricted_duel_lobby_availability(%{current_location: nil}),
+    do: {:error, :location_not_found}
+
+  defp restricted_duel_lobby_availability(_state), do: :ok
 
   defp ensure_base_available(%{active_journey: %Journey{}}), do: {:error, :travelling}
   defp ensure_base_available(%{current_location: nil}), do: {:error, :location_not_found}

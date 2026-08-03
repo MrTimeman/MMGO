@@ -524,6 +524,13 @@ defmodule MMGOWeb.SpellbookLive do
                       <div class="splist__body">
                         <p class="splist__formula">«{spell.formula}»</p>
                         <p :if={spell.description} class="splist__desc">{spell.description}</p>
+                        <p
+                          :if={spell.school_quirk}
+                          id={"spell-quirk-#{spell.id}"}
+                          class="splist__lineage"
+                        >
+                          Особенность школы: {school_quirk_label(spell.school_quirk)}
+                        </p>
                         <div class="splist__stat-grid">
                           <div class="splist__stat">
                             <span class="splist__stat-label">Уровень</span>
@@ -779,6 +786,16 @@ defmodule MMGOWeb.SpellbookLive do
   defp spell_options(spells), do: Enum.map(spells, &{"#{&1.name} — #{&1.formula}", &1.id})
 
   defp school_label(school), do: Map.get(@school_labels, to_string(school), "Неизвестная школа")
+
+  defp school_quirk_label(:escalation), do: "эскалация"
+  defp school_quirk_label(:environment_shift), do: "замещение среды"
+  defp school_quirk_label(:persistence), do: "устойчивость"
+  defp school_quirk_label(:tempo), do: "темп"
+  defp school_quirk_label(:vitality), do: "жизненная сила"
+  defp school_quirk_label(:harvest), do: "жатва"
+  defp school_quirk_label(:volatility), do: "нестабильность"
+  defp school_quirk_label(:precision), do: "точность"
+  defp school_quirk_label(_quirk), do: "неизвестная особенность"
 
   defp school_color(school) do
     hue = Map.get(@school_hues, to_string(school), 45)

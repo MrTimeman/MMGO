@@ -25,6 +25,10 @@ config :mmgo, Oban, testing: :manual
 # and the base configuration keep it disabled.
 config :mmgo, local_demo_enabled: true
 
+# Most tests specify the permanent world rules. Focused playtest-mode tests opt
+# in explicitly and restore the setting on exit.
+config :mmgo, MMGO.CombatPlaytest, unrestricted?: false
+
 # Ordinary transaction tests are deterministic. Detection-specific tests pass
 # an explicit roll, which enables the risk path for that transaction.
 config :mmgo, MMGO.BlackMarket, detection_enabled: false

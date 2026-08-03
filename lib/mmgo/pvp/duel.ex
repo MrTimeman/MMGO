@@ -61,8 +61,8 @@ defmodule MMGO.PVP.Duel do
       :challenger_character_id,
       :opponent_character_id
     ])
-    |> validate_number(:stake_amount, greater_than: 0)
-    |> validate_number(:pot_amount, greater_than: 0)
+    |> validate_number(:stake_amount, greater_than_or_equal_to: 0)
+    |> validate_number(:pot_amount, greater_than_or_equal_to: 0)
     |> validate_number(:tax_rate_bps, greater_than_or_equal_to: 0, less_than_or_equal_to: 10_000)
     |> validate_distinct_participants()
   end

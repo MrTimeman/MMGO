@@ -16,7 +16,16 @@ defmodule MMGO.Combat.ActionSnapshot do
   alias MMGO.Inventory
   alias MMGO.Inventory.{InventoryItem, ItemAction}
   alias MMGO.Repo
-  alias MMGO.Spells.{FailureProfile, Incantation, InteractionRule, Spell, SpellEffect}
+
+  alias MMGO.Spells.{
+    FailureProfile,
+    Incantation,
+    InteractionRule,
+    SchoolQuirk,
+    Spell,
+    SpellEffect
+  }
+
   alias MMGO.Survival
 
   @action_types %{
@@ -36,6 +45,8 @@ defmodule MMGO.Combat.ActionSnapshot do
     "chaos" => :chaos,
     "order" => :order
   }
+
+  @school_quirks Map.new(SchoolQuirk.values(), fn quirk -> {to_string(quirk), quirk} end)
 
   @targeting_modes %{"self" => :self, "ally" => :ally, "enemy" => :enemy, "zone" => :zone}
 
@@ -409,6 +420,7 @@ defmodule MMGO.Combat.ActionSnapshot do
       "formula" => spell.formula,
       "incantation_slots" => spell.incantation_slots || %{},
       "school" => to_string(spell.school),
+      "school_quirk" => spell.school_quirk && to_string(spell.school_quirk),
       "fatigue_cost" => spell.fatigue_cost,
       "cooldown_turns" => spell.cooldown_turns,
       "targeting" => to_string(spell.targeting),
@@ -472,6 +484,9 @@ defmodule MMGO.Combat.ActionSnapshot do
            Map.get(snapshot, "incantation_slots", %{}),
          true <- valid_incantation_slots?(incantation_slots, formula),
          {:ok, school} <- enum_value(Map.get(snapshot, "school"), @schools),
+         {:ok, school_quirk} <-
+           optional_enum_value(Map.get(snapshot, "school_quirk"), @school_quirks),
+         true <- is_nil(school_quirk) or SchoolQuirk.compatible?(school, school_quirk),
          {:ok, targeting} <- enum_value(Map.get(snapshot, "targeting"), @targeting_modes),
          {:ok, delivery_form} <- enum_value(Map.get(snapshot, "delivery_form"), @delivery_forms),
          {:ok, environment_mode} <-
@@ -493,6 +508,7 @@ defmodule MMGO.Combat.ActionSnapshot do
          formula: formula,
          incantation_slots: incantation_slots,
          school: school,
+         school_quirk: school_quirk,
          fatigue_cost: fatigue_cost,
          cooldown_turns: cooldown_turns,
          targeting: targeting,
@@ -509,6 +525,9 @@ defmodule MMGO.Combat.ActionSnapshot do
   end
 
   defp spell_from_snapshot(_snapshot), do: {:error, :invalid_snapshot}
+
+  defp optional_enum_value(nil, _values), do: {:ok, nil}
+  defp optional_enum_value(value, values), do: enum_value(value, values)
 
   defp valid_incantation_slots?(slots, formula) do
     valid_seals? =

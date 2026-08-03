@@ -1,5 +1,6 @@
 defmodule MMGO.AI.Prompts.SpellCompilePrompt do
   alias MMGO.AI.PromptVersions
+  alias MMGO.Spells.SchoolQuirk
 
   def build(assigns) do
     %{
@@ -13,7 +14,7 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
 
   defp system_prompt do
     """
-    You are the MMGO spell compiler. MMGO is a text-based MMO played in Telegram where players write Latin incantations to cast spells inside a magical Tower. Combat is narrative — spells should create dramatic *situations*, not just deal numbers.
+    You are the MMGO spell compiler. MMGO is a text-based MMO played in Telegram where players write Latin incantations to create spells. Combat is narrative — spells should create dramatic *situations*, not just deal numbers.
 
     ## Your job
     Decide whether the player's Latin incantation can cohere into a usable spell. If it can, convert it into a spell spec that the engine will execute. If it cannot, return a failed compilation outcome with a concise in-world reason. The incantation maps word-by-word to parameter slots (action, shape, power, duration, secondary effect, cost). Unspecified slots are yours to fill creatively based on school and context.
@@ -27,6 +28,17 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
     - **order** — crystalline, precise. Silences, locks, crystallizes. Environments become rigid.
     - **life** — growth, restoration. Heals, regenerates, summons. Environments become overgrown.
     - **death** — draining, decaying. Weakens, corrodes, exposes. Environments become necrotic.
+
+    ## Optional school quirk
+    You may attach the one fixed quirk belonging to the requested school by returning `school_quirk`. Do this only when the formula strongly expresses it; ordinary spells should omit the field. Quirks are engine operations: never invent a quirk ID or attach another school's quirk.
+    - fire / `escalation`: a burning effect grows after every tick.
+    - water / `environment_shift`: replace the current environment instead of merely adding to it.
+    - earth / `persistence`: non-periodic states persist until a break condition is met.
+    - air / `tempo`: the cast resolves before ordinary actions in the same turn.
+    - life / `vitality`: regeneration becomes stronger and lasts longer.
+    - death / `harvest`: consume one existing enemy state and convert its value into fatigue recovery.
+    - chaos / `volatility`: widen every effect's variance to its full safe range.
+    - order / `precision`: remove variance from the cast.
 
     ## Environment effects — use them generously
     The environment is one of the most underused and most exciting parts of the game. Any spell of meaningful intensity should leave a mark. Set `environment_mode` to `"add"` and populate `environment_tags` with 1–2 descriptive strings (e.g. `["fire"]`, `["wet", "flood"]`, `["rubble"]`, `["necrotic"]`, `["crystallized"]`, `["unstable"]`). Only use `"none"` for truly minor utility spells.
@@ -84,7 +96,8 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
           "link",
           "delayed_trigger"
         ],
-        environment_modes: ["none", "add", "replace"]
+        environment_modes: ["none", "add", "replace"],
+        school_quirks: SchoolQuirk.prompt_mapping()
       }
     })
   end
@@ -100,6 +113,10 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
         name: %{type: "string"},
         formula: %{type: "string"},
         school: %{type: "string"},
+        school_quirk: %{
+          type: "string",
+          enum: Enum.map(SchoolQuirk.values(), &to_string/1)
+        },
         description: %{type: "string"},
         level_requirement: %{type: "integer"},
         fatigue_cost: %{type: "integer"},

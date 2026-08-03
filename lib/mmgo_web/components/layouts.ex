@@ -74,6 +74,31 @@ defmodule MMGOWeb.Layouts do
       id="game-shell"
       class="game-shell"
     >
+      <nav
+        :if={MMGO.CombatPlaytest.unrestricted?()}
+        id="beta-combat-shortcuts"
+        aria-label="Инструменты бета-теста"
+        class="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-1 rounded-full border border-amber-300/30 bg-slate-950/90 p-1.5 text-xs text-amber-50 shadow-2xl shadow-black/40 backdrop-blur"
+      >
+        <span class="px-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-amber-300/80">
+          beta
+        </span>
+        <.link
+          id="beta-open-spellbook"
+          navigate={~p"/spellbook"}
+          class="flex min-h-9 items-center gap-1.5 rounded-full px-3 transition hover:bg-white/10"
+        >
+          <.icon name="hero-book-open" class="size-4" /> Гримуар
+        </.link>
+        <.link
+          id="beta-open-duels"
+          navigate={~p"/pvp"}
+          class="flex min-h-9 items-center gap-1.5 rounded-full px-3 transition hover:bg-white/10"
+        >
+          <.icon name="hero-bolt" class="size-4" /> Дуэли
+        </.link>
+      </nav>
+
       <main id="game-content" class="game-content">
         {render_slot(@inner_block)}
       </main>

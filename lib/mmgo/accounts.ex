@@ -241,6 +241,68 @@ defmodule MMGO.Accounts do
 
   def list_active_characters_at_location(_realm_id, _location_id, _opts), do: []
 
+  @doc "Returns visible active player characters in a realm for consensual playtest duels."
+  def list_active_characters_in_realm(realm_id, opts \\ [])
+
+  def list_active_characters_in_realm(realm_id, opts)
+      when is_binary(realm_id) and is_list(opts) do
+    exclude_character_id = Keyword.get(opts, :exclude_character_id)
+
+    query =
+      from(character in Character,
+        join: account in Account,
+        on: account.id == character.account_id,
+        left_join: journey in Journey,
+        on: journey.character_id == character.id and journey.status == :active,
+        where:
+          character.realm_id == ^realm_id and character.status == :active and
+            account.status == :active and is_nil(journey.id) and
+            fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings) and
+            fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
+            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
+        order_by: [asc: character.name],
+        preload: [:account, :current_location]
+      )
+
+    query =
+      if is_binary(exclude_character_id) do
+        from character in query, where: character.id != ^exclude_character_id
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
+  def list_active_characters_in_realm(_realm_id, _opts), do: []
+
+  @doc "Returns every visible active player profile for the unrestricted beta duel lobby."
+  def list_active_playtest_characters(opts \\ []) when is_list(opts) do
+    exclude_character_id = Keyword.get(opts, :exclude_character_id)
+
+    query =
+      from(character in Character,
+        join: account in Account,
+        on: account.id == character.account_id,
+        where:
+          character.status == :active and account.status == :active and
+            fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings) and
+            fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
+            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
+        order_by: [asc: character.name],
+        preload: [:account, :current_location]
+      )
+
+    query =
+      if is_binary(exclude_character_id) do
+        from character in query, where: character.id != ^exclude_character_id
+      else
+        query
+      end
+
+    Repo.all(query)
+  end
+
   def get_character_by_handle(realm_id, handle) when is_binary(realm_id) and is_binary(handle) do
     from(character in Character,
       join: account in Account,

@@ -128,6 +128,7 @@ defmodule MMGOWeb.PlayApiController do
       id: spell.id,
       name: spell.name,
       school: spell.school,
+      school_quirk: spell.school_quirk,
       fatigue_cost: spell.fatigue_cost,
       cooldown_turns: spell.cooldown_turns
     }

@@ -226,6 +226,7 @@ defmodule MMGO.Spells.Compiler do
       |> Map.put("interaction_rules", [])
       |> Map.put("environment_mode", "none")
       |> Map.put("environment_tags", [])
+      |> Map.put("school_quirk", nil)
     else
       compiled_spell
     end
@@ -429,6 +430,7 @@ defmodule MMGO.Spells.Compiler do
       name: spell.name,
       formula: spell.formula,
       school: spell.school,
+      school_quirk: spell.school_quirk,
       incantation_slots: spell.incantation_slots,
       source_spell_id: spell.source_spell_id
     }
@@ -442,6 +444,7 @@ defmodule MMGO.Spells.Compiler do
       name: spell.name,
       formula: spell.formula,
       school: spell.school,
+      school_quirk: spell.school_quirk,
       incantation_slots: spell.incantation_slots,
       description: bounded_prompt_text(spell.description, @max_spell_description_bytes),
       effects: Enum.map(spell.effects, &effect_summary/1)

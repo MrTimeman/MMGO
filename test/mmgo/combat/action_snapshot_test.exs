@@ -70,6 +70,12 @@ defmodule MMGO.Combat.ActionSnapshotTest do
     attacker: attacker,
     spell: spell
   } do
+    assert {:error, incompatible_changeset} =
+             Spells.update_spell(spell, %{school_quirk: :precision})
+
+    assert "does not belong to the spell school" in errors_on(incompatible_changeset).school_quirk
+
+    {:ok, spell} = Spells.update_spell(spell, %{school_quirk: :escalation})
     combat = Combat.get_combat!(combat.id)
     participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
 
@@ -92,6 +98,8 @@ defmodule MMGO.Combat.ActionSnapshotTest do
              "actio" => "Ignis",
              "forma" => "Minima"
            }
+
+    assert action.payload["snapshot"]["spell"]["school_quirk"] == "escalation"
 
     refute Map.has_key?(action.payload, "invented_effect")
   end
