@@ -8,6 +8,7 @@ app_host := env_var_or_default("MMGO_APP_HOST", "nova")
 remote_root := env_var_or_default("MMGO_REMOTE_ROOT", "/opt/mmgo")
 public_url := env_var_or_default("MMGO_PUBLIC_URL", "https://mmgo.mrtimeman.ru")
 private_health_url := env_var_or_default("MMGO_PRIVATE_HEALTH_URL", "http://100.64.0.2:4000")
+docker_builder := env_var_or_default("MMGO_DOCKER_BUILDER", "default")
 
 # Show the available project operations.
 default:
@@ -25,6 +26,7 @@ deploy-plan:
     @printf 'runtime:  %s\n' '{{remote_root}}'
     @printf 'public:   %s\n' '{{public_url}}'
     @printf 'health:   %s\n' '{{private_health_url}}'
+    @printf 'builder:  %s\n' '{{docker_builder}}'
 
 # Build, smoke-test, migrate, and deploy the current committed release to Nova.
 # The recipe refuses dirty worktrees so production always maps to a Git commit.
@@ -39,6 +41,7 @@ deploy: release-check
     remote_root='{{remote_root}}'
     public_url='{{public_url}}'
     private_health_url='{{private_health_url}}'
+    docker_builder='{{docker_builder}}'
 
     for command in base64 git gzip mktemp scp shasum ssh; do
       command -v "$command" >/dev/null || {
@@ -49,6 +52,11 @@ deploy: release-check
 
     [[ "$version" =~ ^[0-9A-Za-z._-]+$ ]] || {
       printf 'Unsafe release version: %s\n' "$version" >&2
+      exit 1
+    }
+
+    [[ "$docker_builder" =~ ^[0-9A-Za-z._-]+$ ]] || {
+      printf 'Unsafe Docker builder name: %s\n' "$docker_builder" >&2
       exit 1
     }
 
@@ -91,7 +99,8 @@ deploy: release-check
       "$checksum" \
       "$public_url" \
       "$private_health_url" \
-      "$release_notes_base64" <<'REMOTE'
+      "$release_notes_base64" \
+      "$docker_builder" <<'REMOTE'
     set -Eeuo pipefail
 
     app="$1"
@@ -103,6 +112,7 @@ deploy: release-check
     public_url="$7"
     private_health_url="$8"
     release_notes_base64="$9"
+    docker_builder="${10}"
 
     image="${app}:${version}"
     short_sha="${source_sha:0:12}"
@@ -145,7 +155,11 @@ deploy: release-check
     fi
 
     printf 'Building %s…\n' "$image"
-    docker build --tag "$image" "$release_dir"
+    if [[ "$docker_builder" == "default" ]]; then
+      docker build --tag "$image" "$release_dir"
+    else
+      docker build --builder "$docker_builder" --load --tag "$image" "$release_dir"
+    fi
 
     timestamp="$(date -u +%Y%m%dT%H%M%SZ)"
     database_backup="${backup_dir}/${app}-pre-${version}-${timestamp}.dump"

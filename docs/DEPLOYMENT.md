@@ -53,6 +53,13 @@ Override them without editing the recipe through `MMGO_JUMP_HOST`,
 `MMGO_PRIVATE_HEALTH_URL`. The recipe never reads production secrets locally
 and never packages ignored or uncommitted files.
 
+The deployment uses Docker's `default` builder unless
+`MMGO_DOCKER_BUILDER` names another builder already configured on the
+application host. Non-default builders are invoked with `--load`, so the
+resulting image is available to the host's Compose runtime. This is useful for
+isolating a release build from a damaged or heavily contended default BuildKit
+cache.
+
 For a standalone container deployment, the equivalent low-level commands are:
 
 ```bash
