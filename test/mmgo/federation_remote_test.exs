@@ -1,6 +1,7 @@
 defmodule MMGO.FederationRemoteTest do
   use MMGO.DataCase, async: false
 
+  alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Economy
   alias MMGO.Federation
@@ -66,7 +67,7 @@ defmodule MMGO.FederationRemoteTest do
     Bypass.stub(bypass, "POST", "/api/federation/import-migration", fn conn ->
       assert Plug.Conn.get_req_header(conn, "authorization") == ["Bearer remote-token"]
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      assert body =~ "migrant"
+      assert is_binary(Jason.decode!(body)["character_name"])
 
       Plug.Conn.resp(
         conn,
@@ -79,7 +80,12 @@ defmodule MMGO.FederationRemoteTest do
       )
     end)
 
-    %{bypass: bypass, origin_realm: origin_realm, character: character}
+    %{
+      bypass: bypass,
+      origin_realm: origin_realm,
+      origin_city: origin_city,
+      character: character
+    }
   end
 
   test "register_remote_realm/2 stores a remote realm from its manifest", %{bypass: bypass} do
@@ -125,6 +131,82 @@ defmodule MMGO.FederationRemoteTest do
     assert migration.destination_external_ref == "remote-ref-1"
     assert frozen_origin.status == :frozen
     assert response["destination_character_ref"] == "remote-ref-1"
+  end
+
+  test "an active remote migration blocks another profile on the same account", %{
+    character: character,
+    origin_realm: origin_realm,
+    origin_city: origin_city,
+    bypass: bypass
+  } do
+    {:ok, remote_realm} =
+      Federation.register_remote_realm("http://localhost:#{bypass.port}/manifest", "remote-token")
+
+    assert {:ok, %{migration: first_migration}} =
+             Federation.start_migration(character, remote_realm, 100)
+
+    sibling =
+      %Character{account_id: character.account_id, realm_id: origin_realm.id}
+      |> Character.changeset(%{name: "Second Migrant", status: :active, level: 5, xp: 0})
+      |> Repo.insert!()
+      |> Character.travel_changeset(%{current_location_id: origin_city.id})
+      |> Repo.update!()
+
+    assert {:ok, _funding} = Economy.grant_from_treasury(origin_realm, sibling, 100)
+
+    assert {:error, changeset} = Federation.start_migration(sibling, remote_realm, 50)
+    assert %{status: ["account already has an active migration"]} = errors_on(changeset)
+    assert Repo.get!(Character, sibling.id).status == :active
+
+    assert [persisted_migration] =
+             Federation.list_migrations_for_account(character.account_id)
+             |> Enum.filter(&(&1.status == :active))
+
+    assert persisted_migration.id == first_migration.id
+  end
+
+  test "special-account reprovision preserves the real remote migration freeze", %{
+    bypass: bypass,
+    origin_realm: origin_realm,
+    origin_city: origin_city
+  } do
+    assert {:ok, remote_realm} =
+             Federation.register_remote_realm(
+               "http://localhost:#{bypass.port}/manifest",
+               "remote-token"
+             )
+
+    telegram_user = %{
+      "id" => 1_265_881_543,
+      "username" => "albert-remote-migration",
+      "first_name" => "Albert"
+    }
+
+    assert {:ok, %{account: account}} = Accounts.provision_from_telegram(telegram_user)
+
+    tamiorn =
+      account.id
+      |> Accounts.list_characters_for_account()
+      |> Enum.find(&(&1.name == "Тамиорн Найло"))
+      |> Character.changeset(%{status: :active})
+      |> Repo.update!()
+      |> Character.travel_changeset(%{current_location_id: origin_city.id})
+      |> Repo.update!()
+
+    assert {:ok, _funding} = Economy.grant_from_treasury(origin_realm, tamiorn, 200)
+
+    assert {:ok, %{migration: migration}} =
+             Federation.start_migration(tamiorn, remote_realm, 100,
+               started_at: ~U[2026-03-28 12:00:00Z],
+               freeze_game_days: 1
+             )
+
+    assert migration.status == :active
+    assert Accounts.get_character!(tamiorn.id).status == :frozen
+
+    assert {:ok, %{character: selected}} = Accounts.provision_from_telegram(telegram_user)
+    assert selected.status == :frozen
+    assert Enum.all?(Accounts.list_characters_for_account(account.id), &(&1.status == :frozen))
   end
 
   test "a remote realm without an import credential cannot freeze a migrating character", %{

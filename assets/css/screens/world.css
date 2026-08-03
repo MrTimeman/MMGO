@@ -389,6 +389,11 @@
   color: color-mix(in srgb, var(--color-danger) 62%, white);
 }
 
+.evh-object-btn--consent {
+  border-color: color-mix(in srgb, var(--color-safe) 58%, var(--color-border));
+  color: color-mix(in srgb, var(--color-safe) 68%, white);
+}
+
 .evh-status-slip {
   position: relative;
   margin-top: 0.85rem;
@@ -502,6 +507,46 @@
   margin-top: 0.65rem;
   font-family: var(--font-hand);
   font-size: 0.88rem;
+}
+
+.evh-encounter--contact {
+  border-color: color-mix(in srgb, var(--color-safe) 40%, var(--color-border));
+}
+
+.evh-contact-request-btn,
+.evh-contact-actions .evh-object-btn {
+  min-height: 44px;
+}
+
+.evh-contact-state {
+  color: color-mix(in srgb, var(--color-safe) 62%, var(--color-text));
+  font-family: var(--font-hand);
+  font-size: 0.84rem;
+}
+
+@media (max-width: 34rem) {
+  .evh-contact-actions {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .evh-contact-actions .evh-object-btn {
+    width: 100%;
+  }
+
+  .evh-ledger--people .evh-ledger__row {
+    align-items: stretch;
+    flex-wrap: wrap;
+  }
+
+  .evh-ledger--people .evh-contact-request-btn,
+  .evh-ledger--people .evh-contact-state {
+    flex-basis: 100%;
+  }
+
+  .evh-ledger--people .evh-contact-state {
+    padding-left: 1.8rem;
+  }
 }
 
 /* Compass switcher — subtle in-world "review the states" device */

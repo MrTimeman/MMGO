@@ -75,10 +75,11 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert has_element?(view, "#spellbook-screen")
     assert has_element?(view, "#spell-compose-locked")
     assert has_element?(view, "#spellbook-read-only-note")
+    refute has_element?(view, "#spell-circle-root")
     refute has_element?(view, "#spell-compose-form")
   end
 
-  test "the composition form compiles an owned base spell at the Tower", %{
+  test "the novice circle has exactly three seals and compiles at the Tower", %{
     conn: conn,
     character: character,
     the_tower: the_tower,
@@ -87,27 +88,30 @@ defmodule MMGOWeb.SpellbookLiveTest do
     character = move_to(character, the_tower)
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
 
-    assert has_element?(view, "#spell-compose-form")
-    assert has_element?(view, "#spell-compose-base")
-    assert has_element?(view, "#spell-compose-school")
-    assert has_element?(view, "#spell-compose-formula")
-    assert has_element?(view, "#spell-compose-formula[maxlength='180']")
-    assert has_element?(view, "#spell-circle-root[phx-hook='SpellCircle']")
+    assert has_element?(
+             view,
+             "#spell-circle-root[phx-hook='SpellCircle'][data-circle-tier='novice']"
+           )
 
-    view
-    |> form("#spell-compose-form", %{
-      "composition" => %{
-        "base_spell_id" => base_spell.id,
-        "school" => "fire",
-        "formula" => "Ignis Radius"
-      }
+    assert has_element?(view, "#spell-circle-instruction")
+    refute has_element?(view, "#spell-compose-form")
+    refute render(view) =~ "Записать формулу пером"
+
+    render_hook(view, "hook_mounted", %{"hook" => "SpellCircle"})
+    assert_push_event(view, "spell_circle_init", %{slots: slots, current: %{}})
+    assert Enum.map(slots, & &1.key) == ["school", "actio", "tempus"]
+    assert Enum.all?(slots, & &1.required)
+
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Ignis",
+      "tempus" => "Momentum"
     })
-    |> render_submit()
 
     compiled_spell =
       character.id
       |> Spells.list_spells_for_character()
-      |> Enum.find(&(&1.formula == "Ignis Radius"))
+      |> Enum.find(&(&1.formula == "Ignis Momentum"))
 
     assert compiled_spell.source_spell_id == base_spell.id
     assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
@@ -119,35 +123,32 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert has_element?(view, "#spell-library-#{compiled_spell.id}")
   end
 
-  test "the restored ritual circle compiles through the same guarded backend", %{
+  test "a novice with an empty library can create a root spell", %{
     conn: conn,
-    character: character,
-    the_tower: the_tower,
-    base_spell: base_spell
+    realm: realm,
+    the_tower: the_tower
   } do
-    character = move_to(character, the_tower)
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+    root_character =
+      character_fixture(realm, the_tower, "root-caster", "Root Caster")
+
+    {:ok, view, _html} = live(session_conn(conn, root_character), ~p"/spellbook")
+
+    assert has_element?(view, "#spell-circle-root[data-circle-tier='novice']")
+    refute has_element?(view, "#spell-library-empty")
 
     render_hook(view, "spell_compile", %{
-      "base" => base_spell.id,
-      "school" => "fire",
-      "actio" => "Ignis",
-      "forma" => "Radius"
+      "school" => "air",
+      "actio" => "Ictus",
+      "tempus" => "Momentum"
     })
 
     compiled_spell =
-      character.id
+      root_character.id
       |> Spells.list_spells_for_character()
-      |> Enum.find(&(&1.formula == "Ignis Radius"))
+      |> Enum.find(&(&1.formula == "Ictus Momentum"))
 
-    assert compiled_spell.source_spell_id == base_spell.id
+    assert compiled_spell.source_spell_id == nil
     assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
-
-    view
-    |> element("#spellbook-tab-spells")
-    |> render_click()
-
-    assert has_element?(view, "#spell-library-#{compiled_spell.id}")
   end
 
   test "an active owned base permits the same form outside the Tower", %{
@@ -159,7 +160,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
 
-    assert has_element?(view, "#spell-compose-form")
+    assert has_element?(view, "#spell-circle-root")
     assert has_element?(view, "#spellbook-location")
   end
 
@@ -177,14 +178,16 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     assert has_element?(view, "#spell-compose-locked")
     assert has_element?(view, "#spellbook-read-only-note")
+    refute has_element?(view, "#spell-circle-root")
     refute has_element?(view, "#spell-compose-form")
   end
 
-  test "a forged foreign base ID produces a server-rendered validation error", %{
+  test "the novice circle ignores forged advanced slots and foundations", %{
     conn: conn,
     realm: realm,
     character: character,
-    the_tower: the_tower
+    the_tower: the_tower,
+    base_spell: base_spell
   } do
     foreign_character = character_fixture(realm, the_tower, "foreign-mage", "Foreign Mage")
     foreign_spell = spell_fixture(foreign_character, "Aqua Prima", "Aqua Prima", :water)
@@ -192,37 +195,39 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
 
-    view
-    |> form("#spell-compose-form")
-    |> render_submit(%{
-      "composition" => %{
-        "base_spell_id" => foreign_spell.id,
-        "school" => "fire",
-        "formula" => "Ignis Radius"
-      }
+    render_hook(view, "spell_compile", %{
+      "base" => foreign_spell.id,
+      "school" => "fire",
+      "actio" => "Ignis",
+      "tempus" => "Momentum",
+      "forma" => "Injected",
+      "pretium" => "Sanguis"
     })
 
-    assert has_element?(view, "#spell-compose-error")
+    compiled_spell =
+      character.id
+      |> Spells.list_spells_for_character()
+      |> Enum.find(&(&1.formula == "Ignis Momentum"))
+
+    assert compiled_spell.source_spell_id == base_spell.id
+    refute compiled_spell.formula =~ "Injected"
+    refute compiled_spell.formula =~ "Sanguis"
   end
 
   test "an invalid formula is shown as a server-rendered validation error", %{
     conn: conn,
     character: character,
     the_tower: the_tower,
-    base_spell: base_spell
+    base_spell: _base_spell
   } do
     character = move_to(character, the_tower)
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
 
-    view
-    |> form("#spell-compose-form", %{
-      "composition" => %{
-        "base_spell_id" => base_spell.id,
-        "school" => "fire",
-        "formula" => "Ignis 123"
-      }
+    render_hook(view, "spell_compile", %{
+      "school" => "fire",
+      "actio" => "Ignis 123",
+      "tempus" => "Momentum"
     })
-    |> render_submit()
 
     assert has_element?(view, "#spell-compose-error")
   end

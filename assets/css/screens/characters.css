@@ -1,0 +1,523 @@
+/* Character registry — a leather folio holding physical realm dossiers. */
+
+.character-registry {
+  min-height: 100dvh;
+  overflow-x: hidden;
+  color: var(--parch-ink);
+  background:
+    radial-gradient(circle at 48% -12%, rgba(189, 143, 73, 0.16), transparent 34rem),
+    repeating-linear-gradient(92deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 7px),
+    linear-gradient(145deg, #17110c, #090706 68%);
+}
+
+.character-registry__desk {
+  width: min(100%, 68rem);
+  margin-inline: auto;
+  padding: clamp(1rem, 3.5vw, 3rem) clamp(0.65rem, 2.5vw, 1.5rem);
+}
+
+.character-folio {
+  position: relative;
+  border: 1px solid #6d4a2c;
+  border-radius: 0.4rem 0.16rem 0.16rem 0.4rem;
+  background: #3b2417;
+  box-shadow:
+    0 1.8rem 4rem rgba(0, 0, 0, 0.55),
+    0 0 0 0.25rem #1c100a,
+    inset 0 0 0 1px rgba(229, 188, 119, 0.16);
+}
+
+.character-folio::after {
+  content: "";
+  position: absolute;
+  z-index: 3;
+  inset: 0.38rem -0.28rem 0.32rem auto;
+  width: 0.36rem;
+  border: 1px solid #ad9565;
+  border-left: 0;
+  background: repeating-linear-gradient(#e5d7b2 0 3px, #bca879 3px 4px);
+  box-shadow: 0.15rem 0.2rem 0.35rem rgba(0, 0, 0, 0.45);
+}
+
+.character-folio__cover {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: clamp(1.25rem, 5vw, 4rem);
+  align-items: end;
+  min-width: 0;
+  padding: clamp(2rem, 5vw, 3.8rem) clamp(1.5rem, 6vw, 4.8rem) clamp(1.7rem, 4vw, 3rem);
+  border-bottom: 2px solid #160c08;
+  color: var(--parch-paper-light);
+  background:
+    linear-gradient(98deg, rgba(255, 255, 255, 0.035), transparent 28%),
+    repeating-linear-gradient(4deg, transparent 0 13px, rgba(0, 0, 0, 0.045) 14px),
+    linear-gradient(145deg, #52331f, #301b11 76%);
+  box-shadow:
+    inset 1.25rem 0 1.5rem rgba(0, 0, 0, 0.26),
+    inset 0 0 0 1px rgba(233, 194, 126, 0.12);
+}
+
+.character-folio__spine {
+  position: absolute;
+  inset: 0 auto 0 1.05rem;
+  display: flex;
+  width: 0.8rem;
+  flex-direction: column;
+  justify-content: space-around;
+  border-inline: 1px solid rgba(15, 8, 5, 0.55);
+  background: rgba(20, 10, 6, 0.2);
+}
+
+.character-folio__spine i {
+  display: block;
+  width: 1.05rem;
+  height: 1.05rem;
+  margin-left: -0.14rem;
+  border: 2px solid #9b7848;
+  border-radius: 50%;
+  background: #1d110b;
+  box-shadow: inset 0 0 0 2px #050302;
+}
+
+.character-folio__heading {
+  min-width: 0;
+}
+
+.character-folio__eyebrow,
+.character-realm-file__index,
+.character-file__kind,
+.character-file__facts dt,
+.character-folio__registry-note span {
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.22em;
+  text-transform: uppercase;
+}
+
+.character-folio__eyebrow {
+  color: #d9b26c;
+}
+
+.character-folio__heading h1 {
+  max-width: 15ch;
+  margin-top: 0.65rem;
+  color: #fff6dc;
+  font-family: var(--font-serif);
+  font-size: clamp(2.1rem, 6vw, 4rem);
+  font-weight: 700;
+  line-height: 0.98;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+  text-shadow: 0 2px 0 #160c08;
+}
+
+.character-folio__copy {
+  max-width: 42rem;
+  margin-top: 1rem;
+  color: #d7c7aa;
+  font-size: clamp(0.98rem, 2vw, 1.14rem);
+  line-height: 1.55;
+}
+
+.character-folio__owner-stamp {
+  width: min(14rem, 30vw);
+  min-width: 9.5rem;
+  padding: 0.7rem 0.8rem 0.6rem;
+  transform: rotate(-2.2deg);
+  border: 0.16rem double rgba(224, 188, 115, 0.72);
+  color: #e4c987;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.character-folio__owner-stamp span,
+.character-folio__owner-stamp small {
+  display: block;
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+}
+
+.character-folio__owner-stamp strong {
+  display: block;
+  margin-block: 0.32rem;
+  font-size: 0.9rem;
+  overflow-wrap: anywhere;
+}
+
+.character-folio__pages {
+  position: relative;
+  margin: 0.5rem 0.45rem 0.55rem 0.8rem;
+  padding: clamp(1.25rem, 4vw, 3.25rem);
+  border: 1px solid #b69e6f;
+  border-radius: 0.08rem 0.22rem 0.18rem 0.08rem;
+  background:
+    linear-gradient(90deg, transparent 0 3.1rem, rgba(124, 43, 34, 0.12) 3.12rem 3.18rem, transparent 3.2rem),
+    repeating-linear-gradient(0deg, transparent 0 1.72rem, rgba(85, 65, 35, 0.055) 1.76rem 1.8rem),
+    radial-gradient(circle at 18% 2%, #f7efd7, var(--parch-paper) 62%, #d4c08f);
+  box-shadow:
+    inset 0 0 3rem rgba(107, 78, 35, 0.12),
+    0.28rem 0.34rem 0 #b39d70,
+    0.5rem 0.6rem 0 rgba(28, 15, 8, 0.48);
+}
+
+.character-realm-file + .character-realm-file {
+  margin-top: clamp(2.3rem, 5vw, 4rem);
+}
+
+.character-realm-file__heading {
+  display: grid;
+  grid-template-columns: auto auto minmax(0, auto) minmax(1.5rem, 1fr);
+  gap: 0.65rem;
+  align-items: center;
+  margin-bottom: 1rem;
+  color: #4b351e;
+}
+
+.character-realm-file__index {
+  align-self: stretch;
+  padding: 0.3rem 0.5rem;
+  color: #f4e7c5;
+  background: #70462c;
+}
+
+.character-realm-file__icon {
+  width: 1.1rem;
+  height: 1.1rem;
+  color: #7c2b22;
+}
+
+.character-realm-file__heading h2 {
+  min-width: 0;
+  font-size: clamp(1.35rem, 4vw, 2rem);
+  font-weight: 700;
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+}
+
+.character-realm-file__rule {
+  height: 1px;
+  background: linear-gradient(90deg, #947143, transparent);
+}
+
+.character-file-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: clamp(0.9rem, 2.5vw, 1.35rem);
+}
+
+.character-file {
+  position: relative;
+  display: flex;
+  min-width: 0;
+  min-height: 22rem;
+  flex-direction: column;
+  padding: clamp(1.15rem, 3vw, 1.65rem);
+  border: 1px solid #aa9061;
+  border-radius: 0.1rem;
+  color: #342718;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 1.45rem, rgba(93, 67, 33, 0.065) 1.48rem 1.5rem),
+    linear-gradient(120deg, #fff8df, #e7d5aa);
+  box-shadow:
+    0.18rem 0.22rem 0 rgba(99, 75, 40, 0.23),
+    inset 0 0 1.8rem rgba(120, 83, 36, 0.07);
+  transition: transform 170ms ease, box-shadow 170ms ease;
+}
+
+.character-file:nth-child(even) {
+  transform: rotate(0.18deg);
+}
+
+.character-file:hover {
+  transform: translateY(-2px) rotate(0deg);
+  box-shadow:
+    0.25rem 0.38rem 0 rgba(74, 51, 25, 0.25),
+    inset 0 0 1.8rem rgba(120, 83, 36, 0.07);
+}
+
+.character-file--sealed {
+  border-color: #87718f;
+  background:
+    linear-gradient(140deg, rgba(107, 71, 118, 0.1), transparent 48%),
+    repeating-linear-gradient(0deg, transparent 0 1.45rem, rgba(79, 50, 86, 0.065) 1.48rem 1.5rem),
+    linear-gradient(120deg, #f4ead3, #d9c4ae);
+}
+
+.character-file--current {
+  border-color: #8a5f20;
+  box-shadow:
+    0.18rem 0.22rem 0 rgba(99, 75, 40, 0.23),
+    inset 0 0 0 2px rgba(169, 121, 31, 0.18);
+}
+
+.character-file--locked {
+  filter: saturate(0.72);
+}
+
+.character-file__fold {
+  position: absolute;
+  top: -1px;
+  right: -1px;
+  width: 2.15rem;
+  height: 2.15rem;
+  border-left: 1px solid #aa9061;
+  border-bottom: 1px solid #aa9061;
+  background: linear-gradient(225deg, var(--parch-paper-dark) 49%, #f5e8ca 51%);
+  box-shadow: -0.16rem 0.18rem 0.25rem rgba(76, 50, 22, 0.12);
+}
+
+.character-file__heading {
+  display: flex;
+  min-width: 0;
+  gap: 0.85rem;
+  align-items: flex-start;
+  justify-content: space-between;
+  padding-right: 1.25rem;
+}
+
+.character-file__identity {
+  min-width: 0;
+}
+
+.character-file__kind {
+  color: #865b2c;
+}
+
+.character-file--sealed .character-file__kind {
+  color: #684372;
+}
+
+.character-file__identity h3 {
+  margin-top: 0.42rem;
+  font-size: clamp(1.45rem, 4vw, 2rem);
+  line-height: 1.08;
+  overflow-wrap: anywhere;
+  text-wrap: balance;
+}
+
+.character-file__wax {
+  position: relative;
+  display: grid;
+  width: 3rem;
+  height: 3rem;
+  flex: 0 0 3rem;
+  place-items: center;
+  border-radius: 50%;
+  color: #f1dcae;
+  filter: drop-shadow(0.12rem 0.18rem 0.12rem rgba(38, 18, 10, 0.35));
+}
+
+.character-file__wax::before,
+.character-file__wax::after {
+  content: "";
+  position: absolute;
+  inset: -0.13rem;
+  z-index: -1;
+  border-radius: 45% 55% 52% 48%;
+  transform: rotate(22deg);
+  background: inherit;
+}
+
+.character-file__wax::after {
+  inset: 0.33rem;
+  z-index: 0;
+  border: 1px solid rgba(255, 231, 187, 0.35);
+  background: transparent;
+}
+
+.character-file__wax--red { background: #84372e; }
+.character-file__wax--violet { background: #604267; }
+
+.character-file__wax-icon {
+  z-index: 1;
+  width: 1.25rem;
+  height: 1.25rem;
+}
+
+.character-file__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  margin-top: 1.35rem;
+  border-block: 1px solid rgba(101, 70, 31, 0.26);
+}
+
+.character-file__facts > div {
+  min-width: 0;
+  padding: 0.62rem 0;
+}
+
+.character-file__facts > div + div {
+  padding-left: 0.8rem;
+  border-left: 1px solid rgba(101, 70, 31, 0.22);
+}
+
+.character-file__facts dt {
+  color: #806644;
+}
+
+.character-file__facts dd {
+  margin-top: 0.12rem;
+  font-weight: 700;
+  overflow-wrap: anywhere;
+}
+
+.character-file__note {
+  margin-top: 1.2rem;
+  padding-left: 0.85rem;
+  border-left: 2px solid rgba(124, 43, 34, 0.5);
+  font-size: 0.94rem;
+  font-style: italic;
+  line-height: 1.55;
+}
+
+.character-file--sealed .character-file__note {
+  border-color: rgba(96, 66, 103, 0.58);
+}
+
+.character-file__active-stamp {
+  align-self: flex-start;
+  margin-top: 1rem;
+  padding: 0.2rem 0.42rem;
+  transform: rotate(-1.2deg);
+  border: 2px solid rgba(111, 42, 34, 0.68);
+  color: #742e27;
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.character-file__footer {
+  margin-top: auto;
+  padding-top: 1.35rem;
+}
+
+.character-file__choose {
+  display: flex;
+  min-height: 2.85rem;
+  width: 100%;
+  align-items: center;
+  justify-content: center;
+  gap: 0.55rem;
+  padding: 0.65rem 0.9rem;
+  border: 1px solid #2b190e;
+  border-radius: 0.12rem;
+  color: #fff0c8;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.04), transparent),
+    #57351f;
+  box-shadow:
+    inset 0 0 0 1px rgba(230, 190, 111, 0.2),
+    0 0.18rem 0 #24140b;
+  font-weight: 700;
+  text-align: center;
+  transition: transform 140ms ease, background-color 140ms ease;
+}
+
+.character-file__choose:hover {
+  transform: translateY(-1px);
+  background-color: #6d4326;
+}
+
+.character-file__choose:focus-visible {
+  outline: 3px solid #b4812f;
+  outline-offset: 3px;
+}
+
+.character-file__choose-icon {
+  width: 1rem;
+  height: 1rem;
+  flex: 0 0 auto;
+}
+
+.character-file__unavailable {
+  padding: 0.55rem 0.7rem;
+  transform: rotate(-0.4deg);
+  border: 2px solid rgba(110, 47, 39, 0.58);
+  color: #6d302a;
+  font-family: var(--font-sans);
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  line-height: 1.35;
+  text-align: center;
+  text-transform: uppercase;
+}
+
+.character-folio__registry-note {
+  margin-top: clamp(2rem, 5vw, 3.5rem);
+  padding: 0.8rem 0.9rem;
+  border-top: 1px solid rgba(94, 65, 30, 0.4);
+  border-bottom: 1px solid rgba(94, 65, 30, 0.22);
+  color: #655137;
+  font-size: 0.86rem;
+  line-height: 1.5;
+}
+
+.character-folio__registry-note span {
+  display: block;
+  margin-bottom: 0.2rem;
+  color: #7c2b22;
+}
+
+@media (max-width: 720px) {
+  .character-folio__cover {
+    grid-template-columns: minmax(0, 1fr);
+    padding-left: 2.6rem;
+  }
+
+  .character-folio__owner-stamp {
+    width: min(100%, 17rem);
+    min-width: 0;
+  }
+
+  .character-file-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  .character-file {
+    min-height: 20rem;
+  }
+}
+
+@media (max-width: 430px) {
+  .character-registry__desk {
+    padding-inline: 0.45rem;
+  }
+
+  .character-folio__cover {
+    padding-right: 1rem;
+  }
+
+  .character-folio__pages {
+    margin-left: 0.45rem;
+    padding: 1.05rem 0.8rem 1.35rem;
+    background:
+      repeating-linear-gradient(0deg, transparent 0 1.72rem, rgba(85, 65, 35, 0.055) 1.76rem 1.8rem),
+      radial-gradient(circle at 18% 2%, #f7efd7, var(--parch-paper) 62%, #d4c08f);
+  }
+
+  .character-realm-file__heading {
+    grid-template-columns: auto auto minmax(0, 1fr);
+  }
+
+  .character-realm-file__rule {
+    display: none;
+  }
+
+  .character-file {
+    padding-inline: 1rem;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .character-file,
+  .character-file__choose {
+    transition: none;
+  }
+}

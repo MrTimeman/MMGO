@@ -303,6 +303,65 @@ defmodule MMGO.Notifications do
     )
   end
 
+  @doc "Notifies the target of a consent-based request to exchange Telegram contacts."
+  def notify_overworld_contact_request(
+        %Character{} = target,
+        %{id: encounter_id},
+        %Character{} = requester
+      ) do
+    notify(
+      target,
+      :overworld_contact_request,
+      %{
+        encounter_id: encounter_id,
+        requester_name: requester.name
+      },
+      dedupe_key: "overworld-contact-request:#{encounter_id}"
+    )
+  end
+
+  @doc "Notifies one consenting traveler of the other traveler's public Telegram username."
+  def notify_overworld_contact_accepted(
+        %Character{} = recipient,
+        %{id: encounter_id},
+        %Character{} = counterpart
+      ) do
+    recipient_username = telegram_username_for_character(recipient.id)
+    counterpart_username = telegram_username_for_character(counterpart.id)
+
+    notify(
+      recipient,
+      :overworld_contact_accepted,
+      %{
+        encounter_id: encounter_id,
+        counterpart_name: counterpart.name,
+        telegram_username:
+          if(is_binary(recipient_username) and is_binary(counterpart_username),
+            do: counterpart_username
+          )
+      },
+      dedupe_key: "overworld-contact-accepted:#{encounter_id}"
+    )
+  end
+
+  @doc "Notifies the requester that a Telegram contact exchange was declined."
+  def notify_overworld_contact_rejected(
+        %Character{} = recipient,
+        %{id: encounter_id} = encounter,
+        %Character{} = counterpart
+      ) do
+    notify(
+      recipient,
+      :overworld_contact_rejected,
+      %{
+        encounter_id: encounter_id,
+        counterpart_name: counterpart.name,
+        decision: contact_decision(encounter)
+      },
+      dedupe_key: "overworld-contact-rejected:#{encounter_id}"
+    )
+  end
+
   defp notify(%Character{} = character, kind, payload, opts) do
     dedupe_key = Keyword.get(opts, :dedupe_key)
     in_app_opts = Keyword.put(opts, :dedupe_key, channel_dedupe_key(dedupe_key, :in_app))
@@ -354,6 +413,35 @@ defmodule MMGO.Notifications do
       nil -> {:error, notification_changeset("character has no Telegram identity")}
     end
   end
+
+  defp telegram_username_for_character(character_id) do
+    from(identity in TelegramIdentity,
+      join: account in assoc(identity, :account),
+      join: character in Character,
+      on: character.account_id == account.id,
+      where: character.id == ^character_id,
+      select: identity.telegram_username
+    )
+    |> Repo.one()
+    |> normalize_telegram_username()
+  end
+
+  defp normalize_telegram_username(username) when is_binary(username) do
+    username
+    |> String.trim()
+    |> String.trim_leading("@")
+    |> case do
+      "" -> nil
+      username -> username
+    end
+  end
+
+  defp normalize_telegram_username(_username), do: nil
+
+  defp contact_decision(%{metadata: metadata}) when is_map(metadata),
+    do: Map.get(metadata, "contact_decision", "decline")
+
+  defp contact_decision(_encounter), do: "decline"
 
   defp schedule_delivery(%Notification{} = notification) do
     delay = max(DateTime.diff(notification.scheduled_at, DateTime.utc_now(), :second), 0)

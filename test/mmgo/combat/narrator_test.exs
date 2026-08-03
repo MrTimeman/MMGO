@@ -66,7 +66,7 @@ defmodule MMGO.Combat.NarratorTest do
   test "narrate_turn/3 stores AI narration on the turn", %{combat: combat} do
     assert {:ok, turn} = Narrator.narrate_turn(combat.id, 1)
 
-    assert turn.narration =~ "mock storyteller"
+    assert turn.narration =~ "рассказчик описал"
     assert Repo.aggregate(Request, :count, :id) == 1
 
     ai_request = Repo.one!(Request)

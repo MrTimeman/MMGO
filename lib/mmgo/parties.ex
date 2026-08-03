@@ -65,7 +65,7 @@ defmodule MMGO.Parties do
 
   def create_party(%Character{} = leader, attrs \\ %{}) do
     attrs = stringify_keys(attrs)
-    name = attrs["name"] || "#{leader.name}'s Party"
+    name = attrs["name"] || "Отряд: #{leader.name}"
     now = DateTime.utc_now()
 
     result =

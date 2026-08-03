@@ -248,6 +248,7 @@ defmodule MMGOWeb.DungeonLiveTest do
     view |> element("#dungeon-move-#{danger.id}") |> render_click()
 
     assert has_element?(view, "#dungeon-encounter")
+    assert has_element?(view, "#dungeon-encounter h3", "Стычка")
     assert has_element?(view, "#dungeon-avoid-encounter")
 
     refute has_element?(view, "#atmosphere-audio")

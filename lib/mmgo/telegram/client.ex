@@ -38,6 +38,15 @@ defmodule MMGO.Telegram.Client do
     request(:post, "/sendMessage", json: payload)
   end
 
+  def answer_callback_query(callback_query_id, opts \\ []) when is_binary(callback_query_id) do
+    payload =
+      opts
+      |> Enum.into(%{})
+      |> Map.put(:callback_query_id, callback_query_id)
+
+    request(:post, "/answerCallbackQuery", json: payload)
+  end
+
   defp request(method, path, req_opts \\ []) do
     with {:ok, token} <- bot_token() do
       url = "#{config()[:api_base_url] || "https://api.telegram.org"}/bot#{token}#{path}"

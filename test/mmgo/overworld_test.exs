@@ -6,6 +6,7 @@ defmodule MMGO.OverworldTest do
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Combat.Resolution
   alias MMGO.Overworld
+  alias MMGO.Overworld.Response
   alias MMGO.Repo
   alias MMGO.Worlds
 
@@ -66,6 +67,101 @@ defmodule MMGO.OverworldTest do
 
     assert {:ok, %{encounter: resolved_encounter}} = Overworld.respond(encounter, target, :trade)
     assert resolved_encounter.status == :trading
+  end
+
+  test "contact request records implicit initiator consent without contact details", %{
+    initiator: initiator,
+    target: target
+  } do
+    Phoenix.PubSub.subscribe(MMGO.PubSub, Overworld.character_topic(target.id))
+
+    assert {:ok, encounter} =
+             Overworld.request_contact(initiator, target, %{
+               metadata: %{
+                 source: "road",
+                 telegram_username: "must-not-leak",
+                 nested: %{telegram_user_id: 123}
+               }
+             })
+
+    assert encounter.status == :pending
+    assert Overworld.contact_request?(encounter)
+    assert encounter.metadata["source"] == "road"
+    refute Map.has_key?(encounter.metadata, "telegram_username")
+    refute Map.has_key?(encounter.metadata["nested"], "telegram_user_id")
+    assert Repo.aggregate(Response, :count, :id) == 0
+    assert_receive {:overworld_contact_updated, encounter_id}
+    assert encounter_id == encounter.id
+  end
+
+  test "only the target can accept a contact request and legacy responses cannot bypass consent",
+       %{
+         initiator: initiator,
+         target: target
+       } do
+    {:ok, encounter} = Overworld.request_contact(initiator, target)
+
+    assert {:error, legacy_changeset} = Overworld.respond(encounter, initiator, :greet)
+
+    assert %{status: ["contact requests require an explicit consent decision"]} =
+             errors_on(legacy_changeset)
+
+    assert {:error, role_changeset} =
+             Overworld.respond_to_contact(encounter, initiator, :accept)
+
+    assert %{status: ["only the requested traveler may answer"]} = errors_on(role_changeset)
+
+    assert {:ok, %{encounter: accepted, response: response, decision: :accept}} =
+             Overworld.respond_to_contact(encounter, target, "accept")
+
+    assert accepted.status == :greeted
+    assert accepted.metadata["contact_decision"] == "accept"
+    assert accepted.metadata["contact_responder_character_id"] == target.id
+    refute Map.has_key?(accepted.metadata, "telegram_username")
+    assert response.action == :accept_contact
+
+    assert {:error, finished_changeset} =
+             Overworld.respond_to_contact(accepted, initiator, :cancel)
+
+    assert %{status: ["contact request is not pending"]} = errors_on(finished_changeset)
+  end
+
+  test "target may decline and only the initiator may cancel", %{
+    initiator: initiator,
+    target: target
+  } do
+    {:ok, declined_request} = Overworld.request_contact(initiator, target)
+
+    assert {:error, cancel_changeset} =
+             Overworld.respond_to_contact(declined_request, target, :cancel)
+
+    assert %{status: ["only the requesting traveler may cancel"]} =
+             errors_on(cancel_changeset)
+
+    assert {:ok, %{encounter: declined, decision: :decline}} =
+             Overworld.respond_to_contact(declined_request, target, :decline)
+
+    assert declined.status == :avoided
+    assert declined.metadata["contact_decision"] == "decline"
+
+    {:ok, cancelled_request} = Overworld.request_contact(initiator, target)
+
+    assert {:ok, %{encounter: cancelled, decision: :cancel}} =
+             Overworld.respond_to_contact(cancelled_request, initiator, "cancel")
+
+    assert cancelled.status == :avoided
+    assert cancelled.metadata["contact_decision"] == "cancel"
+  end
+
+  test "a reverse duplicate contact request is rejected", %{
+    initiator: initiator,
+    target: target
+  } do
+    assert {:ok, _encounter} = Overworld.request_contact(initiator, target)
+    assert {:error, changeset} = Overworld.request_contact(target, initiator)
+
+    assert %{status: ["an active encounter already exists between these characters"]} =
+             errors_on(changeset)
   end
 
   test "attack escalates to overworld combat in unsafe zones", %{

@@ -2,7 +2,8 @@ defmodule MMGO.Accounts do
   import Ecto.Query, warn: false
 
   alias Ecto.Multi
-  alias MMGO.Accounts.{Account, Character, TelegramIdentity}
+  alias MMGO.Accounts.{Account, Character, SpecialProfiles, TelegramIdentity}
+  alias MMGO.Federation.Migration
   alias MMGO.Repo
   alias MMGO.Travel.Journey
   alias MMGO.Worlds
@@ -10,6 +11,129 @@ defmodule MMGO.Accounts do
 
   def get_account!(id), do: Repo.get!(Account, id)
   def get_character!(id), do: Repo.get!(Character, id)
+
+  def list_characters_for_account(account_id) when is_binary(account_id) do
+    Repo.all(
+      from character in Character,
+        where: character.account_id == ^account_id,
+        order_by: [asc: character.realm_id, asc: character.inserted_at, asc: character.name],
+        preload: [:realm, :current_location]
+    )
+  end
+
+  def list_characters_for_account(_account_id), do: []
+
+  def get_character_for_account(account_id, character_id)
+      when is_binary(account_id) and is_binary(character_id) do
+    Repo.get_by(Character, id: character_id, account_id: account_id)
+  end
+
+  def get_character_for_account(_account_id, _character_id), do: nil
+
+  def list_active_migration_character_ids(account_id) when is_binary(account_id) do
+    Repo.all(
+      from migration in Migration,
+        where: migration.account_id == ^account_id and migration.status == :active,
+        select: {migration.origin_character_id, migration.destination_character_id}
+    )
+    |> Enum.flat_map(fn {origin_id, destination_id} -> [origin_id, destination_id] end)
+    |> Enum.reject(&is_nil/1)
+    |> Enum.uniq()
+  end
+
+  def list_active_migration_character_ids(_account_id), do: []
+
+  @doc """
+  Returns the origin profile for the latest active realm migration owned by an
+  active account. This is deliberately narrower than ordinary character auth:
+  it exists only so a frozen remote migrant can reopen the migration ledger.
+  """
+  def get_active_migration_character_for_account(account_id) when is_binary(account_id) do
+    character =
+      from(migration in Migration,
+        join: character in Character,
+        on: character.id == migration.origin_character_id,
+        join: account in Account,
+        on: account.id == migration.account_id,
+        where:
+          migration.account_id == ^account_id and migration.status == :active and
+            account.status == :active and character.status in [:active, :frozen],
+        order_by: [desc: migration.inserted_at],
+        limit: 1,
+        select: character
+      )
+      |> Repo.one()
+
+    case character do
+      %Character{} = character ->
+        {:ok, Repo.preload(character, [:account, :realm, :current_location])}
+
+      nil ->
+        {:error, :not_found}
+    end
+  end
+
+  def get_active_migration_character_for_account(_account_id), do: {:error, :not_found}
+
+  @doc "Activates one owned profile and freezes every playable sibling across all realms."
+  def switch_character(account_id, character_id)
+      when is_binary(account_id) and is_binary(character_id) do
+    Repo.transaction(fn ->
+      account = Repo.get(Account, account_id)
+
+      if is_nil(account) or account.status != :active do
+        Repo.rollback(:account_inactive)
+      end
+
+      siblings =
+        Character
+        |> where([character], character.account_id == ^account_id)
+        |> order_by([character], asc: character.id)
+        |> lock("FOR UPDATE")
+        |> Repo.all()
+
+      target = Enum.find(siblings, &(&1.id == character_id))
+
+      cond do
+        is_nil(target) ->
+          Repo.rollback(:not_found)
+
+        target.status == :active ->
+          # Selecting the profile that already owns the session is a safe
+          # no-op. Keep this available while a local migration is active so
+          # the destination profile can leave the dossier and enter the map.
+          Repo.preload(target, [:account, :realm, :current_location])
+
+        active_migration_for_account?(account_id) ->
+          Repo.rollback(:migration_in_progress)
+
+        target.status not in [:active, :frozen, :new] ->
+          Repo.rollback(:not_playable)
+
+        true ->
+          Enum.each(siblings, fn sibling ->
+            if sibling.id != target.id and sibling.status in [:new, :active] do
+              sibling
+              |> Character.changeset(%{status: :frozen})
+              |> Repo.update!()
+            end
+          end)
+
+          target =
+            if target.status == :new do
+              target
+            else
+              target
+              |> Character.changeset(%{status: :active})
+              |> Repo.update!()
+            end
+
+          Repo.preload(target, [:account, :realm, :current_location])
+      end
+    end)
+  end
+
+  def switch_character(_account_id, _character_id), do: {:error, :not_found}
 
   @doc """
   Returns an active character only when it belongs to the active account whose
@@ -98,7 +222,9 @@ defmodule MMGO.Accounts do
         where:
           character.realm_id == ^realm_id and character.current_location_id == ^location_id and
             character.status == :active and account.status == :active and is_nil(journey.id) and
-            fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings),
+            fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings) and
+            fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
+            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
         order_by: [asc: character.name],
         preload: [:account, :current_location]
       )
@@ -119,7 +245,11 @@ defmodule MMGO.Accounts do
     from(character in Character,
       join: account in Account,
       on: account.id == character.account_id,
-      where: character.realm_id == ^realm_id and account.handle == ^handle,
+      where:
+        character.realm_id == ^realm_id and account.handle == ^handle and
+          character.status == :active and account.status == :active and
+          fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
+          fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
       select: character
     )
     |> Repo.one()
@@ -166,6 +296,7 @@ defmodule MMGO.Accounts do
         |> Character.changeset(%{name: unique_character_name(realm, display_name)})
       end)
       |> Repo.transaction()
+      |> maybe_reconcile_special_profiles(telegram_attrs)
     else
       nil -> {:error, :default_realm_not_found}
     end
@@ -190,6 +321,7 @@ defmodule MMGO.Accounts do
         ensure_default_character(repo, account, realm)
       end)
       |> Repo.transaction()
+      |> maybe_reconcile_special_profiles(telegram_attrs)
       |> case do
         {:ok, %{account: account, telegram_identity: telegram_identity, character: character}} ->
           {:ok,
@@ -212,7 +344,38 @@ defmodule MMGO.Accounts do
          %Account{id: account_id} = account,
          %Realm{id: realm_id} = realm
        ) do
-    case repo.get_by(Character, account_id: account_id, realm_id: realm_id) do
+    playable_character =
+      from(character in Character,
+        where: character.account_id == ^account_id and character.status in [:active, :new],
+        order_by: [
+          asc:
+            fragment(
+              "CASE WHEN ? = 'active' THEN 0 ELSE 1 END",
+              character.status
+            ),
+          asc: character.inserted_at
+        ],
+        limit: 1
+      )
+      |> repo.one()
+
+    default_realm_character =
+      from(character in Character,
+        where: character.account_id == ^account_id and character.realm_id == ^realm_id,
+        order_by: [
+          asc:
+            fragment(
+              "CASE WHEN ? = 'active' THEN 0 WHEN ? = 'new' THEN 1 ELSE 2 END",
+              character.status,
+              character.status
+            ),
+          asc: character.inserted_at
+        ],
+        limit: 1
+      )
+      |> repo.one()
+
+    case playable_character || default_realm_character do
       %Character{} = character ->
         {:ok, character}
 
@@ -221,6 +384,41 @@ defmodule MMGO.Accounts do
         |> Character.changeset(%{name: unique_character_name(realm, account.display_name)})
         |> repo.insert()
     end
+  end
+
+  defp maybe_reconcile_special_profiles(
+         {:ok, %{account: account} = result},
+         %{telegram_user_id: telegram_user_id}
+       ) do
+    if SpecialProfiles.special_telegram_user_id?(telegram_user_id) do
+      case Worlds.get_default_realm() do
+        %Realm{} = realm ->
+          case SpecialProfiles.reconcile(account, realm) do
+            {:ok, profiles} ->
+              {:ok,
+               result
+               |> Map.put(:character, profiles.character)
+               |> Map.put(:characters, profiles.characters)}
+
+            {:error, reason} ->
+              {:error, reason}
+          end
+
+        nil ->
+          {:error, :default_realm_not_found}
+      end
+    else
+      {:ok, result}
+    end
+  end
+
+  defp maybe_reconcile_special_profiles(result, _telegram_attrs), do: result
+
+  defp active_migration_for_account?(account_id) do
+    Repo.exists?(
+      from migration in Migration,
+        where: migration.account_id == ^account_id and migration.status == :active
+    )
   end
 
   defp account_attrs(display_name, telegram_attrs) do
@@ -256,7 +454,7 @@ defmodule MMGO.Accounts do
     |> Enum.reject(&is_nil_or_empty?/1)
     |> Enum.join(" ")
     |> case do
-      "" -> telegram_attrs.telegram_username || "Unnamed Wizard"
+      "" -> telegram_attrs.telegram_username || "Безымянный маг"
       name -> name
     end
   end
@@ -298,7 +496,7 @@ defmodule MMGO.Accounts do
     |> to_string()
     |> String.trim()
     |> case do
-      "" -> "Wanderer"
+      "" -> "Странник"
       value -> value
     end
     |> String.slice(0, 28)

@@ -130,6 +130,60 @@ defmodule MMGO.Notifications.Formatter do
      }}
   end
 
+  def render(%Notification{kind: "overworld_contact_request", payload: payload}) do
+    {:ok,
+     %{
+       text:
+         "Путник «#{payload["requester_name"]}» хочет обменяться с вами контактами Telegram. Примите запрос, только если хотите раскрыть друг другу свои @username. Если кнопки недоступны: /road accept #{payload["encounter_id"]} или /road reject #{payload["encounter_id"]}.",
+       opts: [
+         reply_markup: %{
+           inline_keyboard: [
+             [
+               %{
+                 text: "Принять",
+                 callback_data: "road:accept:#{payload["encounter_id"]}"
+               },
+               %{
+                 text: "Отклонить",
+                 callback_data: "road:reject:#{payload["encounter_id"]}"
+               }
+             ]
+           ]
+         }
+       ]
+     }}
+  end
+
+  def render(%Notification{kind: "overworld_contact_accepted", payload: payload}) do
+    text =
+      case payload["telegram_username"] do
+        username when is_binary(username) and username != "" ->
+          "Вы и путник «#{payload["counterpart_name"]}» согласились обменяться контактами. Telegram: @#{username}"
+
+        _username ->
+          "Вы и путник «#{payload["counterpart_name"]}» согласились обменяться контактами, но у одного из вас нет публичного @username. Контакты не раскрыты."
+      end
+
+    {:ok, %{text: text, opts: []}}
+  end
+
+  def render(%Notification{kind: "overworld_contact_rejected", payload: payload}) do
+    text =
+      case payload["decision"] do
+        "cancel" ->
+          "Путник «#{payload["counterpart_name"]}» отменил запрос на обмен контактами Telegram. Никакие @username не были раскрыты."
+
+        _decision ->
+          "Путник «#{payload["counterpart_name"]}» отклонил обмен контактами Telegram. Никакие @username не были раскрыты."
+      end
+
+    {:ok,
+     %{
+       text: text,
+       opts: []
+     }}
+  end
+
   def render(%Notification{}), do: {:error, :unsupported_notification_kind}
 
   defp program_label("basic"), do: "Базовое образование"

@@ -2,7 +2,7 @@ defmodule MMGO.Travel do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Parties
   alias MMGO.Repo
   alias MMGO.Survival
@@ -33,6 +33,10 @@ defmodule MMGO.Travel do
       Repo.transaction(fn ->
         character = lock_character!(character.id)
         route = Repo.get!(Route, route.id)
+
+        if CharacterProfiles.sealed_spirit?(character) do
+          Repo.rollback(route_changeset("sealed spirit cannot use ordinary roads"))
+        end
 
         if character.realm_id != route.realm_id do
           Repo.rollback(route_changeset("route must belong to the same realm as the character"))

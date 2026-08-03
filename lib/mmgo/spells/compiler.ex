@@ -11,10 +11,15 @@ defmodule MMGO.Spells.Compiler do
   @control_character_pattern ~r/[\x00-\x08\x0B\x0C\x0E-\x1F\x7F]/u
   @targeting_modes ~w(self ally enemy zone)
   @delivery_forms ~w(single_target beam cone sphere wall zone self link delayed_trigger)
+  @novice_root_max_intensity 12
+  @novice_root_max_duration 3
+  @novice_root_max_variance 2
+  @novice_root_max_fatigue_cost 12
+  @novice_root_max_cooldown_turns 3
 
   def compile_and_store(%Character{} = character, attrs, opts \\ []) when is_map(attrs) do
     with {:ok, request} <- normalize_request(attrs),
-         {:ok, base_spell} <- resolve_owned_base_spell(character, request) do
+         {:ok, base_spell} <- resolve_owned_base_spell(character, request, opts) do
       schools = Keyword.get(opts, :schools, %{})
       environment_tags = Keyword.get(opts, :environment_tags, [])
 
@@ -30,6 +35,7 @@ defmodule MMGO.Spells.Compiler do
           environment_tags: environment_tags,
           request: request,
           base_spell: base_spell_summary(base_spell),
+          circle_tier: Keyword.get(opts, :circle_tier, :trained),
           library: owned_library_summary(character),
           states: Spell.effect_states()
         })
@@ -44,6 +50,8 @@ defmodule MMGO.Spells.Compiler do
              AI.compile_spell(prompt_payload, ai_opts) do
         case compile_outcome(compiled_spell) do
           :created ->
+            compiled_spell = enforce_circle_limits(compiled_spell, base_spell, opts)
+
             with spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell),
                  {:ok, spell} <- Spells.create_spell(character, spell_attrs),
                  {:ok, updated_request} <- AI.update_request(ai_request, %{spell_id: spell.id}) do
@@ -117,16 +125,89 @@ defmodule MMGO.Spells.Compiler do
         Map.get(compiled_spell, "targeting") || Map.get(request, "targeting") || "enemy",
       "delivery_form" =>
         Map.get(compiled_spell, "delivery_form") || Map.get(request, "delivery_form") || "sphere",
-      "source_spell_id" => base_spell.id
+      "source_spell_id" => base_spell && base_spell.id
     })
   end
+
+  # The server-selected circle tier, not spell lineage, owns the mechanical
+  # budget. The reduced three-seal circle may attach a known same-school spell
+  # as provenance, but that must never promote a novice compilation into the
+  # inherited budget of a trained circle.
+  defp enforce_circle_limits(compiled_spell, _base_spell, opts) do
+    if Keyword.get(opts, :circle_tier) == :novice do
+      compiled_spell
+      |> Map.put("level_requirement", 1)
+      |> Map.put(
+        "fatigue_cost",
+        bounded_integer(
+          Map.get(compiled_spell, "fatigue_cost"),
+          @novice_root_max_fatigue_cost
+        )
+      )
+      |> Map.put(
+        "cooldown_turns",
+        bounded_integer(
+          Map.get(compiled_spell, "cooldown_turns"),
+          @novice_root_max_cooldown_turns
+        )
+      )
+      |> Map.put("effects", novice_root_effects(compiled_spell))
+      |> Map.put("interaction_rules", [])
+      |> Map.put("environment_mode", "none")
+      |> Map.put("environment_tags", [])
+    else
+      compiled_spell
+    end
+  end
+
+  defp novice_root_effects(compiled_spell) do
+    case Map.get(compiled_spell, "effects") do
+      [effect | _rest] when is_map(effect) ->
+        intensity =
+          effect
+          |> Map.get("intensity")
+          |> bounded_integer(@novice_root_max_intensity)
+
+        variance =
+          effect
+          |> Map.get("variance")
+          |> bounded_integer(min(@novice_root_max_variance, intensity))
+
+        duration =
+          effect
+          |> Map.get("duration")
+          |> bounded_integer(@novice_root_max_duration)
+
+        [
+          effect
+          |> Map.update("applies_to", "target", fn
+            "environment" -> "target"
+            applies_to -> applies_to
+          end)
+          |> Map.put("intensity", intensity)
+          |> Map.put("variance", variance)
+          |> Map.put("duration", duration)
+        ]
+
+      _missing_or_invalid ->
+        []
+    end
+  end
+
+  defp bounded_integer(value, maximum) when is_integer(value) do
+    value
+    |> max(0)
+    |> min(maximum)
+  end
+
+  defp bounded_integer(_value, _maximum), do: 0
 
   defp spell_failure(request, compiled_spell, ai_request) do
     %SpellFailure{
       reason:
         Map.get(compiled_spell, "rejection_reason") ||
           Map.get(compiled_spell, :rejection_reason) ||
-          "The incantation did not cohere into a stable spell.",
+          "Заклинание не сложилось в устойчивую формулу.",
       formula: Map.get(request, "formula"),
       school: Map.get(request, "school"),
       ai_request: ai_request,
@@ -243,7 +324,7 @@ defmodule MMGO.Spells.Compiler do
     end
   end
 
-  defp resolve_owned_base_spell(character, request) do
+  defp resolve_owned_base_spell(character, request, opts) do
     case Map.get(request, "base_spell_id") do
       spell_id when is_binary(spell_id) ->
         if String.trim(spell_id) == "" do
@@ -256,7 +337,11 @@ defmodule MMGO.Spells.Compiler do
         end
 
       _missing ->
-        {:error, compiler_request_changeset(:base_spell_id, "can't be blank")}
+        if Keyword.get(opts, :allow_root_spell, false) do
+          {:ok, nil}
+        else
+          {:error, compiler_request_changeset(:base_spell_id, "can't be blank")}
+        end
     end
   end
 
@@ -276,6 +361,8 @@ defmodule MMGO.Spells.Compiler do
       source_spell_id: spell.source_spell_id
     }
   end
+
+  defp base_spell_summary(nil), do: nil
 
   defp base_spell_summary(spell) do
     %{

@@ -2,7 +2,7 @@ defmodule MMGO.Crafting do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Academy
   alias MMGO.Crafting.{CompleteCraftJobWorker, CraftJob, Recipe, Workshop}
   alias MMGO.Inventory
@@ -214,7 +214,8 @@ defmodule MMGO.Crafting do
       active_craft_job(character.id) ->
         Repo.rollback(craft_job_changeset("character already has an active craft job"))
 
-      is_nil(specialization) or specialization.track != :mastery ->
+      (is_nil(specialization) or specialization.track != :mastery) and
+          not CharacterProfiles.mastered_track?(character, :mastery) ->
         Repo.rollback(craft_job_changeset("character must be specialized in mastery"))
 
       recipe.required_tool_codes -- workspace.installed_tool_codes != [] ->

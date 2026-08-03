@@ -62,6 +62,14 @@ defmodule MMGOWeb.PartyLiveTest do
 
     assert has_element?(member_view, "#party-active")
     assert has_element?(leader_view, "#party-member-#{member.id}")
+
+    assert has_element?(
+             leader_view,
+             "#party-member-#{leader.id} .pty-card__class",
+             "предводитель"
+           )
+
+    assert has_element?(leader_view, "#party-member-#{member.id} .pty-card__class", "участник")
     party = Parties.active_party_for_character(member.id)
 
     leader_view |> element("#party-mark-unready") |> render_click()

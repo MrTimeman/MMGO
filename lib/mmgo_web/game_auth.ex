@@ -44,7 +44,21 @@ defmodule MMGOWeb.GameAuth do
   def on_mount(:require_character, _params, session, socket) do
     case current_scope(session) do
       {:ok, scope} ->
-        {:cont, Phoenix.Component.assign(socket, :current_scope, scope)}
+        socket =
+          socket
+          |> Phoenix.Component.assign(:current_scope, scope)
+          |> Phoenix.LiveView.attach_hook(
+            :active_character_event_guard,
+            :handle_event,
+            fn _event, _params, socket -> active_character_guard(scope, socket) end
+          )
+          |> Phoenix.LiveView.attach_hook(
+            :active_character_info_guard,
+            :handle_info,
+            fn _message, socket -> active_character_guard(scope, socket) end
+          )
+
+        {:cont, socket}
 
       {:error, _reason} ->
         {:halt,
@@ -64,6 +78,22 @@ defmodule MMGOWeb.GameAuth do
          socket
          |> Phoenix.LiveView.put_flash(:error, "Нужно подтвердить вход через Telegram.")
          |> Phoenix.LiveView.push_navigate(to: "/play")}
+    end
+  end
+
+  defp active_character_guard(scope, socket) do
+    case Accounts.get_active_character_for_account(scope.account.id, scope.character.id) do
+      {:ok, _character} ->
+        {:cont, socket}
+
+      {:error, _reason} ->
+        {:halt,
+         socket
+         |> Phoenix.LiveView.put_flash(
+           :error,
+           "Этот персонаж уже заморожен. Выберите действующий профиль."
+         )
+         |> Phoenix.LiveView.redirect(to: "/characters")}
     end
   end
 end

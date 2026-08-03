@@ -96,7 +96,7 @@ defmodule MMGOWeb.NotificationsLive do
                   id={"notification-error-#{notification.id}"}
                   class="mail-error"
                 >
-                  {notification.error}
+                  Послание не удалось доставить.
                 </p>
               </div>
             </article>
@@ -133,6 +133,9 @@ defmodule MMGOWeb.NotificationsLive do
   defp kind_label("party_invitation"), do: "Приглашение в отряд"
   defp kind_label("club_invitation"), do: "Клубное приглашение"
   defp kind_label("organization_invitation"), do: "Приглашение организации"
+  defp kind_label("overworld_contact_request"), do: "Запрос Telegram-контакта"
+  defp kind_label("overworld_contact_accepted"), do: "Контактами обменялись"
+  defp kind_label("overworld_contact_rejected"), do: "Запрос контакта закрыт"
   defp kind_label(_kind), do: "Иная весть"
 
   defp channel_label(:telegram), do: "Telegram"
@@ -152,6 +155,9 @@ defmodule MMGOWeb.NotificationsLive do
   defp notification_mark("party_invitation"), do: "О"
   defp notification_mark("club_invitation"), do: "К"
   defp notification_mark("organization_invitation"), do: "Г"
+  defp notification_mark("overworld_contact_request"), do: "↔"
+  defp notification_mark("overworld_contact_accepted"), do: "✓"
+  defp notification_mark("overworld_contact_rejected"), do: "×"
   defp notification_mark(_kind), do: "✦"
 
   defp payload_summary(payload) when is_map(payload) and map_size(payload) > 0 do
@@ -223,6 +229,21 @@ defmodule MMGOWeb.NotificationsLive do
       "organization_kind" ->
         "вид организации"
 
+      "requester_name" ->
+        "путник"
+
+      "counterpart_name" ->
+        "путник"
+
+      "telegram_username" ->
+        "Telegram"
+
+      "encounter_id" ->
+        "номер запроса"
+
+      "decision" ->
+        "решение"
+
       key_string ->
         if String.ends_with?(key_string, "_id"), do: "номер записи", else: "сведения"
     end
@@ -230,29 +251,169 @@ defmodule MMGOWeb.NotificationsLive do
 
   defp payload_value(key, value) when is_binary(value) do
     case {to_string(key), value} do
-      {"status", "arrived"} -> "прибыл"
-      {"status", "completed"} -> "завершено"
-      {"status", "failed"} -> "провалено"
-      {"program_type", "basic"} -> "Базовое образование"
-      {"program_type", "academy_core"} -> "Ядро Академии"
-      {"program_type", "extended_study"} -> "Расширенный курс"
-      {"program_type", "academia"} -> "Академия наук"
-      {"track", "wizardry"} -> "Чародейство"
-      {"track", "alchemy"} -> "Алхимия"
-      {"track", "mastery"} -> "Мастерство"
-      {"project_kind", "spell"} -> "заклинание"
-      {"project_kind", "potion"} -> "зелье"
-      {"project_kind", "tool"} -> "инструмент"
-      {"project_kind", "thesis"} -> "тезис"
-      {"club_type", "general_interest"} -> "общий круг"
-      {"club_type", "dueling"} -> "дуэльный клуб"
-      {"club_type", "research"} -> "исследовательское общество"
-      {"club_type", "expedition_planning"} -> "экспедиционный стол"
-      {"organization_kind", "guild"} -> "гильдия"
-      {"organization_kind", "company"} -> "компания"
-      {"organization_kind", "council"} -> "совет"
-      {"organization_kind", "cult"} -> "культ"
-      {_key, other} -> other
+      {"status", "arrived"} ->
+        "прибыл"
+
+      {"status", "completed"} ->
+        "завершено"
+
+      {"status", "failed"} ->
+        "провалено"
+
+      {"status", _status} ->
+        "неизвестно"
+
+      {"program_type", "basic"} ->
+        "Базовое образование"
+
+      {"program_type", "basic_education"} ->
+        "Базовое образование"
+
+      {"program_type", "academy_core"} ->
+        "Ядро Академии"
+
+      {"program_type", "extended_study"} ->
+        "Расширенный курс"
+
+      {"program_type", "academia"} ->
+        "Академия наук"
+
+      {"program_type", _program_type} ->
+        "неизвестная программа"
+
+      {"track", "wizardry"} ->
+        "Чародейство"
+
+      {"track", "alchemy"} ->
+        "Алхимия"
+
+      {"track", "mastery"} ->
+        "Мастерство"
+
+      {"track", _track} ->
+        "не указан"
+
+      {"outcome_tier", "distinction"} ->
+        "с отличием"
+
+      {"outcome_tier", "pass"} ->
+        "зачёт"
+
+      {"outcome_tier", "probation"} ->
+        "испытательный выпуск"
+
+      {"outcome_tier", "expulsion"} ->
+        "отчисление"
+
+      {"outcome_tier", "capstone_incomplete"} ->
+        "не пройден итоговый проект"
+
+      {"outcome_tier", _outcome_tier} ->
+        "итог не указан"
+
+      {"project_kind", "spell"} ->
+        "заклинание"
+
+      {"project_kind", "potion"} ->
+        "зелье"
+
+      {"project_kind", "tool"} ->
+        "инструмент"
+
+      {"project_kind", "thesis"} ->
+        "тезис"
+
+      {"project_kind", "course"} ->
+        "курс"
+
+      {"project_kind", _project_kind} ->
+        "проект"
+
+      {"kind", "city_purchase"} ->
+        "городское жильё"
+
+      {"kind", "custom_build"} ->
+        "полевое владение"
+
+      {"kind", _kind} ->
+        "владение"
+
+      {"extraction_type", "ascent"} ->
+        "подъём к выходу"
+
+      {"extraction_type", "return_ritual"} ->
+        "ритуал возвращения"
+
+      {"extraction_type", "safe"} ->
+        "безопасный выход"
+
+      {"extraction_type", "forced"} ->
+        "вынужденный выход"
+
+      {"extraction_type", "emergency"} ->
+        "аварийный выход"
+
+      {"extraction_type", _extraction_type} ->
+        "неизвестный способ"
+
+      {"club_type", "general_interest"} ->
+        "общий круг"
+
+      {"club_type", "dueling"} ->
+        "дуэльный клуб"
+
+      {"club_type", "research"} ->
+        "исследовательское общество"
+
+      {"club_type", "expedition_planning"} ->
+        "экспедиционный стол"
+
+      {"club_type", _club_type} ->
+        "иной круг"
+
+      {"organization_kind", "guild"} ->
+        "гильдия"
+
+      {"organization_kind", "company"} ->
+        "компания"
+
+      {"organization_kind", "council"} ->
+        "совет"
+
+      {"organization_kind", "cult"} ->
+        "культ"
+
+      {"organization_kind", _organization_kind} ->
+        "организация"
+
+      {"telegram_username", username} ->
+        username = String.trim_leading(username, "@")
+        "@#{username}"
+
+      {"decision", "accept"} ->
+        "принято"
+
+      {"decision", "decline"} ->
+        "отклонено"
+
+      {"decision", "cancel"} ->
+        "отменено"
+
+      {key, other}
+      when key in [
+             "title",
+             "destination_realm_name",
+             "freeze_ends_at",
+             "club_name",
+             "party_name",
+             "organization_name",
+             "requester_name",
+             "counterpart_name"
+           ] ->
+        other
+
+      {key, other} ->
+        if String.ends_with?(key, "_id"), do: other, else: "записано"
     end
   end
 

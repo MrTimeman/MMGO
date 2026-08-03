@@ -304,11 +304,11 @@ defmodule MMGO.Academia.HeadshipTest do
 
     economic_basics =
       Academy.list_courses_for_realm(realm.id)
-      |> Enum.find(&(&1.title == "Economic Basics"))
+      |> Enum.find(&(&1.title == "Основы экономики"))
 
     elemental_literacy =
       Academy.list_courses_for_realm(realm.id)
-      |> Enum.find(&(&1.title == "Elemental Literacy"))
+      |> Enum.find(&(&1.title == "Основы стихий"))
 
     assert {:ok, _election} = Headship.open_election(professor_one, now: now)
     assert {:ok, _} = Headship.cast_vote(professor_one, professor_one.id, now: now)
@@ -385,7 +385,7 @@ defmodule MMGO.Academia.HeadshipTest do
 
     economic_basics =
       Academy.list_courses_for_realm(realm.id)
-      |> Enum.find(&(&1.title == "Economic Basics"))
+      |> Enum.find(&(&1.title == "Основы экономики"))
 
     assert {:error, changeset} =
              Academia.set_academy_head_curriculum_override(outsider, economic_basics, 1, now: now)

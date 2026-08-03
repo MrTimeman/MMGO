@@ -17,8 +17,7 @@ defmodule MMGO.AI.Providers.Mock do
     events = decoded_payload["events"] || []
     number = turn["number"] || turn[:number] || 1
 
-    {:ok,
-     "Turn #{number} unfolds through #{length(events)} resolved events in the mock storyteller."}
+    {:ok, "Ход #{number}: рассказчик описал разыгранных событий — #{length(events)}."}
   end
 
   defp default_effects("water") do
@@ -108,7 +107,7 @@ defmodule MMGO.AI.Providers.Mock do
     character = decoded_payload["character"] || %{}
     school = request["school"] || request[:school] || "fire"
     formula = request["formula"] || request[:formula] || "Incantatio"
-    name = request["name"] || request[:name] || humanize_formula(formula)
+    name = request["name"] || request[:name] || "Безымянное заклинание"
     caster_level = character["level"] || character[:level] || 1
 
     %{
@@ -116,7 +115,7 @@ defmodule MMGO.AI.Providers.Mock do
       "name" => name,
       "formula" => formula,
       "school" => school,
-      "description" => "Mock-compiled spell for local development and tests.",
+      "description" => "Пробное заклинание для локальной разработки и испытаний.",
       "level_requirement" => max(div(caster_level, 2), 1),
       "fatigue_cost" => 6,
       "cooldown_turns" => 1,
@@ -158,13 +157,6 @@ defmodule MMGO.AI.Providers.Mock do
         "modifier" => 0
       }
     ]
-  end
-
-  defp humanize_formula(formula) do
-    formula
-    |> to_string()
-    |> String.split(~r/\s+/, trim: true)
-    |> Enum.map_join(" ", &String.capitalize/1)
   end
 
   defp decode_prompt_payload(%{user_prompt: user_prompt}) when is_binary(user_prompt) do

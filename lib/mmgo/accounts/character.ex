@@ -40,7 +40,7 @@ defmodule MMGO.Accounts.Character do
     |> validate_number(:level, greater_than_or_equal_to: 1)
     |> validate_number(:xp, greater_than_or_equal_to: 0)
     |> unique_constraint(:name, name: :characters_realm_name_index)
-    |> unique_constraint(:account_id, name: :characters_account_realm_index)
+    |> unique_constraint(:account_id, name: :characters_account_single_playable_index)
     |> unique_constraint(:import_reference, name: :characters_import_reference_index)
   end
 

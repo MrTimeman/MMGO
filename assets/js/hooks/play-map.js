@@ -10,6 +10,14 @@ const KIND = {
   base: { r: 14, fill: "#8c9bad", stroke: "#e1e8f0" },
 }
 
+const KIND_LABELS = {
+  city: "город",
+  tower: "башня",
+  wilderness: "дикая местность",
+  dungeon_entrance: "вход в подземелье",
+  base: "убежище",
+}
+
 export const PlayMapHook = {
   mounted() {
     this.locations = []
@@ -128,18 +136,19 @@ export const PlayMapHook = {
   },
 
   openSheet(loc) {
-    const safe = loc.safe_zone ? "Safe" : "Wild"
+    const safety = loc.safe_zone ? "Безопасная зона" : "Опасная местность"
+    const kind = KIND_LABELS[loc.kind] || "место"
     const action = loc.can_travel
-      ? `<button class="play-map__travel" data-travel="${loc.slug}">Travel</button>`
+      ? `<button class="play-map__travel" data-travel="${loc.slug}">Отправиться</button>`
       : this.player?.location_slug === loc.slug
-        ? `<span class="play-map__here">You are here</span>`
-        : `<span class="play-map__muted">No direct route</span>`
+        ? `<span class="play-map__here">Вы здесь</span>`
+        : `<span class="play-map__muted">Нет прямого пути</span>`
 
     this.sheet.hidden = false
     this.sheet.innerHTML = `
       <div>
         <h2>${loc.name}</h2>
-        <p>${safe} · ${loc.kind.replace("_", " ")}</p>
+        <p>${safety} · ${kind}</p>
       </div>
       ${action}
     `

@@ -94,6 +94,9 @@ defmodule MMGO.Federation.Migration do
     |> unique_constraint(:origin_character_id,
       name: :federation_migrations_active_origin_character_index
     )
+    |> unique_constraint(:account_id,
+      name: :federation_migrations_active_account_index
+    )
   end
 
   defp validate_destination_fields(changeset) do

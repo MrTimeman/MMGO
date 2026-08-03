@@ -44,10 +44,10 @@ and never packages ignored or uncommitted files.
 For a standalone container deployment, the equivalent low-level commands are:
 
 ```bash
-docker build -t mmgo:0.1.0-alpha.4 .
-docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.4 bin/migrate
-docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.4 bin/seed
-docker run --name mmgo --env-file /secure/path/mmgo.env -p 4000:4000 mmgo:0.1.0-alpha.4
+docker build -t mmgo:0.1.0-alpha.5 .
+docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.5 bin/migrate
+docker run --rm --env-file /secure/path/mmgo.env mmgo:0.1.0-alpha.5 bin/seed
+docker run --name mmgo --env-file /secure/path/mmgo.env -p 4000:4000 mmgo:0.1.0-alpha.5
 ```
 
 `bin/seed` is idempotent and installs the canonical realm, treasury, routes, Academy content, construction resources, organisation anchors, and Tower dungeon topology. Run it on first deployment and after a release explicitly changes canonical seed content.

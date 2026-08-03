@@ -133,6 +133,18 @@ defmodule MMGO.BasesTest do
     assert Economy.get_account!(treasury.id).current_balance == 98_525
   end
 
+  test "ordinary acquisition cannot mark a player-provided base as a fortress", %{
+    character: character,
+    city: city
+  } do
+    assert {:ok, %Base{} = base} =
+             Bases.purchase_city_base(character, city, %{
+               metadata: %{"fortress" => %{"tier" => 5, "ward_intensity" => 100}}
+             })
+
+    refute Map.has_key?(base.metadata, "fortress")
+  end
+
   test "start_custom_base_build/4 schedules base construction and completion", %{
     character: character,
     wilderness: wilderness

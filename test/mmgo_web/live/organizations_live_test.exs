@@ -122,7 +122,27 @@ defmodule MMGOWeb.OrganizationsLiveTest do
 
     assert html =~ "Silver Hand"
     assert has_element?(view, "#org-members", challenger.name)
-    assert has_element?(view, "#org-roles", "Guildmaster")
+    assert has_element?(view, "#org-roles", "Гильдмастер")
+  end
+
+  test "legacy system-role titles are presented in Russian", %{
+    conn: conn,
+    challenger: challenger
+  } do
+    {:ok, %{organization: organization, role: leader_role}} =
+      Organizations.create_organization(challenger, :guild, "Старинная гильдия")
+
+    leader_role
+    |> Ecto.Changeset.change(title: "Guild Master")
+    |> Repo.update!()
+
+    {:ok, view, _html} = live(session_conn(conn, challenger), ~p"/orgs/#{organization.id}")
+
+    assert has_element?(view, "#org-roles", "Гильдмастер")
+    refute has_element?(view, "#org-roles", "Guild Master")
+    assert has_element?(view, "#org-members", "Гильдмастер")
+    assert has_element?(view, "#org-invite-form-body option", "Гильдмастер")
+    refute has_element?(view, "#org-invite-form-body option", "Guild Master")
   end
 
   test "a scoped founder can fund and pay from the real organization treasury", %{

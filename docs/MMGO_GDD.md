@@ -149,17 +149,19 @@ Eight schools arranged in an elemental compass. Four base elements occupy the ca
 
 ## 2.2 Spell Creation
 
-A spell is defined by three components: a school, a base spell from the caster’s personal library, and a Latin incantation of 1–6 words. Each word corresponds to a parameter slot. Using fewer words produces a cheaper, faster, but less predictable spell — the AI fills in unspecified parameters at its discretion.
+A spell is created through a server-defined ritual circle, never through an unrestricted formula field. An untrained caster receives exactly three required seals: **Schola** (school), **Actio** (action), and **Tempus** (duration). Actio and Tempus each accept one bounded word; the server assembles the incantation in the canonical order.
+
+Wizardry training unlocks the expanded circle: a foundation spell plus the optional Forma, Vis, Mutatio, and Pretium seals. Using fewer optional seals produces a cheaper, faster, but less predictable spell — the AI fills in unspecified parameters at its discretion.
 
 ### 2.2.1 Base Spell
 
-Every spell is built on top of an existing spell from the caster’s personal library. New players start with a small set of starter spells. The library grows through the Academy, loot, trading, and — crucially — every successfully created spell enters the library and can serve as a base for future spells. This creates a recursive progression: spells beget spells.
+The novice three-seal circle may create a modest root spell without an existing foundation. Once the caster has a spell in that school, later novice formulas inherit it automatically. The expanded academic circle requires the caster to choose an owned foundation spell. The library grows through the Academy, loot, trading, and every successfully created spell; spells beget spells.
 
 When a base spell is specified, the AI operates in "revamp" mode: it modifies the base spell according to the new incantation parameters rather than generating from scratch. This preserves lineage and encourages iterative refinement.
 
 ### 2.2.2 Incantation Parameters
 
-The player writes up to 6 Latin words. Each word maps to a parameter slot. The vocabulary is intentionally open-ended — players can use any Latin word they believe fits the slot. The AI interprets the intent. There is no fixed dictionary; restricting words would defeat the purpose of having an AI in the loop.
+The player fills the individual word seals exposed by their training tier. Each word maps to exactly one parameter slot; there is no raw incantation textarea or alternate free-form submission path. Vocabulary within a seal remains open-ended, while the server enforces the slot count, order, one-word boundary, and maximum length before invoking the AI.
 
 Levenshtein distance validation catches obvious typos (near-misses resolve to the closest known word), but unknown words are passed to the AI as-is for creative interpretation. The table below shows example words per slot, not an exhaustive list:
 
@@ -173,7 +175,7 @@ Levenshtein distance validation catches obvious typos (near-misses resolve to th
 | 5      | Mutatio  | Secondary / combo effect          | Motus (displacement), Glacies (freeze), Dissipatio (dispersion)                     |
 | 6      | Pretium  | Additional cost beyond fatigue    | Sanguis (HP cost), Mora (skip next turn), Focus (concentration lock)                |
 
-A minimal spell uses only Actio (1 word). The AI determines all other parameters, making the result cheap but unpredictable. A full 6-word incantation gives the caster maximum control at maximum cost.
+The novice circle always uses Actio and Tempus alongside the selected school. A fully trained caster may add the optional seals; a full 6-word incantation gives maximum control at maximum cost.
 
 ## 2.3 AI Spell Resolution
 

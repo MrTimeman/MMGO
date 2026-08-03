@@ -3,6 +3,7 @@ defmodule MMGO.Telegram.RoadCommandsTest do
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat
+  alias MMGO.Notifications
   alias MMGO.Overworld
   alias MMGO.Repo
   alias MMGO.Telegram.Commands
@@ -49,6 +50,45 @@ defmodule MMGO.Telegram.RoadCommandsTest do
     loaded_encounter = Overworld.get_encounter!(encounter.id)
     assert loaded_encounter.status == :escalated
     assert Combat.get_combat!(loaded_encounter.combat_id).kind == :overworld_encounter
+  end
+
+  test "/road accept and reject are command fallbacks for contact consent", %{
+    initiator: initiator,
+    target: target
+  } do
+    assert {:ok, request_text} =
+             Commands.process_message(initiator, %{"text" => "/road talk roadtarget"})
+
+    assert request_text =~ "Запрос на обмен Telegram-контактами отправлен"
+    [rejected_encounter] = Overworld.list_open_encounters_for_character(initiator.id)
+
+    assert {:ok, reject_text} =
+             Commands.process_message(target, %{
+               "text" => "/road reject #{rejected_encounter.id}"
+             })
+
+    assert reject_text =~ "Запрос отклонён"
+    assert Overworld.get_encounter!(rejected_encounter.id).status == :avoided
+
+    rejected_notification =
+      initiator.id
+      |> Notifications.list_notifications()
+      |> Enum.find(&(&1.kind == "overworld_contact_rejected"))
+
+    refute Map.has_key?(rejected_notification.payload, "telegram_username")
+
+    assert {:ok, _request_text} =
+             Commands.process_message(initiator, %{"text" => "/road talk roadtarget"})
+
+    [accepted_encounter] = Overworld.list_open_encounters_for_character(initiator.id)
+
+    assert {:ok, accept_text} =
+             Commands.process_message(target, %{
+               "text" => "/road accept #{accepted_encounter.id}"
+             })
+
+    assert accept_text =~ "Запрос принят"
+    assert Overworld.get_encounter!(accepted_encounter.id).status == :greeted
   end
 
   defp character_fixture(realm, location, handle, name) do

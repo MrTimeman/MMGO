@@ -87,6 +87,23 @@ defmodule MMGOWeb.ExamLiveTest do
     assert resumed_attempt["deadline_at"] == first_attempt["deadline_at"]
   end
 
+  test "a frozen profile's stale exam socket is halted before handle_info can run", %{
+    conn: conn,
+    student: student,
+    term: term
+  } do
+    {:ok, view, _html} = live(session_conn(conn, student), ~p"/academy/exam/#{term.id}")
+    assert Repo.get!(MMGO.Academy.Term, term.id).metadata["exam_attempt"]["status"] == "open"
+
+    student
+    |> Character.changeset(%{status: :frozen})
+    |> Repo.update!()
+
+    send(view.pid, :tick)
+    assert_redirect(view, ~p"/characters")
+    assert Repo.get!(MMGO.Academy.Term, term.id).metadata["exam_attempt"]["status"] == "open"
+  end
+
   test "a basic-education student can skip the optional midterm", %{
     conn: conn,
     realm: realm,

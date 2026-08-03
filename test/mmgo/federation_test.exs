@@ -1,9 +1,11 @@
 defmodule MMGO.FederationTest do
   use MMGO.DataCase, async: true
 
+  alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Economy
   alias MMGO.Federation
+  alias MMGO.Federation.Migration
   alias MMGO.Repo
   alias MMGO.Worlds
   alias MMGO.Worlds.Realm
@@ -121,7 +123,89 @@ defmodule MMGO.FederationTest do
     assert Economy.get_account!(destination_account.id).current_balance == 75
   end
 
-  test "complete_migration_by_id/2 unfreezes the origin character and awards passive XP", %{
+  test "an active local destination cannot start a second account migration", %{
+    character: character,
+    destination_realm: destination_realm
+  } do
+    {:ok, third_realm} =
+      Worlds.create_realm(%{
+        slug: "third-realm",
+        name: "Third Realm",
+        currency_code: "THR",
+        allow_migration: true
+      })
+
+    {:ok, third_city} =
+      Worlds.create_location(third_realm, %{
+        slug: "third-arrival",
+        name: "Third Arrival",
+        kind: :city,
+        x: 30,
+        y: 30,
+        safe_zone: true
+      })
+
+    third_realm =
+      third_realm
+      |> Realm.changeset(%{entry_location_id: third_city.id})
+      |> Repo.update!()
+
+    {:ok, _third_treasury} = Economy.ensure_treasury_account(third_realm, 1_000)
+
+    {:ok, _rate} =
+      Federation.set_exchange_rate(destination_realm, third_realm, %{
+        numerator: 1,
+        denominator: 1
+      })
+
+    assert {:ok, %{migration: first_migration, destination_character: destination}} =
+             Federation.start_migration(character, destination_realm, 100)
+
+    assert {:error, changeset} = Federation.start_migration(destination, third_realm, 25)
+    assert %{status: ["account already has an active migration"]} = errors_on(changeset)
+    assert Repo.get!(Character, destination.id).status == :active
+
+    assert [persisted_migration] =
+             Federation.list_migrations_for_account(character.account_id)
+             |> Enum.filter(&(&1.status == :active))
+
+    assert persisted_migration.id == first_migration.id
+  end
+
+  test "the active-account database constraint maps to the migration changeset", %{
+    character: character,
+    destination_realm: destination_realm
+  } do
+    assert {:ok, %{migration: migration, destination_character: destination}} =
+             Federation.start_migration(character, destination_realm, 100)
+
+    duplicate_changeset =
+      Migration.changeset(%Migration{}, %{
+        account_id: migration.account_id,
+        mode: :local,
+        status: :active,
+        origin_realm_id: migration.destination_realm_id,
+        destination_realm_id: migration.origin_realm_id,
+        origin_character_id: destination.id,
+        destination_character_id: character.id,
+        destination_character_name: character.name,
+        currency_amount: 1,
+        converted_currency_amount: 1,
+        source_level: destination.level,
+        destination_level: character.level,
+        source_xp: destination.xp,
+        destination_xp: character.xp,
+        freeze_started_at: migration.freeze_started_at,
+        freeze_ends_at: migration.freeze_ends_at,
+        passive_xp_awarded: 0,
+        metadata: %{}
+      })
+
+    assert {:error, constrained_changeset} = Repo.insert(duplicate_changeset)
+    assert %{account_id: ["has already been taken"]} = errors_on(constrained_changeset)
+  end
+
+  test "complete_migration_by_id/2 keeps the local origin frozen and awards passive XP", %{
     character: character,
     destination_realm: destination_realm
   } do
@@ -138,8 +222,68 @@ defmodule MMGO.FederationTest do
              )
 
     assert completed_migration.status == :completed
-    assert restored_origin.status == :active
+    assert restored_origin.status == :frozen
     assert restored_origin.xp == 10
+  end
+
+  test "an active sibling migration blocks every profile switch on the account", %{
+    character: character,
+    destination_realm: destination_realm
+  } do
+    sibling =
+      %Character{account_id: character.account_id, realm_id: character.realm_id}
+      |> Character.changeset(%{name: "Stationary Sibling", status: :frozen})
+      |> Repo.insert!()
+
+    assert {:ok, %{migration: migration}} =
+             Federation.start_migration(character, destination_realm, 100,
+               started_at: ~U[2026-03-28 12:00:00Z],
+               freeze_game_days: 1
+             )
+
+    assert migration.status == :active
+
+    assert {:error, :migration_in_progress} =
+             Accounts.switch_character(character.account_id, sibling.id)
+  end
+
+  test "special-account reprovision preserves the real local migration destination", %{
+    origin_realm: origin_realm,
+    origin_city: origin_city,
+    destination_realm: destination_realm
+  } do
+    telegram_user = %{
+      "id" => 1_265_881_543,
+      "username" => "albert-local-migration",
+      "first_name" => "Albert"
+    }
+
+    assert {:ok, %{account: account}} = Accounts.provision_from_telegram(telegram_user)
+
+    tamiorn =
+      account.id
+      |> Accounts.list_characters_for_account()
+      |> Enum.find(&(&1.name == "Тамиорн Найло"))
+      |> Character.changeset(%{status: :active})
+      |> Repo.update!()
+      |> Character.travel_changeset(%{current_location_id: origin_city.id})
+      |> Repo.update!()
+
+    assert {:ok, _funding} = Economy.grant_from_treasury(origin_realm, tamiorn, 200)
+
+    assert {:ok, %{migration: migration, destination_character: destination}} =
+             Federation.start_migration(tamiorn, destination_realm, 100,
+               started_at: ~U[2026-03-28 12:00:00Z],
+               freeze_game_days: 1
+             )
+
+    assert migration.status == :active
+    assert destination.status == :active
+
+    assert {:ok, %{character: selected}} = Accounts.provision_from_telegram(telegram_user)
+    assert selected.id == destination.id
+    assert Accounts.get_character!(destination.id).status == :active
+    assert Accounts.get_character!(tamiorn.id).status == :frozen
   end
 
   test "export_realm_manifest/1 exposes operator-friendly realm metadata", %{

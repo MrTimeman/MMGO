@@ -245,6 +245,74 @@ defmodule MMGO.PlayTest do
     refute updated.can_respond?
   end
 
+  test "traveler contact facade exposes role-specific consent and remains scoped", %{
+    realm: realm,
+    city: city,
+    character: character,
+    opponent: opponent
+  } do
+    observer = character_fixture(realm, city, "contact-observer", "Contact Observer")
+
+    assert {:ok, %{encounter: outgoing}} =
+             Play.request_traveler_contact(character, opponent.id)
+
+    assert outgoing.counterpart.id == opponent.id
+    assert outgoing.direction == :outgoing
+    assert outgoing.contact_request?
+    assert outgoing.can_cancel?
+    refute outgoing.can_accept?
+    refute outgoing.can_decline?
+    refute outgoing.can_respond?
+
+    assert {:ok, opponent_hub} = Play.activity_hub_state(opponent)
+    incoming = Enum.find(opponent_hub.open_encounters, &(&1.id == outgoing.id))
+    assert incoming.direction == :incoming
+    assert incoming.can_accept?
+    assert incoming.can_decline?
+    refute incoming.can_cancel?
+    refute incoming.can_respond?
+
+    assert {:error, :contact_request_not_found} =
+             Play.respond_to_traveler_contact(observer, outgoing.id, :accept)
+
+    assert {:error, %Ecto.Changeset{} = role_changeset} =
+             Play.respond_to_traveler_contact(character, outgoing.id, :accept)
+
+    assert %{status: ["only the requested traveler may answer"]} = errors_on(role_changeset)
+
+    assert {:error, :invalid_contact_decision} =
+             Play.respond_to_traveler_contact(opponent, outgoing.id, "trade")
+
+    assert {:error, :contact_request_not_found} =
+             Play.respond_to_traveler_contact(opponent, "not-a-uuid", "accept")
+  end
+
+  test "contact target can accept after leaving the request location", %{
+    tower: tower,
+    character: character,
+    opponent: opponent
+  } do
+    assert {:ok, %{encounter: outgoing}} =
+             Play.request_traveler_contact(character.id, opponent.id)
+
+    moved_opponent =
+      opponent
+      |> Character.travel_changeset(%{current_location_id: tower.id})
+      |> Repo.update!()
+
+    assert {:ok, moved_hub} = Play.activity_hub_state(moved_opponent)
+    assert Enum.any?(moved_hub.open_encounters, &(&1.id == outgoing.id and &1.can_accept?))
+
+    assert {:ok, %{encounter: accepted, decision: :accept}} =
+             Play.respond_to_traveler_contact(moved_opponent.id, outgoing.id, "accept")
+
+    assert accepted.status == :greeted
+    assert accepted.direction == :incoming
+    refute accepted.can_accept?
+    refute accepted.can_decline?
+    refute accepted.can_cancel?
+  end
+
   test "scavenging facade only starts a current-location available cache", %{
     city: city,
     character: character
@@ -325,24 +393,113 @@ defmodule MMGO.PlayTest do
     assert state.carry_capacity > state.carried_weight
   end
 
-  test "spellbook composition at the Tower compiles an owned base with a six-word formula", %{
+  test "the trained Tower circle compiles an owned foundation with six bounded seals", %{
     character: character,
     tower: tower
   } do
-    character = move_to(character, tower)
+    character =
+      character
+      |> move_to(tower)
+      |> Character.changeset(%{metadata: %{"progression_tier" => "legendary"}})
+      |> Repo.update!()
+
     base_spell = spell_fixture(character, "Tower Spark")
 
     assert {:ok, compiled_spell} =
-             Play.compile_spell(character, %{
-               "base_spell_id" => base_spell.id,
-               "formula" => "Ignis Radius Magnus Velum Lumen Nexus",
-               "school" => "fire"
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "forma" => "Radius",
+               "vis" => "Magnus",
+               "tempus" => "Velum",
+               "mutatio" => "Lumen",
+               "pretium" => "Nexus",
+               "base" => base_spell.id,
+               "formula" => "эта строка никогда не должна попасть в компилятор"
              })
 
     assert compiled_spell.creator_character_id == character.id
     assert compiled_spell.source_spell_id == base_spell.id
     assert compiled_spell.formula == "Ignis Radius Magnus Velum Lumen Nexus"
     assert Repo.aggregate(Request, :count, :id) == 1
+  end
+
+  test "an untrained caster receives the strict three-seal circle and can create a root spell", %{
+    character: character,
+    tower: tower
+  } do
+    character = move_to(character, tower)
+
+    assert {:ok, state} = Play.spellbook_state(character)
+    assert state.spell_circle_tier == :novice
+
+    assert Enum.sort(state.permitted_schools) ==
+             Enum.sort(~w(fire water earth air life death chaos order))
+
+    assert {:ok, spell} =
+             Play.compile_structured_spell(character, %{
+               "school" => "water",
+               "actio" => "Captio",
+               "tempus" => "Momentum",
+               "forma" => "Sphaera",
+               "formula" => "untrusted ready-made formula"
+             })
+
+    assert spell.formula == "Captio Momentum"
+    assert spell.school == :water
+    assert spell.source_spell_id == nil
+    assert Repo.aggregate(Request, :count, :id) == 1
+  end
+
+  test "a known same-school base cannot lift the novice three-seal limits", %{
+    character: character,
+    tower: tower
+  } do
+    character = move_to(character, tower)
+    base_spell = spell_fixture(character, "Known Tower Spark")
+
+    assert {:ok, spell} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "tempus" => "Momentum"
+             })
+
+    assert spell.source_spell_id == base_spell.id
+    assert spell.level_requirement == 1
+    assert spell.fatigue_cost <= 12
+    assert spell.cooldown_turns <= 3
+    assert spell.environment_mode == :none
+    assert spell.environment_tags == []
+    assert spell.interaction_rules == []
+
+    assert [effect] = spell.effects
+    assert effect.applies_to != :environment
+    assert effect.intensity <= 12
+    assert effect.variance <= 2
+    assert effect.duration <= 3
+  end
+
+  test "the novice circle requires one bounded word in both Actio and Tempus", %{
+    character: character,
+    tower: tower
+  } do
+    character = move_to(character, tower)
+
+    assert {:error, :incomplete_spell_circle} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ictus"
+             })
+
+    assert {:error, :invalid_spell_circle_word} =
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ictus Magnus",
+               "tempus" => "Momentum"
+             })
+
+    assert Repo.aggregate(Request, :count, :id) == 0
   end
 
   test "spellbook composition rejects a city without an owned base before creating an AI request",
@@ -352,10 +509,11 @@ defmodule MMGO.PlayTest do
     base_spell = spell_fixture(character, "City Spark")
 
     assert {:error, :spellbook_location} =
-             Play.compile_spell(character, %{
-               "base_spell_id" => base_spell.id,
-               "formula" => "Ignis Radius",
-               "school" => "fire"
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "tempus" => "Momentum",
+               "base" => base_spell.id
              })
 
     assert Repo.aggregate(Request, :count, :id) == 0
@@ -370,10 +528,11 @@ defmodule MMGO.PlayTest do
     assert journey.status == :active
 
     assert {:error, :travelling} =
-             Play.compile_spell(character, %{
-               "base_spell_id" => base_spell.id,
-               "formula" => "Ignis Radius",
-               "school" => "fire"
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "tempus" => "Momentum",
+               "base" => base_spell.id
              })
 
     assert Repo.aggregate(Request, :count, :id) == 0
@@ -385,23 +544,28 @@ defmodule MMGO.PlayTest do
          character: character,
          tower: tower
        } do
-    character = move_to(character, tower)
+    character =
+      character
+      |> move_to(tower)
+      |> Character.changeset(%{metadata: %{"progression_tier" => "legendary"}})
+      |> Repo.update!()
+
     own_base = spell_fixture(character, "Owned Tower Spark")
     foreign_character = character_fixture(realm, tower, "foreign-compiler", "Foreign Compiler")
     foreign_base = spell_fixture(foreign_character, "Foreign Tower Spark")
 
     assert {:error, _changeset} =
-             Play.compile_spell(character, %{
-               "base_spell_id" => foreign_base.id,
-               "formula" => "Ignis Radius",
-               "school" => "fire"
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "base" => foreign_base.id
              })
 
     assert {:error, :school_not_permitted} =
-             Play.compile_spell(character, %{
-               "base_spell_id" => own_base.id,
-               "formula" => "Aqua Radius",
-               "school" => "water"
+             Play.compile_structured_spell(character, %{
+               "school" => "water",
+               "actio" => "Aqua",
+               "base" => own_base.id
              })
 
     assert Repo.aggregate(Request, :count, :id) == 0
@@ -494,10 +658,11 @@ defmodule MMGO.PlayTest do
     assert state.permitted_schools == ["fire"]
 
     assert {:ok, compiled_spell} =
-             Play.compile_spell(character, %{
-               "base_spell_id" => base_spell.id,
-               "formula" => "Ignis Vinculum",
-               "school" => "fire"
+             Play.compile_structured_spell(character, %{
+               "school" => "fire",
+               "actio" => "Ignis",
+               "tempus" => "Vinculum",
+               "base" => base_spell.id
              })
 
     assert compiled_spell.source_spell_id == base_spell.id

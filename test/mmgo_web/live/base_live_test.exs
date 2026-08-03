@@ -5,6 +5,7 @@ defmodule MMGOWeb.BaseLiveTest do
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Bases
+  alias MMGO.Bases.Base
   alias MMGO.Inventory
   alias MMGO.Organizations
   alias MMGO.Repo
@@ -125,6 +126,65 @@ defmodule MMGOWeb.BaseLiveTest do
     refute Survival.summary(Repo.get!(Character, character.id)).starving?
     assert MMGO.Bases.get_storage_item!(stored_ration.id).quantity == 1
     refute has_element?(view, "#base-rest-submit")
+  end
+
+  test "renders the sealed owner's real fortress rank and combat ward", %{
+    conn: conn,
+    character: character,
+    city: city
+  } do
+    character =
+      character
+      |> Character.changeset(%{
+        metadata: %{
+          "profile_kind" => "sealed_spirit",
+          "sealed_anchor_location_id" => city.id
+        }
+      })
+      |> Repo.update!()
+
+    {:ok, base} = Bases.purchase_city_base(character, city)
+
+    base
+    |> Base.changeset(%{
+      metadata:
+        Map.put(base.metadata || %{}, "fortress", %{
+          "tier" => 5,
+          "ward_intensity" => 100
+        })
+    })
+    |> Repo.update!()
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/base")
+
+    assert has_element?(view, "#base-fortress-status", "ранг 5 из 5")
+    assert has_element?(view, "#base-fortress-status", "силой 100")
+  end
+
+  test "renders construction requirements without exposing material codes", %{
+    conn: conn,
+    character: character,
+    city: city
+  } do
+    {:ok, wilderness} =
+      Worlds.create_location(realm_for(city), %{
+        slug: "base-live-wilderness",
+        name: "Лесной рубеж",
+        kind: :wilderness,
+        x: 40,
+        y: 40,
+        safe_zone: false
+      })
+
+    character =
+      character
+      |> Character.travel_changeset(%{current_location_id: wilderness.id})
+      |> Repo.update!()
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/base")
+
+    assert has_element?(view, "#base-build-materials", "строительные материалы")
+    refute has_element?(view, "#base-build-materials", "construction_material")
   end
 
   test "an organization custodian opens an explicitly selected shared base without personal workbench access",

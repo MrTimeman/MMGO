@@ -25,6 +25,11 @@ defmodule MMGOWeb.TelegramWebhookController do
         |> put_status(:service_unavailable)
         |> json(%{ok: false, error: "default_realm_not_found"})
 
+      {:error, :starter_location_not_found} ->
+        conn
+        |> put_status(:service_unavailable)
+        |> json(%{ok: false, error: "starter_location_not_found"})
+
       {:error, operation, changeset, _changes_so_far} when is_atom(operation) ->
         conn
         |> put_status(:unprocessable_entity)

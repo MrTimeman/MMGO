@@ -2,7 +2,7 @@ defmodule MMGO.Bases do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Bases.{Base, CompleteBaseBuildWorker, Ownership, StorageItem}
   alias MMGO.Economy
   alias MMGO.Inventory
@@ -21,6 +21,9 @@ defmodule MMGO.Bases do
   @default_custom_build_price 250
   @default_custom_build_days 28
   @default_build_materials %{"construction_material" => 5}
+  @fortress_tier_range 1..5
+  @fortress_ward_intensity_range 1..100
+  @fortress_ward_max_turns 3
 
   @doc "Returns server-owned price, tax, material, and timing terms for acquiring a base."
   def acquisition_quote(%Character{} = character, %Location{} = location) do
@@ -115,6 +118,42 @@ defmodule MMGO.Bases do
       status: :active
     )
   end
+
+  @doc """
+  Returns server-derived combat states granted by a directly owned fortress.
+
+  Combat metadata supplies only the location of the battle. The base, its
+  ownership, active status, realm, and bounded fortress configuration are all
+  read back from the database. Invalid identifiers or malformed configuration
+  deliberately grant no benefit.
+  """
+  def initial_combat_states(character_id, realm_id, combat_metadata)
+      when is_binary(character_id) and is_binary(realm_id) and is_map(combat_metadata) do
+    location_id = combat_metadata["location_id"] || combat_metadata[:location_id]
+
+    with {:ok, character_id} <- Ecto.UUID.cast(character_id),
+         {:ok, realm_id} <- Ecto.UUID.cast(realm_id),
+         location_id when is_binary(location_id) <- location_id,
+         {:ok, location_id} <- Ecto.UUID.cast(location_id) do
+      Base
+      |> join(:inner, [base], character in Character, on: character.id == base.owner_character_id)
+      |> where(
+        [base, character],
+        base.owner_character_id == ^character_id and base.realm_id == ^realm_id and
+          base.location_id == ^location_id and base.status == :active and
+          character.status == :active and character.realm_id == ^realm_id and
+          character.current_location_id == ^location_id
+      )
+      |> order_by([base], asc: base.inserted_at)
+      |> preload([_base, character], owner_character: character)
+      |> Repo.all()
+      |> Enum.find_value([], &fortress_initial_states/1)
+    else
+      _invalid_or_missing_location -> []
+    end
+  end
+
+  def initial_combat_states(_character_id, _realm_id, _combat_metadata), do: []
 
   @doc "Lists the direct and organization-custodied bases available to one character."
   def list_accessible_bases_for_character(%Character{} = character) do
@@ -236,7 +275,7 @@ defmodule MMGO.Bases do
         owner_character_id: character.id,
         realm_id: character.realm_id,
         location_id: location.id,
-        name: attrs["name"] || "#{location.name} Base",
+        name: attrs["name"] || "База · #{location.name}",
         kind: :city_purchase,
         status: :active,
         storage_weight_capacity: attrs["storage_weight_capacity"] || @city_storage_capacity,
@@ -284,7 +323,7 @@ defmodule MMGO.Bases do
           owner_character_id: character.id,
           realm_id: character.realm_id,
           location_id: location.id,
-          name: attrs["name"] || "#{location.name} Outpost",
+          name: attrs["name"] || "Застава · #{location.name}",
           kind: :custom_build,
           status: :building,
           storage_weight_capacity: attrs["storage_weight_capacity"] || @custom_storage_capacity,
@@ -723,7 +762,14 @@ defmodule MMGO.Bases do
   end
 
   defp acquisition_metadata(metadata, quote) do
-    metadata = if is_map(metadata), do: stringify_keys(metadata), else: %{}
+    metadata =
+      if is_map(metadata) do
+        metadata
+        |> stringify_keys()
+        |> Map.drop(["fortress"])
+      else
+        %{}
+      end
 
     Map.put(metadata, "acquisition", %{
       "subtotal" => quote.subtotal,
@@ -737,6 +783,32 @@ defmodule MMGO.Bases do
         end)
     })
   end
+
+  defp fortress_initial_states(%Base{owner_character: %Character{} = owner} = base) do
+    fortress = Map.get(base.metadata || %{}, "fortress")
+
+    case {CharacterProfiles.sealed_spirit?(owner),
+          CharacterProfiles.sealed_anchor_location_id(owner), fortress} do
+      {true, anchor_location_id, %{"tier" => tier, "ward_intensity" => ward_intensity}}
+      when anchor_location_id == base.location_id and tier in @fortress_tier_range and
+             ward_intensity in @fortress_ward_intensity_range ->
+        [
+          %{
+            "state" => "shielded",
+            "intensity" => ward_intensity,
+            "remaining_turns" => min(tier, @fortress_ward_max_turns),
+            "applied_on_turn" => 0,
+            "source" => "owned_fortress",
+            "base_id" => base.id
+          }
+        ]
+
+      _not_the_sealed_owner_or_malformed ->
+        nil
+    end
+  end
+
+  defp fortress_initial_states(_base), do: nil
 
   defp build_material_requirements(%Location{} = location) do
     case Map.get(location.metadata || %{}, "base_build_materials") do

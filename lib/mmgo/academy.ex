@@ -2,7 +2,7 @@ defmodule MMGO.Academy do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
 
   alias MMGO.Academy.{
     CompleteEnrollmentWorker,
@@ -85,7 +85,7 @@ defmodule MMGO.Academy do
       questions: [
         %{
           key: "q1",
-          label: "Что выбирает будущий чародей при поступлении на Academy Core?",
+          label: "Что выбирает будущий чародей при поступлении на Ядро Академии?",
           options: [
             {"Выберите ответ", ""},
             {"Две школы магии", "a"},
@@ -399,6 +399,7 @@ defmodule MMGO.Academy do
         preload: [:character],
         order_by: [desc: enrollment.completed_at, desc: enrollment.inserted_at]
     )
+    |> Enum.filter(&public_academic_enrollment?/1)
     |> Enum.filter(&valedictorian?/1)
     |> Enum.filter(&hall_of_fame_active?(&1, now))
   end
@@ -1471,6 +1472,7 @@ defmodule MMGO.Academy do
               candidate.status in [:active, :completed],
           preload: [:character]
       )
+      |> Enum.filter(&public_academic_enrollment?/1)
       |> Enum.filter(&(cohort_key(&1) == key))
 
     terms_by_enrollment =
@@ -1763,14 +1765,20 @@ defmodule MMGO.Academy do
     seeded = default_seeded_courses()
 
     Enum.map(seeded, fn attrs ->
-      case Repo.get_by(Course, realm_id: realm_id, source: :seeded, title: attrs.title) do
+      case Repo.get_by(Course,
+             realm_id: realm_id,
+             source: :seeded,
+             npc_professor_code: attrs.npc_professor_code
+           ) do
         nil ->
           %Course{}
           |> Course.changeset(Map.put(attrs, :realm_id, realm_id))
           |> Repo.insert()
 
         %Course{} = course ->
-          {:ok, course}
+          course
+          |> Course.changeset(attrs)
+          |> Repo.update()
       end
     end)
   end
@@ -2400,8 +2408,10 @@ defmodule MMGO.Academy do
             candidate.realm_id == ^enrollment.realm_id and
               candidate.program_type == ^enrollment.program_type and
               candidate.status in [:active, :completed],
+          preload: [:character],
           lock: "FOR UPDATE"
       )
+      |> Enum.filter(&public_academic_enrollment?/1)
       |> Enum.filter(&(cohort_key(&1) == target_cohort_key))
 
     completed_enrollments = Enum.filter(cohort_enrollments, &(&1.status == :completed))
@@ -2531,6 +2541,11 @@ defmodule MMGO.Academy do
   end
 
   defp derived_cohort_key(program_type, _expected_completion_at), do: "#{program_type}:unassigned"
+
+  defp public_academic_enrollment?(%Enrollment{character: %Character{} = character}),
+    do: not CharacterProfiles.hidden_presence?(character)
+
+  defp public_academic_enrollment?(_enrollment), do: false
 
   defp club_attendance_count(%Term{} = term, character_id)
        when is_binary(character_id) and not is_nil(term.started_at) do
@@ -3381,127 +3396,127 @@ defmodule MMGO.Academy do
     [
       %{
         source: :seeded,
-        title: "History of the Realm",
+        title: "История мира",
         npc_professor_code: "npc_historian",
         syllabus: %{"track" => nil, "years" => [1, 2]}
       },
       %{
         source: :seeded,
-        title: "Elemental Literacy",
+        title: "Основы стихий",
         npc_professor_code: "npc_elementalist",
         syllabus: %{"track" => nil, "years" => [1]}
       },
       %{
         source: :seeded,
-        title: "Overworld Survival",
+        title: "Выживание в открытом мире",
         npc_professor_code: "npc_ranger",
         syllabus: %{"track" => nil, "years" => [1, 2]}
       },
       %{
         source: :seeded,
-        title: "Economic Basics",
+        title: "Основы экономики",
         npc_professor_code: "npc_economist",
         syllabus: %{"track" => nil, "years" => [3, 4]}
       },
       %{
         source: :seeded,
-        title: "Civic Law",
+        title: "Гражданское право",
         npc_professor_code: "npc_magistrate",
         syllabus: %{"track" => nil, "years" => [5, 6]}
       },
       %{
         source: :seeded,
-        title: "Latin Fundamentals",
+        title: "Основы латыни",
         npc_professor_code: "npc_linguist",
         syllabus: %{"track" => nil, "years" => [7, 8, 9, 10]}
       },
       %{
         source: :seeded,
-        title: "Incantation Construction I",
+        title: "Создание заклинаний I",
         npc_professor_code: "npc_wizard_1",
         track: :wizardry,
         syllabus: %{"year" => 1}
       },
       %{
         source: :seeded,
-        title: "Dual-School Fundamentals",
+        title: "Основы двух школ",
         npc_professor_code: "npc_wizard_2",
         track: :wizardry,
         syllabus: %{"year" => 1, "focus" => "chosen_schools"}
       },
       %{
         source: :seeded,
-        title: "Spellcraft Practicum",
+        title: "Практикум по чародейству",
         npc_professor_code: "npc_wizard_3",
         track: :wizardry,
         syllabus: %{"year" => 2, "focus" => "starter_spells"}
       },
       %{
         source: :seeded,
-        title: "Incantation Construction II",
+        title: "Создание заклинаний II",
         npc_professor_code: "npc_wizard_4",
         track: :wizardry,
         syllabus: %{"year" => 2}
       },
       %{
         source: :seeded,
-        title: "Arcane Mini-Thesis",
+        title: "Малая работа по чародейству",
         npc_professor_code: "npc_wizard_5",
         track: :wizardry,
         syllabus: %{"year" => 3, "focus" => "capstone"}
       },
       %{
         source: :seeded,
-        title: "Ingredients Taxonomy",
+        title: "Систематика ингредиентов",
         npc_professor_code: "npc_alchemist_1",
         track: :alchemy,
         syllabus: %{"year" => 1}
       },
       %{
         source: :seeded,
-        title: "Basic Brewing",
+        title: "Основы зельеварения",
         npc_professor_code: "npc_alchemist_2",
         track: :alchemy,
         syllabus: %{"year" => 1}
       },
       %{
         source: :seeded,
-        title: "Recipe Development Practicum",
+        title: "Практикум по созданию рецептов",
         npc_professor_code: "npc_alchemist_3",
         track: :alchemy,
         syllabus: %{"year" => 2, "focus" => "starter_recipes"}
       },
       %{
         source: :seeded,
-        title: "Alchemy Mini-Thesis",
+        title: "Малая работа по алхимии",
         npc_professor_code: "npc_alchemist_4",
         track: :alchemy,
         syllabus: %{"year" => 3, "focus" => "capstone"}
       },
       %{
         source: :seeded,
-        title: "Materials Science",
+        title: "Материаловедение",
         npc_professor_code: "npc_master_1",
         track: :mastery,
         syllabus: %{"year" => 1}
       },
       %{
         source: :seeded,
-        title: "Basic Forging",
+        title: "Основы кузнечного дела",
         npc_professor_code: "npc_master_2",
         track: :mastery,
         syllabus: %{"year" => 1}
       },
       %{
         source: :seeded,
-        title: "Toolcraft Practicum",
+        title: "Практикум по инструментам",
         npc_professor_code: "npc_master_3",
         track: :mastery,
         syllabus: %{"year" => 2, "focus" => "starter_tools"}
       },
       %{
         source: :seeded,
-        title: "Mastery Mini-Thesis",
+        title: "Малая работа по мастерству",
         npc_professor_code: "npc_master_4",
         track: :mastery,
         syllabus: %{"year" => 3, "focus" => "capstone"}

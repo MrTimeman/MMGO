@@ -6,7 +6,15 @@ defmodule MMGO.Overworld.Response do
   alias MMGO.Accounts.Character
   alias MMGO.Overworld.Encounter
 
-  @actions [:greet, :trade, :attack, :avoid]
+  @actions [
+    :greet,
+    :trade,
+    :attack,
+    :avoid,
+    :accept_contact,
+    :decline_contact,
+    :cancel_contact
+  ]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

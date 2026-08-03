@@ -321,86 +321,10 @@
   min-height: 28rem;
 }
 
-.spell-ritual__empty,
-.spell-ritual__fallback {
-  position: relative;
-  margin-top: 1rem;
-  border: 1px solid rgba(91, 62, 28, 0.28);
-  border-radius: 0.2rem;
-  background: rgba(250, 240, 207, 0.42);
-  box-shadow: inset 0 0 18px rgba(105, 76, 39, 0.08);
-}
-
-.spell-ritual__empty {
-  padding: 1.2rem;
-}
-
-.spell-ritual__empty h3 {
-  color: var(--parch-red);
-  font-family: var(--font-serif);
-  font-size: 1.2rem;
-  font-weight: 700;
-}
-
-.spell-ritual__empty p {
-  margin-top: 0.45rem;
-  color: var(--parch-ink-faint);
-  line-height: 1.55;
-}
-
-.spell-ritual__fallback {
-  padding: 0.6rem 0.8rem 0.8rem;
-}
-
-.spell-ritual__fallback > summary {
-  cursor: pointer;
-  color: var(--parch-ink-faint);
-  font-family: var(--font-hand);
-  font-size: 1.05rem;
-}
-
-.spell-ritual__form {
-  display: grid;
-  gap: 0.8rem;
-  margin-top: 0.75rem;
-}
-
-.spell-ritual__form label {
-  color: var(--parch-ink);
-}
-
-.spell-ritual__form input,
-.spell-ritual__form select {
-  border-color: rgba(86, 57, 24, 0.4);
-  border-radius: 0.2rem;
-  color: var(--parch-ink);
-  background: rgba(255, 248, 223, 0.62);
-}
-
 .spell-ritual__hint {
   color: var(--parch-ink-faint);
   font-size: 0.82rem;
   line-height: 1.45;
-}
-
-.spell-ritual__submit {
-  display: inline-flex;
-  min-height: 2.75rem;
-  align-items: center;
-  justify-content: center;
-  gap: 0.45rem;
-  border: 1px solid #5c291e;
-  border-radius: 0.25rem;
-  color: #f8ebca;
-  background: linear-gradient(#8a392d, #64261f);
-  box-shadow: 0 3px 0 #451a16, 0 7px 14px rgba(48, 25, 13, 0.2);
-  font-weight: 700;
-  transition: transform 150ms ease, filter 150ms ease;
-}
-
-.spell-ritual__submit:hover {
-  transform: translateY(-1px);
-  filter: brightness(1.08);
 }
 
 .spell-ritual__error {

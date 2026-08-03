@@ -32,14 +32,41 @@ defmodule MMGOWeb.BulletinBoardLiveTest do
   } do
     character = character_fixture(realm, city)
     enrollment = valedictorian_enrollment_fixture(character)
+    hidden_character = hidden_character_fixture(realm, city)
+    hidden_enrollment = valedictorian_enrollment_fixture(hidden_character)
 
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/academy/bulletin-board")
 
     assert has_element?(view, "#bulletin-hall-of-fame")
     assert has_element?(view, "#bulletin-valedictorian-#{enrollment.id}")
+    refute has_element?(view, "#bulletin-valedictorian-#{hidden_enrollment.id}")
+    assert has_element?(view, "#bulletin-cohort-rank-#{enrollment.id}")
+    refute has_element?(view, "#bulletin-cohort-rank-#{hidden_enrollment.id}")
     assert has_element?(view, "#bulletin-courses .bb-table-wrap")
     assert has_element?(view, "#bulletin-back-to-academy")
     assert has_element?(view, "#bulletin-study-desk-link")
+  end
+
+  defp hidden_character_fixture(realm, location) do
+    account =
+      %Account{}
+      |> Account.registration_changeset(%{
+        display_name: "Hidden Laureate",
+        handle: "hidden-laureate"
+      })
+      |> Repo.insert!()
+
+    %Character{account_id: account.id, realm_id: realm.id}
+    |> Character.changeset(%{
+      name: "Hidden Laureate",
+      status: :active,
+      level: 100,
+      xp: 1_000_000,
+      metadata: %{"profile_kind" => "sealed_spirit", "hidden_presence" => true}
+    })
+    |> Repo.insert!()
+    |> Character.travel_changeset(%{current_location_id: location.id})
+    |> Repo.update!()
   end
 
   defp character_fixture(realm, location) do

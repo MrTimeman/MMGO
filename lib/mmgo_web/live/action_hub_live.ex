@@ -10,10 +10,16 @@ defmodule MMGOWeb.ActionHubLive do
 
   import MMGOWeb.UIKit
 
-  alias MMGO.Play
+  alias MMGO.{Overworld, Play}
 
   @impl true
   def mount(_params, _session, socket) do
+    character = socket.assigns.current_scope.character
+
+    if connected?(socket) do
+      Phoenix.PubSub.subscribe(MMGO.PubSub, Overworld.character_topic(character.id))
+    end
+
     {:ok,
      socket
      |> assign(:page_title, "Локация")
@@ -62,13 +68,13 @@ defmodule MMGOWeb.ActionHubLive do
   end
 
   @impl true
-  def handle_event("start_overworld_encounter", %{"target_id" => target_id}, socket) do
-    case Play.start_overworld_encounter(socket.assigns.current_scope.character, target_id) do
+  def handle_event("request_traveler_contact", %{"target_id" => target_id}, socket) do
+    case Play.request_traveler_contact(socket.assigns.current_scope.character, target_id) do
       {:ok, %{encounter: encounter}} ->
         {:noreply,
          socket
          |> refresh_hub()
-         |> assign(:activity_result, encounter_started_message(encounter))}
+         |> assign(:activity_result, contact_request_message(encounter))}
 
       {:error, :travelling} ->
         {:noreply,
@@ -80,7 +86,32 @@ defmodule MMGOWeb.ActionHubLive do
         {:noreply,
          socket
          |> refresh_hub()
-         |> assign(:activity_result, "Сейчас нельзя начать встречу с этим путником.")}
+         |> assign(:activity_result, "Сейчас нельзя отправить запрос этому путнику.")}
+    end
+  end
+
+  @impl true
+  def handle_event(
+        "respond_to_traveler_contact",
+        %{"encounter_id" => encounter_id, "decision" => decision},
+        socket
+      ) do
+    case Play.respond_to_traveler_contact(
+           socket.assigns.current_scope.character,
+           encounter_id,
+           decision
+         ) do
+      {:ok, result} ->
+        {:noreply,
+         socket
+         |> refresh_hub()
+         |> assign(:activity_result, traveler_contact_response_message(result))}
+
+      {:error, _reason} ->
+        {:noreply,
+         socket
+         |> refresh_hub()
+         |> assign(:activity_result, "Этот запрос уже закрыт или больше вам не доступен.")}
     end
   end
 
@@ -197,6 +228,11 @@ defmodule MMGOWeb.ActionHubLive do
 
   @impl true
   def handle_event("refresh_activity", _params, socket) do
+    {:noreply, refresh_hub(socket)}
+  end
+
+  @impl true
+  def handle_info({:overworld_contact_updated, _encounter_id}, socket) do
     {:noreply, refresh_hub(socket)}
   end
 
@@ -430,15 +466,23 @@ defmodule MMGOWeb.ActionHubLive do
                     <span class="evh-ledger__meta">уровень {nearby.level}</span>
                   </span>
                   <button
-                    id={"activity-start-encounter-#{nearby.id}"}
+                    :if={not pending_contact_with?(@open_encounters, nearby.id)}
+                    id={"activity-request-contact-#{nearby.id}"}
                     type="button"
-                    class="evh-object-btn evh-object-btn--small"
-                    phx-click="start_overworld_encounter"
+                    class="evh-object-btn evh-object-btn--small evh-contact-request-btn"
+                    phx-click="request_traveler_contact"
                     phx-value-target_id={nearby.id}
-                    phx-disable-with="Открываем встречу…"
+                    phx-disable-with="Отправляем…"
                   >
                     Заговорить
                   </button>
+                  <span
+                    :if={pending_contact_with?(@open_encounters, nearby.id)}
+                    id={"activity-contact-state-#{nearby.id}"}
+                    class="evh-contact-state"
+                  >
+                    {pending_contact_label(@open_encounters, nearby.id)}
+                  </span>
                 </li>
               </ul>
             </section>
@@ -448,21 +492,84 @@ defmodule MMGOWeb.ActionHubLive do
               id="activity-open-encounters"
               class="evh-subscene evh-subscene--encounters"
             >
-              <h2 class="evh-subscene__title">Незавершённые встречи</h2>
+              <h2 class="evh-subscene__title">Запросы на связь и встречи</h2>
               <article
                 :for={encounter <- @open_encounters}
                 id={"activity-encounter-#{encounter.id}"}
-                class="evh-encounter"
+                class={[
+                  "evh-encounter",
+                  encounter.contact_request? && "evh-encounter--contact"
+                ]}
               >
                 <div class="evh-encounter__head">
                   <p class="evh-encounter__name">
                     {encounter.counterpart.name}
                     <span>· ур. {encounter.counterpart.level}</span>
                   </p>
-                  <p class="evh-encounter__status">{encounter_status_label(encounter.status)}</p>
+                  <p class="evh-encounter__status">{encounter_status_label(encounter)}</p>
                 </div>
 
-                <div :if={encounter.can_respond?} class="evh-object-actions">
+                <div :if={encounter.contact_request?} class="evh-contact-request">
+                  <p
+                    id={"activity-encounter-#{encounter.id}-contact-copy"}
+                    class="evh-encounter__waiting"
+                  >
+                    <%= if encounter.direction == :incoming do %>
+                      Путник предлагает обменяться Telegram-контактами. Имя пользователя откроется
+                      вам обоим только после согласия.
+                    <% else %>
+                      Запрос отправлен. Telegram-имена останутся скрыты, пока путник не согласится.
+                    <% end %>
+                  </p>
+
+                  <div
+                    :if={encounter.can_accept? or encounter.can_decline? or encounter.can_cancel?}
+                    id={"activity-encounter-#{encounter.id}-contact-actions"}
+                    class="evh-object-actions evh-contact-actions"
+                  >
+                    <button
+                      :if={encounter.can_accept?}
+                      id={"activity-encounter-#{encounter.id}-accept-contact"}
+                      type="button"
+                      class="evh-object-btn evh-object-btn--small evh-object-btn--consent"
+                      phx-click="respond_to_traveler_contact"
+                      phx-value-encounter_id={encounter.id}
+                      phx-value-decision="accept"
+                      phx-disable-with="Принимаем…"
+                    >
+                      Принять и обменяться контактами
+                    </button>
+                    <button
+                      :if={encounter.can_decline?}
+                      id={"activity-encounter-#{encounter.id}-decline-contact"}
+                      type="button"
+                      class="evh-object-btn evh-object-btn--small"
+                      phx-click="respond_to_traveler_contact"
+                      phx-value-encounter_id={encounter.id}
+                      phx-value-decision="decline"
+                      phx-disable-with="Отклоняем…"
+                    >
+                      Отклонить
+                    </button>
+                    <button
+                      :if={encounter.can_cancel?}
+                      id={"activity-encounter-#{encounter.id}-cancel-contact"}
+                      type="button"
+                      class="evh-object-btn evh-object-btn--small"
+                      phx-click="respond_to_traveler_contact"
+                      phx-value-encounter_id={encounter.id}
+                      phx-value-decision="cancel"
+                      phx-disable-with="Отменяем…"
+                    >
+                      Отменить запрос
+                    </button>
+                  </div>
+                </div>
+
+                <div
+                  :if={not encounter.contact_request? and encounter.can_respond?}
+                  class="evh-object-actions"
+                >
                   <button
                     id={"activity-encounter-#{encounter.id}-greet"}
                     type="button"
@@ -505,7 +612,10 @@ defmodule MMGOWeb.ActionHubLive do
                     Разойтись
                   </button>
                 </div>
-                <p :if={not encounter.can_respond?} class="evh-encounter__waiting">
+                <p
+                  :if={not encounter.contact_request? and not encounter.can_respond?}
+                  class="evh-encounter__waiting"
+                >
                   Ваш ответ уже сделан; ждём решения другого путника.
                 </p>
               </article>
@@ -600,8 +710,20 @@ defmodule MMGOWeb.ActionHubLive do
   defp option_hint("scavenge"), do: "осмотреть местные ресурсы"
   defp option_hint(_action_key), do: "доступно в этой локации"
 
-  defp encounter_started_message(encounter) do
-    "Вы обозначили встречу с #{encounter.counterpart.name}. Можно выбрать, как поступить."
+  defp contact_request_message(encounter) do
+    "Запрос для #{encounter.counterpart.name} отправлен. Telegram-имена скрыты до обоюдного согласия."
+  end
+
+  defp traveler_contact_response_message(%{decision: :accept, encounter: encounter}) do
+    "Вы приняли запрос #{encounter.counterpart.name}. Контакт придёт в личных вестях и Telegram, если у вас обоих указан публичный @username."
+  end
+
+  defp traveler_contact_response_message(%{decision: :decline, encounter: encounter}) do
+    "Вы отклонили запрос #{encounter.counterpart.name}. Контакты не раскрыты."
+  end
+
+  defp traveler_contact_response_message(%{decision: :cancel, encounter: encounter}) do
+    "Запрос для #{encounter.counterpart.name} отменён. Контакты не раскрыты."
   end
 
   defp encounter_response_message(%{status: :greeted, counterpart: counterpart}) do
@@ -620,12 +742,30 @@ defmodule MMGOWeb.ActionHubLive do
     "Ваш выбор передан #{counterpart.name}."
   end
 
-  defp encounter_status_label(:pending), do: "ожидает ответа"
-  defp encounter_status_label(:active), do: "встреча идёт"
-  defp encounter_status_label(:greeted), do: "завершено: приветствие"
-  defp encounter_status_label(:trading), do: "завершено: обмен"
-  defp encounter_status_label(:avoided), do: "завершено: разошлись"
-  defp encounter_status_label(_status), do: "завершено"
+  defp encounter_status_label(%{contact_request?: true, direction: :incoming}),
+    do: "ждёт вашего решения"
+
+  defp encounter_status_label(%{contact_request?: true, direction: :outgoing}),
+    do: "ожидает согласия"
+
+  defp encounter_status_label(%{status: :pending}), do: "ожидает ответа"
+  defp encounter_status_label(%{status: :active}), do: "встреча идёт"
+  defp encounter_status_label(%{status: :greeted}), do: "завершено: приветствие"
+  defp encounter_status_label(%{status: :trading}), do: "завершено: обмен"
+  defp encounter_status_label(%{status: :avoided}), do: "завершено: разошлись"
+  defp encounter_status_label(_encounter), do: "завершено"
+
+  defp pending_contact_with?(encounters, character_id) do
+    Enum.any?(encounters, &(&1.contact_request? and &1.counterpart.id == character_id))
+  end
+
+  defp pending_contact_label(encounters, character_id) do
+    case Enum.find(encounters, &(&1.contact_request? and &1.counterpart.id == character_id)) do
+      %{direction: :incoming} -> "Запрос получен"
+      %{direction: :outgoing} -> "Запрос отправлен"
+      _encounter -> "Запрос открыт"
+    end
+  end
 
   defp scavenging_started_message(attempt) do
     "Поиск #{attempt.resource_name} начался. Результат придёт после завершения работы."

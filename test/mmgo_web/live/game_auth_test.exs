@@ -59,7 +59,11 @@ defmodule MMGOWeb.GameAuthTest do
   end
 
   test "on_mount assigns current scope for a valid session", %{owner: owner, character: character} do
-    socket = %Phoenix.LiveView.Socket{assigns: %{__changed__: %{}, flash: %{}}}
+    socket = %Phoenix.LiveView.Socket{
+      assigns: %{__changed__: %{}, flash: %{}},
+      private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
+    }
+
     session = %{"current_account_id" => owner.id, "current_character_id" => character.id}
 
     assert {:cont, socket} = GameAuth.on_mount(:require_character, %{}, session, socket)

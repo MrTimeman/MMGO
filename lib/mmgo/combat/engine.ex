@@ -1517,12 +1517,18 @@ defmodule MMGO.Combat.Engine do
   defp default_narration(turn_number, events, winner_side) do
     cond do
       winner_side ->
-        "Turn #{turn_number} resolved with #{length(events)} events. #{winner_side} wins the combat."
+        "Ход #{turn_number} завершён, событий: #{length(events)}. Победила сторона «#{narration_side_label(winner_side)}»."
 
       true ->
-        "Turn #{turn_number} resolved with #{length(events)} events."
+        "Ход #{turn_number} завершён, событий: #{length(events)}."
     end
   end
+
+  defp narration_side_label(side) when side in ["attackers", :attackers], do: "нападающие"
+  defp narration_side_label(side) when side in ["defenders", :defenders], do: "защитники"
+  defp narration_side_label(side) when side in ["party", :party], do: "отряд"
+  defp narration_side_label(side) when side in ["encounter", :encounter], do: "противник"
+  defp narration_side_label(_side), do: "неизвестная сторона"
 
   defp initial_environment(%Combat{} = combat, sides) do
     %{
@@ -1644,13 +1650,18 @@ defmodule MMGO.Combat.Engine do
     Map.new(sides, fn {side, data} ->
       {to_string(side),
        %{
-         "label" =>
-           Map.get(data, "label") || Map.get(data, :label) || String.capitalize(to_string(side)),
+         "label" => Map.get(data, "label") || Map.get(data, :label) || side_label(side),
          "shared_hp" => Map.get(data, "shared_hp") || Map.get(data, :shared_hp) || 100,
          "max_shared_hp" => Map.get(data, "max_shared_hp") || Map.get(data, :max_shared_hp) || 100
        }}
     end)
   end
+
+  defp side_label(side) when side in ["attackers", :attackers], do: "Нападающие"
+  defp side_label(side) when side in ["defenders", :defenders], do: "Защитники"
+  defp side_label(side) when side in ["party", :party], do: "Отряд"
+  defp side_label(side) when side in ["encounter", :encounter], do: "Противник"
+  defp side_label(_side), do: "Сторона"
 
   defp event(sequence, turn_number, event_type, payload) do
     %{

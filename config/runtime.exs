@@ -66,6 +66,15 @@ telegram_release_admin_user_id =
   System.get_env("TELEGRAM_RELEASE_ADMIN_USER_ID") ||
     to_string(telegram_config[:release_admin_user_id] || 1_265_881_543)
 
+special_profiles_config = Application.get_env(:mmgo, MMGO.Accounts.SpecialProfiles, [])
+
+sealed_spirit_telegram_user_id =
+  System.get_env("SEALED_SPIRIT_TELEGRAM_USER_ID") ||
+    to_string(special_profiles_config[:telegram_user_id] || 1_265_881_543)
+
+config :mmgo, MMGO.Accounts.SpecialProfiles,
+  telegram_user_id: String.to_integer(sealed_spirit_telegram_user_id)
+
 config :mmgo, MMGO.Telegram,
   api_base_url:
     System.get_env("TELEGRAM_API_BASE_URL") || telegram_config[:api_base_url] ||

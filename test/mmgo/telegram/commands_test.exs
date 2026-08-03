@@ -1,6 +1,7 @@
 defmodule MMGO.Telegram.CommandsTest do
   use MMGO.DataCase, async: false
 
+  alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Dungeons
   alias MMGO.Grimoires
@@ -107,6 +108,32 @@ defmodule MMGO.Telegram.CommandsTest do
     assert sweep_text =~ "Обслуживание завершено"
   end
 
+  test "a configured operator handle on the special account authorizes Albert but never Tamiorn" do
+    assert {:ok, %{account: account}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 1_265_881_543,
+               "username" => "albert",
+               "first_name" => "Albert"
+             })
+
+    characters = Accounts.list_characters_for_account(account.id)
+    albert = Enum.find(characters, &(&1.name == "Альберт Латыпов"))
+    tamiorn = Enum.find(characters, &(&1.name == "Тамиорн Найло"))
+
+    assert {:ok, "Недостаточно прав."} =
+             Commands.process_message(albert, %{"text" => "/admin status"})
+
+    Application.put_env(:mmgo, MMGO.Operator, handles: ["botter", account.handle])
+
+    assert {:ok, albert_report} =
+             Commands.process_message(albert, %{"text" => "/admin status"})
+
+    assert albert_report =~ "Системный отчёт"
+
+    assert {:ok, "Недостаточно прав."} =
+             Commands.process_message(tamiorn, %{"text" => "/admin status"})
+  end
+
   test "/status and /inventory expose current state", %{character: character} do
     assert {:ok, status_text} = Commands.process_message(character, %{"text" => "/status"})
     assert status_text =~ "Botter"
@@ -139,6 +166,20 @@ defmodule MMGO.Telegram.CommandsTest do
 
     assert {:ok, journey_text} = Commands.process_message(character, %{"text" => "/journey"})
     assert journey_text =~ "The Tower"
+  end
+
+  test "/travel renders domain changeset errors in Russian", %{character: character} do
+    assert {:ok, _response_text} =
+             Commands.process_message(character, %{"text" => "/travel the-tower"})
+
+    assert {:ok, response_text} =
+             Commands.process_message(character, %{"text" => "/travel the-tower"})
+
+    assert response_text ==
+             "Не удалось начать путь: Состояние: у персонажа уже есть активный путь"
+
+    refute response_text =~ "character already has"
+    refute response_text =~ "status:"
   end
 
   test "/academy start basic and status work", %{character: character} do

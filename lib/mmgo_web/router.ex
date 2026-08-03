@@ -27,6 +27,8 @@ defmodule MMGOWeb.Router do
     get "/", PageController, :home
     live "/play", GameEntryLive
     post "/auth/telegram", TelegramAuthController, :create
+    get "/characters", CharacterController, :index
+    post "/characters/:id/select", CharacterController, :select
 
     live_session :game, on_mount: [{MMGOWeb.GameAuth, :require_character}] do
       live "/map", MapLive

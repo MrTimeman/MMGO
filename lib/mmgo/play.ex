@@ -10,7 +10,7 @@ defmodule MMGO.Play do
   import Ecto.Query, warn: false
 
   alias MMGO.Accounts
-  alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Accounts.{Account, Character, CharacterProfiles}
   alias MMGO.Academy
   alias MMGO.Academia
   alias MMGO.Alchemy
@@ -42,6 +42,7 @@ defmodule MMGO.Play do
   alias MMGO.Notifications
   alias MMGO.Organizations
   alias MMGO.Organizations.{Invitation, Organization, Role}
+  alias MMGO.Operator.AuditEvent
   alias MMGO.Overworld
   alias MMGO.Overworld.Encounter, as: OverworldEncounter
   alias MMGO.Parties
@@ -78,6 +79,7 @@ defmodule MMGO.Play do
   @starter_spell_name "Искра углей"
   @demo_duel_stake 100
   @overworld_actions ~w(greet trade attack avoid)
+  @traveler_contact_decisions [:accept, :decline, :cancel]
   @organization_permissions ~w(invite_members manage_roles manage_treasury grant_fast_travel)
   @activity_actions %{
     "academy" => %{type: :navigate, to: "/academy/bulletin-board"},
@@ -239,6 +241,7 @@ defmodule MMGO.Play do
         cond do
           is_nil(current_location) -> []
           not is_nil(active_journey) -> []
+          CharacterProfiles.sealed_spirit?(character) -> []
           true -> Worlds.list_routes_for_location(current_location.id)
         end
 
@@ -272,6 +275,71 @@ defmodule MMGO.Play do
 
   def start_journey(_character_or_id, _destination_slug), do: {:error, :missing_destination}
 
+  @doc "Moves an active sealed spirit inside its realm without exposing it as a traveler."
+  def spirit_teleport(character_or_id, destination_location_id)
+      when is_binary(destination_location_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         true <- CharacterProfiles.sealed_spirit?(character),
+         true <- character.status == :active,
+         %Location{} = destination <- Repo.get(Location, destination_location_id),
+         true <- destination.realm_id == character.realm_id,
+         nil <- Travel.active_journey(character.id) do
+      Repo.transaction(fn ->
+        character =
+          Character
+          |> where([candidate], candidate.id == ^character.id)
+          |> lock("FOR UPDATE")
+          |> Repo.one!()
+
+        if not CharacterProfiles.sealed_spirit?(character) or character.status != :active do
+          Repo.rollback(:spirit_teleport_forbidden)
+        end
+
+        if destination.realm_id != character.realm_id do
+          Repo.rollback(:destination_outside_realm)
+        end
+
+        if Travel.active_journey(character.id) do
+          Repo.rollback(:journey_active)
+        end
+
+        origin_location_id = character.current_location_id
+
+        updated_character =
+          character
+          |> Character.travel_changeset(%{current_location_id: destination.id})
+          |> Repo.update!()
+
+        account = Repo.get!(Account, character.account_id)
+
+        audit_event =
+          %AuditEvent{}
+          |> AuditEvent.changeset(%{
+            actor_handle: account.handle,
+            action: "sealed_spirit_teleport",
+            result: :ok,
+            metadata: %{
+              "character_id" => character.id,
+              "origin_location_id" => origin_location_id,
+              "destination_location_id" => destination.id,
+              "sealed_anchor_location_id" =>
+                CharacterProfiles.sealed_anchor_location_id(character)
+            }
+          })
+          |> Repo.insert!()
+
+        %{character: Repo.preload(updated_character, :current_location), audit_event: audit_event}
+      end)
+    else
+      false -> {:error, :spirit_teleport_forbidden}
+      nil -> {:error, :spirit_teleport_forbidden}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def spirit_teleport(_character_or_id, _destination_location_id),
+    do: {:error, :spirit_teleport_forbidden}
+
   @doc """
   Previews the hex path from `character`'s current location to
   `destination_slug`, returning the hex list, an estimated whole-day travel
@@ -284,6 +352,7 @@ defmodule MMGO.Play do
   def path_preview(character_or_id, destination_slug)
       when is_binary(destination_slug) and destination_slug != "" do
     with {:ok, character} <- normalize_character(character_or_id),
+         false <- CharacterProfiles.sealed_spirit?(character),
          %{slug: origin_slug} <- character.current_location,
          %Route{} <-
            Worlds.route_from_location_to_slug(character.current_location.id, destination_slug),
@@ -301,6 +370,7 @@ defmodule MMGO.Play do
        }}
     else
       nil -> {:error, :no_direct_route}
+      true -> {:error, :sealed_spirit}
       {:error, reason} -> {:error, reason}
     end
   end
@@ -436,6 +506,7 @@ defmodule MMGO.Play do
     with {:ok, character} <- reload_spellbook_character(character_or_id) do
       spells = Spells.list_spells_for_character(character.id)
       grimoires = Grimoires.list_grimoires_for_character(character.id)
+      circle_tier = spellbook_circle_tier(character)
 
       {composition_location, composition_lock_reason} =
         case spellbook_location(character) do
@@ -451,6 +522,7 @@ defmodule MMGO.Play do
          active_grimoire: Enum.find(grimoires, &(&1.status == :active)),
          writable_grimoires: Enum.filter(grimoires, &(&1.status == :draft)),
          permitted_schools: permitted_spellbook_schools(character, spells),
+         spell_circle_tier: circle_tier,
          composition_location: composition_location,
          composition_available?: not is_nil(composition_location),
          composition_lock_reason: composition_lock_reason
@@ -461,24 +533,43 @@ defmodule MMGO.Play do
   # The browser submits only a bounded school and a 1–6 word intent. Compiler
   # validation owns the AI boundary and the engine owns all executable effects.
   @spellbook_schools ~w(fire water earth air life death chaos order)
+  @novice_spellbook_slots ~w(actio tempus)
+  @trained_spellbook_slots ~w(actio forma vis tempus mutatio pretium)
+  @spellbook_slot_atom_keys %{
+    "actio" => :actio,
+    "forma" => :forma,
+    "vis" => :vis,
+    "tempus" => :tempus,
+    "mutatio" => :mutatio,
+    "pretium" => :pretium,
+    "base" => :base
+  }
+  @spellbook_word_pattern ~r/^\p{L}+(?:-\p{L}+)*$/u
 
   @doc """
-  Compiles a composed incantation into a real, persisted spell owned by the
-  caster. Composition is only available while stationary at the Tower or an
-  active owned base, and every selection is rechecked against the caster's
-  durable library before the compiler can create an AI request.
+  Compiles a spell from the server-owned circle schema.
+
+  This is the only player-facing compilation boundary. It never accepts a
+  ready-made formula: the server selects the slots available to this
+  character's training tier, validates each seal as one bounded word, and
+  assembles the incantation itself. A novice has exactly School, Actio, and
+  Tempus; an Academy-trained wizard receives the expanded circle and must
+  choose an owned foundation spell.
   """
-  def compile_spell(character_or_id, attrs) when is_map(attrs) do
+  def compile_structured_spell(character_or_id, slots) when is_map(slots) do
     with {:ok, character, _location} <- spellbook_actor(character_or_id),
          spells <- Spells.list_spells_for_character(character.id),
-         {:ok, school} <- permitted_spellbook_school(character, spells, attrs),
-         attrs <- normalize_spellbook_attrs(attrs, school),
-         {:ok, %{spell: spell}} <- Compiler.compile_and_store(character, attrs) do
+         tier <- spellbook_circle_tier(character),
+         {:ok, school} <- permitted_spellbook_school(character, spells, slots),
+         {:ok, attrs, compiler_opts} <-
+           structured_spellbook_attrs(character, spells, school, tier, slots),
+         {:ok, %{spell: spell}} <- Compiler.compile_and_store(character, attrs, compiler_opts) do
       {:ok, spell}
     end
   end
 
-  def compile_spell(_character_or_id, _attrs), do: {:error, :missing_formula}
+  def compile_structured_spell(_character_or_id, _slots),
+    do: {:error, :invalid_spell_circle}
 
   @doc "Activates one of the caster's own grimoires as their loadout."
   def activate_grimoire(character_or_id, grimoire_id) when is_binary(grimoire_id) do
@@ -1628,10 +1719,16 @@ defmodule MMGO.Play do
           |> Enum.map(&Atom.to_string/1)
 
         _other ->
-          spells
-          |> Enum.map(& &1.school)
-          |> Enum.filter(&is_atom/1)
-          |> Enum.map(&Atom.to_string/1)
+          case spells do
+            [] ->
+              @spellbook_schools
+
+            known_spells ->
+              known_spells
+              |> Enum.map(& &1.school)
+              |> Enum.filter(&is_atom/1)
+              |> Enum.map(&Atom.to_string/1)
+          end
       end
 
     (specialization_schools ++ Academy.valedictorian_bonus_schools(character))
@@ -1660,12 +1757,80 @@ defmodule MMGO.Play do
 
   defp normalize_spellbook_school(_school), do: {:error, :invalid_school}
 
-  defp normalize_spellbook_attrs(attrs, school) do
-    attrs = Enum.into(attrs, %{}, fn {key, value} -> {to_string(key), value} end)
+  defp spellbook_circle_tier(%Character{} = character) do
+    cond do
+      CharacterProfiles.legendary_progression?(character) ->
+        :trained
 
-    attrs
-    |> Map.put("school", school)
-    |> Map.put("base_spell_id", attrs["base_spell_id"] || attrs["base_id"])
+      match?(%{track: :wizardry}, Academy.active_specialization(character.id)) ->
+        :trained
+
+      true ->
+        :novice
+    end
+  end
+
+  defp structured_spellbook_attrs(_character, spells, school, :novice, slots) do
+    with {:ok, words} <-
+           normalize_spellbook_words(slots, @novice_spellbook_slots, @novice_spellbook_slots) do
+      base_spell = Enum.find(spells, &(to_string(&1.school) == school))
+
+      attrs = %{
+        "school" => school,
+        "formula" => Enum.join(words, " "),
+        "base_spell_id" => base_spell && base_spell.id
+      }
+
+      {:ok, attrs, [allow_root_spell: true, circle_tier: :novice]}
+    end
+  end
+
+  defp structured_spellbook_attrs(_character, _spells, school, :trained, slots) do
+    with {:ok, words} <- normalize_spellbook_words(slots, @trained_spellbook_slots, ["actio"]),
+         base_spell_id when is_binary(base_spell_id) <- normalized_slot(slots, "base"),
+         true <- String.trim(base_spell_id) != "" do
+      {:ok,
+       %{
+         "school" => school,
+         "formula" => Enum.join(words, " "),
+         "base_spell_id" => base_spell_id
+       }, [circle_tier: :trained]}
+    else
+      _other -> {:error, :missing_spell_foundation}
+    end
+  end
+
+  defp normalize_spellbook_words(slots, slot_names, required_slots) do
+    Enum.reduce_while(slot_names, {:ok, []}, fn slot_name, {:ok, words} ->
+      value = normalized_slot(slots, slot_name)
+
+      cond do
+        value in [nil, ""] and slot_name in required_slots ->
+          {:halt, {:error, :incomplete_spell_circle}}
+
+        value in [nil, ""] ->
+          {:cont, {:ok, words}}
+
+        valid_spellbook_word?(value) ->
+          {:cont, {:ok, words ++ [value]}}
+
+        true ->
+          {:halt, {:error, :invalid_spell_circle_word}}
+      end
+    end)
+  end
+
+  defp normalized_slot(slots, key) do
+    value = Map.get(slots, key) || Map.get(slots, Map.fetch!(@spellbook_slot_atom_keys, key))
+
+    case value do
+      value when is_binary(value) -> String.trim(value)
+      _other -> nil
+    end
+  end
+
+  defp valid_spellbook_word?(word) do
+    byte_size(word) <= 32 and Regex.match?(@spellbook_word_pattern, word)
   end
 
   defp owned_grimoire(%Character{} = character, grimoire_id) do
@@ -1999,6 +2164,61 @@ defmodule MMGO.Play do
 
   def start_overworld_encounter(_character_or_id, _target_character_id),
     do: {:error, :target_not_found}
+
+  @doc """
+  Sends a mutual-consent contact request to a nearby stationary traveler.
+
+  The target ID remains only a selection hint: realm, location, travel, combat,
+  and duplicate-request rules are reconstructed on the server.
+  """
+  def request_traveler_contact(character_or_id, target_character_id)
+      when is_binary(target_character_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         state = state_for_character(character),
+         :ok <- ensure_overworld_available(state),
+         %Character{} = target <-
+           find_nearby_character(state.character, state.current_location, target_character_id),
+         {:ok, %OverworldEncounter{} = encounter} <-
+           Overworld.request_contact(state.character, target) do
+      {:ok, %{encounter: overworld_encounter_summary(encounter, state.character)}}
+    else
+      nil -> {:error, :target_not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def request_traveler_contact(_character_or_id, _target_character_id),
+    do: {:error, :target_not_found}
+
+  @doc """
+  Accepts, declines, or cancels a scoped traveler-contact request.
+
+  A request remains answerable after either player leaves the original
+  location; only participant identity, realm, pending state, and the domain's
+  role matrix authorize the decision.
+  """
+  def respond_to_traveler_contact(character_or_id, encounter_id, decision)
+      when is_binary(encounter_id) do
+    with {:ok, character} <- normalize_character(character_or_id),
+         {:ok, encounter_id} <- Ecto.UUID.cast(encounter_id),
+         {:ok, normalized_decision} <- normalize_traveler_contact_decision(decision),
+         %OverworldEncounter{} = encounter <- current_contact_request(character, encounter_id),
+         {:ok, result} <-
+           Overworld.respond_to_contact(encounter, character, normalized_decision) do
+      {:ok,
+       %{
+         encounter: overworld_encounter_summary(result.encounter, character),
+         decision: result.decision
+       }}
+    else
+      :error -> {:error, :contact_request_not_found}
+      nil -> {:error, :contact_request_not_found}
+      {:error, _reason} = error -> error
+    end
+  end
+
+  def respond_to_traveler_contact(_character_or_id, _encounter_id, _decision),
+    do: {:error, :contact_request_not_found}
 
   @doc """
   Records one scoped actor's legal response to an open local encounter.
@@ -4702,7 +4922,7 @@ defmodule MMGO.Play do
       true ->
         [
           if(Academy.active_specialization(character.id),
-            do: %{code: "academy_core", label: "Пройти Academy Core заново (переподготовка)"}
+            do: %{code: "academy_core", label: "Пройти Ядро Академии заново (переподготовка)"}
           ),
           if(not Academy.program_completed?(character.id, :extended_study),
             do: %{code: "extended_study", label: "Продолжить углублённое обучение"}
@@ -5046,10 +5266,27 @@ defmodule MMGO.Play do
     )
   end
 
+  defp current_contact_request(%Character{} = character, encounter_id) do
+    encounter =
+      Repo.one(
+        from encounter in OverworldEncounter,
+          where:
+            encounter.id == ^encounter_id and encounter.realm_id == ^character.realm_id and
+              (encounter.initiator_character_id == ^character.id or
+                 encounter.target_character_id == ^character.id) and
+              encounter.status == :pending
+      )
+
+    if encounter && Overworld.contact_request?(encounter), do: encounter
+  end
+
   defp open_location_encounters(%Character{} = character, %Location{} = location) do
     character.id
     |> Overworld.list_open_encounters_for_character()
-    |> Enum.filter(&(&1.realm_id == character.realm_id and &1.location_id == location.id))
+    |> Enum.filter(fn encounter ->
+      encounter.realm_id == character.realm_id and
+        (Overworld.contact_request?(encounter) or encounter.location_id == location.id)
+    end)
     |> Enum.map(&overworld_encounter_summary(&1, character))
   end
 
@@ -5069,16 +5306,34 @@ defmodule MMGO.Play do
         encounter.initiator_character
       end
 
+    initiated_by_me? = encounter.initiator_character_id == character.id
+    contact_request? = Overworld.contact_request?(encounter)
+    pending_contact? = contact_request? and encounter.status == :pending
     responded? = Enum.any?(encounter.responses, &(&1.actor_character_id == character.id))
 
     %{
       id: encounter.id,
       status: encounter.status,
       counterpart: %{id: counterpart.id, name: counterpart.name, level: counterpart.level},
-      initiated_by_me?: encounter.initiator_character_id == character.id,
-      can_respond?: encounter.status in [:pending, :active] and not responded?
+      initiated_by_me?: initiated_by_me?,
+      direction: if(initiated_by_me?, do: :outgoing, else: :incoming),
+      contact_request?: contact_request?,
+      can_accept?: pending_contact? and not initiated_by_me?,
+      can_decline?: pending_contact? and not initiated_by_me?,
+      can_cancel?: pending_contact? and initiated_by_me?,
+      can_respond?:
+        not contact_request? and encounter.status in [:pending, :active] and not responded?
     }
   end
+
+  defp normalize_traveler_contact_decision(decision)
+       when decision in @traveler_contact_decisions,
+       do: {:ok, decision}
+
+  defp normalize_traveler_contact_decision("accept"), do: {:ok, :accept}
+  defp normalize_traveler_contact_decision("decline"), do: {:ok, :decline}
+  defp normalize_traveler_contact_decision("cancel"), do: {:ok, :cancel}
+  defp normalize_traveler_contact_decision(_decision), do: {:error, :invalid_contact_decision}
 
   defp overworld_attack_available?(realm, %Location{} = location) do
     not location.safe_zone and Worlds.realm_ruleset(realm)["overworld_pvp_enabled"]
@@ -5743,7 +5998,7 @@ defmodule MMGO.Play do
     |> Enum.map(fn {side_id, values} ->
       %{
         id: side_id,
-        label: Map.get(values, "label") || Map.get(values, :label) || String.capitalize(side_id),
+        label: Map.get(values, "label") || Map.get(values, :label) || combat_side_label(side_id),
         shared_hp: Map.get(values, "shared_hp") || Map.get(values, :shared_hp) || 0,
         max_shared_hp: Map.get(values, "max_shared_hp") || Map.get(values, :max_shared_hp) || 0,
         participants:
@@ -5754,6 +6009,12 @@ defmodule MMGO.Play do
     end)
     |> Enum.sort_by(& &1.id)
   end
+
+  defp combat_side_label("attackers"), do: "Нападающие"
+  defp combat_side_label("defenders"), do: "Защитники"
+  defp combat_side_label("party"), do: "Отряд"
+  defp combat_side_label("encounter"), do: "Противник"
+  defp combat_side_label(_side_id), do: "Сторона"
 
   defp combat_events(combat_id) do
     Repo.all(

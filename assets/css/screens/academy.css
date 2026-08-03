@@ -570,7 +570,7 @@
   box-shadow: 0 4px 10px -3px rgba(0,0,0,0.6);
   -webkit-overflow-scrolling: touch;
 }
-.bb-table { width: 100%; min-width: 34rem; table-layout: fixed; border-collapse: collapse; background: var(--parch-paper);
+.bb-table { width: 100%; min-width: 0; table-layout: fixed; border-collapse: collapse; background: var(--parch-paper);
   color: var(--parch-ink); border-radius: 3px; overflow: hidden;
 }
 .bb-table th { font-family: var(--font-sans); font-size: 0.6rem; letter-spacing: 0.08em;
@@ -818,6 +818,65 @@
 .terms-table__row--failed td:nth-child(2) { color: var(--parch-red); font-weight: 700; }
 .terms-table__row--pending td:nth-child(2) { color: var(--parch-ink-faint); font-style: italic; }
 .terms-table__empty td { padding: 1rem 0.45rem; color: var(--parch-ink-faint); text-align: center; }
+
+@media (max-width: 36rem) {
+  .terms-table-wrap {
+    overflow-x: visible;
+  }
+
+  .terms-table,
+  .terms-table tbody,
+  .terms-table tr,
+  .terms-table td {
+    display: block;
+    width: 100%;
+  }
+
+  .terms-table thead {
+    display: none;
+  }
+
+  .terms-table tr {
+    margin-top: 0.7rem;
+    padding: 0.35rem 0.55rem;
+    border: 1px solid color-mix(in srgb, var(--parch-vignette) 72%, transparent);
+    background: color-mix(in srgb, var(--parch-paper-light) 48%, transparent);
+    box-shadow: 0.12rem 0.16rem 0 color-mix(in srgb, var(--parch-paper-dark) 48%, transparent);
+  }
+
+  .terms-table td {
+    display: grid;
+    grid-template-columns: minmax(5.2rem, 0.85fr) minmax(0, 1.15fr);
+    gap: 0.65rem;
+    padding: 0.38rem 0;
+    border-bottom: 1px solid color-mix(in srgb, var(--parch-vignette) 38%, transparent);
+    text-align: right;
+  }
+
+  .terms-table td::before {
+    content: attr(data-label);
+    color: var(--parch-ink-faint);
+    font-family: var(--font-sans);
+    font-size: 0.6rem;
+    font-weight: 700;
+    letter-spacing: 0.07em;
+    text-align: left;
+    text-transform: uppercase;
+  }
+
+  .terms-table td:last-child {
+    border-bottom: 0;
+  }
+
+  .terms-table__empty td {
+    display: block;
+    text-align: left;
+  }
+
+  .terms-table__empty td::before {
+    content: none;
+  }
+}
 
 .desk-terms__actions {
   display: grid;

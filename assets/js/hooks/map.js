@@ -251,7 +251,7 @@ export const MapHook = {
 
     const safeTag = loc.safe_zone
       ? `<span style="color:#22c55e;font-size:0.75rem">● Безопасная зона</span>`
-      : `<span style="color:#ef4444;font-size:0.75rem">● PvP зона</span>`
+      : `<span style="color:#ef4444;font-size:0.75rem">● Зона боёв</span>`
 
     const othersHtml = others.length
       ? `<div style="margin-top:0.75rem;font-size:0.85rem;color:#a8a29e">

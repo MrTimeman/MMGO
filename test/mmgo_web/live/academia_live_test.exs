@@ -294,7 +294,12 @@ defmodule MMGOWeb.AcademiaLiveTest do
 
     economic_basics =
       Academy.list_courses_for_realm(realm.id)
-      |> Enum.find(&(&1.title == "Economic Basics"))
+      |> Enum.find(&(&1.title == "Основы экономики"))
+
+    economic_basics =
+      economic_basics
+      |> Ecto.Changeset.change(title: "Economic Basics")
+      |> Repo.update!()
 
     {:ok, head_view, _html} = live(session_conn(conn, researcher), ~p"/academy/research")
     head_view |> element("#academia-open-head-election") |> render_click()
@@ -308,6 +313,9 @@ defmodule MMGOWeb.AcademiaLiveTest do
 
     assert has_element?(head_view, "#academia-head-curriculum")
     assert has_element?(head_view, "#academia-head-curriculum-form")
+    assert has_element?(head_view, "#academia-head-curriculum-courses", "Основы экономики")
+    refute has_element?(head_view, "#academia-head-curriculum-courses", "Economic Basics")
+    assert has_element?(head_view, "#academia-head-curriculum-form option", "Основы экономики")
 
     head_view
     |> form("#academia-head-curriculum-form", %{

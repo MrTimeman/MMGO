@@ -4,6 +4,7 @@ defmodule MMGO.Overworld do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Combat
+  alias MMGO.Notifications
   alias MMGO.Overworld.{Encounter, Response}
   alias MMGO.Repo
   alias MMGO.Travel
@@ -12,6 +13,23 @@ defmodule MMGO.Overworld do
   alias MMGO.Worlds.Realm
 
   @actions [:greet, :trade, :attack, :avoid]
+  @contact_decisions [:accept, :decline, :cancel]
+  @contact_kind "traveler_contact"
+  @sensitive_contact_metadata_keys ~w(
+    username
+    contact_username
+    contact_handle
+    telegram_username
+    telegram_user_id
+  )
+
+  @doc "PubSub topic for committed traveler-contact changes visible to one character."
+  def character_topic(character_id) when is_binary(character_id),
+    do: "overworld-character:#{character_id}"
+
+  @doc "Returns whether an encounter is the explicit mutual-consent contact flow."
+  def contact_request?(%Encounter{} = encounter),
+    do: Map.get(encounter.metadata || %{}, "kind") == @contact_kind
 
   def list_open_encounters_for_character(character_id) when is_binary(character_id) do
     Repo.all(
@@ -86,8 +104,7 @@ defmodule MMGO.Overworld do
     attrs = stringify_keys(attrs)
 
     Repo.transaction(fn ->
-      initiator = lock_character!(initiator.id)
-      target = lock_character!(target.id)
+      {initiator, target} = lock_characters!(initiator.id, target.id)
       validate_encounter_start!(initiator, target)
 
       location = Repo.get!(Location, initiator.current_location_id)
@@ -107,6 +124,85 @@ defmodule MMGO.Overworld do
       |> Repo.preload([:location, :initiator_character, :target_character])
     end)
     |> normalize_transaction_result()
+  end
+
+  @doc """
+  Creates a durable request to exchange Telegram contact details.
+
+  Creating the request is the initiator's consent. The contact details are not
+  persisted on the encounter and are only delivered after the target accepts.
+  """
+  def request_contact(%Character{} = initiator, %Character{} = target, attrs \\ %{}) do
+    attrs = stringify_keys(attrs)
+
+    metadata =
+      attrs
+      |> Map.get("metadata", %{})
+      |> sanitize_contact_metadata()
+      |> Map.put("kind", @contact_kind)
+
+    result = create_encounter(initiator, target, Map.put(attrs, "metadata", metadata))
+
+    case result do
+      {:ok, %Encounter{} = encounter} ->
+        _ =
+          Notifications.notify_overworld_contact_request(
+            encounter.target_character,
+            encounter,
+            encounter.initiator_character
+          )
+
+        broadcast_contact_update(encounter)
+        result
+
+      {:error, _reason} ->
+        result
+    end
+  end
+
+  @doc """
+  Resolves a pending traveler-contact request using a strict consent matrix.
+
+  Only the target can accept or decline. Only the initiator can cancel. A
+  contact decision is final and cannot be replaced by a legacy encounter
+  action.
+  """
+  def respond_to_contact(%Encounter{} = encounter, %Character{} = actor, decision) do
+    decision = normalize_contact_decision(decision)
+
+    result =
+      Repo.transaction(fn ->
+        encounter = lock_encounter!(encounter.id)
+        actor = lock_character!(actor.id)
+
+        validate_contact_response!(encounter, actor, decision)
+
+        response =
+          %Response{}
+          |> Response.changeset(%{
+            encounter_id: encounter.id,
+            actor_character_id: actor.id,
+            action: contact_response_action(decision),
+            chosen_at: DateTime.utc_now(),
+            metadata: %{"contact_decision" => to_string(decision)}
+          })
+          |> Repo.insert!()
+
+        updated_encounter = finalize_contact_request!(encounter, actor, decision)
+
+        result = %{
+          encounter: updated_encounter,
+          response: response,
+          decision: decision
+        }
+
+        notify_contact_result!(result)
+        result
+      end)
+      |> normalize_transaction_result()
+
+    broadcast_contact_result(result)
+    result
   end
 
   def respond(%Encounter{} = encounter, %Character{} = actor, action, attrs \\ %{}) do
@@ -181,6 +277,11 @@ defmodule MMGO.Overworld do
 
   defp validate_response!(%Encounter{} = encounter, %Character{} = actor, action) do
     cond do
+      contact_request?(encounter) ->
+        Repo.rollback(
+          encounter_changeset("contact requests require an explicit consent decision")
+        )
+
       encounter.status not in [:pending, :active] ->
         Repo.rollback(encounter_changeset("encounter is not active"))
 
@@ -192,6 +293,34 @@ defmodule MMGO.Overworld do
 
       response_exists?(encounter.id, actor.id) ->
         Repo.rollback(encounter_changeset("character has already responded to this encounter"))
+
+      true ->
+        :ok
+    end
+  end
+
+  defp validate_contact_response!(%Encounter{} = encounter, %Character{} = actor, decision) do
+    cond do
+      not contact_request?(encounter) ->
+        Repo.rollback(encounter_changeset("encounter is not a traveler contact request"))
+
+      encounter.status != :pending ->
+        Repo.rollback(encounter_changeset("contact request is not pending"))
+
+      actor.id not in [encounter.initiator_character_id, encounter.target_character_id] ->
+        Repo.rollback(encounter_changeset("character does not belong to this contact request"))
+
+      decision not in @contact_decisions ->
+        Repo.rollback(encounter_changeset("contact decision is invalid"))
+
+      decision in [:accept, :decline] and actor.id != encounter.target_character_id ->
+        Repo.rollback(encounter_changeset("only the requested traveler may answer"))
+
+      decision == :cancel and actor.id != encounter.initiator_character_id ->
+        Repo.rollback(encounter_changeset("only the requesting traveler may cancel"))
+
+      response_exists?(encounter.id, actor.id) ->
+        Repo.rollback(encounter_changeset("character has already answered this contact request"))
 
       true ->
         :ok
@@ -291,6 +420,27 @@ defmodule MMGO.Overworld do
     }
   end
 
+  defp finalize_contact_request!(%Encounter{} = encounter, %Character{} = actor, decision) do
+    status = if decision == :accept, do: :greeted, else: :avoided
+
+    metadata =
+      encounter.metadata
+      |> Kernel.||(%{})
+      |> Map.merge(%{
+        "contact_decision" => to_string(decision),
+        "contact_responder_character_id" => actor.id
+      })
+
+    encounter
+    |> Encounter.changeset(%{
+      status: status,
+      resolved_at: DateTime.utc_now(),
+      metadata: metadata
+    })
+    |> Repo.update!()
+    |> Repo.preload([:location, :initiator_character, :target_character, :combat])
+  end
+
   defp active_encounter_exists?(character_a_id, character_b_id) do
     Repo.exists?(
       from encounter in Encounter,
@@ -322,6 +472,105 @@ defmodule MMGO.Overworld do
   defp normalize_action("attack"), do: :attack
   defp normalize_action("avoid"), do: :avoid
   defp normalize_action(_action), do: nil
+
+  defp normalize_contact_decision(decision) when decision in @contact_decisions, do: decision
+  defp normalize_contact_decision("accept"), do: :accept
+  defp normalize_contact_decision("decline"), do: :decline
+  defp normalize_contact_decision("cancel"), do: :cancel
+  defp normalize_contact_decision(_decision), do: nil
+
+  defp contact_response_action(:accept), do: :accept_contact
+  defp contact_response_action(:decline), do: :decline_contact
+  defp contact_response_action(:cancel), do: :cancel_contact
+
+  defp notify_contact_result!(%{encounter: %Encounter{} = encounter, decision: :accept}) do
+    notify_or_rollback!(fn ->
+      Notifications.notify_overworld_contact_accepted(
+        encounter.initiator_character,
+        encounter,
+        encounter.target_character
+      )
+    end)
+
+    notify_or_rollback!(fn ->
+      Notifications.notify_overworld_contact_accepted(
+        encounter.target_character,
+        encounter,
+        encounter.initiator_character
+      )
+    end)
+  end
+
+  defp notify_contact_result!(%{encounter: %Encounter{} = encounter, decision: :decline}) do
+    notify_or_rollback!(fn ->
+      Notifications.notify_overworld_contact_rejected(
+        encounter.initiator_character,
+        encounter,
+        encounter.target_character
+      )
+    end)
+  end
+
+  defp notify_contact_result!(%{encounter: %Encounter{} = encounter, decision: :cancel}) do
+    notify_or_rollback!(fn ->
+      Notifications.notify_overworld_contact_rejected(
+        encounter.target_character,
+        encounter,
+        encounter.initiator_character
+      )
+    end)
+  end
+
+  defp notify_or_rollback!(fun) do
+    case fun.() do
+      {:ok, _notification} -> :ok
+      {:error, reason} -> Repo.rollback(reason)
+    end
+  end
+
+  defp broadcast_contact_result({:ok, %{encounter: %Encounter{} = encounter}}),
+    do: broadcast_contact_update(encounter)
+
+  defp broadcast_contact_result(_result), do: :ok
+
+  defp broadcast_contact_update(%Encounter{} = encounter) do
+    Enum.each(
+      [encounter.initiator_character_id, encounter.target_character_id],
+      fn character_id ->
+        Phoenix.PubSub.broadcast(
+          MMGO.PubSub,
+          character_topic(character_id),
+          {:overworld_contact_updated, encounter.id}
+        )
+      end
+    )
+  end
+
+  defp sanitize_contact_metadata(metadata) when is_map(metadata) do
+    metadata
+    |> Enum.reject(fn {key, _value} ->
+      key = to_string(key)
+      key in @sensitive_contact_metadata_keys or String.starts_with?(key, "telegram_")
+    end)
+    |> Map.new(fn {key, value} -> {to_string(key), sanitize_contact_metadata(value)} end)
+  end
+
+  defp sanitize_contact_metadata(values) when is_list(values),
+    do: Enum.map(values, &sanitize_contact_metadata/1)
+
+  defp sanitize_contact_metadata(value), do: value
+
+  defp lock_characters!(character_a_id, character_b_id) do
+    characters =
+      Character
+      |> where([character], character.id in ^Enum.uniq([character_a_id, character_b_id]))
+      |> order_by([character], asc: character.id)
+      |> lock("FOR UPDATE")
+      |> Repo.all()
+      |> Map.new(&{&1.id, &1})
+
+    {Map.fetch!(characters, character_a_id), Map.fetch!(characters, character_b_id)}
+  end
 
   defp lock_character!(character_id) do
     Character

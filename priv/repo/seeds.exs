@@ -1,4 +1,5 @@
-alias MMGO.Accounts.{Account, Character}
+alias MMGO.Accounts
+alias MMGO.Accounts.{Account, Character, SpecialProfiles}
 alias MMGO.Academy
 alias MMGO.Academia.Professor
 alias MMGO.Dungeons
@@ -719,3 +720,19 @@ ensure_link.(mirror_bridge, node_for.("floor-6-descent"), %{
 ensure_link.(node_for.("tower-heart"), heart_sanctum, %{
   metadata: %{"route_role" => "side_resource", "route_shape" => "dead_end"}
 })
+
+# Deploys also repair the closed-alpha sealed-spirit profile when its Telegram
+# identity already exists. First login performs the same idempotent repair.
+case SpecialProfiles.configured_telegram_user_id() do
+  telegram_user_id when is_integer(telegram_user_id) ->
+    case Accounts.get_account_by_telegram_user_id(telegram_user_id) do
+      %Account{} = account ->
+        {:ok, _profiles} = SpecialProfiles.reconcile(account, canonical_realm)
+
+      nil ->
+        :ok
+    end
+
+  _other ->
+    :ok
+end

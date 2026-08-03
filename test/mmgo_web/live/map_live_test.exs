@@ -3,6 +3,7 @@ defmodule MMGOWeb.MapLiveTest do
 
   import Phoenix.LiveViewTest
 
+  alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -106,9 +107,81 @@ defmodule MMGOWeb.MapLiveTest do
     assert has_element?(view, "#map-account-menu-toggle[aria-expanded='true']")
     assert has_element?(view, "#map-account-menu")
     assert has_element?(view, "#map-account-inventory[href='/inventory']")
+    assert has_element?(view, "#map-account-characters[href='/characters']")
 
     view |> render_click("close_account_menu")
     refute has_element?(view, "#map-account-menu")
+  end
+
+  test "an already-open socket cannot act after its profile is frozen", %{
+    conn: conn,
+    character: character
+  } do
+    sibling =
+      %Character{account_id: character.account_id, realm_id: character.realm_id}
+      |> Character.changeset(%{name: "Frozen Sibling", status: :frozen})
+      |> Repo.insert!()
+
+    {:ok, view, _html} = live(scoped_conn(conn, character), ~p"/map")
+    assert {:ok, _sibling} = Accounts.switch_character(character.account_id, sibling.id)
+
+    view |> element("#map-account-menu-toggle") |> render_click()
+    assert_redirect(view, ~p"/characters")
+  end
+
+  test "an active profile without an assigned location does not crash the map", %{
+    conn: conn,
+    character: character
+  } do
+    unplaced_character =
+      character
+      |> Character.travel_changeset(%{current_location_id: nil})
+      |> Repo.update!()
+
+    {:ok, view, _html} = live(scoped_conn(conn, unplaced_character), ~p"/map")
+
+    assert has_element?(view, "#world-map[phx-hook='HexMap']")
+    assert has_element?(view, "#map-current-location", "неизвестное место")
+    assert has_element?(view, "#map-account-menu-toggle")
+  end
+
+  test "a sealed spirit can project to every location with a distinct map action", %{
+    conn: conn,
+    character: character
+  } do
+    realm = Worlds.get_realm!(character.realm_id)
+
+    {:ok, hidden_annex} =
+      Worlds.create_location(realm, %{
+        slug: "hidden-annex",
+        name: "Hidden Annex",
+        kind: :wilderness,
+        x: 400,
+        y: 400,
+        safe_zone: false
+      })
+
+    sealed_character =
+      character
+      |> Character.changeset(%{
+        metadata: %{
+          "profile_kind" => "sealed_spirit",
+          "hidden_presence" => true,
+          "sealed_anchor_location_id" => character.current_location_id
+        }
+      })
+      |> Repo.update!()
+
+    {:ok, view, _html} = live(scoped_conn(conn, sealed_character), ~p"/map")
+
+    assert_push_event(view, "map_state", %{locations: locations})
+    annex_payload = Enum.find(locations, &(&1.slug == "hidden-annex"))
+    assert annex_payload.can_travel
+    assert annex_payload.travel_mode == "spirit"
+    assert annex_payload.travel_label == "Духовный переход"
+
+    view |> render_hook("location_clicked", %{"slug" => hidden_annex.slug})
+    assert Accounts.get_character!(character.id).current_location_id == hidden_annex.id
   end
 
   test "calendar and active journey slips never occupy the mobile bottom edge together", %{

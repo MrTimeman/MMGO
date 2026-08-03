@@ -1212,8 +1212,10 @@ defmodule MMGOWeb.DungeonLive do
   defp node_kind_label(:exit), do: "выход"
   defp node_kind_label(_kind), do: "узел"
 
-  defp encounter_label(encounter),
-    do: String.capitalize(String.replace(encounter.encounter_kind, "_", " "))
+  defp encounter_label(%{encounter_kind: "boss"}), do: "Хранитель глубин"
+  defp encounter_label(%{encounter_kind: "hazard"}), do: "Опасная аномалия"
+  defp encounter_label(%{encounter_kind: "skirmish"}), do: "Стычка"
+  defp encounter_label(_encounter), do: "Неизвестная угроза"
 
   defp encounter_status(:pending), do: "ожидает решения"
   defp encounter_status(:active), do: "бой идёт"

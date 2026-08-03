@@ -102,7 +102,7 @@ export const DuelChallengeHook = {
     cCol.appendChild(h('span', { class: 'duel__vs-name' }, challenger?.name ?? '—'))
     vsRow.appendChild(cCol)
 
-    vsRow.appendChild(h('div', { class: 'duel__vs-sep' }, 'vs'))
+    vsRow.appendChild(h('div', { class: 'duel__vs-sep' }, 'против'))
 
     const oCol = h('div', { class: 'duel__vs-side' })
     oCol.appendChild(charChip(opponent?.name ?? '?', opponent?.avatar_url ?? null, 'lg'))

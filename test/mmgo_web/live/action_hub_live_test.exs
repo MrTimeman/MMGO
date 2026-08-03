@@ -130,31 +130,74 @@ defmodule MMGOWeb.ActionHubLiveTest do
     assert_redirect(view, "/academy/bulletin-board")
   end
 
-  test "starts a persisted nearby-player encounter and hides attack in a safe zone", %{
+  test "requests traveler contact and exposes only role-specific consent controls", %{
     conn: conn,
     character: character,
     nearby: nearby
   } do
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/event")
+    {:ok, requester_view, _html} = live(session_conn(conn, character), ~p"/event")
+    {:ok, recipient_view, _html} = live(session_conn(conn, nearby), ~p"/event")
 
-    assert has_element?(view, "#activity-nearby-#{nearby.id}")
+    assert has_element?(requester_view, "#activity-nearby-#{nearby.id}")
 
-    view
-    |> element("#activity-start-encounter-#{nearby.id}")
+    requester_view
+    |> element("#activity-request-contact-#{nearby.id}")
     |> render_click()
 
     [encounter] = MMGO.Overworld.list_open_encounters_for_character(character.id)
 
-    assert has_element?(view, "#activity-encounter-#{encounter.id}")
-    assert has_element?(view, "#activity-encounter-#{encounter.id}-greet")
-    refute has_element?(view, "#activity-encounter-#{encounter.id}-attack")
+    assert has_element?(requester_view, "#activity-encounter-#{encounter.id}")
 
-    view
-    |> element("#activity-encounter-#{encounter.id}-greet")
+    assert has_element?(
+             requester_view,
+             "#activity-encounter-#{encounter.id}-cancel-contact"
+           )
+
+    refute has_element?(
+             requester_view,
+             "#activity-encounter-#{encounter.id}-accept-contact"
+           )
+
+    refute has_element?(requester_view, "#activity-encounter-#{encounter.id}-greet")
+    refute has_element?(requester_view, "#activity-encounter-#{encounter.id}-trade")
+    refute has_element?(requester_view, "#activity-encounter-#{encounter.id}-attack")
+
+    assert has_element?(
+             requester_view,
+             "#activity-contact-state-#{nearby.id}",
+             "Запрос отправлен"
+           )
+
+    # The recipient's already-open page refreshes from the committed PubSub broadcast.
+    assert has_element?(recipient_view, "#activity-encounter-#{encounter.id}")
+
+    assert has_element?(
+             recipient_view,
+             "#activity-encounter-#{encounter.id}-accept-contact"
+           )
+
+    assert has_element?(
+             recipient_view,
+             "#activity-encounter-#{encounter.id}-decline-contact"
+           )
+
+    refute has_element?(
+             recipient_view,
+             "#activity-encounter-#{encounter.id}-cancel-contact"
+           )
+
+    refute has_element?(recipient_view, "#activity-encounter-#{encounter.id}-greet")
+    refute has_element?(recipient_view, "#activity-encounter-#{encounter.id}-trade")
+    refute has_element?(recipient_view, "#activity-encounter-#{encounter.id}-attack")
+
+    recipient_view
+    |> element("#activity-encounter-#{encounter.id}-accept-contact")
     |> render_click()
 
-    assert has_element?(view, "#activity-encounter-#{encounter.id}")
-    refute has_element?(view, "#activity-encounter-#{encounter.id}-greet")
+    refute has_element?(recipient_view, "#activity-encounter-#{encounter.id}")
+    assert has_element?(recipient_view, "#activity-result", "Контакт придёт")
+
+    refute has_element?(requester_view, "#activity-encounter-#{encounter.id}")
   end
 
   test "starts a persisted scoped scavenging attempt from an available cache", %{

@@ -170,12 +170,20 @@
   border-left: 3px solid var(--color-danger);
 }
 .bse-ward--safe { border-left-color: var(--color-safe); }
+.bse-ward--fortress {
+  border-color: rgba(177, 138, 73, 0.48);
+  border-left-color: #c59a4f;
+  background:
+    linear-gradient(105deg, rgba(107, 73, 29, 0.2), rgba(35, 24, 42, 0.5)),
+    var(--color-surface);
+}
 .bse-ward__sigil {
   font-size: 1.3rem;
   line-height: 1.2;
   color: var(--color-danger);
 }
 .bse-ward--safe .bse-ward__sigil { color: var(--color-safe); }
+.bse-ward--fortress .bse-ward__sigil { color: #d7b66f; }
 .bse-ward__title {
   margin: 0 0 0.25rem;
   font-size: 0.95rem;

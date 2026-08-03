@@ -63,9 +63,23 @@ defmodule MMGO.ActorsTest do
   } do
     assert {:ok, [spawn]} = Actors.ensure_default_spawns(encounter, realm)
     assert spawn.quantity >= 1
-    assert spawn.actor_template.name =~ "Dungeon"
+    assert spawn.actor_template.name == "Обитатель подземелья · угроза 12"
     assert spawn.actor_template.role == :hostile
     assert spawn.actor_template.combat_level >= 1
+
+    assert {:ok, boss} = Actors.ensure_generic_template(realm, "boss", 60)
+    assert boss.name == "Хранитель подземелья"
+
+    boss
+    |> MMGO.Actors.ActorTemplate.changeset(%{name: "Dungeon Boss"})
+    |> Repo.update!()
+
+    assert {:ok, repaired_boss} = Actors.ensure_generic_template(realm, "boss", 60)
+    assert repaired_boss.id == boss.id
+    assert repaired_boss.name == "Хранитель подземелья"
+
+    assert {:ok, hazard} = Actors.ensure_generic_template(realm, "hazard", 30)
+    assert hazard.name == "Аномалия подземелья"
   end
 
   test "starting encounter combat adds actor-backed participants", %{

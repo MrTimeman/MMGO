@@ -47,24 +47,11 @@ defmodule MMGOWeb.SpellbookLive do
          |> assign(:view, :cast)
          |> assign(:grimoire_order, nil)
          |> assign(:inscription_form, inscription_form())
-         |> assign_spellbook_state(state)
-         |> reset_compose_form()}
+         |> assign_spellbook_state(state)}
 
       {:error, reason} ->
         {:ok, redirect_for_spellbook_error(socket, reason)}
     end
-  end
-
-  @impl true
-  def handle_event("compose", %{"composition" => attrs}, socket) when is_map(attrs) do
-    {:noreply, compile_spell(socket, attrs, false)}
-  end
-
-  def handle_event("compose", _params, socket) do
-    {:noreply,
-     socket
-     |> assign(:compose_error, spellbook_error_message(:invalid_composition))
-     |> assign(:last_spell, nil)}
   end
 
   @impl true
@@ -85,7 +72,12 @@ defmodule MMGOWeb.SpellbookLive do
   def handle_event("hook_mounted", %{"hook" => "SpellCircle"}, socket) do
     {:noreply,
      push_event(socket, "spell_circle_init", %{
-       slots: spell_circle_slots(socket.assigns.permitted_schools, socket.assigns.spells),
+       slots:
+         spell_circle_slots(
+           socket.assigns.permitted_schools,
+           socket.assigns.spells,
+           socket.assigns.spell_circle_tier
+         ),
        current: %{}
      })}
   end
@@ -96,13 +88,7 @@ defmodule MMGOWeb.SpellbookLive do
 
   @impl true
   def handle_event("spell_compile", params, socket) when is_map(params) do
-    attrs = %{
-      "base_spell_id" => params["base"],
-      "school" => params["school"],
-      "formula" => spell_circle_formula(params)
-    }
-
-    {:noreply, compile_spell(socket, attrs, true)}
+    {:noreply, compile_spell(socket, params, true)}
   end
 
   def handle_event("spell_compile", _params, socket) do
@@ -251,11 +237,10 @@ defmodule MMGOWeb.SpellbookLive do
   end
 
   defp compile_spell(socket, attrs, notify_circle?) do
-    case Play.compile_spell(socket.assigns.current_scope.character, attrs) do
+    case Play.compile_structured_spell(socket.assigns.current_scope.character, attrs) do
       {:ok, result} ->
         socket
         |> reload_spellbook()
-        |> reset_compose_form()
         |> assign(:last_spell, compiled_spell(result))
         |> assign(:compose_error, nil)
         |> assign(:action_feedback, nil)
@@ -264,7 +249,6 @@ defmodule MMGOWeb.SpellbookLive do
 
       {:error, reason} ->
         socket
-        |> assign(:compose_form, compose_form(attrs))
         |> assign(:compose_error, spellbook_error_message(reason))
         |> assign(:last_spell, nil)
         |> maybe_push_spell_result(notify_circle?, false)
@@ -331,63 +315,21 @@ defmodule MMGOWeb.SpellbookLive do
                     <% end %>
                   </p>
 
-                  <%= if @composition_available? and @spells != [] do %>
+                  <%= if spell_circle_available?(
+                    @composition_available?,
+                    @spell_circle_tier,
+                    @spells
+                  ) do %>
+                    <p id="spell-circle-instruction" class="spell-ritual__hint">
+                      {spell_circle_instruction(@spell_circle_tier)}
+                    </p>
                     <div
                       id="spell-circle-root"
                       phx-hook="SpellCircle"
                       phx-update="ignore"
+                      data-circle-tier={to_string(@spell_circle_tier)}
                       aria-label="Ритуальный круг создания заклинания"
                     />
-
-                    <details class="spell-ritual__fallback">
-                      <summary>Записать формулу пером</summary>
-                      <.form
-                        for={@compose_form}
-                        id="spell-compose-form"
-                        phx-submit="compose"
-                        class="spell-ritual__form"
-                      >
-                        <.input
-                          field={@compose_form[:base_spell_id]}
-                          id="spell-compose-base"
-                          type="select"
-                          label="Основа заклинания"
-                          options={spell_options(@spells)}
-                          prompt="Выберите известную основу"
-                          required
-                        />
-                        <.input
-                          field={@compose_form[:school]}
-                          id="spell-compose-school"
-                          type="select"
-                          label="Школа"
-                          options={school_options(@permitted_schools)}
-                          prompt="Выберите школу"
-                          required
-                        />
-                        <.input
-                          field={@compose_form[:formula]}
-                          id="spell-compose-formula"
-                          type="text"
-                          label="Латинская формула"
-                          placeholder="Ignis Radius"
-                          autocomplete="off"
-                          maxlength="180"
-                          required
-                        />
-                        <p class="spell-ritual__hint">
-                          От 1 до 6 латинских слов. Мир всё равно проверит основу и школу.
-                        </p>
-                        <button
-                          id="spell-compose-submit"
-                          type="submit"
-                          phx-disable-with="Чернила движутся…"
-                          class="spell-ritual__submit"
-                        >
-                          <.icon name="hero-sparkles" class="size-5" /> Сотворить заклинание
-                        </button>
-                      </.form>
-                    </details>
                   <% else %>
                     <div
                       :if={not @composition_available?}
@@ -403,13 +345,16 @@ defmodule MMGOWeb.SpellbookLive do
                     </div>
 
                     <div
-                      :if={@composition_available? and @spells == []}
+                      :if={
+                        @composition_available? and @spell_circle_tier == :trained and
+                          @spells == []
+                      }
                       id="spell-library-empty"
                       class="spellbook-note"
                     >
                       <p class="spellbook-note__kicker">Чистая страница</p>
                       <p>
-                        Сначала изучите начальное заклинание — оно станет основой для первой собственной формулы.
+                        Для полного академического круга нужна известная основа заклинания.
                       </p>
                     </div>
                   <% end %>
@@ -693,6 +638,7 @@ defmodule MMGOWeb.SpellbookLive do
     |> assign(:grimoires, state.grimoires)
     |> assign(:active_grimoire, state.active_grimoire)
     |> assign(:permitted_schools, state.permitted_schools)
+    |> assign(:spell_circle_tier, state.spell_circle_tier)
     |> assign(:composition_location, state.composition_location)
     |> assign(:composition_available?, state.composition_available?)
     |> assign(:composition_lock_reason, state.composition_lock_reason)
@@ -717,8 +663,6 @@ defmodule MMGOWeb.SpellbookLive do
     |> push_navigate(to: ~p"/play")
   end
 
-  defp reset_compose_form(socket), do: assign(socket, :compose_form, compose_form())
-
   defp maybe_push_spell_result(socket, false, _ok?), do: socket
 
   defp maybe_push_spell_result(socket, true, ok?),
@@ -728,19 +672,50 @@ defmodule MMGOWeb.SpellbookLive do
 
   defp maybe_refresh_spell_circle(socket, true) do
     push_event(socket, "spell_circle_init", %{
-      slots: spell_circle_slots(socket.assigns.permitted_schools, socket.assigns.spells),
+      slots:
+        spell_circle_slots(
+          socket.assigns.permitted_schools,
+          socket.assigns.spells,
+          socket.assigns.spell_circle_tier
+        ),
       current: %{}
     })
   end
 
-  defp spell_circle_formula(params) do
-    ["actio", "forma", "vis", "tempus", "mutatio", "pretium"]
-    |> Enum.map(&Map.get(params, &1))
-    |> Enum.reject(&(&1 in [nil, ""]))
-    |> Enum.join(" ")
+  defp spell_circle_slots(permitted_schools, _spells, :novice) do
+    school_options = spell_circle_school_options(permitted_schools)
+
+    [
+      %{key: "school", label: "Школа", required: true, kind: "select", options: school_options},
+      %{key: "actio", label: "Акцио", required: true, kind: "text"},
+      %{key: "tempus", label: "Темпус", required: true, kind: "text"}
+    ]
   end
 
-  defp spell_circle_slots(permitted_schools, spells) do
+  defp spell_circle_slots(permitted_schools, spells, :trained) do
+    school_options = spell_circle_school_options(permitted_schools)
+
+    spell_options = Enum.map(spells, &%{value: &1.id, label: &1.name})
+
+    [
+      %{key: "school", label: "Школа", required: true, kind: "select", options: school_options},
+      %{key: "actio", label: "Акцио", required: true, kind: "text"},
+      %{key: "forma", label: "Форма", required: false, kind: "text"},
+      %{key: "vis", label: "Вис", required: false, kind: "text"},
+      %{key: "tempus", label: "Темпус", required: false, kind: "text"},
+      %{key: "mutatio", label: "Мутацио", required: false, kind: "text"},
+      %{key: "pretium", label: "Прециум", required: false, kind: "text"},
+      %{
+        key: "base",
+        label: "Основа",
+        required: true,
+        kind: "select",
+        options: spell_options
+      }
+    ]
+  end
+
+  defp spell_circle_school_options(permitted_schools) do
     school_options =
       Enum.map(permitted_schools, fn school ->
         school = to_string(school)
@@ -752,36 +727,20 @@ defmodule MMGOWeb.SpellbookLive do
         }
       end)
 
-    spell_options = Enum.map(spells, &%{value: &1.id, label: &1.name})
-
-    [
-      %{key: "school", label: "Schola", required: true, kind: "select", options: school_options},
-      %{key: "actio", label: "Actio", required: true, kind: "text"},
-      %{key: "forma", label: "Forma", required: false, kind: "text"},
-      %{key: "vis", label: "Vis", required: false, kind: "text"},
-      %{key: "tempus", label: "Tempus", required: false, kind: "text"},
-      %{key: "mutatio", label: "Mutatio", required: false, kind: "text"},
-      %{key: "pretium", label: "Pretium", required: false, kind: "text"},
-      %{
-        key: "base",
-        label: "Fundamen",
-        required: true,
-        kind: "select",
-        options: spell_options
-      }
-    ]
+    school_options
   end
 
-  defp compose_form(attrs \\ %{}) do
-    to_form(
-      %{
-        "base_spell_id" => Map.get(attrs, "base_spell_id", ""),
-        "school" => Map.get(attrs, "school", ""),
-        "formula" => Map.get(attrs, "formula", "")
-      },
-      as: :composition
-    )
-  end
+  defp spell_circle_available?(false, _tier, _spells), do: false
+  defp spell_circle_available?(true, :novice, _spells), do: true
+  defp spell_circle_available?(true, :trained, spells), do: spells != []
+
+  defp spell_circle_instruction(:novice),
+    do:
+      "Круг самоучки: выберите школу и впишите по одному слову в печати Акцио и Темпус. Все три печати обязательны."
+
+  defp spell_circle_instruction(:trained),
+    do:
+      "Полный академический круг: обязательны Школа, Акцио и Основа; остальные печати уточняют действие."
 
   defp inscription_form do
     to_form(%{"grimoire_id" => "", "spell_id" => ""}, as: :inscription)
@@ -791,8 +750,6 @@ defmodule MMGOWeb.SpellbookLive do
   defp compiled_spell(spell), do: spell
 
   defp spell_options(spells), do: Enum.map(spells, &{"#{&1.name} — #{&1.formula}", &1.id})
-
-  defp school_options(schools), do: Enum.map(schools, &{school_label(&1), &1})
 
   defp school_label(school), do: Map.get(@school_labels, to_string(school), "Неизвестная школа")
 
@@ -858,6 +815,16 @@ defmodule MMGOWeb.SpellbookLive do
 
   defp spellbook_error_message(:no_spell_to_inscribe), do: "Нет доступной формулы для записи."
   defp spellbook_error_message(:invalid_composition), do: generic_composition_error()
+  defp spellbook_error_message(:invalid_spell_circle), do: generic_composition_error()
+
+  defp spellbook_error_message(:incomplete_spell_circle),
+    do: "Заполните все обязательные печати круга."
+
+  defp spellbook_error_message(:invalid_spell_circle_word),
+    do: "В каждой словесной печати должно быть ровно одно слово из букв, не длиннее 32 байт."
+
+  defp spellbook_error_message(:missing_spell_foundation),
+    do: "Выберите известное заклинание для печати Основа."
 
   defp spellbook_error_message(:invalid_inscription),
     do: "Выберите свой переплёт и заклинание для записи."
@@ -867,6 +834,6 @@ defmodule MMGOWeb.SpellbookLive do
   defp spellbook_error_message(_reason), do: generic_composition_error()
 
   defp generic_composition_error do
-    "Формула не сложилась. Проверьте основу, школу и от 1 до 6 латинских слов, затем попробуйте снова."
+    "Формула не сложилась. Проверьте обязательные печати и впишите в каждую словесную печать ровно одно слово."
   end
 end

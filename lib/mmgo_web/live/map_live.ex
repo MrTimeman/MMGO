@@ -8,6 +8,7 @@ defmodule MMGOWeb.MapLive do
   """
   use MMGOWeb, :live_view
 
+  alias MMGO.Accounts.CharacterProfiles
   alias MMGO.Play
   alias MMGO.Travel
 
@@ -63,7 +64,13 @@ defmodule MMGOWeb.MapLive do
   end
 
   @impl true
-  def handle_event("location_clicked", %{"slug" => slug}, socket), do: start_journey(socket, slug)
+  def handle_event("location_clicked", %{"slug" => slug}, socket) do
+    if CharacterProfiles.sealed_spirit?(socket.assigns.character) do
+      spirit_teleport(socket, slug)
+    else
+      start_journey(socket, slug)
+    end
+  end
 
   @impl true
   def handle_event("start_journey", %{"slug" => slug}, socket), do: start_journey(socket, slug)
@@ -194,6 +201,14 @@ defmodule MMGOWeb.MapLive do
                   class="map-account-menu__item flex min-h-11 items-center gap-2.5 px-3"
                 >
                   <.icon name="hero-archive-box" class="size-4" /> Инвентарь
+                </.link>
+                <.link
+                  id="map-account-characters"
+                  href={~p"/characters"}
+                  role="menuitem"
+                  class="map-account-menu__item flex min-h-11 items-center gap-2.5 px-3"
+                >
+                  <.icon name="hero-identification" class="size-4" /> Сменить персонажа
                 </.link>
               </div>
             </div>
@@ -400,6 +415,22 @@ defmodule MMGOWeb.MapLive do
     end
   end
 
+  defp spirit_teleport(socket, slug) do
+    destination = Enum.find(socket.assigns.locations, &(&1.slug == slug))
+
+    case destination && Play.spirit_teleport(socket.assigns.character, destination.id) do
+      {:ok, %{character: character}} ->
+        {:noreply,
+         socket
+         |> refresh_world()
+         |> put_flash(:info, "Духовный переход: #{location_name(character.current_location)}.")
+         |> push_map_state()}
+
+      _other ->
+        {:noreply, put_flash(socket, :error, "Духовный переход сюда невозможен.")}
+    end
+  end
+
   defp push_path_preview(socket, slug) do
     case Play.path_preview(socket.assigns.character, slug) do
       {:ok, %{hexes: hexes, travel_days: travel_days, food_units: food_units}} ->
@@ -410,12 +441,20 @@ defmodule MMGOWeb.MapLive do
           food_units: food_units
         })
 
-      {:error, reason} ->
-        push_event(socket, "path_preview_error", %{slug: slug, reason: inspect(reason)})
+      {:error, _reason} ->
+        push_event(socket, "path_preview_error", %{slug: slug})
     end
   end
 
+  # A newly-created or partially migrated profile can briefly be active before
+  # its first location is assigned. Keep the map shell usable in that state;
+  # sealed spirits can still select a destination and ordinary profiles can
+  # return to placement through the account flow without crashing LiveView.
+  defp push_map_state(%{assigns: %{current_location: nil}} = socket), do: socket
+
   defp push_map_state(socket) do
+    sealed_spirit? = CharacterProfiles.sealed_spirit?(socket.assigns.character)
+
     reachable_slugs =
       socket.assigns.reachable_routes
       |> Enum.map(&Play.route_destination(&1, socket.assigns.current_location.id).slug)
@@ -434,7 +473,8 @@ defmodule MMGOWeb.MapLive do
             location,
             reachable_slugs,
             socket.assigns.active_journey,
-            socket.assigns.current_location
+            socket.assigns.current_location,
+            sealed_spirit?
           )
         end),
       player: player,
@@ -455,8 +495,18 @@ defmodule MMGOWeb.MapLive do
     })
   end
 
-  defp format_location(location, reachable_slugs, active_journey, current_location) do
+  defp format_location(
+         location,
+         reachable_slugs,
+         active_journey,
+         current_location,
+         sealed_spirit?
+       ) do
     here? = location.id == current_location.id and is_nil(active_journey)
+
+    can_travel? =
+      is_nil(active_journey) and not here? and
+        (sealed_spirit? or MapSet.member?(reachable_slugs, location.slug))
 
     %{
       slug: location.slug,
@@ -465,7 +515,9 @@ defmodule MMGOWeb.MapLive do
       x: location.x,
       y: location.y,
       safe_zone: location.safe_zone,
-      can_travel: is_nil(active_journey) and MapSet.member?(reachable_slugs, location.slug),
+      can_travel: can_travel?,
+      travel_mode: if(sealed_spirit?, do: "spirit", else: "road"),
+      travel_label: if(sealed_spirit?, do: "Духовный переход", else: "Отправиться"),
       actions: if(here?, do: [%{label: "Осмотреться", href: "/event"}], else: []),
       description: location.metadata["description"],
       routes:
@@ -583,9 +635,5 @@ defmodule MMGOWeb.MapLive do
 
   defp world_seasons, do: @world_seasons
 
-  defp changeset_error(changeset) do
-    changeset.errors
-    |> Enum.map(fn {field, {message, _opts}} -> "#{field}: #{message}" end)
-    |> Enum.join(", ")
-  end
+  defp changeset_error(_changeset), do: "Этот путь сейчас недоступен."
 end

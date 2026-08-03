@@ -79,9 +79,9 @@ defmodule MMGOWeb.MapEditorLiveTest do
     {:ok, _view, html} = live(conn, "/editor")
 
     assert html =~ "map-editor"
-    assert html =~ "Map Editor"
-    assert html =~ "Terrain"
-    assert html =~ "Sprites"
+    assert html =~ "Редактор карты"
+    assert html =~ "Рельеф"
+    assert html =~ "Спрайты"
   end
 
   test "hexes_changed accumulates a dirty set without writing to disk", %{
@@ -97,7 +97,7 @@ defmodule MMGOWeb.MapEditorLiveTest do
     })
 
     html = render(view)
-    assert html =~ "1 unsaved"
+    assert html =~ "не сохранено: 1"
 
     on_disk = File.read!(map_path) |> Jason.decode!()
     assert length(on_disk["hexes"]) == 2
@@ -117,7 +117,7 @@ defmodule MMGOWeb.MapEditorLiveTest do
     })
 
     html = render(view) |> then(fn html -> render_click(view, "save") || html end)
-    assert html =~ "saved" or true
+    assert html =~ "сохранено" or true
 
     reloaded = WorldMap.load(map_path)
 

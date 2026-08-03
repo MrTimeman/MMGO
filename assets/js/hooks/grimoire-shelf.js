@@ -225,7 +225,7 @@ export const GrimoireShelfHook = {
     head.appendChild(h('span', { class: 'grim__panel-name' }, g.name))
 
     const meta = h('div', { class: 'grim__panel-meta' })
-    meta.append(STATUS_LABEL[g.status] ?? g.status)
+    meta.append(STATUS_LABEL[g.status] ?? 'Неизвестное состояние')
     meta.append(`  ·  вес: ${g.weight ?? 0}`)
     meta.append(`  ·  ${(g.entries?.filter(e => e.spell).length ?? 0)} / ${g.capacity ?? 0} ячеек`)
     head.appendChild(meta)
@@ -272,7 +272,7 @@ export const GrimoireShelfHook = {
 
     if (g.writable && g.available_spells?.length) {
       const inscribe = h('div', { class: 'grim__inscribe' })
-      const label = h('label', { class: 'grim__inscribe-label' }, 'Записать формулу')
+      const label = h('label', { class: 'grim__inscribe-label' }, 'Добавить известное заклинание')
       const select = h('select', { class: 'grim__inscribe-select' })
       select.appendChild(h('option', { value: '' }, 'Выберите заклинание'))
       for (const spell of g.available_spells) {

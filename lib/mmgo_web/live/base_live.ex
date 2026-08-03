@@ -9,6 +9,7 @@ defmodule MMGOWeb.BaseLive do
   use MMGOWeb, :live_view
 
   alias MMGO.Play
+  alias MMGO.Accounts.CharacterProfiles
 
   @impl true
   def mount(_params, _session, socket), do: {:ok, socket}
@@ -185,6 +186,23 @@ defmodule MMGOWeb.BaseLive do
               <p class="bse-status__note">
                 Вещи внутри нельзя отнять; использовать их можно только вернувшись сюда.
               </p>
+              <div
+                :if={@fortress}
+                id="base-fortress-status"
+                class="bse-ward bse-ward--fortress"
+              >
+                <span class="bse-ward__sigil" aria-hidden="true">✦</span>
+                <div>
+                  <p class="bse-ward__title">
+                    Личная крепость · ранг {@fortress.tier} из 5
+                  </p>
+                  <p class="bse-ward__body">
+                    Пока владелец действительно находится здесь, стены дают ему начальный
+                    боевой оберег силой {@fortress.ward_intensity}. За пределами Башни защита не
+                    действует.
+                  </p>
+                </div>
+              </div>
               <div class="bse-ward bse-ward--safe">
                 <span class="bse-ward__sigil">❖</span>
                 <div>
@@ -502,7 +520,7 @@ defmodule MMGOWeb.BaseLive do
               </p>
               <ul :if={@acquisition_quote.materials != []} id="base-build-materials">
                 <li :for={material <- @acquisition_quote.materials}>
-                  {material.code}: {material.available}/{material.quantity}
+                  {material_label(material.code)}: {material.available}/{material.quantity}
                 </li>
               </ul>
             </div>
@@ -605,6 +623,7 @@ defmodule MMGOWeb.BaseLive do
     |> assign(:balance, state.balance)
     |> assign(:can_afford_acquisition?, state.can_afford_acquisition?)
     |> assign(:ownership, state.ownership)
+    |> assign(:fortress, fortress_config(state.active_base, state.character))
     |> assign(:selected_base_id, if(state.active_base, do: state.active_base.id, else: nil))
     |> assign(:can_rest?, state.can_rest?)
     |> assign(:survival, state.survival)
@@ -684,6 +703,29 @@ defmodule MMGOWeb.BaseLive do
   defp base_status_label(:active), do: "действует"
   defp base_status_label(:abandoned), do: "покинута"
   defp base_status_label(_status), do: "состояние уточняется"
+
+  defp material_label("construction_material"), do: "строительные материалы"
+  defp material_label(_code), do: "строительные припасы"
+
+  defp fortress_config(
+         %{location_id: location_id, metadata: %{"fortress" => fortress}},
+         character
+       )
+       when is_map(fortress) do
+    case fortress do
+      %{"tier" => tier, "ward_intensity" => intensity}
+      when tier in 1..5 and intensity in 1..100 ->
+        if CharacterProfiles.sealed_spirit?(character) and
+             CharacterProfiles.sealed_anchor_location_id(character) == location_id do
+          %{tier: tier, ward_intensity: intensity}
+        end
+
+      _malformed ->
+        nil
+    end
+  end
+
+  defp fortress_config(_base, _character), do: nil
 
   defp error_message(:travelling), do: "Нельзя пользоваться базой во время пути."
   defp error_message(:active_base_not_found), do: "Здесь нет активной базы."

@@ -737,7 +737,7 @@ export const HexMapHook = {
   openSheet(loc) {
     const safe = loc.safe_zone ? "безопасное место" : "дикие земли"
     const action = loc.can_travel
-      ? `<button class="hex-map__travel" data-travel="${loc.slug}">Отправиться</button>`
+      ? `<button class="hex-map__travel" data-travel="${loc.slug}">${escapeHtml(loc.travel_label || "Отправиться")}</button>`
       : this.player?.location_slug === loc.slug
         ? `<span class="hex-map__here">Вы здесь</span>`
         : `<span class="hex-map__muted">Нет прямого пути</span>`
@@ -772,7 +772,7 @@ export const HexMapHook = {
       )
     }
 
-    if (loc.can_travel) {
+    if (loc.can_travel && loc.travel_mode !== "spirit") {
       this.pushEvent("preview_path", { slug: loc.slug })
     }
   },

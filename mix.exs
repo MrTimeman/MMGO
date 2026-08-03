@@ -4,7 +4,7 @@ defmodule MMGO.MixProject do
   def project do
     [
       app: :mmgo,
-      version: "0.1.0-alpha.4",
+      version: "0.1.0-alpha.5",
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,

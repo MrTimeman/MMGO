@@ -2,7 +2,7 @@ defmodule MMGO.Federation do
   import Ecto.Query, warn: false
 
   alias Ecto.{Changeset, Multi}
-  alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Accounts.{Account, Character, CharacterProfiles}
   alias MMGO.Economy
   alias MMGO.Federation.{ExchangeRate, Migration, RemoteRealm, Ruleset}
   alias MMGO.Notifications
@@ -336,6 +336,7 @@ defmodule MMGO.Federation do
 
     Repo.transaction(fn ->
       origin_character = lock_character!(origin_character.id)
+      account = lock_account!(origin_character.account_id)
       origin_realm = Repo.get!(Realm, origin_character.realm_id)
       destination_realm = Repo.get!(Realm, destination_realm.id)
 
@@ -354,7 +355,10 @@ defmodule MMGO.Federation do
       freeze_ends_at = Clock.arrival_at(started_at, freeze_game_days)
       destination_name = unique_character_name(destination_realm.id, origin_character.name)
 
-      account = Repo.get!(Account, origin_character.account_id)
+      updated_origin_character =
+        origin_character
+        |> Character.changeset(%{status: :frozen})
+        |> Repo.update!()
 
       destination_character =
         %Character{account_id: account.id, realm_id: destination_realm.id}
@@ -390,12 +394,7 @@ defmodule MMGO.Federation do
           origin_realm_id: origin_realm.id
         })
 
-      updated_origin_character =
-        origin_character
-        |> Character.changeset(%{status: :frozen})
-        |> Repo.update!()
-
-      migration =
+      migration_changeset =
         %Migration{}
         |> Migration.changeset(%{
           account_id: account.id,
@@ -417,7 +416,8 @@ defmodule MMGO.Federation do
           passive_xp_awarded: 0,
           metadata: %{}
         })
-        |> Repo.insert!()
+
+      migration = insert_migration_or_rollback(migration_changeset)
 
       _ =
         Notifications.notify_realm_migration_started(
@@ -489,6 +489,7 @@ defmodule MMGO.Federation do
 
     Repo.transaction(fn ->
       origin_character = lock_character!(origin_character.id)
+      _account = lock_account!(origin_character.account_id)
       origin_realm = Repo.get!(Realm, origin_character.realm_id)
       remote_realm = Repo.get!(RemoteRealm, remote_realm.id)
 
@@ -522,7 +523,7 @@ defmodule MMGO.Federation do
         |> Character.changeset(%{status: :frozen})
         |> Repo.update!()
 
-      migration =
+      migration_changeset =
         %Migration{}
         |> Migration.changeset(%{
           account_id: origin_character.account_id,
@@ -549,7 +550,8 @@ defmodule MMGO.Federation do
             "remote_import_attempts" => 0
           }
         })
-        |> Repo.insert!()
+
+      migration = insert_migration_or_rollback(migration_changeset)
 
       _ =
         Notifications.notify_realm_migration_started(
@@ -606,9 +608,14 @@ defmodule MMGO.Federation do
         true ->
           passive_xp_awarded = passive_xp_award(migration)
 
+          origin_status =
+            if migration.mode == :local and is_binary(migration.destination_character_id),
+              do: :frozen,
+              else: :active
+
           updated_origin_character =
             origin_character
-            |> Character.changeset(%{status: :active})
+            |> Character.changeset(%{status: origin_status})
             |> Repo.update!()
 
           {:ok, %{character: updated_origin_character}} =
@@ -858,6 +865,9 @@ defmodule MMGO.Federation do
          currency_amount
        ) do
     cond do
+      CharacterProfiles.sealed_spirit?(origin_character) ->
+        Repo.rollback(migration_changeset("sealed spirit cannot leave its realm"))
+
       origin_realm.id == destination_realm.id ->
         Repo.rollback(migration_changeset("origin and destination realms must differ"))
 
@@ -876,6 +886,9 @@ defmodule MMGO.Federation do
       active_migration_for_character(origin_character.id) ->
         Repo.rollback(migration_changeset("character already has an active migration"))
 
+      active_migration_for_account?(origin_character.account_id) ->
+        Repo.rollback(migration_changeset("account already has an active migration"))
+
       true ->
         :ok
     end
@@ -888,6 +901,9 @@ defmodule MMGO.Federation do
          currency_amount
        ) do
     cond do
+      CharacterProfiles.sealed_spirit?(origin_character) ->
+        Repo.rollback(migration_changeset("sealed spirit cannot leave its realm"))
+
       origin_realm.slug == remote_realm.slug ->
         Repo.rollback(migration_changeset("origin and destination realms must differ"))
 
@@ -908,6 +924,9 @@ defmodule MMGO.Federation do
 
       active_migration_for_character(origin_character.id) ->
         Repo.rollback(migration_changeset("character already has an active migration"))
+
+      active_migration_for_account?(origin_character.account_id) ->
+        Repo.rollback(migration_changeset("account already has an active migration"))
 
       true ->
         :ok
@@ -955,7 +974,12 @@ defmodule MMGO.Federation do
 
   defp population_for_local_realm(realm_id) do
     Repo.aggregate(
-      from(character in Character, where: character.realm_id == ^realm_id),
+      from(character in Character,
+        where:
+          character.realm_id == ^realm_id and
+            fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
+            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata)
+      ),
       :count,
       :id
     )
@@ -1018,6 +1042,27 @@ defmodule MMGO.Federation do
     |> where([character], character.id == ^character_id)
     |> lock("FOR UPDATE")
     |> Repo.one!()
+  end
+
+  defp lock_account!(account_id) do
+    Account
+    |> where([account], account.id == ^account_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one!()
+  end
+
+  defp active_migration_for_account?(account_id) do
+    Repo.exists?(
+      from migration in Migration,
+        where: migration.account_id == ^account_id and migration.status == :active
+    )
+  end
+
+  defp insert_migration_or_rollback(%Changeset{} = changeset) do
+    case Repo.insert(changeset) do
+      {:ok, migration} -> migration
+      {:error, changeset} -> Repo.rollback(changeset)
+    end
   end
 
   defp lock_migration!(migration_id) do

@@ -173,6 +173,147 @@ defmodule MMGO.NotificationsTest do
     assert text =~ "итоговое испытание не пройдено"
   end
 
+  test "contact request creates durable in-app and Telegram notifications without a username", %{
+    realm: realm
+  } do
+    requester =
+      character_fixture(realm, "requester-secret-handle", "Requesting Traveler", 555_101)
+
+    target = character_fixture(realm, "contact-target", "Contact Target", 555_102)
+    encounter = %{id: Ecto.UUID.generate()}
+
+    assert {:ok, %Notification{channel: :in_app}} =
+             Notifications.notify_overworld_contact_request(target, encounter, requester)
+
+    notifications = Notifications.list_notifications(target.id)
+    assert Enum.map(notifications, & &1.channel) |> Enum.sort() == [:in_app, :telegram]
+
+    assert Enum.all?(notifications, fn notification ->
+             notification.kind == "overworld_contact_request" and
+               notification.payload["encounter_id"] == encounter.id and
+               notification.payload["requester_name"] == requester.name and
+               not Map.has_key?(notification.payload, "telegram_username") and
+               not String.contains?(inspect(notification.payload), "requester-secret-handle")
+           end)
+  end
+
+  test "accepted contact notification uses the canonical current Telegram username", %{
+    realm: realm
+  } do
+    recipient = character_fixture(realm, "contact-recipient", "Contact Recipient", 555_201)
+    counterpart = character_fixture(realm, "old-contact-name", "Other Traveler", 555_202)
+
+    Account
+    |> Repo.get!(counterpart.account_id)
+    |> Account.registration_changeset(%{
+      settings: %{"telegram_username" => "stale-settings-name"}
+    })
+    |> Repo.update!()
+
+    TelegramIdentity
+    |> Repo.get_by!(account_id: counterpart.account_id)
+    |> TelegramIdentity.changeset(%{
+      telegram_user_id: 555_202,
+      telegram_username: "current_contact_name",
+      last_seen_at: DateTime.utc_now()
+    })
+    |> Repo.update!()
+
+    encounter = %{id: Ecto.UUID.generate()}
+
+    assert {:ok, %Notification{channel: :in_app, payload: payload}} =
+             Notifications.notify_overworld_contact_accepted(
+               recipient,
+               encounter,
+               counterpart
+             )
+
+    assert payload["telegram_username"] == "current_contact_name"
+    refute inspect(payload) =~ "stale-settings-name"
+  end
+
+  test "accepted contact notification does not substitute an ID when a public username is missing",
+       %{
+         realm: realm
+       } do
+    recipient = character_fixture(realm, "named-recipient", "Named Recipient", 555_251)
+    counterpart = character_fixture(realm, "removed-name", "Private Traveler", 555_252)
+
+    TelegramIdentity
+    |> Repo.get_by!(account_id: counterpart.account_id)
+    |> TelegramIdentity.changeset(%{
+      telegram_user_id: 555_252,
+      telegram_username: nil,
+      last_seen_at: DateTime.utc_now()
+    })
+    |> Repo.update!()
+
+    assert {:ok, %Notification{payload: payload}} =
+             Notifications.notify_overworld_contact_accepted(
+               recipient,
+               %{id: Ecto.UUID.generate()},
+               counterpart
+             )
+
+    assert is_nil(payload["telegram_username"])
+    refute inspect(payload) =~ "555252"
+  end
+
+  test "rejected contact notification never stores the counterpart username", %{realm: realm} do
+    requester = character_fixture(realm, "rejected-requester", "Rejected Requester", 555_301)
+    counterpart = character_fixture(realm, "private-counterpart", "Private Traveler", 555_302)
+    encounter = %{id: Ecto.UUID.generate()}
+
+    assert {:ok, %Notification{payload: payload}} =
+             Notifications.notify_overworld_contact_rejected(
+               requester,
+               encounter,
+               counterpart
+             )
+
+    refute Map.has_key?(payload, "telegram_username")
+    refute inspect(payload) =~ "private-counterpart"
+  end
+
+  test "contact notification formatter supplies consent callbacks and reveals usernames only after acceptance" do
+    encounter_id = Ecto.UUID.generate()
+
+    assert {:ok, %{text: request_text, opts: request_opts}} =
+             Formatter.render(%Notification{
+               kind: "overworld_contact_request",
+               payload: %{
+                 "encounter_id" => encounter_id,
+                 "requester_name" => "Странник"
+               }
+             })
+
+    refute request_text =~ "@someone"
+
+    assert %{inline_keyboard: [buttons]} = request_opts[:reply_markup]
+    assert Enum.any?(buttons, &(&1.callback_data == "road:accept:#{encounter_id}"))
+    assert Enum.any?(buttons, &(&1.callback_data == "road:reject:#{encounter_id}"))
+
+    assert {:ok, %{text: accepted_text, opts: []}} =
+             Formatter.render(%Notification{
+               kind: "overworld_contact_accepted",
+               payload: %{
+                 "counterpart_name" => "Странник",
+                 "telegram_username" => "someone"
+               }
+             })
+
+    assert accepted_text =~ "@someone"
+
+    assert {:ok, %{text: rejected_text, opts: []}} =
+             Formatter.render(%Notification{
+               kind: "overworld_contact_rejected",
+               payload: %{"counterpart_name" => "Странник"}
+             })
+
+    refute rejected_text =~ "@someone"
+    assert rejected_text =~ "не были раскрыты"
+  end
+
   defp character_fixture(realm, handle, name, telegram_user_id) do
     account =
       %Account{}

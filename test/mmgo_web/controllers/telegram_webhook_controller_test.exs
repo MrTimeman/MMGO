@@ -2,6 +2,7 @@ defmodule MMGOWeb.TelegramWebhookControllerTest do
   use MMGOWeb.ConnCase, async: false
 
   alias MMGO.Accounts.Account
+  alias MMGO.Economy
   alias MMGO.Repo
   alias MMGO.Telegram
   alias MMGO.Worlds
@@ -13,11 +14,23 @@ defmodule MMGOWeb.TelegramWebhookControllerTest do
       Application.put_env(:mmgo, Telegram, original_telegram_config)
     end)
 
-    {:ok, _realm} =
+    {:ok, realm} =
       Worlds.create_realm(%{
         slug: "canonical",
         name: "Canonical Realm",
         is_default: true
+      })
+
+    {:ok, _treasury} = Economy.ensure_treasury_account(realm, 100_000)
+
+    {:ok, _capital} =
+      Worlds.create_location(realm, %{
+        slug: "capital-city",
+        name: "Столица",
+        kind: :city,
+        x: 10,
+        y: 10,
+        safe_zone: true
       })
 
     :ok

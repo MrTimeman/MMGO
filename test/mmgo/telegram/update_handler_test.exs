@@ -1,6 +1,13 @@
 defmodule MMGO.Telegram.UpdateHandlerTest do
   use MMGO.DataCase, async: false
 
+  alias MMGO.Accounts
+  alias MMGO.Accounts.Character
+  alias MMGO.Economy
+  alias MMGO.Notifications
+  alias MMGO.Overworld
+  alias MMGO.Play
+  alias MMGO.Repo
   alias MMGO.Telegram.UpdateHandler
   alias MMGO.Telegram.ReleaseAnnouncements
   alias MMGO.Worlds
@@ -38,7 +45,19 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
         safe_zone: true
       })
 
-    %{bypass: bypass, city: city}
+    {:ok, tower} =
+      Worlds.create_location(realm, %{
+        slug: "the-tower",
+        name: "The Tower",
+        kind: :tower,
+        x: 30,
+        y: 30,
+        safe_zone: false
+      })
+
+    {:ok, _treasury} = Economy.ensure_treasury_account(realm, 100_000)
+
+    %{bypass: bypass, realm: realm, city: city, tower: tower}
   end
 
   test "command messages trigger Telegram sendMessage delivery", %{bypass: bypass} do
@@ -65,6 +84,11 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
     }
 
     assert {:ok, %{handled: true, type: "message"}} = UpdateHandler.handle(update)
+
+    account = Accounts.get_account_by_telegram_user_id(777_001)
+    [character] = Accounts.list_characters_for_account(account.id)
+    assert character.status == :active
+    assert character.current_location_id
   end
 
   test "the release administrator can select an updates group through the webhook path", %{
@@ -102,5 +126,115 @@ defmodule MMGO.Telegram.UpdateHandlerTest do
 
     assert {:ok, %{handled: true, type: "message"}} = UpdateHandler.handle(update)
     assert ReleaseAnnouncements.current_channel().chat_id == -1_001_234_567_890
+
+    account = Accounts.get_account_by_telegram_user_id(1_265_881_543)
+    characters = Accounts.list_characters_for_account(account.id)
+    albert = Enum.find(characters, &(&1.name == "Альберт Латыпов"))
+    tamiorn = Enum.find(characters, &(&1.name == "Тамиорн Найло"))
+    assert albert.status == :frozen
+    assert tamiorn.status == :active
+  end
+
+  test "a traveler can accept a contact request from its Telegram callback", %{
+    bypass: bypass,
+    city: city
+  } do
+    requester = telegram_character_fixture(city, 777_101, "callback_requester", "Проситель")
+    target = telegram_character_fixture(city, 777_102, "callback_target", "Собеседник")
+
+    assert {:ok, %{encounter: encounter}} =
+             Play.request_traveler_contact(requester, target.id)
+
+    Bypass.expect_once(bypass, "POST", "/bottest-bot-token/answerCallbackQuery", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "contact-accept-1"
+      assert body =~ "Запрос принят"
+      Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":true}))
+    end)
+
+    update = %{
+      "update_id" => 3,
+      "callback_query" => %{
+        "id" => "contact-accept-1",
+        "data" => "road:accept:#{encounter.id}",
+        "from" => %{
+          "id" => 777_102,
+          "username" => "callback_target",
+          "first_name" => "Собеседник"
+        }
+      }
+    }
+
+    assert {:ok,
+            %{
+              handled: true,
+              type: "callback_query",
+              callback_result: %{ok?: true}
+            }} = UpdateHandler.handle(update)
+
+    assert Overworld.get_encounter!(encounter.id).status == :greeted
+
+    requester_contact =
+      requester.id
+      |> Notifications.list_notifications()
+      |> Enum.find(&(&1.kind == "overworld_contact_accepted" and &1.channel == :telegram))
+
+    assert requester_contact.payload["telegram_username"] == "callback_target"
+  end
+
+  test "a traveler can reject a contact request from its Telegram callback", %{
+    bypass: bypass,
+    city: city
+  } do
+    requester = telegram_character_fixture(city, 777_201, "reject_requester", "Проситель")
+    target = telegram_character_fixture(city, 777_202, "reject_target", "Собеседник")
+
+    assert {:ok, %{encounter: encounter}} =
+             Play.request_traveler_contact(requester, target.id)
+
+    Bypass.expect_once(bypass, "POST", "/bottest-bot-token/answerCallbackQuery", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ "contact-reject-1"
+      assert body =~ "Запрос отклонён"
+      Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":true}))
+    end)
+
+    update = %{
+      "update_id" => 4,
+      "callback_query" => %{
+        "id" => "contact-reject-1",
+        "data" => "road:reject:#{encounter.id}",
+        "from" => %{
+          "id" => 777_202,
+          "username" => "reject_target",
+          "first_name" => "Собеседник"
+        }
+      }
+    }
+
+    assert {:ok, %{callback_result: %{ok?: true}}} = UpdateHandler.handle(update)
+    assert Overworld.get_encounter!(encounter.id).status == :avoided
+
+    rejected_notification =
+      requester.id
+      |> Notifications.list_notifications()
+      |> Enum.find(&(&1.kind == "overworld_contact_rejected"))
+
+    refute Map.has_key?(rejected_notification.payload, "telegram_username")
+  end
+
+  defp telegram_character_fixture(city, telegram_user_id, username, first_name) do
+    assert {:ok, %{character: character}} =
+             Accounts.provision_from_telegram(%{
+               "id" => telegram_user_id,
+               "username" => username,
+               "first_name" => first_name
+             })
+
+    character
+    |> Character.changeset(%{status: :active})
+    |> Repo.update!()
+    |> Character.travel_changeset(%{current_location_id: city.id})
+    |> Repo.update!()
   end
 end

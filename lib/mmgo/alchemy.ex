@@ -2,7 +2,7 @@ defmodule MMGO.Alchemy do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Academy
   alias MMGO.Academy.StarterOutcomes
   alias MMGO.Alchemy.{BrewJob, CompleteBrewJobWorker, Interpreter, Recipe, Workshop}
@@ -299,7 +299,8 @@ defmodule MMGO.Alchemy do
       active_brew_job(character.id) ->
         {:error, brew_job_changeset("character already has an active brew job")}
 
-      is_nil(specialization) or specialization.track != :alchemy ->
+      (is_nil(specialization) or specialization.track != :alchemy) and
+          not CharacterProfiles.mastered_track?(character, :alchemy) ->
         {:error, brew_job_changeset("character must be specialized in alchemy")}
 
       true ->
@@ -633,7 +634,8 @@ defmodule MMGO.Alchemy do
       active_brew_job(character.id) ->
         Repo.rollback(brew_job_changeset("character already has an active brew job"))
 
-      is_nil(specialization) or specialization.track != :alchemy ->
+      (is_nil(specialization) or specialization.track != :alchemy) and
+          not CharacterProfiles.mastered_track?(character, :alchemy) ->
         Repo.rollback(brew_job_changeset("character must be specialized in alchemy"))
 
       not recipe_available_to_character?(character, recipe) ->

@@ -15,6 +15,7 @@ defmodule MMGO.Combat do
     Turn
   }
 
+  alias MMGO.Bases
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Inventory.InventoryItem
@@ -740,7 +741,7 @@ defmodule MMGO.Combat do
       actor_template_id = attrs[:actor_template_id] || attrs["actor_template_id"]
       provided_grimoire_id = attrs[:grimoire_id] || attrs["grimoire_id"]
 
-      attrs = participant_defaults(attrs, character_id, actor_template_id)
+      attrs = participant_defaults(attrs, combat, character_id, actor_template_id)
 
       case resolve_grimoire(character_id, provided_grimoire_id) do
         {:ok, grimoire} ->
@@ -766,15 +767,20 @@ defmodule MMGO.Combat do
 
   defp resolve_grimoire(_character_id, _provided_grimoire_id), do: {:ok, nil}
 
-  defp participant_defaults(attrs, character_id, nil) when is_binary(character_id) do
+  defp participant_defaults(attrs, %Combat{} = combat, character_id, nil)
+       when is_binary(character_id) do
     character = Repo.get!(MMGO.Accounts.Character, character_id)
+    fortress_states = Bases.initial_combat_states(character.id, combat.realm_id, combat.metadata)
 
     attrs
     |> Map.put_new(:display_name, character.name)
     |> Map.put_new(:combat_level, character.level)
+    |> Map.update(:active_states, fortress_states, fn provided_states ->
+      if is_list(provided_states), do: provided_states ++ fortress_states, else: fortress_states
+    end)
   end
 
-  defp participant_defaults(attrs, _character_id, actor_template_id)
+  defp participant_defaults(attrs, _combat, _character_id, actor_template_id)
        when is_binary(actor_template_id) do
     actor_template = Repo.get!(ActorTemplate, actor_template_id)
 
@@ -783,7 +789,7 @@ defmodule MMGO.Combat do
     |> Map.put_new(:combat_level, actor_template.combat_level)
   end
 
-  defp participant_defaults(attrs, _character_id, _actor_template_id), do: attrs
+  defp participant_defaults(attrs, _combat, _character_id, _actor_template_id), do: attrs
 
   defp build_sides(attrs, participant_attrs) do
     provided_sides = Map.get(attrs, :sides) || Map.get(attrs, "sides") || %{}
@@ -807,11 +813,11 @@ defmodule MMGO.Combat do
     end)
   end
 
-  defp side_label("attackers"), do: "Attackers"
-  defp side_label("defenders"), do: "Defenders"
-  defp side_label("party"), do: "Party"
-  defp side_label("encounter"), do: "Encounter"
-  defp side_label(side), do: side |> to_string() |> String.capitalize()
+  defp side_label("attackers"), do: "Нападающие"
+  defp side_label("defenders"), do: "Защитники"
+  defp side_label("party"), do: "Отряд"
+  defp side_label("encounter"), do: "Противник"
+  defp side_label(_side), do: "Сторона"
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), stringify_keys(value)} end)

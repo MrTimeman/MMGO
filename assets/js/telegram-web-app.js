@@ -10,7 +10,7 @@ export function loadTelegramWebApp() {
     script.src = "https://telegram.org/js/telegram-web-app.js?62"
     script.async = true
     script.onload = () => resolve(window.Telegram?.WebApp)
-    script.onerror = () => reject(new Error("Telegram WebApp bridge did not load"))
+    script.onerror = () => reject(new Error("Не удалось загрузить мост веб-приложения Telegram"))
     document.head.appendChild(script)
   })
 

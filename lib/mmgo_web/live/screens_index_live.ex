@@ -71,14 +71,14 @@ defmodule MMGOWeb.ScreensIndexLive do
      ]},
     {"Системные демо",
      [
-       {"/dev/hooks", "LiveView hooks demo (dev)"},
-       {"/dev/screens", "Dev-версия индекса"},
-       {"/editor", "Редактор карты (dev)"}
+       {"/dev/hooks", "Демонстрация хуков (разработка)"},
+       {"/dev/screens", "Версия индекса для разработки"},
+       {"/editor", "Редактор карты (разработка)"}
      ]}
   ]
 
   def mount(_params, _session, socket) do
-    {:ok, assign(socket, groups: @groups, page_title: "Экраны (dev)")}
+    {:ok, assign(socket, groups: @groups, page_title: "Экраны (разработка)")}
   end
 
   def render(assigns) do

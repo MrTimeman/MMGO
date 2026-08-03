@@ -1,0 +1,144 @@
+<Layouts.app flash={@flash} current_scope={@current_scope}>
+  <main id="character-chooser" class="character-registry">
+    <div class="character-registry__desk">
+      <section class="character-folio" aria-labelledby="character-registry-title">
+        <header class="character-folio__cover">
+          <div class="character-folio__spine" aria-hidden="true">
+            <i></i><i></i><i></i>
+          </div>
+
+          <div class="character-folio__heading">
+            <p class="character-folio__eyebrow">Реестр закрытой альфы · личные дела</p>
+            <h1 id="character-registry-title">Кем вы войдёте в мир?</h1>
+            <p class="character-folio__copy">
+              Один профиль бодрствует. Остальные лежат под печатью и не оставляют следа в
+              мире, пока вы их не выберете.
+            </p>
+          </div>
+
+          <div
+            class="character-folio__owner-stamp"
+            aria-label={"Личное дело: #{@account.display_name}"}
+          >
+            <span>Личное дело</span>
+            <strong>{@account.display_name}</strong>
+            <small>допущено к выбору</small>
+          </div>
+        </header>
+
+        <div class="character-folio__pages">
+          <section
+            :for={group <- @realm_groups}
+            id={"character-realm-#{group.realm.id}"}
+            class="character-realm-file"
+            aria-labelledby={"character-realm-title-#{group.realm.id}"}
+          >
+            <header class="character-realm-file__heading">
+              <span class="character-realm-file__index">Мир</span>
+              <.icon name="hero-globe-alt" class="character-realm-file__icon" />
+              <h2 id={"character-realm-title-#{group.realm.id}"}>{group.realm.name}</h2>
+              <span class="character-realm-file__rule" aria-hidden="true"></span>
+            </header>
+
+            <div class="character-file-grid">
+              <article
+                :for={character <- group.characters}
+                id={"character-card-#{character.id}"}
+                class={[
+                  "character-file",
+                  if(sealed_spirit?(character),
+                    do: "character-file--sealed",
+                    else: "character-file--traveler"
+                  ),
+                  (character.id == @current_character_id and character.status == :active) &&
+                    "character-file--current",
+                  not playable?(character, @blocked_character_ids) && "character-file--locked"
+                ]}
+              >
+                <span class="character-file__fold" aria-hidden="true"></span>
+
+                <header class="character-file__heading">
+                  <div class="character-file__identity">
+                    <p class="character-file__kind">
+                      {if sealed_spirit?(character), do: "Запечатанный дух", else: "Путник"}
+                    </p>
+                    <h3>{character.name}</h3>
+                  </div>
+
+                  <div
+                    :if={sealed_spirit?(character)}
+                    class="character-file__wax character-file__wax--violet"
+                    aria-label="Печать Башни"
+                  >
+                    <.icon name="hero-building-library" class="character-file__wax-icon" />
+                  </div>
+                  <div
+                    :if={not sealed_spirit?(character)}
+                    class="character-file__wax character-file__wax--red"
+                    aria-label="Печать путника"
+                  >
+                    <.icon name="hero-compass" class="character-file__wax-icon" />
+                  </div>
+                </header>
+
+                <dl class="character-file__facts">
+                  <div>
+                    <dt>Ступень</dt>
+                    <dd>{character.level}</dd>
+                  </div>
+                  <div>
+                    <dt>Состояние</dt>
+                    <dd>{status_label(character.status)}</dd>
+                  </div>
+                </dl>
+
+                <p :if={sealed_spirit?(character)} class="character-file__note">
+                  Тело остаётся в Башне. Проекция невидима для путников и проходит тайными
+                  путями либо духовным переходом.
+                </p>
+                <p :if={not sealed_spirit?(character)} class="character-file__note">
+                  Обычная жизнь в мире: дороги, встречи, учёба, ремесло и приключения.
+                </p>
+
+                <div
+                  :if={character.id == @current_character_id and character.status == :active}
+                  class="character-file__active-stamp"
+                >
+                  Действующее дело
+                </div>
+
+                <footer class="character-file__footer">
+                  <.link
+                    :if={playable?(character, @blocked_character_ids)}
+                    id={"select-character-#{character.id}"}
+                    href={~p"/characters/#{character.id}/select"}
+                    method="post"
+                    class="character-file__choose"
+                  >
+                    <.icon name="hero-key" class="character-file__choose-icon" />
+                    {if character.id == @current_character_id and character.status == :active,
+                      do: "Продолжить",
+                      else: "Открыть это дело"}
+                  </.link>
+
+                  <p
+                    :if={not playable?(character, @blocked_character_ids)}
+                    class="character-file__unavailable"
+                  >
+                    {unavailable_label(character)}
+                  </p>
+                </footer>
+              </article>
+            </div>
+          </section>
+
+          <footer class="character-folio__registry-note">
+            <span>Правило реестра</span>
+            В одном мире может действовать только одно ваше личное дело. Переход между мирами
+            временно запечатывает остальные профили.
+          </footer>
+        </div>
+      </section>
+    </div>
+  </main>
+</Layouts.app>

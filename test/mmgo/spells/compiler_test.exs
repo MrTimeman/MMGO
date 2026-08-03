@@ -90,6 +90,64 @@ defmodule MMGO.Spells.CompilerTest do
     def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
   end
 
+  defmodule OverpoweredRootProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(_prompt_payload, _schema, _opts) do
+      {:ok,
+       %{
+         "outcome" => "created",
+         "name" => "Unbounded Root",
+         "formula" => "Provider Formula",
+         "school" => "chaos",
+         "description" => "An intentionally excessive provider result.",
+         "level_requirement" => 80,
+         "fatigue_cost" => 90,
+         "cooldown_turns" => 30,
+         "targeting" => "zone",
+         "delivery_form" => "zone",
+         "tags" => ["chaos", "root"],
+         "narrative_tags" => ["cataclysmic"],
+         "environment_tags" => ["world-fire", "collapsed-reality"],
+         "environment_mode" => "replace",
+         "effects" => [
+           %{
+             "applies_to" => "environment",
+             "state" => "burning",
+             "intensity" => 200,
+             "variance" => 80,
+             "duration" => 40,
+             "tags" => ["unbounded"]
+           },
+           %{
+             "applies_to" => "target",
+             "state" => "trapped",
+             "intensity" => 30,
+             "variance" => 20,
+             "duration" => 20
+           }
+         ],
+         "interaction_rules" => [
+           %{
+             "trigger_type" => "spell_tag",
+             "trigger" => "water",
+             "outcome" => "replace_environment",
+             "replacement_tags" => ["void"]
+           }
+         ],
+         "failure_profile" => %{
+           "difficulty" => 80,
+           "base_success_rate" => 25,
+           "partial_success_rate" => 20,
+           "backlash_damage" => 50,
+           "volatility" => 90
+         }
+       }}
+    end
+
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
+  end
+
   setup do
     {:ok, realm} =
       Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
@@ -303,6 +361,105 @@ defmodule MMGO.Spells.CompilerTest do
     assert spell.formula == "Ignis Radius"
     assert spell.school == :fire
     assert spell.source_spell_id == base_spell.id
+  end
+
+  test "novice root spells are bounded by server policy", %{character: character} do
+    assert {:ok, %{spell: spell, compiled_spell: compiled_spell}} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Prima Radix",
+                 formula: "Ignis Tarde",
+                 school: "fire"
+               },
+               provider: OverpoweredRootProvider,
+               model: "overpowered-root-test-model",
+               allow_root_spell: true,
+               circle_tier: :novice
+             )
+
+    assert spell.level_requirement == 1
+    assert spell.fatigue_cost == 12
+    assert spell.cooldown_turns == 3
+    assert spell.source_spell_id == nil
+    assert spell.environment_mode == :none
+    assert spell.environment_tags == []
+    assert spell.interaction_rules == []
+
+    assert [effect] = spell.effects
+    assert effect.applies_to == :target
+    assert effect.intensity == 12
+    assert effect.variance == 2
+    assert effect.duration == 3
+
+    assert compiled_spell["level_requirement"] == 1
+    assert compiled_spell["environment_mode"] == "none"
+    assert compiled_spell["environment_tags"] == []
+    assert compiled_spell["interaction_rules"] == []
+    assert length(compiled_spell["effects"]) == 1
+  end
+
+  test "novice caps survive an attached base while trained roots keep their compiler budget", %{
+    character: character,
+    base_spell: base_spell
+  } do
+    common_opts = [
+      provider: OverpoweredRootProvider,
+      model: "unbounded-control-test-model"
+    ]
+
+    assert {:ok, %{spell: novice_spell, compiled_spell: novice_output}} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Inherited Radix",
+                 formula: "Ignis Celeriter",
+                 school: "fire",
+                 base_spell_id: base_spell.id
+               },
+               common_opts ++ [circle_tier: :novice]
+             )
+
+    assert novice_spell.source_spell_id == base_spell.id
+    assert novice_spell.level_requirement == 1
+    assert novice_spell.fatigue_cost == 12
+    assert novice_spell.cooldown_turns == 3
+    assert novice_spell.environment_mode == :none
+    assert novice_spell.environment_tags == []
+    assert novice_spell.interaction_rules == []
+
+    assert [novice_effect] = novice_spell.effects
+    assert novice_effect.applies_to == :target
+    assert novice_effect.intensity == 12
+    assert novice_effect.variance == 2
+    assert novice_effect.duration == 3
+
+    assert novice_output["level_requirement"] == 1
+    assert novice_output["fatigue_cost"] == 12
+    assert novice_output["cooldown_turns"] == 3
+    assert novice_output["environment_mode"] == "none"
+    assert novice_output["environment_tags"] == []
+    assert novice_output["interaction_rules"] == []
+    assert length(novice_output["effects"]) == 1
+
+    assert {:ok, %{spell: trained_root}} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Trained Radix",
+                 formula: "Aqua Lente",
+                 school: "water"
+               },
+               common_opts ++ [allow_root_spell: true, circle_tier: :trained]
+             )
+
+    assert trained_root.level_requirement == 80
+    assert trained_root.fatigue_cost == 90
+    assert trained_root.cooldown_turns == 30
+    assert trained_root.environment_mode == :replace
+    assert trained_root.environment_tags == ["world-fire", "collapsed-reality"]
+    assert length(trained_root.effects) == 2
+    assert length(trained_root.interaction_rules) == 1
   end
 
   test "compiler limits the owned library context", %{

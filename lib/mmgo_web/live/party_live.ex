@@ -186,7 +186,7 @@ defmodule MMGOWeb.PartyLive do
                     </h3>
                     <span class="pty-card__lvl">ур. {membership.character.level}</span>
                   </div>
-                  <span class="pty-card__class">{membership.role}</span>
+                  <span class="pty-card__class">{party_role_label(membership.role)}</span>
                   <div class="pty-card__chips">
                     <span class={[
                       "pty-tag",
@@ -427,6 +427,9 @@ defmodule MMGOWeb.PartyLive do
 
   defp member_ready?(membership), do: Map.get(membership.metadata || %{}, "ready", true) == true
   defp member_initial(name), do: name |> String.trim() |> String.first() || "?"
+  defp party_role_label(:leader), do: "предводитель"
+  defp party_role_label(:member), do: "участник"
+  defp party_role_label(_role), do: "участник"
   defp location_name(nil), do: "неизвестное место"
   defp location_name(location), do: location.name
   defp inviter_name(%{inviter_character: nil}), do: "неизвестный путник"

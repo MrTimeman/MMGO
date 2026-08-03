@@ -636,7 +636,7 @@ defmodule MMGOWeb.AcademiaLive do
                     id={"academia-curriculum-course-#{curriculum.course.id}"}
                     class="acd-curriculum-card"
                   >
-                    <p class="acd-curriculum-card__title">{curriculum.course.title}</p>
+                    <p class="acd-curriculum-card__title">{course_title(curriculum.course)}</p>
                     <p class="acd-curriculum-card__terms">
                       Базово: {curriculum_terms_label(curriculum.base_term_numbers)} · сейчас: {curriculum_terms_label(
                         curriculum.effective_term_numbers
@@ -1043,7 +1043,7 @@ defmodule MMGOWeb.AcademiaLive do
       {"Выберите базовый курс", ""}
       | Enum.map(courses, fn %{course: course, allowed_term_numbers: allowed_terms} ->
           {
-            "#{course.title} · термины #{curriculum_terms_label(allowed_terms)}",
+            "#{course_title(course)} · термины #{curriculum_terms_label(allowed_terms)}",
             course.id
           }
         end)
@@ -1056,6 +1056,32 @@ defmodule MMGOWeb.AcademiaLive do
     do: Enum.map_join(term_numbers, ", ", &to_string/1)
 
   defp curriculum_terms_label(_term_numbers), do: "не указаны"
+
+  defp course_title(%{title: title}), do: localized_course_title(title)
+
+  defp localized_course_title("History of the Realm"), do: "История мира"
+  defp localized_course_title("Elemental Literacy"), do: "Основы стихий"
+  defp localized_course_title("Overworld Survival"), do: "Выживание в открытом мире"
+  defp localized_course_title("Economic Basics"), do: "Основы экономики"
+  defp localized_course_title("Civic Law"), do: "Гражданское право"
+  defp localized_course_title("Latin Fundamentals"), do: "Основы латыни"
+  defp localized_course_title("Incantation Construction I"), do: "Создание заклинаний I"
+  defp localized_course_title("Dual-School Fundamentals"), do: "Основы двух школ"
+  defp localized_course_title("Spellcraft Practicum"), do: "Практикум по чародейству"
+  defp localized_course_title("Incantation Construction II"), do: "Создание заклинаний II"
+  defp localized_course_title("Arcane Mini-Thesis"), do: "Малая работа по чародейству"
+  defp localized_course_title("Ingredients Taxonomy"), do: "Систематика ингредиентов"
+  defp localized_course_title("Basic Brewing"), do: "Основы зельеварения"
+
+  defp localized_course_title("Recipe Development Practicum"),
+    do: "Практикум по созданию рецептов"
+
+  defp localized_course_title("Alchemy Mini-Thesis"), do: "Малая работа по алхимии"
+  defp localized_course_title("Materials Science"), do: "Материаловедение"
+  defp localized_course_title("Basic Forging"), do: "Основы кузнечного дела"
+  defp localized_course_title("Toolcraft Practicum"), do: "Практикум по инструментам"
+  defp localized_course_title("Mastery Mini-Thesis"), do: "Малая работа по мастерству"
+  defp localized_course_title(title), do: title
 
   defp parse_positive_amount(value) when is_binary(value) do
     case Integer.parse(value) do

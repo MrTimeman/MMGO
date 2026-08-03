@@ -1,6 +1,6 @@
 // SpellCircleHook — variable-count orbital slot medallions around a runic
-// circle. Slots are either free-text (words the caster writes themselves)
-// or a constrained choice (school, base spell) offered as a picker.
+// circle. Word seals accept one bounded word apiece; school and foundation
+// seals are constrained choices offered by the server.
 // A trained wizard gets the full circle; a self-taught caster gets a
 // smaller one — the slot list is entirely server-driven, this hook just
 // lays out however many it's given. Filling a slot is a quiet moment —
@@ -86,9 +86,9 @@ void main() {
 `
 
 const DEFAULT_SLOTS = [
-  { key: 'actio',   label: 'Actio',   required: true,  kind: 'text' },
-  { key: 'vis',     label: 'Vis',     required: false, kind: 'text' },
-  { key: 'pretium', label: 'Pretium', required: false, kind: 'text' },
+  { key: 'school', label: 'Школа', required: true, kind: 'select', options: [] },
+  { key: 'actio', label: 'Акцио', required: true, kind: 'text' },
+  { key: 'tempus', label: 'Темпус', required: true, kind: 'text' },
 ]
 
 const RUNE_STR = 'ᚠ ᚢ ᚦ ᚨ ᚱ ᚲ ᚹ ᚺ ᛊ ᛏ ᛒ ᛖ ᛗ ᛚ ᛜ ᛞ ᛟ · '
@@ -116,9 +116,15 @@ function tileSize(total, required) {
   return { w, h: w }
 }
 
+function orbitRadius(total) {
+  // The novice circle has three large seals. Pull them inward so the upper
+  // seal stays inside the parchment at narrow widths and browser zoom.
+  return total <= 3 ? 31.5 : 38
+}
+
 function slotPos(i, total, size) {
   const a = i * (360 / total) * (Math.PI / 180)
-  const radius = 38
+  const radius = orbitRadius(total)
   return {
     left: `calc(${50 + radius * Math.sin(a)}% - ${size.w / 2}%)`,
     top:  `calc(${50 - radius * Math.cos(a)}% - ${size.h / 2}%)`,
@@ -127,10 +133,11 @@ function slotPos(i, total, size) {
 
 function orbitCenter(i, total) {
   const a = i * (360 / total) * (Math.PI / 180)
-  return { left: `${50 + 37.5 * Math.sin(a)}%`, top: `${50 - 37.5 * Math.cos(a)}%` }
+  const radius = orbitRadius(total)
+  return { left: `${50 + radius * Math.sin(a)}%`, top: `${50 - radius * Math.cos(a)}%` }
 }
 
-function svgOrbitPoint(i, total, radius = 112) {
+function svgOrbitPoint(i, total, radius = total <= 3 ? 107 : 112) {
   const a = i * (360 / total) * (Math.PI / 180)
   return { x: 170 + radius * Math.sin(a), y: 170 - radius * Math.cos(a) }
 }
@@ -934,7 +941,11 @@ export const SpellCircleHook = {
     const input = document.createElement('input')
     input.type = 'text'
     input.className = 'sc__sheet-input'
-    input.placeholder = 'Введите значение...'
+    input.placeholder = key === 'tempus' ? 'Одно слово, например Momentum' : 'Одно слово, например Ictus'
+    input.maxLength = 32
+    input.autocomplete = 'off'
+    input.spellcheck = false
+    input.setAttribute('aria-label', 'Одно слово из букв')
     input.value = this._sel[key] ?? ''
     input.addEventListener('input', e => { this._sel[key] = e.target.value })
     input.addEventListener('keydown', e => {

@@ -35,7 +35,7 @@ defmodule MMGO.Actors do
 
     case get_actor_template_by_code(realm.id, code) do
       %ActorTemplate{} = actor_template ->
-        {:ok, actor_template}
+        refresh_generic_name(actor_template, encounter_kind, threat_level)
 
       nil ->
         create_actor_template(realm, %{
@@ -105,9 +105,21 @@ defmodule MMGO.Actors do
   defp spawn_quantity(threat_level) when threat_level >= 25, do: 2
   defp spawn_quantity(_threat_level), do: 1
 
-  defp generic_name("boss", _threat_level), do: "Dungeon Boss"
-  defp generic_name("hazard", _threat_level), do: "Dungeon Hazard"
-  defp generic_name(_kind, threat_level), do: "Dungeon Foe #{threat_level}"
+  defp generic_name("boss", _threat_level), do: "Хранитель подземелья"
+  defp generic_name("hazard", _threat_level), do: "Аномалия подземелья"
+  defp generic_name(_kind, threat_level), do: "Обитатель подземелья · угроза #{threat_level}"
+
+  defp refresh_generic_name(%ActorTemplate{} = actor_template, encounter_kind, threat_level) do
+    expected_name = generic_name(encounter_kind, threat_level)
+
+    if actor_template.name == expected_name do
+      {:ok, actor_template}
+    else
+      actor_template
+      |> ActorTemplate.changeset(%{name: expected_name})
+      |> Repo.update()
+    end
+  end
 
   defp stringify_keys(map) when is_map(map) do
     Map.new(map, fn {key, value} -> {to_string(key), value} end)

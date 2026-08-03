@@ -2,6 +2,7 @@ defmodule MMGO.DungeonCombatIntegrationTest do
   use MMGO.DataCase, async: true
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Bases.Base
   alias MMGO.Combat
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Dungeons
@@ -74,7 +75,14 @@ defmodule MMGO.DungeonCombatIntegrationTest do
 
     encounter = Repo.get_by!(Encounter, run_id: run.id, node_id: entrance_node.id)
 
-    %{character: character, spell: spell, dungeon: dungeon, encounter: encounter, run: run}
+    %{
+      character: character,
+      spell: spell,
+      dungeon: dungeon,
+      encounter: encounter,
+      run: run,
+      tower: tower
+    }
   end
 
   test "start_encounter_combat/2 creates a dungeon combat linked to the encounter", %{
@@ -117,6 +125,46 @@ defmodule MMGO.DungeonCombatIntegrationTest do
     assert resolved_encounter.status == :cleared
     assert loot_drop.status == :available
     assert loot_drop.encounter_id == encounter.id
+  end
+
+  test "a dungeon encounter at an owned fortress carries its server-side ward", %{
+    encounter: encounter,
+    character: character,
+    tower: tower
+  } do
+    character =
+      character
+      |> Character.changeset(%{
+        metadata: %{
+          "profile_kind" => "sealed_spirit",
+          "sealed_anchor_location_id" => tower.id
+        }
+      })
+      |> Repo.update!()
+
+    %Base{
+      owner_character_id: character.id,
+      realm_id: character.realm_id,
+      location_id: tower.id
+    }
+    |> Base.changeset(%{
+      name: "Tower Dungeon Fortress",
+      kind: :custom_build,
+      status: :active,
+      storage_weight_capacity: 350,
+      built_at: DateTime.utc_now(),
+      metadata: %{"fortress" => %{"tier" => 5, "ward_intensity" => 100}}
+    })
+    |> Repo.insert!()
+
+    assert {:ok, %{combat: combat}} = Dungeons.start_encounter_combat(encounter)
+    combat = Combat.get_combat!(combat.id)
+    participant = Enum.find(combat.participants, &(&1.character_id == character.id))
+
+    assert combat.metadata["location_id"] == tower.id
+
+    assert [%{"state" => "shielded", "source" => "owned_fortress"}] =
+             Enum.map(participant.active_states, &Map.take(&1, ["state", "source"]))
   end
 
   test "losing a dungeon combat fails the encounter and the run", %{

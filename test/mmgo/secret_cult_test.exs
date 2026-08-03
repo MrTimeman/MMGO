@@ -1,11 +1,13 @@
 defmodule MMGO.SecretCultTest do
   use MMGO.DataCase, async: true
 
-  alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Accounts
+  alias MMGO.Accounts.{Account, Character, SpecialProfiles}
   alias MMGO.Organizations
   alias MMGO.Play
   alias MMGO.Repo
   alias MMGO.SecretCult
+  alias MMGO.Travel
   alias MMGO.Worlds
 
   setup do
@@ -38,12 +40,22 @@ defmodule MMGO.SecretCultTest do
 
     {:ok, tower} =
       Worlds.create_location(realm, %{
-        slug: "secret-cult-tower",
+        slug: "the-tower",
         name: "Secret Cult Tower",
         kind: :tower,
         x: 60,
         y: 40,
         safe_zone: false
+      })
+
+    {:ok, route} =
+      Worlds.create_route(realm, %{
+        name: "Cult Realm Road",
+        origin_location_id: city.id,
+        destination_location_id: tower.id,
+        travel_days: 2,
+        risk_level: 10,
+        bidirectional: true
       })
 
     founder = character_fixture(realm, watchtower, "cult-keeper", "Cult Keeper")
@@ -62,13 +74,101 @@ defmodule MMGO.SecretCultTest do
       })
 
     %{
+      realm: realm,
       city: city,
       watchtower: watchtower,
       tower: tower,
       founder: founder,
       player: player,
-      cult: cult
+      cult: cult,
+      route: route
     }
+  end
+
+  test "special-profile provisioning grants Albert a real cult pass while roads stay blocked", %{
+    city: city,
+    route: route
+  } do
+    assert {:ok, %{account: account}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 1_265_881_543,
+               "username" => "albert",
+               "first_name" => "Albert"
+             })
+
+    albert =
+      account.id
+      |> Accounts.list_characters_for_account()
+      |> Enum.find(&(&1.name == "Альберт Латыпов"))
+
+    assert {:ok, active_albert} = Accounts.switch_character(account.id, albert.id)
+
+    assert %{stage: :passage_unlocked, passage_available?: true} =
+             SecretCult.discovery_state(active_albert)
+
+    assert {:error, road_changeset} = Travel.start_journey(active_albert, route)
+    assert %{route_id: ["sealed spirit cannot use ordinary roads"]} = errors_on(road_changeset)
+
+    assert {:ok, city_albert} = SecretCult.use_pass(active_albert, city.id)
+    assert city_albert.current_location_id == city.id
+  end
+
+  test "maximum sealed access preserves an existing cult role through a private augmented role",
+       %{
+         realm: realm,
+         founder: founder,
+         cult: cult
+       } do
+    assert {:ok, %{account: account}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 1_265_881_543,
+               "username" => "albert-governance",
+               "first_name" => "Albert"
+             })
+
+    albert =
+      account.id
+      |> Accounts.list_characters_for_account()
+      |> Enum.find(&(&1.name == "Альберт Латыпов"))
+
+    assert {:ok, governance_role} =
+             Organizations.add_role(cult, founder, %{
+               code: "keeper-council",
+               title: "Хранитель совета",
+               rank: 80,
+               permissions: ["invite_members", "manage_treasury"]
+             })
+
+    membership =
+      Repo.get_by!(MMGO.Organizations.Membership,
+        organization_id: cult.id,
+        character_id: albert.id,
+        status: :active
+      )
+
+    membership
+    |> MMGO.Organizations.Membership.changeset(%{role_id: governance_role.id})
+    |> Repo.update!()
+
+    assert {:ok, _profiles} = SpecialProfiles.reconcile(account, realm)
+
+    updated_membership =
+      Repo.get_by!(MMGO.Organizations.Membership,
+        organization_id: cult.id,
+        character_id: albert.id,
+        status: :active
+      )
+      |> Repo.preload(:role)
+
+    assert updated_membership.role.id != governance_role.id
+    assert updated_membership.role.title == governance_role.title
+    assert updated_membership.role.rank == governance_role.rank
+
+    assert Enum.sort(updated_membership.role.permissions) ==
+             ["grant_fast_travel", "invite_members", "manage_treasury"]
+
+    assert Repo.get!(MMGO.Organizations.Role, governance_role.id).permissions ==
+             ["invite_members", "manage_treasury"]
   end
 
   test "the two location-bound discovery steps grant a real bidirectional passage", %{
@@ -126,6 +226,43 @@ defmodule MMGO.SecretCultTest do
 
     assert {:error, :secret_cult_rumor_required} = SecretCult.reveal_passage(watchtower_player)
     assert {:error, :secret_cult_wrong_location} = SecretCult.hear_rumor(watchtower_player)
+  end
+
+  test "a sealed spirit may use only the verified Secret Cult passage", %{
+    watchtower: watchtower,
+    tower: tower,
+    player: player,
+    cult: cult
+  } do
+    assert {:ok, %{character: marked_player}} = SecretCult.hear_rumor(player)
+
+    watchtower_player =
+      marked_player
+      |> Character.travel_changeset(%{current_location_id: watchtower.id})
+      |> Repo.update!()
+
+    assert {:ok, %{character: passage_bearer}} = SecretCult.reveal_passage(watchtower_player)
+
+    sealed_spirit =
+      passage_bearer
+      |> Character.changeset(%{
+        metadata:
+          Map.merge(passage_bearer.metadata || %{}, %{
+            "profile_kind" => "sealed_spirit",
+            "hidden_presence" => true,
+            "sealed_anchor_location_id" => tower.id
+          })
+      })
+      |> Repo.update!()
+
+    assert {:error, generic_changeset} =
+             Organizations.use_fast_travel(sealed_spirit, cult, tower)
+
+    assert %{status: ["sealed spirit cannot use organization fast travel"]} =
+             errors_on(generic_changeset)
+
+    assert {:ok, tower_spirit} = SecretCult.use_pass(sealed_spirit, tower.id)
+    assert tower_spirit.current_location_id == tower.id
   end
 
   test "discovery preserves an existing passage role's permissions", %{

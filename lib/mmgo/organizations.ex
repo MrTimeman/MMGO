@@ -2,7 +2,7 @@ defmodule MMGO.Organizations do
   import Ecto.Query, warn: false
 
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Economy
   alias MMGO.Notifications
   alias MMGO.Organizations.{Invitation, Membership, Organization, Role}
@@ -108,7 +108,7 @@ defmodule MMGO.Organizations do
         |> Role.changeset(%{
           organization_id: organization.id,
           code: "open-member",
-          title: "Member",
+          title: "Участник",
           rank: 0,
           permissions: []
         })
@@ -1519,13 +1519,17 @@ defmodule MMGO.Organizations do
         {:error, organization_changeset("fast travel toll amount must be a non-negative integer")}
 
   def list_available_fast_travel_destinations(%Character{} = character) do
-    character.current_location_id
-    |> fast_travel_memberships(character.id)
-    |> Enum.flat_map(fn membership ->
-      membership.organization.linked_location_ids
-      |> Enum.reject(&(&1 == character.current_location_id))
-      |> Enum.map(&MMGO.Worlds.get_location!/1)
-    end)
+    if CharacterProfiles.sealed_spirit?(character) do
+      []
+    else
+      character.current_location_id
+      |> fast_travel_memberships(character.id)
+      |> Enum.flat_map(fn membership ->
+        membership.organization.linked_location_ids
+        |> Enum.reject(&(&1 == character.current_location_id))
+        |> Enum.map(&MMGO.Worlds.get_location!/1)
+      end)
+    end
   end
 
   def use_fast_travel(
@@ -1533,6 +1537,19 @@ defmodule MMGO.Organizations do
         %Organization{} = organization,
         %Location{} = destination_location
       ) do
+    do_use_fast_travel(character, organization, destination_location, :ordinary)
+  end
+
+  @doc false
+  def use_secret_passage(
+        %Character{} = character,
+        %Organization{} = organization,
+        %Location{} = destination_location
+      ) do
+    do_use_fast_travel(character, organization, destination_location, :secret_passage)
+  end
+
+  defp do_use_fast_travel(character, organization, destination_location, travel_mode) do
     Repo.transaction(fn ->
       organization = lock_organization!(organization.id)
       character = lock_character!(character.id)
@@ -1541,6 +1558,12 @@ defmodule MMGO.Organizations do
       validate_permission!(membership, "grant_fast_travel")
 
       cond do
+        CharacterProfiles.sealed_spirit?(character) and
+            not sealed_secret_passage?(organization, travel_mode) ->
+          Repo.rollback(
+            organization_changeset("sealed spirit cannot use organization fast travel")
+          )
+
         not is_nil(Travel.active_journey(character.id)) ->
           Repo.rollback(
             organization_changeset("character cannot use fast travel while travelling")
@@ -1573,6 +1596,13 @@ defmodule MMGO.Organizations do
     end)
     |> normalize_transaction_result()
   end
+
+  defp sealed_secret_passage?(%Organization{} = organization, :secret_passage) do
+    organization.kind == :cult and
+      Map.get(organization.metadata || %{}, "secret_cult") == true
+  end
+
+  defp sealed_secret_passage?(_organization, _travel_mode), do: false
 
   defp settle_fast_travel_toll!(organization, character, destination_location) do
     quote =
@@ -2489,10 +2519,10 @@ defmodule MMGO.Organizations do
   defp default_role_code(:council), do: "chair"
   defp default_role_code(:guild), do: "master"
 
-  defp default_role_title(:cult), do: "Archbishop"
-  defp default_role_title(:company), do: "Director"
-  defp default_role_title(:council), do: "Chair"
-  defp default_role_title(:guild), do: "Guildmaster"
+  defp default_role_title(:cult), do: "Архиепископ"
+  defp default_role_title(:company), do: "Директор"
+  defp default_role_title(:council), do: "Председатель"
+  defp default_role_title(:guild), do: "Гильдмастер"
 
   defp lock_character!(character_id) do
     Character

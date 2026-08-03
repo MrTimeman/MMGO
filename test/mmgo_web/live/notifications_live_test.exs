@@ -51,6 +51,112 @@ defmodule MMGOWeb.NotificationsLiveTest do
     refute has_element?(view, "#notification-#{other_notification.id}")
   end
 
+  test "renders traveler contact correspondence in Russian", %{conn: conn, owner: owner} do
+    request =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "overworld_contact_request",
+        status: :sent,
+        payload: %{
+          "encounter_id" => "request-1",
+          "requester_name" => "Тамиорн Найло"
+        }
+      })
+
+    accepted =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "overworld_contact_accepted",
+        status: :sent,
+        payload: %{
+          "encounter_id" => "request-2",
+          "counterpart_name" => "Альберт Латыпов",
+          "telegram_username" => "mmgo_mage"
+        }
+      })
+
+    rejected =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "overworld_contact_rejected",
+        status: :sent,
+        payload: %{
+          "encounter_id" => "request-3",
+          "counterpart_name" => "Путник",
+          "decision" => "decline"
+        }
+      })
+
+    {:ok, view, _html} = live(session_conn(conn, owner), ~p"/notifications")
+
+    assert has_element?(
+             view,
+             "#notification-#{request.id}",
+             "Запрос Telegram-контакта"
+           )
+
+    assert has_element?(view, "#notification-#{request.id}", "путник: Тамиорн Найло")
+    assert has_element?(view, "#notification-#{accepted.id}", "Контактами обменялись")
+    assert has_element?(view, "#notification-#{accepted.id}", "Telegram: @mmgo_mage")
+    assert has_element?(view, "#notification-#{rejected.id}", "Запрос контакта закрыт")
+    assert has_element?(view, "#notification-#{rejected.id}", "решение: отклонено")
+  end
+
+  test "translates internal payload codes and conceals unknown codes and delivery errors", %{
+    conn: conn,
+    owner: owner
+  } do
+    academy =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "academy_completed",
+        status: :sent,
+        payload: %{
+          "program_type" => "basic_education",
+          "outcome_tier" => "capstone_incomplete"
+        }
+      })
+
+    extraction =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "dungeon_extraction_completed",
+        status: :sent,
+        payload: %{"extraction_type" => "return_ritual"}
+      })
+
+    unknown =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "unknown_internal_event",
+        status: :failed,
+        payload: %{"internal_mode" => "deep_internal_code"},
+        error: "raw transport failure"
+      })
+
+    {:ok, view, _html} = live(session_conn(conn, owner), ~p"/notifications")
+
+    assert has_element?(view, "#notification-#{academy.id}", "программа: Базовое образование")
+
+    assert has_element?(
+             view,
+             "#notification-#{academy.id}",
+             "итог: не пройден итоговый проект"
+           )
+
+    assert has_element?(view, "#notification-#{extraction.id}", "ритуал возвращения")
+    assert has_element?(view, "#notification-#{unknown.id}", "сведения: записано")
+
+    assert has_element?(
+             view,
+             "#notification-error-#{unknown.id}",
+             "Послание не удалось доставить"
+           )
+
+    refute has_element?(view, "#notification-#{unknown.id}", "deep_internal_code")
+    refute has_element?(view, "#notification-#{unknown.id}", "raw transport failure")
+  end
+
   defp notification_fixture(character, attrs) do
     suffix = System.unique_integer([:positive])
 

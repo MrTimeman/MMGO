@@ -620,7 +620,7 @@ defmodule MMGOWeb.OrganizationsLive do
               id={"org-role-#{role.id}"}
               class="org-charter-clause"
             >
-              <span>{role.title}</span>
+              <span>{localized_role_title(role)}</span>
               <span class="org-app-note">
                 Ранг {role.rank} · {role_permissions_label(role.permissions)}
               </span>
@@ -777,7 +777,7 @@ defmodule MMGOWeb.OrganizationsLive do
                 id={"org-treasury-role-limit-#{role.id}"}
                 class="org-charter-clause"
               >
-                <span>{role.title}</span>
+                <span>{localized_role_title(role)}</span>
                 <span class="org-app-note">
                   {treasury_direct_payout_limit_label(role.direct_payout_limit)}
                 </span>
@@ -1221,7 +1221,7 @@ defmodule MMGOWeb.OrganizationsLive do
               field={@invite_form[:role_id]}
               type="select"
               label="Роль"
-              options={Enum.map(@organization.roles, &{&1.title, &1.id})}
+              options={role_options(@organization.roles)}
             />
             <button type="submit" class="org-btn">Отправить приглашение</button>
           </.form>
@@ -1420,8 +1420,21 @@ defmodule MMGOWeb.OrganizationsLive do
   defp member_name(%{character: %{name: name}}), do: name
   defp member_name(_membership), do: "—"
 
-  defp role_title(%{role: %{title: title}}), do: title
+  defp role_title(%{role: role}), do: localized_role_title(role)
   defp role_title(_membership), do: "—"
+
+  defp localized_role_title(%{code: "archbishop"}), do: "Архиепископ"
+  defp localized_role_title(%{code: "director"}), do: "Директор"
+  defp localized_role_title(%{code: "chair"}), do: "Председатель"
+  defp localized_role_title(%{code: "master"}), do: "Гильдмастер"
+  defp localized_role_title(%{code: "open-member"}), do: "Участник"
+  defp localized_role_title(%{code: "passage-bearer"}), do: "Носитель прохода"
+  defp localized_role_title(%{title: title}) when is_binary(title), do: title
+  defp localized_role_title(_role), do: "—"
+
+  defp role_options(roles) do
+    Enum.map(roles, &{localized_role_title(&1), &1.id})
+  end
 
   defp role_permissions_label([]), do: "без полномочий"
 
@@ -1686,7 +1699,9 @@ defmodule MMGOWeb.OrganizationsLive do
   defp treasury_decision_label(_decision), do: "по полномочию роли"
 
   defp treasury_role_limit_options(role_limits) do
-    Enum.map(role_limits, fn role -> {"#{role.title} · ранг #{role.rank}", role.id} end)
+    Enum.map(role_limits, fn role ->
+      {"#{localized_role_title(role)} · ранг #{role.rank}", role.id}
+    end)
   end
 
   defp treasury_direct_payout_limit_label(nil), do: "без предела"

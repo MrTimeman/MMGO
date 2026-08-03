@@ -28,7 +28,8 @@ defmodule MMGOWeb.MapEditorLive do
 
     socket =
       socket
-      |> assign(:page_title, "Map Editor")
+      |> assign(:page_title, "Редактор карты")
+      |> assign(:current_scope, nil)
       |> assign(:world_map, world_map)
       |> assign(:locations, locations)
       |> assign(:manifest, manifest)
@@ -52,169 +53,175 @@ defmodule MMGOWeb.MapEditorLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <div class="map-editor" id="map-editor-root">
-      <div
-        id="map-editor"
-        phx-hook="MapEditor"
-        phx-update="ignore"
-        class="map-editor__canvas-wrap"
-      />
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <div class="map-editor" id="map-editor-root">
+        <div
+          id="map-editor"
+          phx-hook="MapEditor"
+          phx-update="ignore"
+          class="map-editor__canvas-wrap"
+        />
 
-      <aside class="map-editor__sidebar">
-        <header class="map-editor__header">
-          <h1>Map Editor</h1>
-          <span class="map-editor__unsaved" data-count={map_size(@dirty)}>
-            {if map_size(@dirty) > 0, do: "#{map_size(@dirty)} unsaved", else: "saved"}
-          </span>
-        </header>
+        <aside class="map-editor__sidebar">
+          <header class="map-editor__header">
+            <h1>Редактор карты</h1>
+            <span class="map-editor__unsaved" data-count={map_size(@dirty)}>
+              {if map_size(@dirty) > 0,
+                do: "не сохранено: #{map_size(@dirty)}",
+                else: "сохранено"}
+            </span>
+          </header>
 
-        <section class="map-editor__section">
-          <h2>Tools</h2>
-          <div class="map-editor__tools">
-            <button
-              :for={{tool, label} <- tools()}
-              type="button"
-              class={["map-editor__tool-btn", @tool == tool && "map-editor__tool-btn--active"]}
-              phx-click="set_tool"
-              phx-value-tool={tool}
-            >
-              {label}
-            </button>
-          </div>
-
-          <div class="map-editor__brush">
-            <span>Brush</span>
-            <button
-              :for={
-                {size, label} <- [
-                  {1, "1"},
-                  {2, "2"},
-                  {3, "3"},
-                  {"l1", "⬡7"},
-                  {"l0", "⬡49"}
-                ]
-              }
-              type="button"
-              class={["map-editor__brush-btn", @brush == size && "map-editor__brush-btn--active"]}
-              phx-click="set_brush"
-              phx-value-size={size}
-              title={brush_title(size)}
-            >
-              {label}
-            </button>
-          </div>
-        </section>
-
-        <section class="map-editor__section">
-          <h2>Terrain</h2>
-          <div class="map-editor__palette">
-            <button
-              :for={{id, terrain} <- Enum.sort_by(@world_map.terrains, &elem(&1, 0))}
-              type="button"
-              class={[
-                "map-editor__swatch",
-                @active_terrain == id && "map-editor__swatch--active"
-              ]}
-              style={"background-color: #{Map.get(terrain, "color", "#3a3a3a")}"}
-              phx-click="set_terrain"
-              phx-value-terrain={id}
-              title={"#{id} (cost #{format_cost(Map.get(terrain, "cost"))})"}
-            >
-              <span class="map-editor__swatch-label">{id}</span>
-            </button>
-          </div>
-
-          <form phx-submit="add_terrain" class="map-editor__new-terrain">
-            <input type="text" name="terrain_id" placeholder="id (slug)" required />
-            <input type="color" name="color" value="#4a7c47" />
-            <input
-              type="number"
-              name="cost"
-              placeholder="cost (blank = impassable)"
-              step="0.1"
-              min="0"
-            />
-            <button type="submit">Add terrain</button>
-          </form>
-          <p :if={@new_terrain_error} class="map-editor__error">{@new_terrain_error}</p>
-        </section>
-
-        <section class="map-editor__section">
-          <h2>Sprites</h2>
-          <div class="map-editor__sprites">
-            <button
-              :for={sprite <- @manifest["sprites"] || []}
-              type="button"
-              class={[
-                "map-editor__sprite",
-                @active_sprite == sprite["id"] && "map-editor__sprite--active"
-              ]}
-              phx-click="set_sprite"
-              phx-value-sprite={sprite["id"]}
-              title={"#{sprite["id"]} (#{sprite["terrain"]})"}
-            >
-              <img src={"/sprites/#{sprite["file"]}"} alt={sprite["id"]} />
-              <span>{sprite["id"]}</span>
-            </button>
-            <button
-              :if={@active_sprite}
-              type="button"
-              class="map-editor__sprite-clear"
-              phx-click="clear_sprite"
-            >
-              Clear sprite
-            </button>
-          </div>
-
-          <form
-            phx-submit="upload_sprite"
-            phx-change="validate_sprite"
-            class="map-editor__upload-form"
-          >
-            <input type="text" name="sprite_id" placeholder="sprite id (slug)" required />
-            <select name="terrain">
-              <option :for={{id, _} <- @world_map.terrains} value={id}>{id}</option>
-            </select>
-            <.live_file_input upload={@uploads.sprite} />
-            <button type="submit">Upload sprite</button>
-            <div :for={entry <- @uploads.sprite.entries} class="map-editor__upload-entry">
-              <span>{entry.client_name}</span>
-              <progress value={entry.progress} max="100">{entry.progress}%</progress>
-              <button type="button" phx-click="cancel_upload" phx-value-ref={entry.ref}>
-                &times;
+          <section class="map-editor__section">
+            <h2>Инструменты</h2>
+            <div class="map-editor__tools">
+              <button
+                :for={{tool, label} <- tools()}
+                type="button"
+                class={["map-editor__tool-btn", @tool == tool && "map-editor__tool-btn--active"]}
+                phx-click="set_tool"
+                phx-value-tool={tool}
+              >
+                {label}
               </button>
-              <p :for={err <- upload_errors(@uploads.sprite, entry)} class="map-editor__error">
-                {error_to_string(err)}
-              </p>
             </div>
-          </form>
-          <p :if={@sprite_form_error} class="map-editor__error">{@sprite_form_error}</p>
-        </section>
 
-        <section class="map-editor__section">
-          <h2>Location</h2>
-          <select phx-change="set_location" name="location_slug" class="map-editor__location-select">
-            <option value="">(none)</option>
-            <option
-              :for={loc <- @locations}
-              value={loc.slug}
-              selected={@active_location == loc.slug}
+            <div class="map-editor__brush">
+              <span>Кисть</span>
+              <button
+                :for={
+                  {size, label} <- [
+                    {1, "1"},
+                    {2, "2"},
+                    {3, "3"},
+                    {"l1", "⬡7"},
+                    {"l0", "⬡49"}
+                  ]
+                }
+                type="button"
+                class={["map-editor__brush-btn", @brush == size && "map-editor__brush-btn--active"]}
+                phx-click="set_brush"
+                phx-value-size={size}
+                title={brush_title(size)}
+              >
+                {label}
+              </button>
+            </div>
+          </section>
+
+          <section class="map-editor__section">
+            <h2>Рельеф</h2>
+            <div class="map-editor__palette">
+              <button
+                :for={{id, terrain} <- Enum.sort_by(@world_map.terrains, &elem(&1, 0))}
+                type="button"
+                class={[
+                  "map-editor__swatch",
+                  @active_terrain == id && "map-editor__swatch--active"
+                ]}
+                style={"background-color: #{Map.get(terrain, "color", "#3a3a3a")}"}
+                phx-click="set_terrain"
+                phx-value-terrain={id}
+                title={"#{terrain_label(id)} (стоимость: #{format_cost(Map.get(terrain, "cost"))})"}
+              >
+                <span class="map-editor__swatch-label">{terrain_label(id)}</span>
+              </button>
+            </div>
+
+            <form phx-submit="add_terrain" class="map-editor__new-terrain">
+              <input type="text" name="terrain_id" placeholder="код рельефа" required />
+              <input type="color" name="color" value="#4a7c47" />
+              <input
+                type="number"
+                name="cost"
+                placeholder="стоимость (пусто — непроходимо)"
+                step="0.1"
+                min="0"
+              />
+              <button type="submit">Добавить рельеф</button>
+            </form>
+            <p :if={@new_terrain_error} class="map-editor__error">{@new_terrain_error}</p>
+          </section>
+
+          <section class="map-editor__section">
+            <h2>Спрайты</h2>
+            <div class="map-editor__sprites">
+              <button
+                :for={sprite <- @manifest["sprites"] || []}
+                type="button"
+                class={[
+                  "map-editor__sprite",
+                  @active_sprite == sprite["id"] && "map-editor__sprite--active"
+                ]}
+                phx-click="set_sprite"
+                phx-value-sprite={sprite["id"]}
+                title={"#{sprite["id"]} (#{terrain_label(sprite["terrain"])})"}
+              >
+                <img src={"/sprites/#{sprite["file"]}"} alt={sprite["id"]} />
+                <span>{sprite["id"]}</span>
+              </button>
+              <button
+                :if={@active_sprite}
+                type="button"
+                class="map-editor__sprite-clear"
+                phx-click="clear_sprite"
+              >
+                Убрать спрайт
+              </button>
+            </div>
+
+            <form
+              phx-submit="upload_sprite"
+              phx-change="validate_sprite"
+              class="map-editor__upload-form"
             >
-              {loc.name} ({loc.slug})
-            </option>
-          </select>
-          <p class="map-editor__hint">
-            With the location tool active, click a hex to place/clear the selected location.
-          </p>
-        </section>
+              <input type="text" name="sprite_id" placeholder="код спрайта" required />
+              <select name="terrain">
+                <option :for={{id, _} <- @world_map.terrains} value={id}>
+                  {terrain_label(id)}
+                </option>
+              </select>
+              <.live_file_input upload={@uploads.sprite} />
+              <button type="submit">Загрузить спрайт</button>
+              <div :for={entry <- @uploads.sprite.entries} class="map-editor__upload-entry">
+                <span>{entry.client_name}</span>
+                <progress value={entry.progress} max="100">{entry.progress}%</progress>
+                <button type="button" phx-click="cancel_upload" phx-value-ref={entry.ref}>
+                  &times;
+                </button>
+                <p :for={err <- upload_errors(@uploads.sprite, entry)} class="map-editor__error">
+                  {error_to_string(err)}
+                </p>
+              </div>
+            </form>
+            <p :if={@sprite_form_error} class="map-editor__error">{@sprite_form_error}</p>
+          </section>
 
-        <section class="map-editor__section map-editor__save-section">
-          <button type="button" class="map-editor__save-btn" phx-click="save">
-            Save map
-          </button>
-        </section>
-      </aside>
-    </div>
+          <section class="map-editor__section">
+            <h2>Локация</h2>
+            <select phx-change="set_location" name="location_slug" class="map-editor__location-select">
+              <option value="">не выбрана</option>
+              <option
+                :for={loc <- @locations}
+                value={loc.slug}
+                selected={@active_location == loc.slug}
+              >
+                {loc.name}
+              </option>
+            </select>
+            <p class="map-editor__hint">
+              Выберите инструмент «Локация» и нажмите на гекс, чтобы поставить или убрать метку.
+            </p>
+          </section>
+
+          <section class="map-editor__section map-editor__save-section">
+            <button type="button" class="map-editor__save-btn" phx-click="save">
+              Сохранить карту
+            </button>
+          </section>
+        </aside>
+      </div>
+    </Layouts.app>
     """
   end
 
@@ -265,10 +272,10 @@ defmodule MMGOWeb.MapEditorLive do
 
     cond do
       id == "" ->
-        {:noreply, assign(socket, :new_terrain_error, "Terrain id can't be blank.")}
+        {:noreply, assign(socket, :new_terrain_error, "Укажите код рельефа.")}
 
       Map.has_key?(socket.assigns.world_map.terrains, id) ->
-        {:noreply, assign(socket, :new_terrain_error, "Terrain \"#{id}\" already exists.")}
+        {:noreply, assign(socket, :new_terrain_error, "Рельеф «#{id}» уже существует.")}
 
       true ->
         terrain = %{"color" => color, "cost" => cost}
@@ -299,10 +306,10 @@ defmodule MMGOWeb.MapEditorLive do
 
     cond do
       sprite_id == "" ->
-        {:noreply, assign(socket, :sprite_form_error, "Sprite id can't be blank.")}
+        {:noreply, assign(socket, :sprite_form_error, "Укажите код спрайта.")}
 
       socket.assigns.uploads.sprite.entries == [] ->
-        {:noreply, assign(socket, :sprite_form_error, "Choose a file to upload.")}
+        {:noreply, assign(socket, :sprite_form_error, "Выберите файл для загрузки.")}
 
       true ->
         do_upload_sprite(socket, sprite_id, terrain)
@@ -334,11 +341,11 @@ defmodule MMGOWeb.MapEditorLive do
          socket
          |> assign(:world_map, world_map)
          |> assign(:dirty, %{})
-         |> put_flash(:info, "Map saved (#{map_size(world_map.hexes)} hexes).")
+         |> put_flash(:info, "Карта сохранена. Гексов: #{map_size(world_map.hexes)}.")
          |> push_event("map_saved", %{})}
 
-      {:error, reason} ->
-        {:noreply, put_flash(socket, :error, "Save failed: #{inspect(reason)}")}
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Не удалось сохранить карту.")}
     end
   end
 
@@ -365,14 +372,14 @@ defmodule MMGOWeb.MapEditorLive do
          socket
          |> assign(:manifest, manifest)
          |> assign(:sprite_form_error, nil)
-         |> put_flash(:info, "Sprite \"#{sprite_id}\" uploaded.")
+         |> put_flash(:info, "Спрайт «#{sprite_id}» загружен.")
          |> push_event("manifest_updated", %{manifest: manifest})}
 
-      [{:error, reason}] ->
-        {:noreply, assign(socket, :sprite_form_error, "Upload failed: #{inspect(reason)}")}
+      [{:error, _reason}] ->
+        {:noreply, assign(socket, :sprite_form_error, "Не удалось загрузить файл.")}
 
       [] ->
-        {:noreply, assign(socket, :sprite_form_error, "Choose a file to upload.")}
+        {:noreply, assign(socket, :sprite_form_error, "Выберите файл для загрузки.")}
     end
   end
 
@@ -392,16 +399,25 @@ defmodule MMGOWeb.MapEditorLive do
 
   defp tools do
     [
-      {"paint", "Paint"},
-      {"erase", "Erase"},
-      {"road", "Road"},
-      {"location", "Location"},
-      {"pan", "Pan"}
+      {"paint", "Рисовать"},
+      {"erase", "Стереть"},
+      {"road", "Дорога"},
+      {"location", "Локация"},
+      {"pan", "Перемещение"}
     ]
   end
 
-  defp format_cost(nil), do: "impassable"
+  defp format_cost(nil), do: "непроходимо"
   defp format_cost(cost), do: to_string(cost)
+
+  defp terrain_label("forest"), do: "Лес"
+  defp terrain_label("grass"), do: "Равнина"
+  defp terrain_label("hills"), do: "Холмы"
+  defp terrain_label("mountain"), do: "Горы"
+  defp terrain_label("sand"), do: "Пески"
+  defp terrain_label("swamp"), do: "Болото"
+  defp terrain_label("water"), do: "Вода"
+  defp terrain_label(_terrain), do: "Иной рельеф"
 
   defp parse_cost(nil), do: nil
   defp parse_cost(""), do: nil
@@ -413,10 +429,10 @@ defmodule MMGOWeb.MapEditorLive do
     end
   end
 
-  defp error_to_string(:too_large), do: "File is too large (max 2MB)."
-  defp error_to_string(:not_accepted), do: "File type not accepted."
-  defp error_to_string(:too_many_files), do: "Only one file at a time."
-  defp error_to_string(other), do: to_string(other)
+  defp error_to_string(:too_large), do: "Файл слишком велик (не более 2 МБ)."
+  defp error_to_string(:not_accepted), do: "Этот тип файла не поддерживается."
+  defp error_to_string(:too_many_files), do: "Можно загрузить только один файл за раз."
+  defp error_to_string(_other), do: "Не удалось загрузить файл."
 
   defp normalize_hex_change(%{"q" => q, "r" => r} = params) do
     with {:ok, q} <- to_int(q), {:ok, r} <- to_int(r) do
@@ -517,11 +533,11 @@ defmodule MMGOWeb.MapEditorLive do
     %{world_map | location_index: location_index}
   end
 
-  defp brush_title(1), do: "Single hex"
-  defp brush_title(2), do: "Radius 2"
-  defp brush_title(3), do: "Radius 3"
-  defp brush_title("l1"), do: "Level-1 cell (7 hexes)"
-  defp brush_title("l0"), do: "Level-0 region (49 hexes)"
+  defp brush_title(1), do: "Один гекс"
+  defp brush_title(2), do: "Радиус 2"
+  defp brush_title(3), do: "Радиус 3"
+  defp brush_title("l1"), do: "Ячейка 1-го уровня (7 гексов)"
+  defp brush_title("l0"), do: "Область 0-го уровня (49 гексов)"
 
   defp push_editor_state(socket) do
     push_event(socket, "editor_state", %{

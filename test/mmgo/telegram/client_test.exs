@@ -64,6 +64,18 @@ defmodule MMGO.Telegram.ClientTest do
              Client.set_commands([%{command: "start", description: "Open MMGO"}])
   end
 
+  test "answers an inline callback query", %{bypass: bypass} do
+    Bypass.expect_once(bypass, "POST", "/bottest-bot-token/answerCallbackQuery", fn conn ->
+      {:ok, body, conn} = Plug.Conn.read_body(conn)
+      assert body =~ ~s("callback_query_id":"contact-callback-1")
+      assert body =~ "Запрос принят"
+      Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":true}))
+    end)
+
+    assert {:ok, true} =
+             Client.answer_callback_query("contact-callback-1", text: "Запрос принят")
+  end
+
   test "missing bot token returns an error" do
     original = Application.get_env(:mmgo, MMGO.Telegram)
 

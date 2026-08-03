@@ -11,7 +11,7 @@ defmodule MMGO.SecretCult do
 
   import Ecto.Query, warn: false
 
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Organizations.{Membership, Organization, Role}
   alias MMGO.Repo
   alias MMGO.Worlds.Location
@@ -22,6 +22,55 @@ defmodule MMGO.SecretCult do
   @passage_unlocked "passage_unlocked"
   @passage_role_code "passage-bearer"
   @passage_permission "grant_fast_travel"
+
+  @doc "Repairs the maximum ordinary passage access granted to the sealed alpha profile."
+  def ensure_maximum_passage_access(%Character{} = character) do
+    case secret_cult_for_realm(character.realm_id) do
+      nil ->
+        {:error, :secret_cult_unavailable}
+
+      %Organization{} ->
+        Repo.transaction(fn ->
+          character = lock_character!(character.id)
+
+          unless CharacterProfiles.sealed_spirit?(character) and
+                   CharacterProfiles.legendary_progression?(character) do
+            Repo.rollback(:secret_cult_access_not_eligible)
+          end
+
+          organization = lock_secret_cult!(character.realm_id)
+          passage_role = ensure_passage_role!(organization)
+          membership = grant_maximum_passage_membership!(organization, character, passage_role)
+          now = DateTime.utc_now()
+
+          discovery =
+            character
+            |> discovery_metadata()
+            |> Map.merge(%{
+              @stage_key => @passage_unlocked,
+              "passage_unlocked_at" => DateTime.to_iso8601(now),
+              "progression_source" => "closed_alpha_maximum"
+            })
+
+          updated_character =
+            character
+            |> Character.changeset(%{
+              metadata: Map.put(character.metadata || %{}, @discovery_key, discovery)
+            })
+            |> Repo.update!()
+
+          %{
+            character: updated_character,
+            organization: organization,
+            membership: membership,
+            stage: :passage_unlocked
+          }
+        end)
+    end
+  end
+
+  def ensure_maximum_passage_access(_character),
+    do: {:error, :secret_cult_access_not_eligible}
 
   @doc "Returns only the current character's safe, presentation-ready discovery state."
   def discovery_state(%Character{} = character) do
@@ -89,7 +138,7 @@ defmodule MMGO.SecretCult do
          %Location{} = destination <- Repo.get(Location, destination_location_id),
          true <- destination.realm_id == character.realm_id,
          true <- destination.id in organization.linked_location_ids do
-      MMGO.Organizations.use_fast_travel(character, organization, destination)
+      MMGO.Organizations.use_secret_passage(character, organization, destination)
     else
       nil -> {:error, :secret_cult_destination_not_found}
       false -> {:error, :secret_cult_destination_not_found}
@@ -306,6 +355,78 @@ defmodule MMGO.SecretCult do
         # Their passage remains a deliberate organization-governance decision.
         Repo.rollback(:secret_cult_existing_membership_requires_passage_role)
     end
+  end
+
+  defp grant_maximum_passage_membership!(organization, character, role) do
+    membership =
+      Membership
+      |> where(
+        [membership],
+        membership.organization_id == ^organization.id and
+          membership.character_id == ^character.id and membership.status == :active
+      )
+      |> lock("FOR UPDATE")
+      |> preload(:role)
+      |> Repo.one()
+
+    cond do
+      is_nil(membership) ->
+        %Membership{}
+        |> Membership.changeset(%{
+          organization_id: organization.id,
+          character_id: character.id,
+          role_id: role.id,
+          status: :active,
+          joined_at: DateTime.utc_now(),
+          metadata: %{"source" => "closed_alpha_maximum"}
+        })
+        |> Repo.insert!()
+
+      @passage_permission in membership.role.permissions ->
+        membership
+
+      true ->
+        augmented_role =
+          ensure_augmented_passage_role!(organization, character, membership.role)
+
+        membership
+        |> Membership.changeset(%{
+          role_id: augmented_role.id,
+          metadata:
+            Map.merge(membership.metadata || %{}, %{
+              "source" => "closed_alpha_maximum",
+              "previous_role_id" => membership.role_id
+            })
+        })
+        |> Repo.update!()
+    end
+  end
+
+  defp ensure_augmented_passage_role!(organization, character, existing_role) do
+    code = "sealed-passage-#{character.id}"
+
+    role =
+      Role
+      |> where([role], role.organization_id == ^organization.id and role.code == ^code)
+      |> lock("FOR UPDATE")
+      |> Repo.one()
+
+    attrs = %{
+      organization_id: organization.id,
+      code: code,
+      title: existing_role.title,
+      rank: existing_role.rank,
+      permissions: Enum.uniq((existing_role.permissions || []) ++ [@passage_permission]),
+      metadata:
+        Map.merge(existing_role.metadata || %{}, %{
+          "source" => "closed_alpha_maximum",
+          "base_role_id" => existing_role.id
+        })
+    }
+
+    (role || %Role{})
+    |> Role.changeset(attrs)
+    |> Repo.insert_or_update!()
   end
 
   defp discovery_metadata(%Character{metadata: metadata}) when is_map(metadata) do

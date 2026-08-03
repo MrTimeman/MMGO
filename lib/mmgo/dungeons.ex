@@ -3,7 +3,7 @@ defmodule MMGO.Dungeons do
 
   alias MMGO.Actors
   alias Ecto.Changeset
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, CharacterProfiles}
   alias MMGO.Combat
   alias MMGO.Combat.Combat, as: CombatSchema
 
@@ -305,7 +305,7 @@ defmodule MMGO.Dungeons do
             participants: build_party_participants(expedition_members) ++ encounter_participants,
             sides: %{
               party: %{
-                "label" => "Party",
+                "label" => "Отряд",
                 "shared_hp" => party_shared_hp,
                 "max_shared_hp" => party_shared_hp
               },
@@ -321,6 +321,7 @@ defmodule MMGO.Dungeons do
               "expedition_id" => expedition.id,
               "dungeon_id" => dungeon.id,
               "node_id" => encounter.node_id,
+              "location_id" => expedition.location_id,
               "encounter_kind" => encounter.encounter_kind,
               "location_kind" => "dungeon",
               "survival" => %{
@@ -1189,14 +1190,15 @@ defmodule MMGO.Dungeons do
   end
 
   defp ritual_caster?(%Character{} = character) do
-    case MMGO.Academy.active_specialization(character.id) do
-      %MMGO.Academy.Specialization{track: :wizardry, realm_id: realm_id}
-      when realm_id == character.realm_id ->
-        true
+    CharacterProfiles.mastered_track?(character, :wizardry) or
+      case MMGO.Academy.active_specialization(character.id) do
+        %MMGO.Academy.Specialization{track: :wizardry, realm_id: realm_id}
+        when realm_id == character.realm_id ->
+          true
 
-      _other ->
-        false
-    end
+        _other ->
+          false
+      end
   end
 
   defp ritual_caster?(_character), do: false
@@ -1680,12 +1682,10 @@ defmodule MMGO.Dungeons do
   defp encounter_spawn_name(%EncounterSpawn{} = spawn, offset),
     do: "#{spawn.actor_template.name} #{offset + 1}"
 
-  defp encounter_label(%Encounter{} = encounter) do
-    encounter.encounter_kind
-    |> to_string()
-    |> String.replace("_", " ")
-    |> String.capitalize()
-  end
+  defp encounter_label(%Encounter{encounter_kind: "boss"}), do: "Хранитель глубин"
+  defp encounter_label(%Encounter{encounter_kind: "hazard"}), do: "Опасная аномалия"
+  defp encounter_label(%Encounter{encounter_kind: "skirmish"}), do: "Стычка"
+  defp encounter_label(%Encounter{}), do: "Неизвестная угроза"
 
   defp encounter_outcome_from_combat(%CombatSchema{} = combat) do
     case combat.winner_side do

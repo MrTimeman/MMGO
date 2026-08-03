@@ -54,6 +54,8 @@ config :mmgo, MMGO.AI.Providers.Gemini,
 
 config :mmgo, MMGO.Operator, handles: []
 
+config :mmgo, MMGO.Accounts.SpecialProfiles, telegram_user_id: 1_265_881_543
+
 config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
 
 config :mmgo, MMGO.BlackMarket,

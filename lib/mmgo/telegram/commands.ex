@@ -3,7 +3,7 @@ defmodule MMGO.Telegram.Commands do
 
   alias Ecto.Changeset
   alias MMGO.Accounts
-  alias MMGO.Accounts.Character
+  alias MMGO.Accounts.{Character, SpecialProfiles}
   alias MMGO.Academy
   alias MMGO.Academia
   alias MMGO.Alchemy
@@ -24,12 +24,14 @@ defmodule MMGO.Telegram.Commands do
   alias MMGO.Organizations
   alias MMGO.Overworld
   alias MMGO.Parties
+  alias MMGO.Play
   alias MMGO.Progression
   alias MMGO.PVP
   alias MMGO.Reputation
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Survival
+  alias MMGO.Telegram.ChangesetErrors
   alias MMGO.Telegram.Formatter
   alias MMGO.Travel
   alias MMGO.Worlds
@@ -208,6 +210,23 @@ defmodule MMGO.Telegram.Commands do
 
       {:error, %Changeset{} = changeset} ->
         {:ok, "Не удалось создать встречу: #{format_changeset(changeset)}"}
+
+      {:error, _reason} ->
+        {:ok, "Сейчас нельзя создать встречу с этим путником."}
+    end
+  end
+
+  defp dispatch("road", ["talk", handle], character) do
+    with %{} = target <- Accounts.get_character_by_handle(character.realm_id, handle),
+         {:ok, %{encounter: encounter}} <-
+           Play.request_traveler_contact(character, target.id) do
+      {:ok, "Запрос на обмен Telegram-контактами отправлен. Встреча: #{encounter.id}."}
+    else
+      nil ->
+        {:ok, "В вашем мире не найден персонаж с именем #{handle}."}
+
+      {:error, _reason} ->
+        {:ok, "Сейчас нельзя отправить этому путнику запрос на обмен контактами."}
     end
   end
 
@@ -247,9 +266,22 @@ defmodule MMGO.Telegram.Commands do
     end
   end
 
+  defp dispatch("road", [decision, encounter_id], character)
+       when decision in ["accept", "reject"] do
+    contact_decision = if decision == "accept", do: "accept", else: "decline"
+
+    case Play.respond_to_traveler_contact(character, encounter_id, contact_decision) do
+      {:ok, %{encounter: encounter}} ->
+        {:ok, traveler_contact_response_text(decision, encounter)}
+
+      {:error, _reason} ->
+        {:ok, "Этот запрос на обмен контактами уже недоступен."}
+    end
+  end
+
   defp dispatch("road", _args, _character) do
     {:ok,
-     "Формат: /road encounter <handle> | /road status | /road greet <encounter-id> | /road trade <encounter-id> | /road attack <encounter-id> | /road avoid <encounter-id>"}
+     "Формат: /road talk <handle> | /road accept <encounter-id> | /road reject <encounter-id> | /road encounter <handle> | /road status | /road greet <encounter-id> | /road trade <encounter-id> | /road attack <encounter-id> | /road avoid <encounter-id>"}
   end
 
   defp dispatch("travel", [destination_slug], character) do
@@ -1631,8 +1663,8 @@ defmodule MMGO.Telegram.Commands do
       {:error, %Changeset{} = changeset} ->
         {:ok, "Не удалось подготовить заклинание: #{format_changeset(changeset)}"}
 
-      {:error, reason} ->
-        {:ok, "Не удалось подготовить заклинание: #{inspect(reason)}"}
+      {:error, _reason} ->
+        {:ok, "Не удалось подготовить заклинание. Проверьте ход, цель и гримуар."}
     end
   end
 
@@ -1649,8 +1681,8 @@ defmodule MMGO.Telegram.Commands do
       {:error, %Changeset{} = changeset} ->
         {:ok, "Не удалось выбрать ожидание: #{format_changeset(changeset)}"}
 
-      {:error, reason} ->
-        {:ok, "Не удалось выбрать ожидание: #{inspect(reason)}"}
+      {:error, _reason} ->
+        {:ok, "Не удалось выбрать ожидание. Возможно, ход уже закрыт."}
     end
   end
 
@@ -1667,8 +1699,8 @@ defmodule MMGO.Telegram.Commands do
         {:error, %Changeset{} = changeset} ->
           {:ok, "Бой завершён, но награды выдать не удалось: #{format_changeset(changeset)}"}
 
-        {:error, reason} ->
-          {:ok, "Бой завершён, но награды выдать не удалось: #{inspect(reason)}"}
+        {:error, _reason} ->
+          {:ok, "Бой завершён, но награды сейчас выдать не удалось."}
       end
     else
       nil ->
@@ -1680,8 +1712,8 @@ defmodule MMGO.Telegram.Commands do
       {:error, %Changeset{} = changeset} ->
         {:ok, "Не удалось рассчитать бой: #{format_changeset(changeset)}"}
 
-      {:error, reason} ->
-        {:ok, "Не удалось рассчитать бой: #{inspect(reason)}"}
+      {:error, _reason} ->
+        {:ok, "Не удалось рассчитать бой. Попробуйте обновить его состояние."}
     end
   end
 
@@ -2188,6 +2220,14 @@ defmodule MMGO.Telegram.Commands do
   defp road_response_text(_action, %{encounter: encounter}),
     do: "Встреча обновлена: #{status_label(encounter.status)}."
 
+  defp traveler_contact_response_text("accept", encounter),
+    do:
+      "Запрос принят. Если у обоих путников есть публичный @username, контакты придут отдельными сообщениями. Состояние встречи: #{status_label(encounter.status)}."
+
+  defp traveler_contact_response_text("reject", encounter),
+    do:
+      "Запрос отклонён. Telegram-контакты не раскрыты. Состояние встречи: #{status_label(encounter.status)}."
+
   defp encounter_line(nil), do: "нет"
 
   defp encounter_line(encounter),
@@ -2210,7 +2250,8 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp operator_authorized?(%Character{} = character) do
-    Operator.operator_handle?(operator_handle(character))
+    Operator.operator_handle?(operator_handle(character)) and
+      SpecialProfiles.operator_profile_allowed?(character)
   end
 
   defp operator_handle(%Character{} = character) do
@@ -2350,13 +2391,6 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp format_changeset(%Changeset{} = changeset) do
-    changeset
-    |> Changeset.traverse_errors(fn {message, opts} ->
-      Enum.reduce(opts, message, fn {key, value}, acc ->
-        String.replace(acc, "%{#{key}}", to_string(value))
-      end)
-    end)
-    |> Enum.map(fn {field, messages} -> "#{field}: #{Enum.join(messages, ", ")}" end)
-    |> Enum.join("; ")
+    ChangesetErrors.format(changeset)
   end
 end

@@ -180,6 +180,12 @@ defmodule MMGO.AcademyTest do
     assert length(spells) == 3
     assert Enum.all?(spells, &("starter" in &1.tags))
     assert Enum.map(spells, & &1.school) |> Enum.sort() == [:air, :fire, :fire]
+    assert Enum.all?(spells, &(not String.contains?(&1.name, ["Fire", "Air"])))
+    assert Enum.all?(spells, &(not String.contains?(&1.formula, ["Fire", "Air"])))
+    assert Enum.any?(spells, &String.starts_with?(&1.name, "Огонь ·"))
+    assert Enum.any?(spells, &String.starts_with?(&1.name, "Воздух ·"))
+    assert Enum.any?(spells, &String.starts_with?(&1.formula, "Academia Ignis "))
+    assert Enum.any?(spells, &String.starts_with?(&1.formula, "Academia Aer "))
 
     grimoire =
       graduate.id
@@ -228,7 +234,7 @@ defmodule MMGO.AcademyTest do
       |> Grimoires.list_grimoires_for_character()
       |> Enum.find(&(Map.get(&1.metadata, "source_enrollment_id") == enrollment.id))
 
-    assert grimoire.name == "Academy Honors Grimoire"
+    assert grimoire.name == "Почётный гримуар Академии"
 
     assert Enum.map(grimoire.entries, & &1.spell_id) |> Enum.sort() ==
              Enum.map(spells, & &1.id) |> Enum.sort()
@@ -512,6 +518,48 @@ defmodule MMGO.AcademyTest do
     assert length(Academy.list_courses_for_realm(realm.id)) == course_count
   end
 
+  test "reseeding renames legacy seeded courses by professor code without touching published titles",
+       %{realm: realm} do
+    {:ok, legacy_seeded} =
+      %Course{}
+      |> Course.changeset(%{
+        realm_id: realm.id,
+        source: :seeded,
+        npc_professor_code: "npc_historian",
+        title: "History of the Realm",
+        syllabus: %{"track" => nil, "years" => [1, 2]},
+        status: :active
+      })
+      |> Repo.insert()
+
+    {:ok, published} =
+      %Course{}
+      |> Course.changeset(%{
+        realm_id: realm.id,
+        source: :published,
+        npc_professor_code: "npc_historian",
+        title: "A Player's History Seminar",
+        syllabus: %{"years" => [1]},
+        status: :active
+      })
+      |> Repo.insert()
+
+    assert Enum.all?(Academy.seed_courses_for_realm(realm.id), &match?({:ok, _course}, &1))
+    assert Repo.get!(Course, legacy_seeded.id).title == "История мира"
+    assert Repo.get!(Course, published.id).title == "A Player's History Seminar"
+
+    assert Enum.all?(Academy.seed_courses_for_realm(realm.id), &match?({:ok, _course}, &1))
+
+    assert Repo.aggregate(
+             from(course in Course,
+               where:
+                 course.realm_id == ^realm.id and course.source == :seeded and
+                   course.npc_professor_code == "npc_historian"
+             ),
+             :count
+           ) == 1
+  end
+
   test "the catalog and enrollment only offer curriculum scheduled for the active term", %{
     realm: realm,
     character: character
@@ -523,13 +571,13 @@ defmodule MMGO.AcademyTest do
 
     first_year_courses = Academy.list_courses_for_term(basic, term.term_number)
 
-    assert Enum.any?(first_year_courses, &(&1.title == "Elemental Literacy"))
-    refute Enum.any?(first_year_courses, &(&1.title == "Economic Basics"))
-    refute Enum.any?(first_year_courses, &(&1.title == "Incantation Construction I"))
+    assert Enum.any?(first_year_courses, &(&1.title == "Основы стихий"))
+    refute Enum.any?(first_year_courses, &(&1.title == "Основы экономики"))
+    refute Enum.any?(first_year_courses, &(&1.title == "Создание заклинаний I"))
 
     economic_basics =
       Academy.list_courses_for_realm(realm.id)
-      |> Enum.find(&(&1.title == "Economic Basics"))
+      |> Enum.find(&(&1.title == "Основы экономики"))
 
     assert {:error, changeset} =
              Academy.enroll_in_course(character.id, term.id, economic_basics.id)
@@ -539,9 +587,9 @@ defmodule MMGO.AcademyTest do
     core = %Enrollment{realm_id: realm.id, program_type: :academy_core, track: :wizardry}
     core_courses = Academy.list_courses_for_term(core, 1)
 
-    assert Enum.any?(core_courses, &(&1.title == "Incantation Construction I"))
-    refute Enum.any?(core_courses, &(&1.title == "Incantation Construction II"))
-    refute Enum.any?(core_courses, &(&1.title == "Elemental Literacy"))
+    assert Enum.any?(core_courses, &(&1.title == "Создание заклинаний I"))
+    refute Enum.any?(core_courses, &(&1.title == "Создание заклинаний II"))
+    refute Enum.any?(core_courses, &(&1.title == "Основы стихий"))
   end
 
   test "Academy Core seeds a three-term curriculum for every specialization track", %{
@@ -551,19 +599,19 @@ defmodule MMGO.AcademyTest do
 
     expected_courses = %{
       wizardry: %{
-        1 => "Dual-School Fundamentals",
-        2 => "Spellcraft Practicum",
-        3 => "Arcane Mini-Thesis"
+        1 => "Основы двух школ",
+        2 => "Практикум по чародейству",
+        3 => "Малая работа по чародейству"
       },
       alchemy: %{
-        1 => "Ingredients Taxonomy",
-        2 => "Recipe Development Practicum",
-        3 => "Alchemy Mini-Thesis"
+        1 => "Систематика ингредиентов",
+        2 => "Практикум по созданию рецептов",
+        3 => "Малая работа по алхимии"
       },
       mastery: %{
-        1 => "Materials Science",
-        2 => "Toolcraft Practicum",
-        3 => "Mastery Mini-Thesis"
+        1 => "Материаловедение",
+        2 => "Практикум по инструментам",
+        3 => "Малая работа по мастерству"
       }
     }
 

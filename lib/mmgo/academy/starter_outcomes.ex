@@ -21,6 +21,17 @@ defmodule MMGO.Academy.StarterOutcomes do
 
   @recipe_unlocks_key "academy_recipe_unlocks"
 
+  @school_presentations %{
+    fire: %{label: "Огонь", formula: "Ignis"},
+    water: %{label: "Вода", formula: "Aqua"},
+    earth: %{label: "Земля", formula: "Terra"},
+    air: %{label: "Воздух", formula: "Aer"},
+    life: %{label: "Жизнь", formula: "Vita"},
+    death: %{label: "Смерть", formula: "Mors"},
+    chaos: %{label: "Хаос", formula: "Chaos"},
+    order: %{label: "Порядок", formula: "Ordo"}
+  }
+
   @quality_settings %{
     provisional: %{
       label: "учебное",
@@ -130,7 +141,7 @@ defmodule MMGO.Academy.StarterOutcomes do
             create_starter_spell!(character, attrs)
           end)
 
-        grimoire = academy_grimoire!(character, enrollment, "Academy Honors Grimoire")
+        grimoire = academy_grimoire!(character, enrollment, "Почётный гримуар Академии")
         inscribe_starter_spells!(grimoire, spells)
 
         starter_outcomes = %{
@@ -320,7 +331,11 @@ defmodule MMGO.Academy.StarterOutcomes do
   defp quality_settings(quality), do: Map.fetch!(@quality_settings, quality)
 
   defp wizard_spell_attrs(school, kind, quality, settings) do
-    school_name = school |> Atom.to_string() |> String.capitalize()
+    school_presentation =
+      Map.get(@school_presentations, school, %{label: "Неизвестная школа", formula: "Arcanum"})
+
+    school_name = school_presentation.label
+    school_formula = school_presentation.formula
     quality_code = Atom.to_string(quality)
 
     {name_suffix, formula_suffix, description, targeting, delivery_form, effect} =
@@ -368,7 +383,7 @@ defmodule MMGO.Academy.StarterOutcomes do
 
     %{
       name: "#{school_name} · #{name_suffix}",
-      formula: "Academia #{school_name} #{formula_suffix}",
+      formula: "Academia #{school_formula} #{formula_suffix}",
       school: school,
       description: description,
       level_requirement: 1,
@@ -406,7 +421,7 @@ defmodule MMGO.Academy.StarterOutcomes do
   defp academy_grimoire!(
          %Character{} = character,
          %Enrollment{} = enrollment,
-         name \\ "Academy Grimoire"
+         name \\ "Гримуар Академии"
        ) do
     existing =
       Repo.all(
