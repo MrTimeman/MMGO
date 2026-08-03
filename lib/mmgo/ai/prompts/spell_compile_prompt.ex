@@ -132,7 +132,7 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
           items: %{
             type: "object",
             properties: %{
-              applies_to: %{type: "string"},
+              applies_to: %{type: "string", enum: ["target", "caster", "environment"]},
               state: %{type: "string"},
               intensity: %{type: "integer"},
               variance: %{type: "integer"},
@@ -147,9 +147,15 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
           items: %{
             type: "object",
             properties: %{
-              trigger_type: %{type: "string"},
+              trigger_type: %{
+                type: "string",
+                enum: ["environment_tag", "target_state", "spell_tag"]
+              },
               trigger: %{type: "string"},
-              outcome: %{type: "string"},
+              outcome: %{
+                type: "string",
+                enum: ["negate", "amplify", "replace_environment", "apply_bonus_state"]
+              },
               modifier: %{type: "integer"},
               state: %{type: "string"},
               replacement_tags: %{type: "array", items: %{type: "string"}}

@@ -305,11 +305,9 @@ defmodule MMGO.Spells.Creation do
 
   defp failure_outcome(%Changeset{} = changeset) do
     fields =
-      changeset.errors
-      |> Keyword.keys()
-      |> Enum.map(&Atom.to_string/1)
-      |> Enum.uniq()
-      |> Enum.sort()
+      changeset
+      |> Changeset.traverse_errors(fn {_message, _opts} -> :invalid end)
+      |> validation_error_paths()
 
     %{"kind" => "failure", "failure_kind" => "validation", "fields" => fields}
   end
@@ -366,6 +364,32 @@ defmodule MMGO.Spells.Creation do
   defp failure_outcome(_reason) do
     %{"kind" => "failure", "failure_kind" => "technical"}
   end
+
+  defp validation_error_paths(errors), do: validation_error_paths(errors, nil)
+
+  defp validation_error_paths(errors, prefix) when is_map(errors) do
+    errors
+    |> Enum.flat_map(fn {field, nested} ->
+      path = Enum.reject([prefix, to_string(field)], &is_nil/1) |> Enum.join(".")
+      validation_error_paths(nested, path)
+    end)
+    |> Enum.uniq()
+    |> Enum.sort()
+  end
+
+  defp validation_error_paths(errors, prefix) when is_list(errors) do
+    if Enum.all?(errors, &is_atom/1) do
+      [prefix]
+    else
+      errors
+      |> Enum.with_index()
+      |> Enum.flat_map(fn {nested, index} ->
+        validation_error_paths(nested, "#{prefix}.#{index}")
+      end)
+    end
+  end
+
+  defp validation_error_paths(_errors, prefix), do: [prefix]
 
   defp provider_request_status(%{ai_request: %{status: status}})
        when status in [:succeeded, :failed],

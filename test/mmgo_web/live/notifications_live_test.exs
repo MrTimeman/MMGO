@@ -157,6 +157,74 @@ defmodule MMGOWeb.NotificationsLiveTest do
     refute has_element?(view, "#notification-#{unknown.id}", "raw transport failure")
   end
 
+  test "filters letters by player-facing category", %{conn: conn, owner: owner} do
+    journey =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "journey_arrived",
+        status: :sent
+      })
+
+    invitation =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "party_invitation",
+        status: :sent
+      })
+
+    {:ok, view, _html} = live(session_conn(conn, owner), ~p"/notifications")
+
+    assert has_element?(view, "#notifications-category-adventure", "1")
+    assert has_element?(view, "#notifications-category-social", "1")
+
+    view
+    |> element("#notifications-category-social")
+    |> render_click()
+
+    assert has_element?(view, "#notification-#{invitation.id}")
+    refute has_element?(view, "#notification-#{journey.id}")
+  end
+
+  test "marks the scoped archive read and deletes only completed letters", %{
+    conn: conn,
+    owner: owner
+  } do
+    completed =
+      notification_fixture(owner, %{
+        channel: :in_app,
+        kind: "research_completed",
+        status: :sent
+      })
+
+    pending =
+      notification_fixture(owner, %{
+        channel: :telegram,
+        kind: "journey_arrived",
+        status: :pending
+      })
+
+    {:ok, view, _html} = live(session_conn(conn, owner), ~p"/notifications")
+
+    assert has_element?(view, "#notification-#{completed.id}", "Новое письмо")
+
+    view
+    |> element("#notifications-mark-all-read")
+    |> render_click()
+
+    refute has_element?(view, "#notification-#{completed.id}", "Новое письмо")
+    assert Repo.reload!(completed).read_at
+    assert Repo.reload!(pending).read_at
+
+    view
+    |> element("#notifications-delete-read")
+    |> render_click()
+
+    refute Repo.get(Notification, completed.id)
+    assert Repo.get(Notification, pending.id)
+    refute has_element?(view, "#notification-#{completed.id}")
+    assert has_element?(view, "#notification-#{pending.id}")
+  end
+
   defp notification_fixture(character, attrs) do
     suffix = System.unique_integer([:positive])
 

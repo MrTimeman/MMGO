@@ -22,6 +22,48 @@ defmodule MMGO.Notifications do
 
   def get_notification!(id), do: Repo.get!(Notification, id)
 
+  def list_unread_notifications(character_id) when is_binary(character_id) do
+    Notification
+    |> where(
+      [notification],
+      notification.character_id == ^character_id and notification.channel == :in_app and
+        is_nil(notification.read_at)
+    )
+    |> order_by([notification], desc: notification.inserted_at)
+    |> Repo.all()
+  end
+
+  def list_unread_notifications(_character_id), do: []
+
+  def mark_all_read(character_id) when is_binary(character_id) do
+    {count, _rows} =
+      Notification
+      |> where(
+        [notification],
+        notification.character_id == ^character_id and is_nil(notification.read_at)
+      )
+      |> Repo.update_all(set: [read_at: DateTime.utc_now()])
+
+    {:ok, count}
+  end
+
+  def mark_all_read(_character_id), do: {:error, :invalid_character}
+
+  def delete_read_notifications(character_id) when is_binary(character_id) do
+    {count, _rows} =
+      Notification
+      |> where(
+        [notification],
+        notification.character_id == ^character_id and not is_nil(notification.read_at) and
+          notification.status != :pending
+      )
+      |> Repo.delete_all()
+
+    {:ok, count}
+  end
+
+  def delete_read_notifications(_character_id), do: {:error, :invalid_character}
+
   def enqueue(%Character{} = character, kind, payload, opts \\ []) when is_map(payload) do
     channel = Keyword.get(opts, :channel, :telegram)
     scheduled_at = Keyword.get(opts, :scheduled_at, DateTime.utc_now())

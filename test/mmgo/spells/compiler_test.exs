@@ -163,6 +163,47 @@ defmodule MMGO.Spells.CompilerTest do
     def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
   end
 
+  defmodule NaturalVocabularyProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(_prompt_payload, _schema, _opts) do
+      {:ok,
+       %{
+         "outcome" => "created",
+         "name" => "Гнилостные оковы",
+         "description" => "Призрачные цепи удерживают цель и оставляют гниющую рану.",
+         "school_quirk" => "harvest",
+         "targeting" => "enemy",
+         "delivery_form" => "single_target",
+         "effects" => [
+           %{
+             "applies_to" => "enemy",
+             "state" => "trapped",
+             "intensity" => 3,
+             "variance" => 1,
+             "duration" => 3
+           }
+         ],
+         "interaction_rules" => [
+           %{
+             "trigger_type" => "environment",
+             "trigger" => "fire",
+             "outcome" => "replace",
+             "replacement_tags" => ["necrotic"]
+           }
+         ],
+         "failure_profile" => %{
+           "difficulty" => 4,
+           "base_success_rate" => 70,
+           "partial_success_rate" => 20,
+           "backlash_damage" => 2
+         }
+       }}
+    end
+
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
+  end
+
   setup do
     {:ok, realm} =
       Worlds.create_realm(%{slug: "canonical", name: "Canonical Realm", is_default: true})
@@ -202,6 +243,29 @@ defmodule MMGO.Spells.CompilerTest do
     assert prompt["base_spell"]["effects"] != []
     assert [%{"id" => base_id} | _rest] = prompt["library"]
     assert base_id == base_spell.id
+  end
+
+  test "compile_and_store/3 canonicalizes unambiguous provider vocabulary", %{
+    character: character
+  } do
+    assert {:ok, %{spell: spell}} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 formula: "Translatio Vinculum Magnus Sustineo Marcor Mora",
+                 school: "death"
+               },
+               provider: NaturalVocabularyProvider,
+               model: "natural-vocabulary-test",
+               allow_root_spell: true,
+               circle_tier: :trained
+             )
+
+    assert spell.school_quirk == :harvest
+    assert [%{applies_to: :target}] = spell.effects
+
+    assert [%{trigger_type: :environment_tag, outcome: :replace_environment}] =
+             spell.interaction_rules
   end
 
   test "compile_and_store/3 can fail spell creation without storing a spell", %{

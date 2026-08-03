@@ -53,6 +53,7 @@ defmodule MMGO.Spells.Compiler do
         case compile_outcome(compiled_spell) do
           :created ->
             with :ok <- validate_created_player_facing_output(request, compiled_spell),
+                 compiled_spell <- normalize_engine_vocabulary(compiled_spell),
                  compiled_spell <- enforce_circle_limits(compiled_spell, base_spell, opts),
                  spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell, opts),
                  {:ok, spell} <-
@@ -142,6 +143,38 @@ defmodule MMGO.Spells.Compiler do
       "incantation_slots" => incantation_slots(opts)
     })
   end
+
+  # Providers occasionally use natural-language aliases even when the intended
+  # engine operation is unambiguous. Canonicalize only this deliberately small
+  # vocabulary; unknown values must still fail the deterministic changeset.
+  defp normalize_engine_vocabulary(compiled_spell) do
+    compiled_spell
+    |> Map.update("effects", [], fn effects ->
+      Enum.map(effects, fn effect ->
+        Map.update(effect, "applies_to", nil, &normalize_applies_to/1)
+      end)
+    end)
+    |> Map.update("interaction_rules", [], fn rules ->
+      Enum.map(rules, fn rule ->
+        rule
+        |> Map.update("trigger_type", nil, &normalize_trigger_type/1)
+        |> Map.update("outcome", nil, &normalize_interaction_outcome/1)
+      end)
+    end)
+  end
+
+  defp normalize_applies_to(value) when value in ["enemy", "ally", "target"], do: "target"
+  defp normalize_applies_to(value) when value in ["self", "caster"], do: "caster"
+  defp normalize_applies_to(value), do: value
+
+  defp normalize_trigger_type("environment"), do: "environment_tag"
+  defp normalize_trigger_type("state"), do: "target_state"
+  defp normalize_trigger_type("spell"), do: "spell_tag"
+  defp normalize_trigger_type(value), do: value
+
+  defp normalize_interaction_outcome("replace"), do: "replace_environment"
+  defp normalize_interaction_outcome("bonus_state"), do: "apply_bonus_state"
+  defp normalize_interaction_outcome(value), do: value
 
   defp validate_created_player_facing_output(request, compiled_spell) do
     with :ok <-

@@ -17,6 +17,7 @@ defmodule MMGO.Notifications.Notification do
     field :status, Ecto.Enum, values: @statuses, default: :pending
     field :scheduled_at, :utc_datetime_usec
     field :delivered_at, :utc_datetime_usec
+    field :read_at, :utc_datetime_usec
     field :payload, :map, default: %{}
     field :metadata, :map, default: %{}
     field :error, :string
@@ -35,6 +36,7 @@ defmodule MMGO.Notifications.Notification do
       :status,
       :scheduled_at,
       :delivered_at,
+      :read_at,
       :payload,
       :metadata,
       :error,

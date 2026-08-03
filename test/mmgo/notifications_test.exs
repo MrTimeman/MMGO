@@ -101,6 +101,29 @@ defmodule MMGO.NotificationsTest do
     assert Repo.aggregate(Oban.Job, :count, :id) == 1
   end
 
+  test "mail archive can mark everything read and clears only terminal records", %{
+    character: character
+  } do
+    assert {:ok, %Notification{channel: :in_app}} =
+             Notifications.notify_journey_arrived(character, %{
+               id: "archive-journey",
+               to_location_id: "city-gate",
+               status: :arrived
+             })
+
+    assert [%Notification{channel: :in_app}] =
+             Notifications.list_unread_notifications(character.id)
+
+    assert {:ok, 2} = Notifications.mark_all_read(character.id)
+    assert Notifications.list_unread_notifications(character.id) == []
+    assert {:ok, 1} = Notifications.delete_read_notifications(character.id)
+
+    assert [%Notification{channel: :telegram, status: :pending, read_at: read_at}] =
+             Notifications.list_notifications(character.id)
+
+    assert read_at
+  end
+
   test "deliver_notification_by_id/1 sends a Telegram message and marks notification sent", %{
     bypass: bypass,
     character: character

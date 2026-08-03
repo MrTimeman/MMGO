@@ -145,6 +145,31 @@ defmodule MMGO.Spells.CreationTest do
     assert Spells.list_spells_for_character(character.id) == []
   end
 
+  test "nested spell validation paths survive ritual failure diagnostics", %{
+    character: character,
+    tower: tower
+  } do
+    now = ~U[2026-08-03 15:00:00.000000Z]
+    assert {:ok, %{attempt: attempt}} = Creation.begin(character, tower.id, %{}, now: now)
+    assert {:ok, %{action: :resolve}} = Creation.claim_resolution(attempt.id)
+
+    invalid_changeset =
+      %Spell{creator_character_id: character.id, realm_id: character.realm_id}
+      |> Spell.changeset(
+        spell_attrs("Broken Spark")
+        |> put_in([:effects, Access.at(0), :state], "invented_state")
+      )
+
+    refute invalid_changeset.valid?
+
+    assert {:ok, failed_attempt} =
+             Creation.finalize_failure(attempt.id, invalid_changeset,
+               now: DateTime.add(now, 1, :second)
+             )
+
+    assert "effects.0.state" in failed_attempt.outcome["fields"]
+  end
+
   test "an already revealed attempt rebroadcasts on retry", %{
     character: character,
     tower: tower

@@ -2145,7 +2145,7 @@ defmodule MMGO.Play do
            Atmosphere.cue_for(current_location,
              major_event: if(state.active_journey, do: :journey)
            ),
-         notifications: Notifications.list_notifications(character.id),
+         notifications: Notifications.list_unread_notifications(character.id),
          nearby_characters: nearby_characters,
          open_encounters: Overworld.list_open_encounters_for_character(character.id)
        }}
@@ -2164,6 +2164,20 @@ defmodule MMGO.Play do
          character: character,
          notifications: Notifications.list_notifications(character.id)
        }}
+    end
+  end
+
+  @doc "Marks every notification in the scoped character's archive as read."
+  def mark_all_notifications_read(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      Notifications.mark_all_read(character.id)
+    end
+  end
+
+  @doc "Deletes the scoped character's read, terminal notification records."
+  def delete_read_notifications(character_or_id) do
+    with {:ok, character} <- normalize_character(character_or_id) do
+      Notifications.delete_read_notifications(character.id)
     end
   end
 

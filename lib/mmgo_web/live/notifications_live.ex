@@ -6,16 +6,55 @@ defmodule MMGOWeb.NotificationsLive do
 
   alias MMGO.Play
 
+  @categories ~w(all adventure progress production social worlds other)
+
   @impl true
   def mount(_params, _session, socket) do
     {:ok,
      socket
      |> assign(:page_title, "Вести")
+     |> assign(:category, "all")
      |> refresh_notifications()}
   end
 
   @impl true
   def handle_event("refresh", _params, socket), do: {:noreply, refresh_notifications(socket)}
+
+  def handle_event("set_category", %{"category" => category}, socket)
+      when category in @categories do
+    {:noreply,
+     socket
+     |> assign(:category, category)
+     |> assign_visible_notifications()}
+  end
+
+  def handle_event("set_category", _params, socket), do: {:noreply, socket}
+
+  def handle_event("mark_all_read", _params, socket) do
+    case Play.mark_all_notifications_read(socket.assigns.current_scope.character) do
+      {:ok, count} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, read_message(count))
+         |> refresh_notifications()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Не удалось прочитать весь архив.")}
+    end
+  end
+
+  def handle_event("delete_read", _params, socket) do
+    case Play.delete_read_notifications(socket.assigns.current_scope.character) do
+      {:ok, count} ->
+        {:noreply,
+         socket
+         |> put_flash(:info, delete_message(count))
+         |> refresh_notifications()}
+
+      {:error, _reason} ->
+        {:noreply, put_flash(socket, :error, "Не удалось очистить прочитанные письма.")}
+    end
+  end
 
   @impl true
   def render(%{state: _state} = assigns) do
@@ -42,29 +81,70 @@ defmodule MMGOWeb.NotificationsLive do
             <p>личный архив доставок</p>
             <h1>Вести и письма</h1>
             <span>
-              Здесь писарь хранит ожидающие, доставленные и неудавшиеся послания.
+              Разберите вести по полкам, отметьте прочитанными или очистите завершённые письма.
             </span>
           </header>
 
+          <section
+            id="notifications-controls"
+            class="mail-controls"
+            aria-label="Управление почтой"
+          >
+            <div id="notification-categories" class="mail-categories">
+              <button
+                :for={category <- @categories}
+                id={"notifications-category-#{category.id}"}
+                type="button"
+                phx-click="set_category"
+                phx-value-category={category.id}
+                class={["mail-category", @category == category.id && "is-active"]}
+              >
+                {category.label}
+                <span>{@category_counts[category.id]}</span>
+              </button>
+            </div>
+            <div class="mail-bulk-actions">
+              <button
+                id="notifications-mark-all-read"
+                type="button"
+                phx-click="mark_all_read"
+                disabled={@unread_count == 0}
+                class="mail-bulk-action"
+              >
+                Прочитать все
+              </button>
+              <button
+                id="notifications-delete-read"
+                type="button"
+                phx-click="delete_read"
+                data-confirm="Удалить все прочитанные и уже завершённые письма? Ожидающие отправки останутся в архиве."
+                disabled={@read_terminal_count == 0}
+                class="mail-bulk-action mail-bulk-action--danger"
+              >
+                Удалить прочитанные
+              </button>
+            </div>
+          </section>
+
           <section id="notification-history" class="mail-stack">
             <article
-              :if={@state.notifications == []}
+              :if={@visible_notifications == []}
               id="notifications-empty"
               class="ovl-note mail-empty"
             >
               <span class="ovl-note__seal" aria-hidden="true">∅</span>
               <div class="ovl-note__body">
                 <h2 class="ovl-note__title">Пустая почтовая полка</h2>
-                <p class="ovl-note__text">Писарь ещё не принёс ни одной вести.</p>
+                <p class="ovl-note__text">На этой полке сейчас нет писем.</p>
               </div>
             </article>
 
             <article
-              :for={notification <- @state.notifications}
+              :for={notification <- @visible_notifications}
               id={"notification-#{notification.id}"}
               class={[
                 "ovl-note mail-letter",
-                notification.status == :pending && "is-unread",
+                is_nil(notification.read_at) && "is-unread",
                 notification.status == :sent && "is-accepted",
                 notification.status in [:failed, :discarded] && "mail-letter--spoiled"
               ]}
@@ -87,6 +167,7 @@ defmodule MMGOWeb.NotificationsLive do
                     notification.scheduled_at
                   )}
                 </p>
+                <p :if={is_nil(notification.read_at)} class="mail-unread-label">Новое письмо</p>
                 <p class="ovl-note__text">{payload_summary(notification.payload)}</p>
                 <p :if={notification.delivered_at} class="mail-delivered">
                   Доставлено: {format_time(notification.delivered_at)}
@@ -110,7 +191,9 @@ defmodule MMGOWeb.NotificationsLive do
   defp refresh_notifications(socket) do
     case Play.notifications_state(socket.assigns.current_scope.character) do
       {:ok, state} ->
-        assign(socket, :state, state)
+        socket
+        |> assign(:state, state)
+        |> assign_visible_notifications()
 
       {:error, _reason} ->
         socket
@@ -118,6 +201,78 @@ defmodule MMGOWeb.NotificationsLive do
         |> push_navigate(to: ~p"/map")
     end
   end
+
+  defp assign_visible_notifications(socket) do
+    notifications = socket.assigns.state.notifications
+    category = socket.assigns.category
+
+    visible_notifications =
+      if category == "all" do
+        notifications
+      else
+        Enum.filter(notifications, &(notification_category(&1.kind) == category))
+      end
+
+    category_counts =
+      Map.new(@categories, fn category ->
+        count =
+          if category == "all" do
+            length(notifications)
+          else
+            Enum.count(notifications, &(notification_category(&1.kind) == category))
+          end
+
+        {category, count}
+      end)
+
+    socket
+    |> assign(:visible_notifications, visible_notifications)
+    |> assign(:category_counts, category_counts)
+    |> assign(:categories, category_options())
+    |> assign(:unread_count, Enum.count(notifications, &is_nil(&1.read_at)))
+    |> assign(
+      :read_terminal_count,
+      Enum.count(notifications, &(not is_nil(&1.read_at) and &1.status != :pending))
+    )
+  end
+
+  defp category_options do
+    [
+      %{id: "all", label: "Все"},
+      %{id: "adventure", label: "Путь"},
+      %{id: "progress", label: "Учёба"},
+      %{id: "production", label: "Ремесло"},
+      %{id: "social", label: "Люди"},
+      %{id: "worlds", label: "Миры"},
+      %{id: "other", label: "Прочее"}
+    ]
+  end
+
+  defp notification_category(kind)
+       when kind in ~w(journey_arrived scavenge_completed dungeon_extraction_completed dungeon_run_failed),
+       do: "adventure"
+
+  defp notification_category(kind) when kind in ~w(academy_completed research_completed),
+    do: "progress"
+
+  defp notification_category(kind)
+       when kind in ~w(brew_completed craft_completed base_ready),
+       do: "production"
+
+  defp notification_category(kind)
+       when kind in ~w(party_invitation club_invitation organization_invitation overworld_contact_request overworld_contact_accepted overworld_contact_rejected),
+       do: "social"
+
+  defp notification_category(kind)
+       when kind in ~w(realm_migration_started realm_migration_completed),
+       do: "worlds"
+
+  defp notification_category(_kind), do: "other"
+
+  defp read_message(0), do: "Новых писем не было."
+  defp read_message(count), do: "Прочитано писем: #{count}."
+  defp delete_message(0), do: "Прочитанных завершённых писем не было."
+  defp delete_message(count), do: "Удалено писем: #{count}."
 
   defp kind_label("journey_arrived"), do: "Прибытие"
   defp kind_label("scavenge_completed"), do: "Поиск ресурсов"
