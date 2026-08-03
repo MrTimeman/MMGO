@@ -198,7 +198,7 @@ deploy: release-check
     smoke_home_html="$(curl -fsS --max-time 5 "${smoke_url}/")"
     smoke_play_html="$(curl -fsS --max-time 5 "${smoke_url}/play")"
     grep -Fq 'Министерство' <<<"$smoke_home_html"
-    grep -Fq 'Войти в MMGO' <<<"$smoke_play_html"
+    grep -Fq 'Предъявить приглашение' <<<"$smoke_play_html"
     docker stop --timeout 15 "$smoke_name" >/dev/null
 
     compose_backup="${backup_dir}/docker-compose.prod.yml.pre-${version}-${timestamp}"
