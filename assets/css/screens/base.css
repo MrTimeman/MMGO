@@ -427,6 +427,610 @@ a.bse-station:hover {
 
 .bse-coin { color: var(--color-accent); margin-right: 0.15rem; }
 
+/* ── Backend-connected room ───────────────────────────────────────────
+   The original physical room language, adapted to the real storage,
+   ownership and construction read models. */
+.bse-root--live {
+  max-width: none;
+  padding: 0 0 4rem;
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(var(--bse-candle), 0.12), transparent 34rem),
+    repeating-linear-gradient(90deg, transparent 0 7.8rem, rgba(255, 255, 255, 0.012) 7.8rem 7.9rem),
+    linear-gradient(180deg, #17110c, #0b0806 42%, var(--color-bg));
+}
+
+.bse-shell {
+  width: min(100%, 64rem);
+  margin: 0 auto;
+  padding: 0 1rem;
+}
+
+.bse-root--live .bse-exit {
+  position: fixed;
+  top: max(0.75rem, env(safe-area-inset-top));
+  left: max(0.75rem, env(safe-area-inset-left));
+}
+
+.bse-hero--live {
+  min-height: 18rem;
+  margin: 0 -1rem;
+  border: 1px solid #38291b;
+  border-top: 0;
+  border-radius: 0 0 1.1rem 1.1rem;
+  box-shadow:
+    inset 0 -1px rgba(255, 255, 255, 0.04),
+    0 18px 38px rgba(0, 0, 0, 0.45);
+}
+
+.bse-hero__scene {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 73% 28%, rgba(var(--bse-candle), 0.24), transparent 5rem),
+    linear-gradient(90deg, rgba(0, 0, 0, 0.42), transparent 28%, rgba(0, 0, 0, 0.2)),
+    repeating-linear-gradient(90deg, #201811 0 9.8rem, #18110c 9.8rem 10rem);
+}
+
+.bse-hero__scene::before {
+  content: "";
+  position: absolute;
+  left: 8%;
+  right: 7%;
+  bottom: 3.4rem;
+  height: 0.8rem;
+  border-radius: 2px;
+  background: linear-gradient(#513721, #21150c);
+  box-shadow:
+    0 0.75rem 0 #160f0a,
+    0 1.05rem 1.5rem rgba(0, 0, 0, 0.7);
+}
+
+.bse-hero__window {
+  position: absolute;
+  top: 2.1rem;
+  left: 9%;
+  width: 7.5rem;
+  height: 9.2rem;
+  border: 0.7rem solid #2b1d13;
+  border-radius: 4rem 4rem 0.25rem 0.25rem;
+  background:
+    linear-gradient(90deg, transparent 47%, rgba(31, 22, 15, 0.9) 47% 53%, transparent 53%),
+    linear-gradient(0deg, transparent 47%, rgba(31, 22, 15, 0.9) 47% 53%, transparent 53%),
+    radial-gradient(circle at 50% 90%, #7b6336, #18202b 54%, #070b12 100%);
+  box-shadow:
+    inset 0 0 1.5rem rgba(0, 0, 0, 0.7),
+    0 0 0 1px #100b08;
+}
+
+.bse-hero__desk {
+  position: absolute;
+  right: 8%;
+  bottom: 4.1rem;
+  width: 44%;
+  height: 4rem;
+  border-radius: 48% 8% 4px 4px;
+  background:
+    linear-gradient(168deg, transparent 0 20%, rgba(212, 188, 130, 0.55) 21% 28%, transparent 29%) 14% 0 / 48% 55% no-repeat,
+    linear-gradient(#51361f, #24170e);
+  box-shadow: 0 0.7rem 0 #160e08, 0 1.4rem 1.7rem rgba(0, 0, 0, 0.65);
+}
+
+.bse-hero--live .bse-candle {
+  top: 5.3rem;
+  right: 22%;
+  z-index: 2;
+}
+
+.bse-hero--live .bse-candle::after {
+  content: "";
+  position: absolute;
+  top: 8px;
+  left: 2px;
+  width: 6px;
+  height: 2.2rem;
+  border-radius: 1px 1px 3px 3px;
+  background: linear-gradient(90deg, #8f6d3e, #e0be76 48%, #77542b);
+  box-shadow: 0 1.8rem 0.6rem rgba(0, 0, 0, 0.55);
+}
+
+.bse-hero--live .bse-hero__veil {
+  background: linear-gradient(to bottom, rgba(8, 6, 4, 0.08) 28%, rgba(8, 6, 4, 0.42) 66%, #0b0806 100%);
+}
+
+.bse-hero--live .bse-hero__caption {
+  left: clamp(1.2rem, 5vw, 3rem);
+  right: clamp(1.2rem, 5vw, 3rem);
+  bottom: 1.4rem;
+}
+
+.bse-hero--live .bse-hero__name {
+  font-size: clamp(1.8rem, 5vw, 2.7rem);
+}
+
+.bse-alert {
+  margin: 1rem 0 0;
+  padding: 0.8rem 1rem;
+  border: 1px solid rgba(167, 65, 43, 0.6);
+  border-left-width: 4px;
+  border-radius: 3px;
+  color: #e7beb2;
+  background: rgba(78, 21, 14, 0.32);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+}
+
+.bse-room {
+  margin-top: 1rem;
+  padding: 0.2rem 0 1rem;
+}
+
+.bse-root--live .bse-status {
+  margin: 1.1rem 0 0;
+}
+
+.bse-capacity {
+  flex: 0 0 auto;
+  margin-left: auto;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--color-safe);
+  border-radius: 999px;
+  color: #bfd7ba;
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  white-space: nowrap;
+}
+
+/* A deed is information that belongs on paper, never in a glass card. */
+.bse-deed {
+  position: relative;
+  margin: 1.25rem 0 0;
+  padding: clamp(1.15rem, 4vw, 1.7rem);
+  color: var(--parch-ink);
+  background:
+    radial-gradient(circle at 12% 8%, rgba(255, 255, 255, 0.35), transparent 24%),
+    repeating-linear-gradient(0deg, transparent 0 1.55rem, rgba(74, 53, 26, 0.055) 1.55rem 1.6rem),
+    linear-gradient(135deg, var(--parch-paper-light), var(--parch-paper) 64%, var(--parch-vignette));
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 3px 7px 4px 6px;
+  box-shadow:
+    0 0.7rem 1.5rem rgba(0, 0, 0, 0.38),
+    inset 0 0 2.8rem rgba(112, 76, 31, 0.12);
+  transform: rotate(-0.12deg);
+}
+
+.bse-deed::after {
+  content: "";
+  position: absolute;
+  right: 1.1rem;
+  bottom: 0.8rem;
+  width: 2.8rem;
+  height: 2.8rem;
+  border: 2px double var(--parch-red);
+  border-radius: 50%;
+  opacity: 0.22;
+  transform: rotate(-14deg);
+  pointer-events: none;
+}
+
+.bse-deed--keys { margin-top: 1rem; }
+.bse-deed--ownership { margin-inline: 0; }
+.bse-deed--muted { filter: saturate(0.7); }
+.bse-deed--acquisition { max-width: 46rem; margin-inline: auto; }
+
+.bse-deed__eyebrow,
+.bse-storage__eyebrow,
+.bse-workbench__eyebrow {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--parch-red);
+}
+
+.bse-deed__title {
+  margin: 0.15rem 0 0;
+  font-family: var(--font-serif);
+  font-size: clamp(1.35rem, 4vw, 1.8rem);
+  line-height: 1.16;
+  color: var(--parch-ink);
+}
+
+.bse-deed__copy {
+  margin: 0.65rem 0 0;
+  color: var(--parch-ink-faint);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.bse-deed__seal-note {
+  margin: 0.8rem 0 0;
+  padding: 0.55rem 0.7rem;
+  border-left: 3px solid var(--parch-gold);
+  color: var(--parch-ink);
+  background: rgba(169, 121, 31, 0.1);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  line-height: 1.35;
+}
+
+.bse-deed__entries {
+  list-style: none;
+  margin: 0.8rem 0 0;
+  padding: 0;
+  border-top: 1px solid var(--parch-ink-faint);
+}
+
+.bse-deed__entries li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px dotted var(--parch-paper-dark);
+  font-size: 0.84rem;
+}
+
+.bse-deed__entries b { color: var(--parch-red); text-align: right; }
+.bse-deed__entries .bse-deed__empty { color: var(--parch-ink-faint); font-style: italic; }
+.bse-deed__margin-note { margin: 0.8rem 0 0; color: var(--parch-ink-faint); font-family: var(--font-hand); font-size: 1.05rem; }
+
+.bse-keyring {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.bse-key {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  min-height: 3.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(72, 51, 25, 0.35);
+  border-radius: 2px;
+  color: var(--parch-ink);
+  background: rgba(255, 255, 255, 0.18);
+  text-decoration: none;
+  transition: transform 0.16s ease, background 0.16s ease;
+}
+
+.bse-key:hover { transform: translateY(-2px) rotate(0.3deg); background: rgba(255, 255, 255, 0.34); }
+.bse-key__bow { flex: 0 0 auto; color: var(--parch-gold-ink); font-size: 1.5rem; text-shadow: 0 1px 0 #f2d68c; }
+.bse-key__label { display: flex; flex-direction: column; color: var(--parch-ink-faint); font-size: 0.72rem; line-height: 1.35; }
+.bse-key__label b { color: var(--parch-ink); font-family: var(--font-serif); font-size: 0.95rem; }
+
+/* Cabinet: dark wood outside, paper labels and iron hardware inside. */
+.bse-storage {
+  margin-top: 1.35rem;
+  padding: 1rem;
+  border: 1px solid #4a3421;
+  border-radius: 0.45rem;
+  background:
+    repeating-linear-gradient(90deg, rgba(255, 255, 255, 0.018) 0 1px, transparent 1px 3.5rem),
+    linear-gradient(110deg, #352314, #1c130d 55%, #2a1a10);
+  box-shadow:
+    inset 0 0 0 3px #140d08,
+    inset 0 0 1.7rem rgba(0, 0, 0, 0.55),
+    0 1rem 2rem rgba(0, 0, 0, 0.35);
+}
+
+.bse-storage__head,
+.bse-workbench__head,
+.bse-keyboard__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.bse-storage__head h2,
+.bse-workbench__head h2,
+.bse-keyboard__head h2 {
+  margin: 0.15rem 0 0;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+}
+
+.bse-storage__eyebrow,
+.bse-workbench__eyebrow { color: var(--color-accent); }
+
+.bse-storage__mark {
+  display: grid;
+  place-items: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border: 2px solid #6f5131;
+  border-radius: 50%;
+  color: var(--color-accent);
+  box-shadow: inset 0 0 0 3px #1a1009;
+}
+
+.bse-storage__transfers,
+.bse-storage__inventory {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.8rem;
+  margin-top: 0.9rem;
+}
+
+.bse-storage__tray {
+  padding: 0.85rem;
+  border: 1px solid #513921;
+  border-radius: 0.3rem;
+  background: rgba(7, 5, 4, 0.38);
+  box-shadow: inset 0 0.45rem 0.9rem rgba(0, 0, 0, 0.38);
+}
+
+.bse-storage__tray h3,
+.bse-storage__inventory h3 {
+  margin: 0 0 0.45rem;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  font-size: 1rem;
+}
+
+.bse-storage__inventory > section {
+  position: relative;
+  min-height: 6rem;
+  padding: 0.8rem;
+  border: 1px solid #4b331f;
+  background: linear-gradient(rgba(33, 22, 13, 0.84), rgba(12, 8, 5, 0.78));
+}
+
+.bse-storage__inventory > section::before {
+  content: "";
+  position: absolute;
+  top: -0.28rem;
+  left: 40%;
+  width: 20%;
+  height: 0.4rem;
+  border-radius: 999px;
+  background: #735334;
+  box-shadow: inset 0 1px rgba(255, 255, 255, 0.12);
+}
+
+.bse-crate-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.bse-crate-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 1rem;
+  padding: 0.3rem 0;
+  border-bottom: 1px dotted rgba(190, 157, 108, 0.22);
+  color: var(--color-text-muted);
+  font-size: 0.78rem;
+}
+
+.bse-crate-list b { color: var(--color-accent); }
+
+.bse-crate-list--stored {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(92, 62, 34, 0.65);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025), transparent 36%),
+    #281b10;
+  box-shadow: inset 0 0 1.2rem rgba(0, 0, 0, 0.36);
+}
+
+.bse-crate-list--stored li:last-child { border-bottom: 0; }
+.bse-empty { margin: 0.4rem 0; color: var(--color-text-muted); font-family: var(--font-hand); font-size: 1rem; }
+
+.bse-form {
+  display: grid;
+  gap: 0.55rem;
+}
+
+.bse-form--deed {
+  grid-template-columns: minmax(0, 1fr) 10rem auto;
+  align-items: end;
+  margin-top: 0.8rem;
+}
+
+.bse-form--establish {
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: end;
+  margin-top: 0.9rem;
+}
+
+.bse-form > div { margin: 0; }
+.bse-form label { color: inherit; font-family: var(--font-sans); font-size: 0.69rem; }
+
+.bse-form :is(input, select) {
+  min-height: 2.65rem;
+  border: 1px solid #6d5031;
+  border-radius: 3px;
+  color: var(--color-text);
+  background: #17100b;
+  box-shadow: inset 0 2px 7px rgba(0, 0, 0, 0.45);
+}
+
+.bse-deed .bse-form :is(input, select) {
+  border-color: var(--parch-paper-dark);
+  color: var(--parch-ink);
+  background: rgba(255, 255, 255, 0.36);
+  box-shadow: inset 0 1px 4px rgba(70, 48, 20, 0.14);
+}
+
+.bse-seal-button {
+  min-height: 2.75rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid #6e2d23;
+  border-radius: 3px;
+  color: var(--parch-paper-light);
+  background: linear-gradient(#a34737, var(--parch-red));
+  font-family: var(--font-serif);
+  font-weight: 700;
+  cursor: pointer;
+  box-shadow: 0 3px 7px rgba(69, 24, 16, 0.28);
+}
+
+.bse-seal-button:disabled { filter: grayscale(0.7); opacity: 0.45; cursor: not-allowed; }
+
+.bse-root--live .bse-sec-title {
+  margin-inline: 0;
+}
+
+.bse-root--live .bse-stations {
+  margin-inline: 0;
+}
+
+.bse-workbench {
+  position: relative;
+  margin-top: 1.25rem;
+  padding: 1rem;
+  overflow: hidden;
+  border: 1px solid #46311f;
+  border-radius: 0.45rem;
+  background:
+    radial-gradient(circle at 86% 8%, rgba(var(--bse-candle), 0.15), transparent 8rem),
+    linear-gradient(145deg, #221811, #100b08);
+  box-shadow: inset 0 -0.65rem #090604, 0 0.8rem 1.8rem rgba(0, 0, 0, 0.35);
+}
+
+.bse-workbench__copy {
+  max-width: 42rem;
+  margin: 0.4rem 0 0;
+  color: var(--color-text-muted);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+.bse-workbench__lamp {
+  position: relative;
+  width: 0.85rem;
+  height: 1.2rem;
+  margin: 0.45rem 1rem 0 0;
+  border: 2px solid #705136;
+  border-radius: 2px 2px 50% 50%;
+  background: #d08a24;
+  box-shadow: 0 0 1.8rem 0.8rem rgba(var(--bse-candle), 0.22);
+}
+
+.bse-stations--workbench {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  margin-top: 0.85rem !important;
+}
+
+.bse-stations--workbench .bse-station {
+  align-items: flex-start;
+  min-height: 8rem;
+}
+
+.bse-stations--workbench .bse-station__glyph { font-size: 1.65rem; }
+.bse-station__glyph--book { color: #c6a15a; }
+.bse-station__glyph--anvil { color: #b7ada1; }
+.bse-station__glyph--alchemy { color: #77a68c; }
+
+.bse-building {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  margin: 1.2rem 0;
+  padding: 1rem;
+  border: 1px dashed #765634;
+  color: var(--color-text);
+  background: rgba(52, 36, 21, 0.58);
+}
+
+.bse-building__mark { font-size: 2.4rem; color: var(--color-accent); }
+.bse-building h2 { margin: 0.1rem 0 0; font-size: 1.35rem; }
+.bse-building p { margin: 0.2rem 0; color: var(--color-text-muted); }
+.bse-building b { color: var(--color-accent); font-size: 0.8rem; }
+
+.bse-quote {
+  margin-top: 0.8rem;
+  padding: 0.75rem 0.85rem;
+  border-top: 2px solid var(--parch-ink-faint);
+  border-bottom: 2px solid var(--parch-ink-faint);
+  font-size: 0.85rem;
+}
+
+.bse-quote p { margin: 0.15rem 0; }
+.bse-quote strong { color: var(--parch-red); }
+.bse-quote ul { margin: 0.4rem 0 0; padding-left: 1.2rem; }
+
+.bse-keyboard {
+  position: relative;
+  margin-top: 1.4rem;
+  padding: 1.1rem;
+  border: 1px solid #4b3421;
+  border-radius: 0.35rem;
+  background: linear-gradient(180deg, #372719, #1a110b);
+  box-shadow: 0 0.7rem 1.7rem rgba(0, 0, 0, 0.4);
+}
+
+.bse-keyboard__rail {
+  position: absolute;
+  left: 1rem;
+  right: 1rem;
+  top: 0.55rem;
+  height: 0.28rem;
+  border-radius: 999px;
+  background: #806142;
+  box-shadow: 0 1px rgba(255, 255, 255, 0.13), 0 3px 5px rgba(0, 0, 0, 0.45);
+}
+
+.bse-keyboard__head { margin-top: 0.45rem; }
+.bse-keyboard__head .bse-deed__eyebrow { color: var(--color-accent); }
+.bse-keyboard__refresh { border: 0; color: var(--color-accent); background: transparent; font-family: var(--font-hand); font-size: 1rem; cursor: pointer; }
+
+.bse-known-bases {
+  list-style: none;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 15rem), 1fr));
+  gap: 0.55rem;
+  margin: 0.8rem 0 0;
+  padding: 0;
+}
+
+.bse-known-bases li {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.55rem 0.65rem;
+  border: 1px solid #513a24;
+  color: var(--color-text);
+  background: rgba(7, 5, 3, 0.34);
+  font-size: 0.78rem;
+}
+
+.bse-known-bases small { display: block; color: var(--color-text-muted); }
+.bse-known-bases b { color: var(--color-accent); font-family: var(--font-sans); font-size: 0.62rem; text-transform: uppercase; }
+
+@media (max-width: 760px) {
+  .bse-storage__transfers,
+  .bse-storage__inventory,
+  .bse-stations--workbench {
+    grid-template-columns: 1fr;
+  }
+
+  .bse-stations--workbench .bse-station { min-height: 0; }
+  .bse-form--deed,
+  .bse-form--establish { grid-template-columns: 1fr; }
+}
+
+@media (max-width: 520px) {
+  .bse-shell { padding-inline: 0.7rem; }
+  .bse-hero--live { margin-inline: -0.7rem; min-height: 15rem; }
+  .bse-hero__window { left: 4%; transform: scale(0.8); transform-origin: left top; }
+  .bse-hero__desk { width: 58%; right: 2%; }
+  .bse-ward { align-items: flex-start; flex-wrap: wrap; }
+  .bse-capacity { width: 100%; margin-left: 2rem; text-align: center; }
+  .bse-storage { padding: 0.75rem; }
+  .bse-deed__entries li { flex-direction: column; gap: 0.1rem; }
+  .bse-deed__entries b { text-align: left; }
+}
+
 @media (prefers-reduced-motion: reduce) {
   .bse-candle, .bse-root--resting .bse-candle, .bse-veil, .bse-toast { animation-duration: 0.01ms; }
 }

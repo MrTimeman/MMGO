@@ -62,52 +62,123 @@ defmodule MMGOWeb.AlchemyLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="alchemy-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <.link id="alchemy-back-to-base" navigate={~p"/base"} class="map-back-link">← База</.link>
-          <header class="rounded-xl border border-violet-500/25 bg-stone-900/80 p-6 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.22em] text-violet-300/70">
-              алхимия · {@base.name}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-violet-100">Алхимический стол</h1>
-            <p class="mt-2 text-sm text-stone-400">
-              Инструменты из котомки: {tool_list(@installed_tool_codes)}
-            </p>
-          </header>
+      <main id="alchemy-screen" class="game-screen alc-screen">
+        <div class="alc-root">
+          <.link id="alchemy-back-to-base" navigate={~p"/base"} class="alc-exit">
+            ← вернуться на базу
+          </.link>
 
           <div
             :if={@error}
             id="alchemy-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+            class="alc-alert alc-alert--error"
           >
             {@error}
           </div>
 
           <section
+            id="alchemy-workshop-scene"
+            class="alc-workshop-scene"
+            aria-label="Алхимическая мастерская"
+          >
+            <div class="alc-workshop-scene__room" aria-hidden="true">
+              <div class="alc-window">
+                <span class="alc-window__bar alc-window__bar--vertical"></span>
+                <span class="alc-window__bar alc-window__bar--horizontal"></span>
+              </div>
+
+              <div class="alc-cabinet">
+                <span class="alc-cabinet__shelf alc-cabinet__shelf--upper"></span>
+                <span class="alc-cabinet__shelf alc-cabinet__shelf--lower"></span>
+                <span class="alc-bottle alc-bottle--one"></span>
+                <span class="alc-bottle alc-bottle--two"></span>
+                <span class="alc-bottle alc-bottle--three"></span>
+                <span class="alc-bottle alc-bottle--four"></span>
+                <span class="alc-bottle alc-bottle--five"></span>
+              </div>
+
+              <div class="alc-workbench"></div>
+              <div class="alc-mortar">
+                <span class="alc-mortar__bowl"></span>
+                <span class="alc-mortar__pestle"></span>
+              </div>
+
+              <div class={[
+                "alc-vessel",
+                @ingredients != [] && "alc-vessel--live",
+                @workspace_here? && "alc-vessel--ready"
+              ]}>
+                <div class="alc-vessel__neck"></div>
+                <div class="alc-vessel__flask">
+                  <div class="alc-vessel__brew" style="--fill:54%">
+                    <span class="alc-bubble alc-bubble--1"></span>
+                    <span class="alc-bubble alc-bubble--2"></span>
+                    <span class="alc-bubble alc-bubble--3"></span>
+                  </div>
+                  <span class="alc-vessel__shine"></span>
+                </div>
+                <span class="alc-vessel__flame"></span>
+              </div>
+            </div>
+          </section>
+
+          <header class="alc-head">
+            <p class="alc-kicker">алхимия · {@base.name}</p>
+            <h1 class="alc-title">
+              {if @workspace, do: @workspace.name, else: "Алхимический стол"}
+            </h1>
+            <p class="alc-sub">
+              Стекло, жар и свойства мира. Здесь ингредиенты становятся рецептом.
+            </p>
+          </header>
+
+          <section class="alc-tools" aria-labelledby="alchemy-tools-title">
+            <p id="alchemy-tools-title" class="alc-label">Инструменты на столе</p>
+            <div class="alc-tools__row">
+              <span
+                :if={@installed_tool_codes == []}
+                class="alc-tool alc-tool--missing"
+              >
+                <span class="alc-tool__mark">×</span> пока пусто
+              </span>
+              <span
+                :for={code <- @installed_tool_codes}
+                class="alc-tool alc-tool--owned"
+              >
+                <span class="alc-tool__mark">✓</span>
+                {tool_code_label(code)}
+              </span>
+            </div>
+          </section>
+
+          <section
             :if={is_nil(@workspace)}
             id="alchemy-workshop-setup"
-            class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
+            class="alc-ledger alc-ledger--setup"
           >
-            <h2 class="font-serif text-2xl text-violet-100">Оборудовать стол</h2>
-            <p class="mt-2 text-sm text-stone-400">
-              Установленные коды инструментов берутся только из вашей реальной котомки.
+            <span class="alc-ledger__wax" aria-hidden="true">A</span>
+            <p class="alc-ledger__eyebrow">страница лаборатории</p>
+            <h2 class="alc-ledger__title">Оборудовать стол</h2>
+            <p class="alc-ledger__copy">
+              Назовите лабораторию. Инструменты отмечаются только по вашей настоящей котомке.
             </p>
             <.form
               for={@workshop_form}
               id="alchemy-workshop-form"
               phx-submit="create_workshop"
-              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+              class="alc-setup-form"
             >
               <.input
                 field={@workshop_form[:name]}
                 type="text"
                 label="Название"
                 placeholder="Алхимический стол"
+                class="alc-paper-input"
               />
               <button
                 id="alchemy-create-workshop"
                 type="submit"
-                class="mb-4 rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 hover:bg-violet-200"
+                class="alc-brew alc-brew--ready"
               >
                 Оборудовать
               </button>
@@ -117,25 +188,35 @@ defmodule MMGOWeb.AlchemyLive do
           <section
             :if={@workspace && not @workspace_here?}
             id="alchemy-workshop-away"
-            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-6 text-sm text-amber-100"
+            class="alc-ledger alc-ledger--warning"
           >
-            Ваш активный стол находится в другом месте. Вернитесь к нему, чтобы начать новую варку.
+            <p class="alc-ledger__eyebrow">пометка на полях</p>
+            <p class="alc-ledger__copy">
+              Ваш активный стол находится в другом месте. Вернитесь к нему, чтобы начать новую варку.
+            </p>
           </section>
 
           <section
             :if={@workspace_here?}
             id="alchemy-brew"
-            class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
+            class="alc-recipe-desk"
           >
-            <h2 class="font-serif text-2xl text-violet-100">Начать варку</h2>
-            <p class="mt-2 text-sm leading-6 text-stone-400">
-              Выберите до шести ингредиентов. Мир передаст ИИ только их неизменные примитивы,
-              а движок отклонит любое новое или слишком сильное состояние.
+            <span class="alc-recipe-desk__bookmark" aria-hidden="true"></span>
+            <div class="alc-recipe-desk__head">
+              <div>
+                <p class="alc-ledger__eyebrow">новая запись</p>
+                <h2 class="alc-ledger__title">Начать варку</h2>
+              </div>
+              <span class="alc-recipe-desk__folio">до 6 реагентов</span>
+            </div>
+            <p class="alc-ledger__copy">
+              Отмерьте ингредиенты. Мир истолкует только их неизменные примитивы,
+              а движок не пропустит новое или слишком сильное состояние.
             </p>
             <p
               :if={@ingredients == []}
               id="alchemy-ingredients-empty"
-              class="mt-3 text-sm text-stone-400"
+              class="alc-ledger__copy alc-ledger__copy--empty"
             >
               В котомке нет ингредиентов с алхимическими примитивами.
             </p>
@@ -144,22 +225,21 @@ defmodule MMGOWeb.AlchemyLive do
               for={@brew_form}
               id="alchemy-brew-form"
               phx-submit="brew"
-              class="mt-4 space-y-3"
+              class="alc-brew-form"
             >
-              <div id="alchemy-ingredient-list" class="space-y-2">
+              <div id="alchemy-ingredient-list" class="alc-strip">
                 <div
                   :for={item <- @ingredients}
                   id={"alchemy-ingredient-#{item.id}"}
-                  class="grid gap-3 rounded-lg border border-violet-400/15 bg-stone-950/45 p-3 sm:grid-cols-[1fr_7rem] sm:items-end"
+                  class="alc-ing alc-ing--inventory"
                 >
-                  <div>
-                    <p class="font-medium text-stone-100">
-                      {item.item_template.name} · доступно {item.quantity - item.reserved_quantity}
-                    </p>
-                    <p class="mt-1 text-xs text-violet-200/70">
-                      {primitive_list(item.item_template.metadata)}
-                    </p>
-                  </div>
+                  <span class="alc-ing__stopper" aria-hidden="true"></span>
+                  <span class="alc-ing__glyph">❧</span>
+                  <p class="alc-ing__name">{item.item_template.name}</p>
+                  <p class="alc-ing__stock">
+                    доступно {item.quantity - item.reserved_quantity}
+                  </p>
+                  <p class="alc-ing__note">{primitive_list(item.item_template.metadata)}</p>
                   <.input
                     id={"alchemy-ingredient-quantity-#{item.id}"}
                     name={"brew[ingredients][#{item.id}]"}
@@ -169,34 +249,40 @@ defmodule MMGOWeb.AlchemyLive do
                     min="0"
                     max={item.quantity - item.reserved_quantity}
                     inputmode="numeric"
-                    class="w-full rounded-xl border border-violet-300/30 bg-stone-950 px-3 py-2 text-stone-100 outline-none transition focus:border-violet-200 focus:ring-2 focus:ring-violet-400/20"
+                    class="alc-quantity"
                   />
                 </div>
               </div>
               <button
                 id="alchemy-start-brew"
                 type="submit"
-                class="rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 transition hover:bg-violet-200"
+                class="alc-brew alc-brew--ready"
               >
                 Истолковать и поставить
               </button>
             </.form>
           </section>
 
-          <section id="alchemy-jobs" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
-            <h2 class="font-serif text-xl text-stone-100">Варки</h2>
-            <p :if={@jobs == []} id="alchemy-jobs-empty" class="mt-3 text-sm text-stone-400">
+          <section id="alchemy-jobs" class="alc-job-ledger">
+            <div class="alc-job-ledger__head">
+              <div>
+                <p class="alc-label">Лабораторный журнал</p>
+                <h2 class="alc-job-ledger__title">Варки</h2>
+              </div>
+              <span class="alc-job-ledger__flourish" aria-hidden="true">❦</span>
+            </div>
+            <p :if={@jobs == []} id="alchemy-jobs-empty" class="alc-hint">
               Нет активных или завершённых варок.
             </p>
             <article
               :for={job <- @jobs}
               id={"alchemy-job-#{job.id}"}
-              class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+              class="alc-job-slip"
             >
-              <div>
-                <p class="font-medium text-stone-100">{job.recipe.name} ×{job.quantity}</p>
-                <p class="text-stone-400">
-                  {job.status} · готовность {format_time(job.completes_at)}
+              <div class="alc-job-slip__copy">
+                <p class="alc-job-slip__name">{job.recipe.name} ×{job.quantity}</p>
+                <p class="alc-job-slip__meta">
+                  {job_status_label(job.status)} · готовность {format_time(job.completes_at)}
                 </p>
               </div>
               <button
@@ -205,7 +291,7 @@ defmodule MMGOWeb.AlchemyLive do
                 type="button"
                 phx-click="collect"
                 phx-value-job-id={job.id}
-                class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
+                class="alc-job-slip__collect"
               >
                 Проверить готовность
               </button>
@@ -216,9 +302,9 @@ defmodule MMGOWeb.AlchemyLive do
             id="alchemy-refresh"
             type="button"
             phx-click="refresh"
-            class="text-sm text-violet-200 underline decoration-violet-500/40 underline-offset-4"
+            class="alc-refresh"
           >
-            Обновить стол
+            ↻ свериться с лабораторным журналом
           </button>
         </div>
       </main>
@@ -269,18 +355,45 @@ defmodule MMGOWeb.AlchemyLive do
     |> assign(:brew_form, to_form(%{}, as: :brew))
   end
 
-  defp tool_list([]), do: "нет"
-  defp tool_list(codes), do: Enum.join(codes, ", ")
-
   defp primitive_list(metadata) do
     metadata
     |> Map.get("alchemical_primitives", %{})
     |> Enum.sort_by(fn {primitive, _amount} -> primitive end)
-    |> Enum.map_join(" · ", fn {primitive, amount} -> "#{primitive} #{amount}" end)
+    |> Enum.map_join(" · ", fn {primitive, amount} ->
+      "#{primitive_label(primitive)} #{amount}"
+    end)
   end
 
   defp format_time(nil), do: "ожидает расчёта"
   defp format_time(time), do: Calendar.strftime(time, "%d.%m %H:%M UTC")
+
+  defp tool_code_label("demo_travel_ration"), do: "Дорожный паёк"
+  defp tool_code_label("demo_lumen_dust"), do: "Световая пыль"
+  defp tool_code_label("construction_material"), do: "Строевой камень"
+  defp tool_code_label("cauldron"), do: "Котёл"
+  defp tool_code_label("mortar"), do: "Ступка"
+  defp tool_code_label("alembic"), do: "Перегонный куб"
+  defp tool_code_label(_code), do: "Неопознанный инструмент"
+
+  defp job_status_label(:active), do: "варится"
+  defp job_status_label(:completed), do: "готово"
+  defp job_status_label(:claimed), do: "получено"
+  defp job_status_label(:failed), do: "испорчено"
+  defp job_status_label(_status), do: "состояние уточняется"
+
+  defp primitive_label("heat"), do: "жар"
+  defp primitive_label("cold"), do: "холод"
+  defp primitive_label("water"), do: "вода"
+  defp primitive_label("earth"), do: "земля"
+  defp primitive_label("air"), do: "воздух"
+  defp primitive_label("toxicity"), do: "ядовитость"
+  defp primitive_label("binding"), do: "связывание"
+  defp primitive_label("restoration"), do: "восстановление"
+  defp primitive_label("life"), do: "жизнь"
+  defp primitive_label("death"), do: "смерть"
+  defp primitive_label("volatility"), do: "нестабильность"
+  defp primitive_label("clarity"), do: "ясность"
+  defp primitive_label(_primitive), do: "неизвестное свойство"
 
   defp error_message(:active_base_not_found), do: "Алхимия доступна только на активной базе."
   defp error_message(:alchemy_workshop_exists), do: "У вас уже есть активный алхимический стол."

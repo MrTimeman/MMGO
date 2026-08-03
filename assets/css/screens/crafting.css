@@ -911,6 +911,1489 @@
 .crf-item__again:hover { color: var(--crf-ember); }
 
 /* ==================================================================== */
+/*  REAL WORKSHOP SURFACES                                               */
+/*  The original ritual vocabulary now wraps the production-backed       */
+/*  CraftLive and AlchemyLive forms. Paper is reserved for plans, notes,  */
+/*  and job records; tools and active controls stay glass, iron, or wood. */
+/* ==================================================================== */
+
+.crf-screen {
+  background:
+    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--crf-ember-deep) 20%, transparent), transparent 38rem),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 5rem,
+      color-mix(in srgb, var(--crf-iron-edge) 12%, transparent) 5rem calc(5rem + 1px)
+    ),
+    linear-gradient(180deg, var(--crf-charcoal-deep), var(--color-bg));
+}
+
+.alc-screen {
+  background:
+    radial-gradient(circle at 15% 0%, color-mix(in srgb, var(--alc-glass-dim) 26%, transparent), transparent 34rem),
+    repeating-linear-gradient(
+      90deg,
+      transparent 0 6rem,
+      color-mix(in srgb, var(--parch-leather) 13%, transparent) 6rem calc(6rem + 1px)
+    ),
+    linear-gradient(180deg, color-mix(in srgb, var(--alc-glass-dim) 12%, var(--color-bg)), var(--color-bg));
+}
+
+.alc-root,
+.crf-root {
+  position: relative;
+  width: min(100%, 58rem);
+  max-width: 58rem;
+  padding: calc(env(safe-area-inset-top, 0px) + 3.25rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 3.5rem);
+  gap: 1.25rem;
+}
+
+.alc-exit,
+.crf-exit {
+  top: calc(env(safe-area-inset-top, 0px) + 1rem);
+  left: 1rem;
+  min-height: 2.25rem;
+  display: inline-flex;
+  align-items: center;
+  color: var(--color-text-muted);
+  transition: color 160ms ease, transform 160ms ease;
+}
+
+.alc-exit:hover,
+.crf-exit:hover {
+  transform: translateX(-0.18rem);
+}
+
+.alc-alert,
+.crf-alert {
+  position: relative;
+  z-index: 3;
+  padding: 0.75rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--color-danger) 54%, var(--color-border));
+  color: color-mix(in srgb, var(--color-danger) 34%, var(--color-text));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--color-danger) 16%, transparent), transparent),
+    var(--crf-charcoal-deep);
+  box-shadow: inset 0 0 1.5rem color-mix(in srgb, var(--color-danger) 8%, transparent);
+  font-family: var(--font-serif);
+  font-size: 0.88rem;
+}
+
+.alc-alert--error,
+.crf-alert--error {
+  border-left-width: 0.32rem;
+  border-left-color: var(--parch-red);
+  color: color-mix(in srgb, var(--color-danger) 22%, #f4e8d4);
+}
+
+.alc-kicker,
+.crf-kicker {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.crf-kicker { color: var(--crf-ember); }
+.alc-kicker { color: var(--alc-glass); }
+
+.alc-head,
+.crf-head {
+  padding: 0 0.5rem;
+}
+
+.alc-title,
+.crf-title {
+  font-size: clamp(1.7rem, 4vw, 2.35rem);
+}
+
+.alc-sub,
+.crf-sub {
+  max-width: 36rem;
+  margin: 0.45rem auto 0;
+  line-height: 1.5;
+}
+
+/* -- Crafting room: lantern, furnace, bellows, grinder, anvil ---------- */
+
+.crf-workshop-scene {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--crf-iron-edge) 78%, var(--crf-ember-deep));
+  border-radius: 0.25rem;
+  background: var(--crf-charcoal-deep);
+  box-shadow:
+    0 1.4rem 3rem rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.crf-workshop-scene__room {
+  position: relative;
+  height: clamp(18rem, 50vw, 28rem);
+  min-height: 18rem;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 51% 8%, color-mix(in srgb, var(--crf-ember-spark) 48%, transparent) 0, color-mix(in srgb, var(--crf-ember) 28%, transparent) 13%, transparent 38%),
+    linear-gradient(180deg, color-mix(in srgb, var(--crf-charcoal) 82%, var(--parch-leather)) 0 65%, var(--crf-charcoal-deep) 65% 100%);
+}
+
+.crf-workshop-scene__room::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.28;
+  background:
+    repeating-linear-gradient(2deg, transparent 0 2.8rem, rgba(0, 0, 0, 0.18) 2.8rem calc(2.8rem + 2px)),
+    repeating-linear-gradient(91deg, transparent 0 7rem, rgba(255, 255, 255, 0.025) 7rem calc(7rem + 1px));
+  mix-blend-mode: soft-light;
+}
+
+.crf-workshop-scene__room::after {
+  content: "";
+  position: absolute;
+  z-index: 1;
+  left: 0;
+  right: 0;
+  bottom: 27%;
+  height: 0.85rem;
+  background: linear-gradient(180deg, var(--parch-leather), var(--parch-leather-dark));
+  border-block: 1px solid var(--crf-charcoal-deep);
+  box-shadow: 0 0.65rem 0.85rem rgba(0, 0, 0, 0.52);
+}
+
+.crf-lantern {
+  position: absolute;
+  z-index: 7;
+  top: 0;
+  left: 51%;
+  width: 4rem;
+  height: 7.4rem;
+  transform: translateX(-50%);
+  filter: drop-shadow(0 0 1.2rem color-mix(in srgb, var(--crf-ember) 66%, transparent));
+}
+
+.crf-lantern::before {
+  content: "";
+  position: absolute;
+  z-index: -1;
+  top: 2.5rem;
+  left: 50%;
+  width: 19rem;
+  height: 16rem;
+  transform: translateX(-50%);
+  border-radius: 50%;
+  background: radial-gradient(circle, color-mix(in srgb, var(--crf-ember-spark) 30%, transparent), color-mix(in srgb, var(--crf-ember) 16%, transparent) 38%, transparent 70%);
+  filter: blur(0.35rem);
+  animation: crf-lamp-breathe 3.4s ease-in-out infinite;
+}
+
+.crf-lantern__chain {
+  position: absolute;
+  top: -1rem;
+  left: calc(50% - 0.18rem);
+  width: 0.36rem;
+  height: 3.2rem;
+  background: repeating-linear-gradient(180deg, var(--crf-iron) 0 0.34rem, var(--crf-iron-dark) 0.34rem 0.62rem);
+  box-shadow: 0.12rem 0 0 var(--crf-charcoal-deep);
+}
+
+.crf-lantern__cap,
+.crf-lantern__base {
+  position: absolute;
+  left: 50%;
+  width: 3.25rem;
+  height: 0.72rem;
+  transform: translateX(-50%) skewX(-8deg);
+  border: 1px solid var(--crf-charcoal-deep);
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+}
+
+.crf-lantern__cap {
+  top: 2rem;
+  border-radius: 50% 50% 0.2rem 0.2rem;
+}
+
+.crf-lantern__base {
+  top: 6.3rem;
+  border-radius: 0.2rem 0.2rem 50% 50%;
+}
+
+.crf-lantern__glass {
+  position: absolute;
+  top: 2.65rem;
+  left: 50%;
+  width: 2.35rem;
+  height: 3.85rem;
+  transform: translateX(-50%);
+  clip-path: polygon(12% 0, 88% 0, 100% 100%, 0 100%);
+  border-inline: 0.22rem solid var(--crf-iron-dark);
+  background:
+    radial-gradient(circle at 50% 48%, var(--crf-ember-spark-soft), var(--crf-ember-light) 24%, var(--crf-ember-deep) 66%, rgba(0, 0, 0, 0.42) 100%);
+  box-shadow: inset 0 0 0.8rem var(--crf-ember-spark);
+  animation: crf-flame-flicker 1.8s ease-in-out infinite alternate;
+}
+
+.crf-rear-bench {
+  position: absolute;
+  z-index: 2;
+  right: 5%;
+  bottom: 28%;
+  width: 47%;
+  height: 31%;
+  border-inline: 0.7rem solid var(--parch-leather-dark);
+}
+
+.crf-rear-bench::before,
+.crf-rear-bench::after {
+  content: "";
+  position: absolute;
+  bottom: -30%;
+  width: 0.85rem;
+  height: 55%;
+  background: linear-gradient(90deg, var(--parch-leather-dark), var(--parch-leather));
+}
+
+.crf-rear-bench::before { left: 5%; }
+.crf-rear-bench::after { right: 5%; }
+
+.crf-rear-bench__top {
+  position: absolute;
+  left: -4%;
+  right: -4%;
+  bottom: 30%;
+  height: 1.25rem;
+  transform: perspective(8rem) rotateX(9deg);
+  border: 1px solid var(--crf-charcoal-deep);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--parch-leather) 72%, var(--crf-iron-dark)), var(--parch-leather-dark));
+  box-shadow: 0 0.8rem 0.8rem rgba(0, 0, 0, 0.4);
+}
+
+.crf-grinder {
+  position: absolute;
+  z-index: 2;
+  right: 5%;
+  bottom: 45%;
+  width: 7.6rem;
+  height: 5.3rem;
+}
+
+.crf-grinder__wheel {
+  position: absolute;
+  top: 0;
+  left: 1.7rem;
+  width: 4.2rem;
+  height: 4.2rem;
+  border: 0.52rem solid var(--crf-iron-dark);
+  border-radius: 50%;
+  background:
+    radial-gradient(circle, var(--crf-charcoal-deep) 0 12%, var(--crf-iron) 13% 20%, var(--crf-iron-dark) 21% 100%);
+  box-shadow: inset 0 0 0 0.16rem var(--crf-iron-edge);
+}
+
+.crf-grinder__rest {
+  position: absolute;
+  top: 2.7rem;
+  left: 0.55rem;
+  width: 6.5rem;
+  height: 0.45rem;
+  transform: rotate(-3deg);
+  background: var(--crf-iron);
+}
+
+.crf-grinder__base {
+  position: absolute;
+  bottom: 0;
+  left: 2rem;
+  width: 3.65rem;
+  height: 1.2rem;
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+  clip-path: polygon(15% 0, 85% 0, 100% 100%, 0 100%);
+}
+
+.crf-furnace {
+  position: absolute;
+  z-index: 4;
+  left: -1%;
+  bottom: 0;
+  width: 25%;
+  min-width: 8.6rem;
+  height: 46%;
+  border: 1px solid var(--crf-iron-edge);
+  border-radius: 42% 42% 0 0;
+  background:
+    linear-gradient(90deg, transparent 49%, rgba(0, 0, 0, 0.28) 50% 52%, transparent 53%),
+    linear-gradient(180deg, var(--crf-iron) 0 12%, var(--crf-iron-dark) 13% 100%);
+  box-shadow: inset -1rem -0.8rem 1.4rem rgba(0, 0, 0, 0.45), 0.7rem 0 1.5rem rgba(0, 0, 0, 0.45);
+}
+
+.crf-furnace__hood {
+  position: absolute;
+  left: 8%;
+  top: -1rem;
+  width: 84%;
+  height: 2rem;
+  border-radius: 48% 48% 0 0;
+  background: linear-gradient(180deg, var(--crf-iron-edge), var(--crf-iron-dark));
+  border: 1px solid var(--crf-charcoal-deep);
+}
+
+.crf-furnace__mouth {
+  position: absolute;
+  left: 17%;
+  right: 12%;
+  bottom: 17%;
+  height: 42%;
+  overflow: hidden;
+  border: 0.45rem solid var(--crf-charcoal-deep);
+  border-radius: 48% 48% 0.3rem 0.3rem;
+  background:
+    radial-gradient(ellipse at 50% 90%, var(--crf-ember-spark-soft) 0, var(--crf-ember-light) 22%, var(--crf-ember-deep) 54%, var(--crf-charcoal-deep) 76%);
+  box-shadow: 0 0 1.45rem var(--crf-glow), inset 0 0 1rem rgba(0, 0, 0, 0.62);
+}
+
+.crf-furnace__mouth i {
+  position: absolute;
+  bottom: -0.2rem;
+  width: 0.8rem;
+  height: 2.5rem;
+  border-radius: 50% 50% 30% 30%;
+  background: linear-gradient(180deg, var(--crf-ember-spark-soft), var(--crf-ember));
+  transform-origin: bottom;
+  animation: crf-flame-flicker 0.9s ease-in-out infinite alternate;
+}
+
+.crf-furnace__mouth i:nth-child(1) { left: 24%; height: 1.8rem; }
+.crf-furnace__mouth i:nth-child(2) { left: 47%; animation-delay: -0.3s; }
+.crf-furnace__mouth i:nth-child(3) { left: 68%; height: 2.1rem; animation-delay: -0.6s; }
+
+.crf-furnace__stone {
+  position: absolute;
+  width: 1.15rem;
+  height: 0.65rem;
+  border: 1px solid var(--crf-charcoal-deep);
+  background: var(--crf-iron);
+  opacity: 0.68;
+}
+
+.crf-furnace__stone--one { left: 6%; top: 42%; }
+.crf-furnace__stone--two { right: 4%; top: 29%; }
+.crf-furnace__stone--three { left: 8%; bottom: 10%; }
+
+.crf-bellows {
+  position: absolute;
+  z-index: 5;
+  left: 17%;
+  bottom: 3%;
+  width: 19%;
+  min-width: 6.8rem;
+  height: 28%;
+  transform: rotate(-7deg);
+}
+
+.crf-bellows__body {
+  position: absolute;
+  left: 6%;
+  bottom: 7%;
+  width: 72%;
+  height: 68%;
+  border: 0.23rem solid var(--parch-leather-dark);
+  border-radius: 70% 16% 16% 70%;
+  background:
+    repeating-linear-gradient(180deg, var(--parch-leather) 0 0.48rem, var(--parch-leather-dark) 0.5rem 0.64rem);
+  box-shadow: inset 0 0 0.8rem rgba(0, 0, 0, 0.5);
+}
+
+.crf-bellows__handle {
+  position: absolute;
+  z-index: 2;
+  left: 0;
+  top: 0;
+  width: 88%;
+  height: 0.72rem;
+  transform: rotate(-18deg);
+  border-radius: 0.3rem;
+  background: linear-gradient(180deg, var(--parch-leather), var(--parch-leather-dark));
+}
+
+.crf-bellows__nozzle {
+  position: absolute;
+  right: -10%;
+  bottom: 25%;
+  width: 38%;
+  height: 0.68rem;
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+  clip-path: polygon(0 5%, 100% 35%, 100% 65%, 0 95%);
+}
+
+.crf-scene-anvil {
+  position: absolute;
+  z-index: 6;
+  right: 11%;
+  bottom: 2%;
+  width: 32%;
+  min-width: 10rem;
+  height: 38%;
+  filter: drop-shadow(0 1.1rem 0.8rem rgba(0, 0, 0, 0.55));
+}
+
+.crf-scene-anvil__face {
+  position: absolute;
+  z-index: 2;
+  top: 7%;
+  left: 0;
+  width: 100%;
+  height: 31%;
+  clip-path: polygon(0 16%, 67% 0, 100% 23%, 77% 56%, 65% 100%, 15% 91%);
+  background: linear-gradient(180deg, color-mix(in srgb, var(--crf-iron) 76%, var(--color-text)), var(--crf-iron-dark));
+  border-top: 0.22rem solid var(--crf-iron-edge);
+}
+
+.crf-scene-anvil__waist {
+  position: absolute;
+  top: 32%;
+  left: 26%;
+  width: 54%;
+  height: 49%;
+  clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%);
+  background: linear-gradient(90deg, var(--crf-iron-dark), var(--crf-iron), var(--crf-iron-dark));
+}
+
+.crf-scene-anvil__foot {
+  position: absolute;
+  left: 15%;
+  bottom: 0;
+  width: 74%;
+  height: 24%;
+  clip-path: polygon(14% 0, 87% 0, 100% 100%, 0 100%);
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+}
+
+.crf-tool-rail {
+  position: relative;
+  height: 5rem;
+  margin: 0.8rem 0.85rem 0.7rem;
+  border: 1px solid var(--crf-charcoal-deep);
+  background:
+    repeating-linear-gradient(90deg, transparent 0 5.5rem, rgba(0, 0, 0, 0.18) 5.5rem calc(5.5rem + 2px)),
+    linear-gradient(180deg, color-mix(in srgb, var(--parch-leather) 72%, var(--crf-iron-dark)), var(--parch-leather-dark));
+  box-shadow: inset 0 0.4rem 0.7rem rgba(255, 255, 255, 0.025), 0 0.65rem 0.8rem rgba(0, 0, 0, 0.45);
+}
+
+.crf-tool-rail__peg {
+  position: absolute;
+  top: 50%;
+  width: 0.62rem;
+  height: 1.25rem;
+  transform: translateY(-50%);
+  border-radius: 0 0 50% 50%;
+  background: linear-gradient(90deg, var(--crf-iron-dark), var(--crf-iron), var(--crf-iron-dark));
+}
+
+.crf-tool-rail__peg::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -0.2rem;
+  width: 0.7rem;
+  height: 0.45rem;
+  transform: translateX(-50%);
+  border: 0.16rem solid var(--crf-iron);
+  border-top: 0;
+  border-radius: 0 0 50% 50%;
+}
+
+.crf-tool-rail__peg--one { left: 44%; }
+.crf-tool-rail__peg--two { left: 61%; }
+.crf-tool-rail__peg--three { left: 76%; }
+.crf-tool-rail__peg--four { left: 88%; }
+
+.crf-hanging-hammer {
+  position: absolute;
+  left: 14%;
+  top: 0.8rem;
+  width: 6.4rem;
+  height: 8.2rem;
+  transform: rotate(-2deg);
+}
+
+.crf-hanging-hammer__head {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 5.7rem;
+  height: 1.75rem;
+  clip-path: polygon(0 23%, 17% 0, 86% 12%, 100% 34%, 93% 83%, 20% 100%, 0 72%);
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+  box-shadow: inset 0 0.22rem 0.2rem rgba(255, 255, 255, 0.08);
+}
+
+.crf-hanging-hammer__haft {
+  position: absolute;
+  top: 1.3rem;
+  left: 2.45rem;
+  width: 0.88rem;
+  height: 6rem;
+  border-radius: 0 0 0.4rem 0.4rem;
+  background: linear-gradient(90deg, var(--parch-leather-dark), var(--parch-leather), var(--parch-leather-dark));
+}
+
+@keyframes crf-lamp-breathe {
+  0%, 100% { opacity: 0.78; transform: translateX(-50%) scale(0.95); }
+  50% { opacity: 1; transform: translateX(-50%) scale(1.04); }
+}
+
+@keyframes crf-flame-flicker {
+  0% { filter: brightness(0.9); transform: translateY(0) scaleX(0.92); }
+  100% { filter: brightness(1.14); transform: translateY(-0.12rem) scaleX(1.06); }
+}
+
+/* -- Real crafting forms and records ----------------------------------- */
+
+.crf-tools,
+.alc-tools {
+  width: min(100%, 44rem);
+  margin-inline: auto;
+  text-align: center;
+}
+
+.crf-tools__row,
+.alc-tools__row {
+  justify-content: center;
+}
+
+.alc-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--alc-glass) 46%, var(--color-border));
+  border-radius: 999px;
+  color: var(--alc-ink);
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--alc-glass-dim) 34%, var(--color-surface)), var(--color-surface));
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+}
+
+.alc-tool--missing {
+  color: var(--color-text-muted);
+  border-style: dashed;
+  opacity: 0.72;
+}
+
+.alc-tool--owned {
+  border-color: color-mix(in srgb, var(--alc-vapor) 68%, var(--color-border));
+  box-shadow: inset 0 0 0.8rem color-mix(in srgb, var(--alc-vapor) 10%, transparent);
+}
+
+.alc-tool__mark { color: var(--alc-vapor); }
+.alc-tool--missing .alc-tool__mark { color: var(--color-danger); }
+
+.crf-ledger,
+.crf-work-order,
+.alc-ledger,
+.alc-recipe-desk,
+.alc-job-ledger {
+  position: relative;
+  width: 100%;
+  color: var(--parch-ink);
+  border: 1px solid var(--parch-vignette);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 1.65rem, color-mix(in srgb, var(--parch-ink-faint) 13%, transparent) 1.65rem calc(1.65rem + 1px)),
+    radial-gradient(ellipse at 35% 12%, var(--parch-paper-light), var(--parch-paper) 62%, var(--parch-paper-dark));
+  box-shadow:
+    0 1.25rem 2.5rem rgba(0, 0, 0, 0.4),
+    inset 0 0 2rem color-mix(in srgb, var(--parch-vignette) 20%, transparent);
+}
+
+.crf-ledger,
+.alc-ledger {
+  width: min(100%, 43rem);
+  margin-inline: auto;
+  padding: clamp(1.35rem, 4vw, 2.2rem);
+  transform: rotate(-0.2deg);
+}
+
+.crf-ledger--warning,
+.alc-ledger--warning {
+  border-left: 0.34rem solid var(--parch-red);
+}
+
+.crf-ledger--setup,
+.alc-ledger--setup {
+  border-top: 0.22rem solid color-mix(in srgb, var(--parch-gold) 58%, var(--parch-vignette));
+}
+
+.crf-ledger__pin {
+  position: absolute;
+  top: 0.55rem;
+  right: 0.75rem;
+  width: 0.8rem;
+  height: 0.8rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, var(--crf-ember-spark), var(--crf-ember-deep) 52%, var(--crf-charcoal-deep));
+  box-shadow: 0 0.2rem 0.24rem rgba(0, 0, 0, 0.48);
+}
+
+.crf-ledger__eyebrow,
+.alc-ledger__eyebrow {
+  margin: 0 0 0.4rem;
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.crf-ledger__eyebrow { color: var(--parch-red); }
+.alc-ledger__eyebrow { color: var(--alc-smoke-gold); }
+
+.crf-ledger__title,
+.alc-ledger__title {
+  margin: 0;
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  font-size: clamp(1.35rem, 4vw, 1.9rem);
+  line-height: 1.12;
+}
+
+.crf-ledger__copy,
+.alc-ledger__copy {
+  margin: 0.7rem 0 0;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-serif);
+  font-size: 0.92rem;
+  line-height: 1.6;
+}
+
+.alc-ledger__copy--empty {
+  padding: 1rem 0;
+  font-style: italic;
+}
+
+.crf-setup-form,
+.alc-setup-form {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 1rem;
+  align-items: end;
+  margin-top: 1.25rem;
+}
+
+.crf-setup-form > div,
+.alc-setup-form > div,
+.crf-order-form > div {
+  min-width: 0;
+}
+
+.crf-ledger label,
+.crf-work-order label,
+.alc-ledger label,
+.alc-recipe-desk label {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.crf-paper-input,
+.alc-paper-input {
+  width: 100%;
+  min-height: 2.8rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-ink-faint) 55%, transparent);
+  border-radius: 0;
+  outline: 0;
+  color: var(--parch-ink);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.2), color-mix(in srgb, var(--parch-paper-dark) 18%, transparent));
+  box-shadow: inset 0 -1px 0 rgba(255, 255, 255, 0.45);
+  padding: 0.65rem 0.75rem;
+  font-family: var(--font-serif);
+  font-size: 0.98rem;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+
+.crf-paper-input:focus,
+.alc-paper-input:focus {
+  border-color: var(--parch-red);
+  background: rgba(255, 255, 255, 0.3);
+}
+
+.crf-ledger .crf-do,
+.alc-ledger .alc-brew {
+  width: auto;
+  min-width: 9.5rem;
+  margin-bottom: 1rem;
+  padding-inline: 1.1rem;
+}
+
+.crf-work-order {
+  padding: clamp(1.4rem, 4vw, 2.3rem);
+  clip-path: polygon(0.8% 0.6%, 99.3% 0, 100% 96.8%, 98.5% 100%, 1.2% 99.4%, 0 3%);
+}
+
+.crf-work-order::after {
+  content: "";
+  position: absolute;
+  inset: 0.65rem;
+  pointer-events: none;
+  border: 1px solid color-mix(in srgb, var(--parch-ink-faint) 28%, transparent);
+}
+
+.crf-work-order__clip {
+  position: absolute;
+  z-index: 2;
+  top: -0.28rem;
+  left: 10%;
+  width: 1.1rem;
+  height: 2.7rem;
+  border: 0.18rem solid var(--crf-iron);
+  border-bottom-color: transparent;
+  border-radius: 0.55rem 0.55rem 0 0;
+  transform: rotate(5deg);
+  filter: drop-shadow(0 0.2rem 0.15rem rgba(0, 0, 0, 0.35));
+}
+
+.crf-work-order__head,
+.alc-recipe-desk__head,
+.alc-job-ledger__head,
+.crf-job-board__head {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.crf-work-order__stamp,
+.alc-recipe-desk__folio {
+  flex: 0 0 auto;
+  padding: 0.3rem 0.6rem;
+  border: 1px solid color-mix(in srgb, var(--parch-red) 52%, transparent);
+  border-radius: 50%;
+  color: var(--parch-red);
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: rotate(3deg);
+}
+
+.crf-order-form {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(6.5rem, 0.25fr) auto;
+  gap: 1rem;
+  align-items: end;
+  margin-top: 1.35rem;
+}
+
+.crf-order-form .crf-do {
+  width: auto;
+  min-width: 8.5rem;
+  margin-bottom: 1rem;
+  padding-inline: 1.15rem;
+}
+
+.crf-job-board {
+  position: relative;
+  padding: clamp(1.15rem, 3vw, 1.75rem);
+  border: 0.55rem solid var(--parch-leather-dark);
+  background:
+    radial-gradient(circle at 12% 18%, rgba(255, 255, 255, 0.035), transparent 1.4rem),
+    repeating-linear-gradient(32deg, color-mix(in srgb, var(--parch-leather) 80%, var(--crf-charcoal)) 0 1px, color-mix(in srgb, var(--parch-leather-dark) 86%, var(--crf-charcoal)) 1px 5px);
+  box-shadow: 0 1.25rem 2.5rem rgba(0, 0, 0, 0.46), inset 0 0 2rem rgba(0, 0, 0, 0.3);
+}
+
+.crf-job-board__title,
+.alc-job-ledger__title {
+  margin: -0.2rem 0 0;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  font-size: 1.45rem;
+}
+
+.crf-job-board__nail {
+  width: 0.85rem;
+  height: 0.85rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--crf-iron), var(--crf-iron-dark) 65%);
+  box-shadow: 0 0.2rem 0.25rem rgba(0, 0, 0, 0.5);
+}
+
+.crf-job-ticket {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.85rem;
+  padding: 0.85rem 1rem 0.9rem;
+  color: var(--parch-ink);
+  background:
+    repeating-linear-gradient(0deg, transparent 0 1.25rem, color-mix(in srgb, var(--parch-ink-faint) 11%, transparent) 1.25rem calc(1.25rem + 1px)),
+    linear-gradient(120deg, var(--parch-paper-light), var(--parch-paper));
+  border: 1px solid var(--parch-vignette);
+  box-shadow: 0 0.45rem 0.8rem rgba(0, 0, 0, 0.3);
+  transform: rotate(0.15deg);
+}
+
+.crf-job-ticket:nth-of-type(even) {
+  transform: rotate(-0.25deg);
+}
+
+.crf-job-ticket__name,
+.alc-job-slip__name {
+  margin: 0;
+  font-family: var(--font-serif);
+  font-size: 1rem;
+  font-weight: 700;
+}
+
+.crf-job-ticket__copy,
+.alc-job-slip__copy {
+  min-width: 0;
+  flex: 1 1 auto;
+  overflow-wrap: anywhere;
+}
+
+.crf-job-ticket__meta,
+.alc-job-slip__meta {
+  margin: 0.2rem 0 0;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.crf-job-ticket__collect,
+.alc-job-slip__collect {
+  flex: 0 0 auto;
+  padding: 0.48rem 0.7rem;
+  border: 1px solid var(--parch-red);
+  color: var(--parch-red);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  transition: color 150ms ease, background 150ms ease;
+}
+
+.crf-job-ticket__collect:hover,
+.alc-job-slip__collect:hover {
+  color: var(--parch-paper-light);
+  background: var(--parch-red);
+}
+
+.crf-refresh,
+.alc-refresh {
+  align-self: center;
+  padding: 0.55rem 0.85rem;
+  border: 0;
+  color: var(--color-text-muted);
+  background: transparent;
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition: color 150ms ease;
+}
+
+.crf-refresh:hover { color: var(--crf-ember); }
+.alc-refresh:hover { color: var(--alc-vapor); }
+
+/* -- Alchemy room: window, specimen cabinet, mortar, live flask -------- */
+
+.alc-workshop-scene {
+  position: relative;
+  isolation: isolate;
+  width: 100%;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--alc-glass-dim) 70%, var(--parch-leather));
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--alc-glass-dim) 8%, var(--crf-charcoal-deep));
+  box-shadow:
+    0 1.4rem 3rem rgba(0, 0, 0, 0.48),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.025);
+}
+
+.alc-workshop-scene__room {
+  position: relative;
+  height: clamp(18rem, 48vw, 27rem);
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 18% 19%, color-mix(in srgb, var(--alc-vapor) 22%, transparent), transparent 31%),
+    radial-gradient(circle at 57% 64%, color-mix(in srgb, var(--alc-glass) 17%, transparent), transparent 30%),
+    linear-gradient(180deg, color-mix(in srgb, var(--alc-glass-dim) 16%, var(--crf-charcoal)) 0 70%, var(--crf-charcoal-deep) 70%);
+}
+
+.alc-workshop-scene__room::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  opacity: 0.32;
+  background:
+    repeating-linear-gradient(91deg, transparent 0 6.5rem, rgba(0, 0, 0, 0.18) 6.5rem calc(6.5rem + 2px)),
+    repeating-linear-gradient(1deg, transparent 0 3.6rem, rgba(255, 255, 255, 0.025) 3.6rem calc(3.6rem + 1px));
+}
+
+.alc-window {
+  position: absolute;
+  z-index: 1;
+  top: 10%;
+  left: 6%;
+  width: 22%;
+  min-width: 7rem;
+  height: 44%;
+  overflow: hidden;
+  border: 0.48rem solid var(--parch-leather-dark);
+  border-radius: 50% 50% 0.25rem 0.25rem;
+  background:
+    radial-gradient(circle at 36% 35%, color-mix(in srgb, var(--alc-vapor) 36%, var(--color-text)), color-mix(in srgb, var(--alc-glass-dim) 52%, var(--color-bg)) 55%, var(--color-bg));
+  box-shadow: 0 0 2.6rem color-mix(in srgb, var(--alc-glass) 18%, transparent);
+}
+
+.alc-window::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(130deg, rgba(255, 255, 255, 0.14), transparent 35%);
+}
+
+.alc-window__bar {
+  position: absolute;
+  z-index: 1;
+  background: var(--parch-leather-dark);
+}
+
+.alc-window__bar--vertical {
+  top: 0;
+  bottom: 0;
+  left: calc(50% - 0.18rem);
+  width: 0.36rem;
+}
+
+.alc-window__bar--horizontal {
+  left: 0;
+  right: 0;
+  top: calc(52% - 0.18rem);
+  height: 0.36rem;
+}
+
+.alc-cabinet {
+  position: absolute;
+  z-index: 2;
+  top: 9%;
+  right: 5%;
+  width: 29%;
+  height: 48%;
+  border: 0.5rem solid var(--parch-leather-dark);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.025), transparent 40%),
+    color-mix(in srgb, var(--parch-leather-dark) 68%, var(--crf-charcoal-deep));
+  box-shadow: inset 0 0 1.25rem rgba(0, 0, 0, 0.55), 0 0.75rem 1rem rgba(0, 0, 0, 0.4);
+}
+
+.alc-cabinet__shelf {
+  position: absolute;
+  left: -0.25rem;
+  right: -0.25rem;
+  height: 0.5rem;
+  background: linear-gradient(180deg, var(--parch-leather), var(--parch-leather-dark));
+}
+
+.alc-cabinet__shelf--upper { top: 43%; }
+.alc-cabinet__shelf--lower { bottom: 4%; }
+
+.alc-bottle {
+  position: absolute;
+  bottom: 7%;
+  width: 14%;
+  height: 29%;
+  border: 1px solid color-mix(in srgb, var(--alc-vapor) 44%, transparent);
+  border-radius: 28% 28% 42% 42%;
+  background:
+    linear-gradient(180deg, transparent 32%, color-mix(in srgb, var(--alc-glass) 68%, transparent) 33%),
+    color-mix(in srgb, var(--alc-glass-dim) 44%, transparent);
+  box-shadow: inset 0.18rem 0 0.25rem rgba(255, 255, 255, 0.08);
+}
+
+.alc-bottle::before {
+  content: "";
+  position: absolute;
+  top: -22%;
+  left: 31%;
+  width: 38%;
+  height: 25%;
+  border: 1px solid color-mix(in srgb, var(--alc-vapor) 38%, transparent);
+  background: var(--alc-glass-dim);
+}
+
+.alc-bottle--one { left: 9%; }
+.alc-bottle--two { left: 31%; height: 37%; }
+.alc-bottle--three { left: 55%; width: 20%; }
+.alc-bottle--four { left: 14%; bottom: 52%; height: 25%; }
+.alc-bottle--five { left: 48%; bottom: 52%; width: 22%; height: 30%; }
+
+.alc-workbench {
+  position: absolute;
+  z-index: 3;
+  left: 4%;
+  right: 3%;
+  bottom: 20%;
+  height: 1.25rem;
+  border: 1px solid var(--crf-charcoal-deep);
+  background: linear-gradient(180deg, var(--parch-leather), var(--parch-leather-dark));
+  box-shadow: 0 0.8rem 0.9rem rgba(0, 0, 0, 0.5);
+}
+
+.alc-workbench::before,
+.alc-workbench::after {
+  content: "";
+  position: absolute;
+  top: 1rem;
+  width: 1rem;
+  height: 7rem;
+  background: linear-gradient(90deg, var(--parch-leather-dark), var(--parch-leather));
+}
+
+.alc-workbench::before { left: 7%; }
+.alc-workbench::after { right: 7%; }
+
+.alc-mortar {
+  position: absolute;
+  z-index: 5;
+  right: 28%;
+  bottom: 22%;
+  width: 7.5rem;
+  height: 5.3rem;
+}
+
+.alc-mortar__bowl {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  width: 5rem;
+  height: 2.8rem;
+  border-radius: 0.35rem 0.35rem 48% 48%;
+  background: linear-gradient(180deg, var(--crf-iron), var(--crf-iron-dark));
+  box-shadow: inset 0 0.45rem 0.55rem var(--crf-charcoal-deep);
+}
+
+.alc-mortar__pestle {
+  position: absolute;
+  right: 0.2rem;
+  top: 0;
+  width: 1.05rem;
+  height: 4.8rem;
+  border-radius: 50% 50% 0.3rem 0.3rem;
+  transform: rotate(36deg);
+  transform-origin: bottom;
+  background: linear-gradient(90deg, var(--crf-iron-dark), var(--crf-iron), var(--crf-iron-dark));
+}
+
+.alc-workshop-scene .alc-vessel {
+  position: absolute;
+  z-index: 6;
+  left: 47%;
+  bottom: 21%;
+  width: 9.2rem;
+  height: 10.4rem;
+  transform: translateX(-50%);
+}
+
+.alc-vessel__neck {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  left: 50%;
+  width: 2rem;
+  height: 3rem;
+  transform: translateX(-50%);
+  border: 1.5px solid color-mix(in srgb, var(--alc-vapor) 52%, transparent);
+  border-bottom: 0;
+  border-radius: 0.3rem 0.3rem 0 0;
+  background: color-mix(in srgb, var(--alc-glass-dim) 18%, transparent);
+}
+
+.alc-workshop-scene .alc-vessel__flask {
+  position: absolute;
+  z-index: 3;
+  left: 50%;
+  bottom: 1.3rem;
+  width: 7.4rem;
+  height: 7.4rem;
+  transform: translateX(-50%);
+}
+
+.alc-workshop-scene .alc-vessel__flask::before {
+  display: none;
+}
+
+.alc-vessel__shine {
+  position: absolute;
+  z-index: 3;
+  top: 17%;
+  left: 22%;
+  width: 13%;
+  height: 36%;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.18);
+  transform: rotate(26deg);
+  filter: blur(0.05rem);
+}
+
+.alc-workshop-scene .alc-vessel__flame {
+  position: absolute;
+  left: 50%;
+  bottom: 0;
+  transform: translateX(-50%);
+  background:
+    radial-gradient(ellipse, color-mix(in srgb, var(--crf-ember-spark) 88%, transparent), color-mix(in srgb, var(--crf-ember) 62%, transparent) 35%, transparent 72%);
+}
+
+/* -- Real alchemy forms and laboratory records ------------------------- */
+
+.alc-ledger__wax {
+  position: absolute;
+  top: 0.7rem;
+  right: 0.8rem;
+  width: 1.85rem;
+  height: 1.85rem;
+  display: grid;
+  place-items: center;
+  border-radius: 47% 53% 49% 51%;
+  color: color-mix(in srgb, var(--parch-paper) 58%, var(--parch-red));
+  background: radial-gradient(circle at 34% 28%, color-mix(in srgb, var(--parch-red) 72%, var(--color-danger)), var(--parch-red) 60%, var(--parch-leather-dark));
+  box-shadow: 0 0.25rem 0.35rem rgba(0, 0, 0, 0.35);
+  font-family: var(--font-serif);
+  font-size: 0.72rem;
+  font-weight: 700;
+}
+
+.alc-recipe-desk {
+  padding: clamp(1.4rem, 4vw, 2.3rem) clamp(1.25rem, 4vw, 2.45rem) clamp(1.6rem, 4vw, 2.5rem);
+  border-left: 0.9rem solid var(--parch-leather);
+  border-radius: 0 0.28rem 0.28rem 0;
+}
+
+.alc-recipe-desk::before {
+  content: "";
+  position: absolute;
+  left: -0.55rem;
+  top: 0;
+  bottom: 0;
+  width: 0.22rem;
+  background: repeating-linear-gradient(180deg, var(--parch-stitch) 0 0.7rem, transparent 0.7rem 1.15rem);
+}
+
+.alc-recipe-desk__bookmark {
+  position: absolute;
+  top: -0.2rem;
+  right: 13%;
+  width: 1.35rem;
+  height: 3.8rem;
+  background: linear-gradient(90deg, var(--parch-red), color-mix(in srgb, var(--parch-red) 65%, var(--parch-leather-dark)));
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+  filter: drop-shadow(0 0.25rem 0.2rem rgba(0, 0, 0, 0.25));
+}
+
+.alc-recipe-desk__folio {
+  border-color: color-mix(in srgb, var(--alc-smoke-gold) 62%, transparent);
+  color: var(--alc-smoke-gold);
+  border-radius: 0.2rem;
+  transform: rotate(-1deg);
+}
+
+.alc-brew-form {
+  margin-top: 1.3rem;
+}
+
+.alc-brew-form > .alc-brew {
+  margin-top: 1rem;
+}
+
+.alc-ing--inventory {
+  position: relative;
+  width: 10.4rem;
+  min-height: 15.2rem;
+  justify-content: flex-start;
+  align-items: center;
+  gap: 0.25rem;
+  margin-top: 0.8rem;
+  padding: 1.7rem 0.8rem 0.7rem;
+  overflow: visible;
+  text-align: center;
+  border: 1px solid color-mix(in srgb, var(--alc-vapor) 43%, transparent);
+  border-radius: 1.2rem 1.2rem 2.8rem 2.8rem / 0.75rem 0.75rem 1.8rem 1.8rem;
+  color: var(--alc-ink);
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.08), transparent 16% 76%, rgba(0, 0, 0, 0.18)),
+    linear-gradient(180deg, color-mix(in srgb, var(--alc-glass-dim) 50%, var(--color-surface)), color-mix(in srgb, var(--alc-glass-dim) 72%, var(--color-bg)));
+  box-shadow:
+    inset 0.45rem 0 0.8rem rgba(255, 255, 255, 0.035),
+    inset -0.45rem 0 0.8rem rgba(0, 0, 0, 0.28),
+    0 0.75rem 1.2rem rgba(0, 0, 0, 0.34);
+}
+
+.alc-ing__stopper {
+  position: absolute;
+  top: -0.75rem;
+  left: 50%;
+  width: 3.4rem;
+  height: 1.5rem;
+  transform: translateX(-50%);
+  border: 1px solid var(--parch-leather-dark);
+  border-radius: 0.25rem 0.25rem 0.5rem 0.5rem;
+  background:
+    repeating-linear-gradient(90deg, var(--parch-leather) 0 0.4rem, var(--parch-leather-dark) 0.42rem 0.48rem);
+  box-shadow: 0 0.25rem 0.32rem rgba(0, 0, 0, 0.35);
+}
+
+.alc-ing--inventory .alc-ing__glyph {
+  font-size: 1.3rem;
+  color: var(--alc-vapor);
+}
+
+.alc-ing--inventory .alc-ing__name {
+  min-height: 2.3rem;
+  display: grid;
+  place-items: center;
+  color: var(--alc-ink);
+  font-size: 0.9rem;
+  text-align: center;
+}
+
+.alc-ing__stock {
+  margin: 0;
+  color: var(--alc-vapor);
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+  letter-spacing: 0.04em;
+}
+
+.alc-ing--inventory .alc-ing__note {
+  min-height: 2rem;
+  color: color-mix(in srgb, var(--alc-ink) 65%, var(--color-text-muted));
+  font-size: 0.6rem;
+  line-height: 1.3;
+  text-align: center;
+}
+
+.alc-ing--inventory > div {
+  width: 100%;
+  margin-top: auto;
+}
+
+.alc-ing--inventory > div > div {
+  width: 100%;
+}
+
+.alc-ing--inventory label {
+  color: var(--alc-vapor);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.alc-quantity {
+  width: 100%;
+  min-height: 2.4rem;
+  padding: 0.4rem 0.55rem;
+  border: 1px solid color-mix(in srgb, var(--alc-vapor) 44%, var(--alc-glass-dim));
+  border-radius: 999px;
+  outline: none;
+  color: var(--alc-ink);
+  background: color-mix(in srgb, var(--color-bg) 70%, var(--alc-glass-dim));
+  box-shadow: inset 0 0.2rem 0.45rem rgba(0, 0, 0, 0.46);
+  font-family: var(--font-serif);
+  text-align: center;
+}
+
+.alc-quantity:focus {
+  border-color: var(--alc-vapor);
+  box-shadow: 0 0 0 0.18rem color-mix(in srgb, var(--alc-glow) 50%, transparent);
+}
+
+.alc-job-ledger {
+  padding: clamp(1.35rem, 4vw, 2rem);
+  transform: rotate(0.15deg);
+}
+
+.alc-job-ledger__title {
+  color: var(--parch-ink);
+}
+
+.alc-job-ledger__flourish {
+  color: var(--alc-smoke-gold);
+  font-family: var(--font-serif);
+  font-size: 2rem;
+}
+
+.alc-job-ledger .alc-label {
+  color: var(--parch-red);
+}
+
+.alc-job-ledger .alc-hint {
+  margin-top: 0.75rem;
+  color: var(--parch-ink-faint);
+}
+
+.alc-job-slip {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.8rem;
+  padding: 0.8rem 1rem 0.8rem 1.2rem;
+  border-left: 0.24rem solid var(--alc-smoke-gold);
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-ink-faint) 26%, transparent);
+  color: var(--parch-ink);
+  background: rgba(255, 255, 255, 0.13);
+}
+
+/* -- Responsive workshop layout --------------------------------------- */
+
+@media (max-width: 42rem) {
+  .alc-root,
+  .crf-root {
+    padding-inline: 0.72rem;
+  }
+
+  .crf-workshop-scene__room,
+  .alc-workshop-scene__room {
+    height: 19.5rem;
+  }
+
+  .crf-grinder {
+    right: 1%;
+    transform: scale(0.78);
+    transform-origin: right bottom;
+  }
+
+  .crf-rear-bench {
+    right: 2%;
+    width: 52%;
+  }
+
+  .crf-scene-anvil {
+    right: 4%;
+    min-width: 8.8rem;
+  }
+
+  .crf-bellows {
+    left: 20%;
+    min-width: 5.8rem;
+  }
+
+  .crf-tool-rail__peg--one { left: 49%; }
+  .crf-tool-rail__peg--two { left: 64%; }
+
+  .alc-cabinet {
+    right: 2%;
+    width: 34%;
+  }
+
+  .alc-mortar {
+    right: 22%;
+    transform: scale(0.78);
+    transform-origin: right bottom;
+  }
+
+  .alc-workshop-scene .alc-vessel {
+    left: 46%;
+  }
+
+  .crf-setup-form,
+  .alc-setup-form,
+  .crf-order-form {
+    grid-template-columns: 1fr;
+    gap: 0.1rem;
+  }
+
+  .crf-ledger .crf-do,
+  .alc-ledger .alc-brew,
+  .crf-order-form .crf-do {
+    width: 100%;
+    margin-bottom: 0;
+  }
+
+  .crf-work-order__head,
+  .alc-recipe-desk__head {
+    padding-right: 1.1rem;
+  }
+
+  .crf-work-order__stamp,
+  .alc-recipe-desk__folio {
+    max-width: 6rem;
+    text-align: center;
+  }
+
+  .crf-job-ticket,
+  .alc-job-slip {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .crf-job-ticket__collect,
+  .alc-job-slip__collect {
+    width: 100%;
+  }
+}
+
+@media (max-width: 25rem) {
+  .crf-workshop-scene__room {
+    height: 18rem;
+  }
+
+  .crf-lantern {
+    left: 56%;
+    transform: translateX(-50%) scale(0.82);
+    transform-origin: top center;
+  }
+
+  .crf-furnace {
+    min-width: 7.4rem;
+  }
+
+  .crf-scene-anvil {
+    min-width: 7.7rem;
+  }
+
+  .crf-hanging-hammer {
+    left: 7%;
+    transform: scale(0.85);
+    transform-origin: top left;
+  }
+
+  .alc-window {
+    left: 2%;
+    min-width: 6.2rem;
+  }
+
+  .alc-cabinet {
+    width: 38%;
+  }
+
+  .alc-workshop-scene .alc-vessel {
+    left: 46%;
+    transform: translateX(-50%) scale(0.88);
+    transform-origin: bottom center;
+  }
+}
+
+/* ==================================================================== */
 /*  Reduced motion — kill the long/looping animations, keep reveals      */
 /* ==================================================================== */
 
@@ -926,7 +2409,10 @@
   .alc-ritual__orb,
   .crf-ritual__bar,
   .alc-ritual__caption,
-  .crf-ritual__caption {
+  .crf-ritual__caption,
+  .crf-lantern::before,
+  .crf-lantern__glass,
+  .crf-furnace__mouth i {
     animation: none !important;
   }
   .alc-potion,

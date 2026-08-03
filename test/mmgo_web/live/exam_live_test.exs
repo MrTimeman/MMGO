@@ -40,7 +40,7 @@ defmodule MMGOWeb.ExamLiveTest do
     {:ok, midterm_view, _html} =
       live(session_conn(conn, student), ~p"/academy/exam/#{term.id}")
 
-    assert has_element?(midterm_view, "#academy-exam-screen", "Мидтерм")
+    assert has_element?(midterm_view, "#academy-exam-screen", "Промежуточный экзамен")
     assert has_element?(midterm_view, "#academy-exam-lecture-ceiling", "100")
     assert has_element?(midterm_view, "#academy-exam-form", "инкантации")
 
@@ -54,7 +54,7 @@ defmodule MMGOWeb.ExamLiveTest do
     {:ok, final_view, _html} =
       live(session_conn(build_conn(), student), ~p"/academy/exam/#{term.id}")
 
-    assert has_element?(final_view, "#academy-exam-screen", "Финал")
+    assert has_element?(final_view, "#academy-exam-screen", "Итоговый экзамен")
 
     final_view
     |> form("#academy-exam-form", %{"exam" => correct_answers()})
@@ -104,7 +104,7 @@ defmodule MMGOWeb.ExamLiveTest do
     {:ok, final_view, _html} =
       live(session_conn(build_conn(), student), ~p"/academy/exam/#{term.id}")
 
-    assert has_element?(final_view, "#academy-exam-screen", "Финал")
+    assert has_element?(final_view, "#academy-exam-screen", "Итоговый экзамен")
   end
 
   defp academy_term_ready_for_midterm(character) do

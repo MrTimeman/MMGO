@@ -92,6 +92,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert has_element?(view, "#spell-compose-school")
     assert has_element?(view, "#spell-compose-formula")
     assert has_element?(view, "#spell-compose-formula[maxlength='180']")
+    assert has_element?(view, "#spell-circle-root[phx-hook='SpellCircle']")
 
     view
     |> form("#spell-compose-form", %{
@@ -110,6 +111,42 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     assert compiled_spell.source_spell_id == base_spell.id
     assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
+
+    view
+    |> element("#spellbook-tab-spells")
+    |> render_click()
+
+    assert has_element?(view, "#spell-library-#{compiled_spell.id}")
+  end
+
+  test "the restored ritual circle compiles through the same guarded backend", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower,
+    base_spell: base_spell
+  } do
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    render_hook(view, "spell_compile", %{
+      "base" => base_spell.id,
+      "school" => "fire",
+      "actio" => "Ignis",
+      "forma" => "Radius"
+    })
+
+    compiled_spell =
+      character.id
+      |> Spells.list_spells_for_character()
+      |> Enum.find(&(&1.formula == "Ignis Radius"))
+
+    assert compiled_spell.source_spell_id == base_spell.id
+    assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
+
+    view
+    |> element("#spellbook-tab-spells")
+    |> render_click()
+
     assert has_element?(view, "#spell-library-#{compiled_spell.id}")
   end
 
@@ -199,6 +236,10 @@ defmodule MMGOWeb.SpellbookLiveTest do
   } do
     character = move_to(character, the_tower)
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    view
+    |> element("#spellbook-tab-grimoires")
+    |> render_click()
 
     assert has_element?(view, "#grimoire-#{grimoire.id}")
     assert has_element?(view, "#grimoire-inscribe-#{grimoire.id}")

@@ -8,7 +8,12 @@ function strHash(s) {
   return Math.abs(h)
 }
 
-const STATUS_LABEL = { active: 'Активен', sealed: 'Запечатан', locked: 'Заблокирован' }
+const STATUS_LABEL = {
+  active: 'Боевой',
+  draft: 'Чистый переплёт',
+  sealed: 'Запечатан',
+  locked: 'Заблокирован',
+}
 
 export const GrimoireShelfHook = {
   mounted() {
@@ -140,8 +145,8 @@ export const GrimoireShelfHook = {
 
     book.appendChild(h('span', { class: 'grim__book-title' }, g.name))
 
-    if (g.status === 'sealed') book.appendChild(h('span', { class: 'grim__book-badge' }, '🔒'))
-    else if (g.status === 'locked') book.appendChild(h('span', { class: 'grim__book-badge' }, '⛓'))
+    if (g.status === 'sealed') book.appendChild(h('span', { class: 'grim__book-badge' }, '◆'))
+    else if (g.status === 'locked') book.appendChild(h('span', { class: 'grim__book-badge' }, '×'))
 
     book.addEventListener('click', () => {
       this._open = this._open === g.id ? null : g.id
@@ -225,11 +230,11 @@ export const GrimoireShelfHook = {
     meta.append(`  ·  ${(g.entries?.filter(e => e.spell).length ?? 0)} / ${g.capacity ?? 0} ячеек`)
     head.appendChild(meta)
 
-    if (g.status === 'sealed') {
+    if (g.status !== 'active' && g.status !== 'locked') {
       const btn = h('button', { class: 'grim__panel-btn', type: 'button' }, 'Активировать')
       btn.addEventListener('click', e => {
         e.stopPropagation()
-        this.pushEvent('grimoire_activate', { id: g.id })
+        this.pushEvent('shelf_activate', { id: g.id })
       })
       head.appendChild(btn)
     }
@@ -258,13 +263,47 @@ export const GrimoireShelfHook = {
         if (spell.cooldown) slot.appendChild(h('span', { class: 'grim__slot-cd' }, `${spell.cooldown} хода`))
       } else {
         slot.appendChild(h('span', { class: 'grim__slot-empty-lbl' }, '— пусто —'))
-        slot.addEventListener('click', () => this.pushEvent('grimoire_inscribe', { id: g.id, slot: i }))
       }
 
       grid.appendChild(slot)
     }
 
     panel.appendChild(grid)
+
+    if (g.writable && g.available_spells?.length) {
+      const inscribe = h('div', { class: 'grim__inscribe' })
+      const label = h('label', { class: 'grim__inscribe-label' }, 'Записать формулу')
+      const select = h('select', { class: 'grim__inscribe-select' })
+      select.appendChild(h('option', { value: '' }, 'Выберите заклинание'))
+      for (const spell of g.available_spells) {
+        select.appendChild(h('option', { value: spell.value }, spell.label))
+      }
+
+      const button = h('button', {
+        class: 'grim__panel-btn',
+        type: 'button',
+        disabled: true,
+      }, 'Внести в переплёт')
+
+      select.addEventListener('change', () => {
+        button.disabled = !select.value
+      })
+
+      button.addEventListener('click', () => {
+        if (!select.value) return
+        button.disabled = true
+        this.pushEvent('shelf_inscribe', {
+          grimoire_id: g.id,
+          spell_id: select.value,
+        })
+      })
+
+      label.appendChild(select)
+      inscribe.appendChild(label)
+      inscribe.appendChild(button)
+      panel.appendChild(inscribe)
+    }
+
     return panel
   },
 

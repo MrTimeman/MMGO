@@ -688,7 +688,7 @@ defmodule MMGO.Academy do
         Repo.rollback(enrollment_changeset("enrollment is not active"))
       end
 
-      terms = reconcile_elapsed_terms!(enrollment, now)
+      terms = reconcile_elapsed_terms!(enrollment, now, unopened_status: :pending)
 
       if Enum.any?(terms, &(&1.status == :active)) do
         Repo.rollback(enrollment_changeset("a term is already active"))
@@ -1787,14 +1787,34 @@ defmodule MMGO.Academy do
     end)
   end
 
-  defp reconcile_elapsed_terms!(%Enrollment{} = enrollment, now) do
+  defp reconcile_elapsed_terms!(%Enrollment{} = enrollment, now, opts \\ []) do
+    unopened_status = Keyword.get(opts, :unopened_status, :failed)
+    terms = locked_terms_for_enrollment(enrollment.id)
+
+    if unopened_status == :pending do
+      Enum.each(terms, fn term ->
+        schedule = term_schedule(enrollment, term.term_number)
+
+        if legacy_unopened_failure?(term, schedule) do
+          restore_unopened_term!(term, schedule)
+        end
+      end)
+    end
+
     terms = locked_terms_for_enrollment(enrollment.id)
 
     Enum.each(terms, fn term ->
       schedule = term_schedule(enrollment, term.term_number)
 
-      if term.status == :active and term_due?(schedule, now) do
-        fail_missed_term!(term, schedule)
+      cond do
+        term.status == :active and term_due?(schedule, now) ->
+          fail_missed_term!(term, schedule)
+
+        term.status == :pending and unopened_status == :failed and term_due?(schedule, now) ->
+          fail_unopened_term!(term, schedule)
+
+        true ->
+          :ok
       end
     end)
 
@@ -1811,7 +1831,7 @@ defmodule MMGO.Academy do
           schedule = term_schedule(enrollment, term_number)
 
           if not MapSet.member?(existing_term_numbers, term_number) and term_due?(schedule, now) do
-            insert_missed_term!(enrollment, term_number, schedule)
+            insert_unopened_term!(enrollment, term_number, schedule, unopened_status)
           end
         end)
       end
@@ -1846,7 +1866,46 @@ defmodule MMGO.Academy do
     |> Repo.update!()
   end
 
-  defp insert_missed_term!(%Enrollment{} = enrollment, term_number, schedule) do
+  defp fail_unopened_term!(%Term{} = term, schedule) do
+    term
+    |> Term.changeset(%{
+      status: :failed,
+      ended_at: schedule.ends_at,
+      metadata: missed_term_metadata(term.metadata, schedule)
+    })
+    |> Repo.update!()
+  end
+
+  defp restore_unopened_term!(%Term{} = term, schedule) do
+    metadata =
+      (term.metadata || %{})
+      |> Map.drop(["failure_reason"])
+      |> Map.merge(unopened_term_metadata(schedule))
+
+    term
+    |> Term.changeset(%{
+      status: :pending,
+      started_at: nil,
+      ended_at: nil,
+      exam_score: nil,
+      metadata: metadata
+    })
+    |> Repo.update!()
+  end
+
+  defp insert_unopened_term!(%Enrollment{} = enrollment, term_number, schedule, :pending) do
+    %Term{}
+    |> Term.changeset(%{
+      enrollment_id: enrollment.id,
+      realm_id: enrollment.realm_id,
+      term_number: term_number,
+      status: :pending,
+      metadata: unopened_term_metadata(schedule)
+    })
+    |> Repo.insert!()
+  end
+
+  defp insert_unopened_term!(%Enrollment{} = enrollment, term_number, schedule, :failed) do
     %Term{}
     |> Term.changeset(%{
       enrollment_id: enrollment.id,
@@ -1859,6 +1918,23 @@ defmodule MMGO.Academy do
     })
     |> Repo.insert!()
   end
+
+  defp legacy_unopened_failure?(
+         %Term{
+           status: :failed,
+           exam_score: nil,
+           inserted_at: %DateTime{} = inserted_at,
+           ended_at: %DateTime{} = ended_at,
+           metadata: metadata
+         },
+         %{starts_at: %DateTime{} = starts_at}
+       ) do
+    Map.get(metadata || %{}, "failure_reason") == "missed_final" and
+      DateTime.compare(inserted_at, ended_at) != :lt and
+      DateTime.compare(ended_at, starts_at) == :gt
+  end
+
+  defp legacy_unopened_failure?(_term, _schedule), do: false
 
   defp term_metadata(phase, schedule) do
     %{
@@ -1875,6 +1951,12 @@ defmodule MMGO.Academy do
     (metadata || %{})
     |> Map.merge(term_metadata("break", schedule))
     |> Map.put("failure_reason", "missed_final")
+  end
+
+  defp unopened_term_metadata(schedule) do
+    "pending"
+    |> term_metadata(schedule)
+    |> Map.put("unopened_placeholder", true)
   end
 
   defp submit_midterm_locked!(%Term{} = term, score, now, metadata \\ nil) do

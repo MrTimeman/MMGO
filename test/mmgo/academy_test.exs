@@ -614,6 +614,92 @@ defmodule MMGO.AcademyTest do
            |> Enum.count(&(&1.status == :failed)) == 10
   end
 
+  test "an unopened elapsed term stays neutral while the next available term opens", %{
+    character: character
+  } do
+    started_at = ~U[2026-07-01 12:00:00Z]
+
+    assert {:ok, %{enrollment: enrollment}} =
+             Academy.begin_basic_education(character, started_at: started_at)
+
+    second_schedule = Academy.term_schedule(enrollment, 2)
+
+    assert {:ok, second_term} =
+             Academy.begin_term(enrollment.id, now: second_schedule.starts_at)
+
+    assert second_term.term_number == 2
+    assert second_term.status == :active
+
+    assert [unopened_term, active_term] = Academy.list_terms_for_enrollment(enrollment.id)
+    assert unopened_term.term_number == 1
+    assert unopened_term.status == :pending
+    assert is_nil(unopened_term.started_at)
+    assert unopened_term.metadata["unopened_placeholder"]
+    assert active_term.id == second_term.id
+    assert Academy.failed_terms_count(enrollment.id) == 0
+  end
+
+  test "an actually started term still fails after its real window expires", %{
+    character: character
+  } do
+    started_at = ~U[2026-07-01 12:00:00Z]
+
+    assert {:ok, %{enrollment: enrollment}} =
+             Academy.begin_basic_education(character, started_at: started_at)
+
+    assert {:ok, first_term} = Academy.begin_term(enrollment.id, now: started_at)
+    second_schedule = Academy.term_schedule(enrollment, 2)
+
+    assert {:ok, second_term} =
+             Academy.begin_term(enrollment.id, now: second_schedule.starts_at)
+
+    assert second_term.term_number == 2
+    assert Repo.get!(Term, first_term.id).status == :failed
+    assert Academy.failed_terms_count(enrollment.id) == 1
+  end
+
+  test "legacy auto-failed unopened terms are restored before opening the next term", %{
+    character: character
+  } do
+    started_at = ~U[2026-07-01 12:00:00Z]
+
+    assert {:ok, %{enrollment: enrollment}} =
+             Academy.begin_basic_education(character, started_at: started_at)
+
+    first_schedule = Academy.term_schedule(enrollment, 1)
+    second_schedule = Academy.term_schedule(enrollment, 2)
+
+    legacy_term =
+      %Term{}
+      |> Term.changeset(%{
+        enrollment_id: enrollment.id,
+        realm_id: enrollment.realm_id,
+        term_number: 1,
+        status: :failed,
+        started_at: first_schedule.starts_at,
+        ended_at: first_schedule.ends_at,
+        metadata: %{
+          "phase" => "break",
+          "failure_reason" => "missed_final",
+          "scheduled_start_at" => DateTime.to_iso8601(first_schedule.starts_at),
+          "scheduled_end_at" => DateTime.to_iso8601(first_schedule.ends_at)
+        }
+      })
+      |> Repo.insert!()
+
+    assert {:ok, second_term} =
+             Academy.begin_term(enrollment.id, now: second_schedule.starts_at)
+
+    restored_term = Repo.get!(Term, legacy_term.id)
+    assert restored_term.status == :pending
+    assert is_nil(restored_term.started_at)
+    assert is_nil(restored_term.ended_at)
+    assert restored_term.metadata["unopened_placeholder"]
+    refute Map.has_key?(restored_term.metadata, "failure_reason")
+    assert second_term.term_number == 2
+    assert Academy.failed_terms_count(enrollment.id) == 0
+  end
+
   test "an expelled Basic Education student must wait one game year before re-enrolling", %{
     character: character
   } do

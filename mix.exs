@@ -4,18 +4,24 @@ defmodule MMGO.MixProject do
   def project do
     [
       app: :mmgo,
-      version: "0.1.0-alpha.3",
+      version: "0.1.0-alpha.4",
       elixir: "~> 1.20",
       elixirc_paths: elixirc_paths(Mix.env()),
       start_permanent: Mix.env() == :prod,
       aliases: aliases(),
       deps: deps(),
       hex: [
-        # These two Cowlib findings arrive only through Bypass/optional Cowboy
-        # adapters used outside the Bandit production release. Cowlib 2.18.0 is
-        # the latest available release; keep the exceptions narrow and remove
-        # them when a patched Cowlib is published.
-        ignore_advisories: ["CVE-2026-43966", "CVE-2026-43969"]
+        # These findings arrive only through the test-only Bypass dependency
+        # and its Cowboy adapter; production runs Bandit and does not ship
+        # Cowboy/Cowlib. Hex still lists Cowboy 2.17.0 and Cowlib 2.18.0 as the
+        # newest releases, so keep the exceptions narrow and remove them as
+        # soon as patched packages are published.
+        ignore_advisories: [
+          "CVE-2026-43966",
+          "CVE-2026-43969",
+          "CVE-2026-59248",
+          "CVE-2026-65624"
+        ]
       ],
       compilers: [:phoenix_live_view] ++ Mix.compilers(),
       listeners: [Phoenix.CodeReloader]

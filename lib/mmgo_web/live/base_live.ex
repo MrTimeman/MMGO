@@ -108,28 +108,38 @@ defmodule MMGOWeb.BaseLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="base-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <.link id="base-back-to-map" navigate={~p"/map"} class="map-back-link">← Карта мира</.link>
+      <main id="base-screen" class="game-root bse-root bse-root--live">
+        <.link id="base-back-to-map" navigate={~p"/map"} class="bse-exit">
+          ← выйти на карту
+        </.link>
 
-          <header class="rounded-xl border border-amber-500/25 bg-stone-900/80 p-6 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">
-              владение · {@location.name}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-amber-100">База и хранилище</h1>
-            <p id="base-carry-summary" class="mt-3 text-sm text-stone-400">
-              {@character.name} · поклажа {Map.get(@survival, :carried_weight, 0)} / {Map.get(
-                @survival,
-                :carry_capacity,
-                0
-              )}
-            </p>
+        <div class="bse-shell">
+          <header class="bse-hero bse-hero--live">
+            <div class="bse-hero__scene" aria-hidden="true">
+              <span class="bse-hero__window"></span>
+              <span class="bse-hero__desk"></span>
+              <span class="bse-candle"></span>
+            </div>
+            <div class="bse-hero__veil"></div>
+            <div class="bse-hero__caption">
+              <span class="bse-hero__kind">защищённое владение · {@location.name}</span>
+              <h1 class="bse-hero__name">
+                {if @active_base, do: @active_base.name, else: "Комната ждёт хозяина"}
+              </h1>
+              <p id="base-carry-summary" class="bse-hero__where">
+                {@character.name} · поклажа {Map.get(@survival, :carried_weight, 0)} / {Map.get(
+                  @survival,
+                  :carry_capacity,
+                  0
+                )}
+              </p>
+            </div>
           </header>
 
           <div
             :if={@error}
             id="base-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+            class="bse-alert"
           >
             {@error}
           </div>
@@ -137,23 +147,24 @@ defmodule MMGOWeb.BaseLive do
           <section
             :if={@requires_base_selection?}
             id="base-accessible-choices"
-            class="rounded-xl border border-cyan-400/30 bg-cyan-950/15 p-6"
+            class="bse-deed bse-deed--keys"
           >
-            <p class="text-xs uppercase tracking-[0.2em] text-cyan-200/75">общие ключи</p>
-            <h2 class="mt-1 font-serif text-2xl text-cyan-100">Выберите доступную базу</h2>
-            <p class="mt-2 text-sm leading-6 text-stone-300">
+            <p class="bse-deed__eyebrow">общие ключи</p>
+            <h2 class="bse-deed__title">Выберите доступную базу</h2>
+            <p class="bse-deed__copy">
               В этой точке доступно несколько общих владений. База выбирается явно, а право на
               каждую операцию будет заново проверено на стороне мира.
             </p>
-            <div class="mt-4 grid gap-2 sm:grid-cols-2">
+            <div class="bse-keyring">
               <.link
                 :for={base <- @active_base_choices}
                 id={"base-select-#{base.id}"}
                 navigate={~p"/base/#{base.id}"}
-                class="rounded-lg border border-cyan-300/30 bg-stone-950/35 px-4 py-3 text-sm text-cyan-50 transition hover:border-cyan-200/70 hover:bg-cyan-300/10"
+                class="bse-key"
               >
-                <span class="block font-semibold">{base.name}</span>
-                <span class="mt-1 block text-xs text-cyan-100/70">
+                <span class="bse-key__bow" aria-hidden="true">◉</span>
+                <span class="bse-key__label">
+                  <b>{base.name}</b>
                   {if base.direct_owner?, do: "личное владение", else: "общий доступ организации"} ·
                   вместимость {base.storage_capacity}
                 </span>
@@ -164,60 +175,60 @@ defmodule MMGOWeb.BaseLive do
           <section
             :if={@active_base}
             id="base-active"
-            class="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-6"
+            class="bse-room"
           >
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-[0.18em] text-emerald-300/70">
-                  защищённое владение
-                </p>
-                <h2 class="mt-1 font-serif text-2xl text-emerald-100">{@active_base.name}</h2>
-                <p class="mt-2 text-sm text-stone-400">
-                  Вещи внутри нельзя отнять; использовать их можно только вернувшись сюда.
-                </p>
+            <div class="bse-status">
+              <div class="bse-status__row">
+                <span class="bse-status__key">Владение</span>
+                <span class="bse-status__val">{@active_base.name}</span>
               </div>
-              <span
-                id="base-storage-capacity"
-                class="rounded-full border border-emerald-400/30 px-3 py-1 text-sm text-emerald-100"
-              >
-                {@storage_weight} / {@storage_capacity} веса
-              </span>
+              <p class="bse-status__note">
+                Вещи внутри нельзя отнять; использовать их можно только вернувшись сюда.
+              </p>
+              <div class="bse-ward bse-ward--safe">
+                <span class="bse-ward__sigil">❖</span>
+                <div>
+                  <p class="bse-ward__title">Порог под защитой</p>
+                  <p class="bse-ward__body">
+                    Ключи и права на каждое действие проверяются самим миром.
+                  </p>
+                </div>
+                <span id="base-storage-capacity" class="bse-capacity">
+                  {@storage_weight} / {@storage_capacity} веса
+                </span>
+              </div>
             </div>
 
-            <section
-              id="base-ownership"
-              class="mt-6 rounded-xl border border-amber-400/20 bg-amber-950/15 p-5"
-            >
-              <p class="text-xs uppercase tracking-[0.2em] text-amber-200/75">доли и ключи</p>
-              <h3 class="mt-1 font-serif text-xl text-amber-100">Совместное владение</h3>
+            <section id="base-ownership" class="bse-deed bse-deed--ownership">
+              <p class="bse-deed__eyebrow">титульная запись · доли и ключи</p>
+              <h3 class="bse-deed__title">Совместное владение</h3>
               <p
                 :if={@ownership.via_organization?}
                 id="base-access-via-organization"
-                class="mt-2 rounded-md border border-cyan-300/25 bg-cyan-950/20 px-3 py-2 text-sm leading-6 text-cyan-100"
+                class="bse-deed__seal-note"
               >
                 Вы здесь как хранитель организации. Вклад и выдача предметов, а также отдых,
                 происходят из общих запасов этой базы.
               </p>
-              <p class="mt-2 text-sm leading-6 text-stone-300">
+              <p class="bse-deed__copy">
                 Титульному владельцу принадлежит {@ownership.owner_share_bps} из 10 000 долей.
                 Положительная доля организации открывает реальные ключи от склада только её
                 действующим казначеям.
               </p>
-              <ul id="base-organization-shares" class="mt-3 space-y-2 text-sm text-stone-200">
+              <ul id="base-organization-shares" class="bse-deed__entries">
                 <li
                   :for={share <- @ownership.organization_shares}
                   id={"base-organization-share-#{share.organization_id}"}
-                  class="flex flex-wrap items-center justify-between gap-2 rounded bg-stone-950/35 px-3 py-2"
                 >
                   <span>{share.organization_name}</span>
-                  <span class="text-amber-100">
+                  <b>
                     {share.share_bps} / 10 000 {if share.active?, do: "долей", else: "долей · архив"}
-                  </span>
+                  </b>
                 </li>
                 <li
                   :if={@ownership.organization_shares == []}
                   id="base-organization-shares-empty"
-                  class="rounded bg-stone-950/35 px-3 py-2 text-stone-400"
+                  class="bse-deed__empty"
                 >
                   У этой базы пока нет организации-сособственника.
                 </li>
@@ -228,7 +239,7 @@ defmodule MMGOWeb.BaseLive do
                 for={@ownership_form}
                 id="base-organization-ownership-form"
                 phx-submit="configure_organization_ownership"
-                class="mt-5 grid gap-3 md:grid-cols-[1fr_11rem_auto] md:items-end"
+                class="bse-form bse-form--deed"
               >
                 <.input
                   field={@ownership_form[:organization_id]}
@@ -248,7 +259,7 @@ defmodule MMGOWeb.BaseLive do
                 <button
                   id="base-organization-ownership-submit"
                   type="submit"
-                  class="mb-4 rounded-md border border-amber-300/60 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/10"
+                  class="bse-seal-button"
                 >
                   Обновить долю
                 </button>
@@ -256,182 +267,188 @@ defmodule MMGOWeb.BaseLive do
               <p
                 :if={@ownership.is_owner? and @ownership_options == []}
                 id="base-organization-ownership-unavailable"
-                class="mt-4 text-sm text-stone-400"
+                class="bse-deed__margin-note"
               >
                 Чтобы выдать долю, сначала станьте казначеем подходящей организации.
               </p>
             </section>
 
-            <div class="mt-6 grid gap-5 lg:grid-cols-2">
-              <section>
-                <h3 class="font-serif text-lg text-stone-100">Внести из котомки</h3>
-                <p
-                  :if={@carried_items == []}
-                  id="base-carried-empty"
-                  class="mt-2 text-sm text-stone-400"
-                >
-                  В котомке нет предметов для хранения.
-                </p>
-                <.form
-                  :if={@carried_items != []}
-                  for={@deposit_form}
-                  id="base-deposit-form"
-                  phx-submit="deposit"
-                  class="mt-3 space-y-1"
-                >
-                  <.input
-                    field={@deposit_form[:inventory_item_id]}
-                    type="select"
-                    label="Предмет"
-                    prompt="Выберите предмет"
-                    options={@carried_options}
-                  />
-                  <.input
-                    field={@deposit_form[:quantity]}
-                    type="number"
-                    label="Количество"
-                    min="1"
-                    inputmode="numeric"
-                  />
-                  <button
-                    id="base-deposit"
-                    type="submit"
-                    class="rounded-md bg-emerald-300 px-4 py-2 font-semibold text-stone-950 transition hover:bg-emerald-200"
-                  >
-                    В хранилище
-                  </button>
-                </.form>
-              </section>
+            <section class="bse-storage">
+              <header class="bse-storage__head">
+                <div>
+                  <p class="bse-storage__eyebrow">сундуки и полки</p>
+                  <h2>Хранилище</h2>
+                </div>
+                <span class="bse-storage__mark" aria-hidden="true">⌑</span>
+              </header>
 
-              <section>
-                <h3 class="font-serif text-lg text-stone-100">Взять с полки</h3>
-                <p
-                  :if={@storage_items == []}
-                  id="base-storage-empty"
-                  class="mt-2 text-sm text-stone-400"
-                >
-                  Хранилище пока пусто.
-                </p>
-                <.form
-                  :if={@storage_items != []}
-                  for={@withdraw_form}
-                  id="base-withdraw-form"
-                  phx-submit="withdraw"
-                  class="mt-3 space-y-1"
-                >
-                  <.input
-                    field={@withdraw_form[:storage_item_id]}
-                    type="select"
-                    label="Предмет"
-                    prompt="Выберите предмет"
-                    options={@storage_options}
-                  />
-                  <.input
-                    field={@withdraw_form[:quantity]}
-                    type="number"
-                    label="Количество"
-                    min="1"
-                    inputmode="numeric"
-                  />
-                  <button
-                    id="base-withdraw"
-                    type="submit"
-                    class="rounded-md border border-emerald-300/60 px-4 py-2 font-semibold text-emerald-100 transition hover:bg-emerald-300/10"
+              <div class="bse-storage__transfers">
+                <section class="bse-storage__tray">
+                  <h3>Внести из котомки</h3>
+                  <p :if={@carried_items == []} id="base-carried-empty" class="bse-empty">
+                    В котомке нет предметов для хранения.
+                  </p>
+                  <.form
+                    :if={@carried_items != []}
+                    for={@deposit_form}
+                    id="base-deposit-form"
+                    phx-submit="deposit"
+                    class="bse-form"
                   >
-                    В котомку
-                  </button>
-                </.form>
-              </section>
-            </div>
+                    <.input
+                      field={@deposit_form[:inventory_item_id]}
+                      type="select"
+                      label="Предмет"
+                      prompt="Выберите предмет"
+                      options={@carried_options}
+                    />
+                    <.input
+                      field={@deposit_form[:quantity]}
+                      type="number"
+                      label="Количество"
+                      min="1"
+                      inputmode="numeric"
+                    />
+                    <button id="base-deposit" type="submit" class="bse-station__act">
+                      В хранилище
+                    </button>
+                  </.form>
+                </section>
 
-            <div class="mt-6 grid gap-4 md:grid-cols-2">
-              <section>
-                <h3 class="font-serif text-lg text-stone-100">Котомка</h3>
-                <ul id="base-carried-items" class="mt-2 space-y-2 text-sm text-stone-300">
-                  <li
-                    :for={item <- @carried_items}
-                    id={"base-carried-#{item.id}"}
-                    class="flex justify-between rounded bg-stone-950/35 px-3 py-2"
+                <section class="bse-storage__tray">
+                  <h3>Взять с полки</h3>
+                  <p :if={@storage_items == []} id="base-storage-empty" class="bse-empty">
+                    Хранилище пока пусто.
+                  </p>
+                  <.form
+                    :if={@storage_items != []}
+                    for={@withdraw_form}
+                    id="base-withdraw-form"
+                    phx-submit="withdraw"
+                    class="bse-form"
                   >
-                    <span>{item.item_template.name}</span><span>×{item.quantity}</span>
-                  </li>
-                </ul>
-              </section>
-              <section>
-                <h3 class="font-serif text-lg text-stone-100">Хранилище</h3>
-                <ul id="base-storage-items" class="mt-2 space-y-2 text-sm text-stone-300">
-                  <li
-                    :for={item <- @storage_items}
-                    id={"base-storage-#{item.id}"}
-                    class="flex justify-between rounded bg-stone-950/35 px-3 py-2"
-                  >
-                    <span>{item.item_template.name}</span><span>×{item.quantity}</span>
-                  </li>
-                </ul>
-              </section>
-            </div>
+                    <.input
+                      field={@withdraw_form[:storage_item_id]}
+                      type="select"
+                      label="Предмет"
+                      prompt="Выберите предмет"
+                      options={@storage_options}
+                    />
+                    <.input
+                      field={@withdraw_form[:quantity]}
+                      type="number"
+                      label="Количество"
+                      min="1"
+                      inputmode="numeric"
+                    />
+                    <button
+                      id="base-withdraw"
+                      type="submit"
+                      class="bse-station__act bse-station__act--rest"
+                    >
+                      В котомку
+                    </button>
+                  </.form>
+                </section>
+              </div>
 
-            <section
-              id="base-rest"
-              class="mt-6 rounded-xl border border-sky-400/20 bg-sky-950/15 p-5"
-            >
-              <p class="text-xs uppercase tracking-[0.2em] text-sky-200/75">восстановление</p>
-              <h3 class="mt-1 font-serif text-xl text-sky-100">Отдых у своих запасов</h3>
-              <p id="base-rest-state" class="mt-2 text-sm leading-6 text-stone-300">
-                <%= cond do %>
-                  <% @can_rest? -> %>
-                    Голод и дорожный урон можно снять: отдых съест одну порцию провизии из хранилища.
-                  <% @survival.recovered? -> %>
-                    Силы уже восстановлены; следующая дорога снова будет рассчитываться по реальным запасам.
-                  <% @survival.starving? or @survival.health_drain > 0 -> %>
-                    Для восстановления положите в хранилище съедобную провизию.
-                  <% true -> %>
-                    Сейчас нет голодных последствий, которые нужно снимать отдыхом.
-                <% end %>
-              </p>
-              <button
-                :if={@can_rest?}
-                id="base-rest-submit"
-                type="button"
-                phx-click="rest"
-                class="mt-4 rounded-md bg-sky-300 px-4 py-2 text-sm font-semibold text-stone-950 transition hover:bg-sky-200"
-              >
-                Поесть и отдохнуть
-              </button>
+              <div class="bse-storage__inventory">
+                <section>
+                  <h3>Котомка у двери</h3>
+                  <ul id="base-carried-items" class="bse-crate-list">
+                    <li
+                      :for={item <- @carried_items}
+                      id={"base-carried-#{item.id}"}
+                    >
+                      <span>{item.item_template.name}</span><b>×{item.quantity}</b>
+                    </li>
+                  </ul>
+                </section>
+                <section>
+                  <h3>За запертой дверцей</h3>
+                  <ul id="base-storage-items" class="bse-crate-list bse-crate-list--stored">
+                    <li
+                      :for={item <- @storage_items}
+                      id={"base-storage-#{item.id}"}
+                    >
+                      <span>{item.item_template.name}</span><b>×{item.quantity}</b>
+                    </li>
+                  </ul>
+                </section>
+              </div>
             </section>
 
-            <section
-              :if={not @ownership.via_organization?}
-              id="base-workbench"
-              class="mt-6 rounded-xl border border-violet-400/20 bg-violet-950/15 p-5"
-            >
-              <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">рабочее место</p>
-              <h3 class="mt-1 font-serif text-xl text-violet-100">Работа в защищённом владении</h3>
-              <p class="mt-2 text-sm leading-6 text-stone-300">
-                Здесь можно перейти к гримуару, мастерской и алхимическому столу. Их команды снова проверят
-                ваше владение и материалы на стороне мира.
+            <h2 class="bse-sec-title">Комната</h2>
+            <section id="base-rest" class="bse-stations">
+              <div class="bse-station bse-station--rest">
+                <span class="bse-station__glyph">☾</span>
+                <div class="bse-station__body">
+                  <span class="bse-station__title">Отдых у своих запасов</span>
+                  <p id="base-rest-state" class="bse-station__desc">
+                    <%= cond do %>
+                      <% @can_rest? -> %>
+                        Голод и дорожный урон можно снять: отдых съест одну порцию провизии из
+                        хранилища.
+                      <% @survival.recovered? -> %>
+                        Силы уже восстановлены; следующая дорога снова будет рассчитываться по
+                        реальным запасам.
+                      <% @survival.starving? or @survival.health_drain > 0 -> %>
+                        Для восстановления положите в хранилище съедобную провизию.
+                      <% true -> %>
+                        Сейчас нет голодных последствий, которые нужно снимать отдыхом.
+                    <% end %>
+                  </p>
+                </div>
+                <button
+                  :if={@can_rest?}
+                  id="base-rest-submit"
+                  type="button"
+                  phx-click="rest"
+                  class="bse-station__act bse-station__act--rest"
+                >
+                  Поесть и отдохнуть
+                </button>
+              </div>
+            </section>
+
+            <section :if={not @ownership.via_organization?} id="base-workbench" class="bse-workbench">
+              <div class="bse-workbench__head">
+                <div>
+                  <p class="bse-workbench__eyebrow">рабочее место</p>
+                  <h2>Столы и инструменты</h2>
+                </div>
+                <span class="bse-workbench__lamp" aria-hidden="true"></span>
+              </div>
+              <p class="bse-workbench__copy">
+                Каждый стол открывает свою рабочую поверхность; право владения и материалы снова
+                проверит мир.
               </p>
-              <div class="mt-4 flex flex-wrap gap-2">
-                <.link
-                  id="base-open-spellbook"
-                  navigate={~p"/spellbook"}
-                  class="rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-300/10"
-                >
-                  Гримуар
+              <div class="bse-stations bse-stations--workbench">
+                <.link id="base-open-spellbook" navigate={~p"/spellbook"} class="bse-station">
+                  <span class="bse-station__glyph bse-station__glyph--book">▥</span>
+                  <span class="bse-station__body">
+                    <span class="bse-station__title">Гримуар на пюпитре</span>
+                    <span class="bse-station__desc">Формулы, боевые раскладки и печати.</span>
+                  </span>
+                  <span class="bse-station__arrow">→</span>
                 </.link>
-                <.link
-                  id="base-open-craft"
-                  navigate={~p"/craft"}
-                  class="rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-300/10"
-                >
-                  Мастерская
+                <.link id="base-open-craft" navigate={~p"/craft"} class="bse-station">
+                  <span class="bse-station__glyph bse-station__glyph--anvil">⚒</span>
+                  <span class="bse-station__body">
+                    <span class="bse-station__title">Верстак и горн</span>
+                    <span class="bse-station__desc">
+                      Огонь, наковальня и инструменты ремесленника.
+                    </span>
+                  </span>
+                  <span class="bse-station__arrow">→</span>
                 </.link>
-                <.link
-                  id="base-open-alchemy"
-                  navigate={~p"/alchemy"}
-                  class="rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-300/10"
-                >
-                  Алхимия
+                <.link id="base-open-alchemy" navigate={~p"/alchemy"} class="bse-station">
+                  <span class="bse-station__glyph bse-station__glyph--alchemy">⚗</span>
+                  <span class="bse-station__body">
+                    <span class="bse-station__title">Алхимический стол</span>
+                    <span class="bse-station__desc">Ступка, реторта и полка с реагентами.</span>
+                  </span>
+                  <span class="bse-station__arrow">→</span>
                 </.link>
               </div>
             </section>
@@ -439,63 +456,51 @@ defmodule MMGOWeb.BaseLive do
             <section
               :if={@ownership.via_organization?}
               id="base-shared-workbench-notice"
-              class="mt-6 rounded-xl border border-violet-400/20 bg-violet-950/15 p-5"
+              class="bse-deed bse-deed--muted"
             >
-              <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">личные мастерские</p>
-              <p class="mt-2 text-sm leading-6 text-stone-300">
+              <p class="bse-deed__eyebrow">личные мастерские</p>
+              <p class="bse-deed__copy">
                 Общая доля открывает склад и отдых. Личные алхимические и ремесленные столы остаются
                 привязанными к собственному владению персонажа.
               </p>
             </section>
           </section>
 
-          <section
-            :if={@building_base}
-            id="base-building"
-            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-6"
-          >
-            <h2 class="font-serif text-2xl text-amber-100">{@building_base.name}</h2>
-            <p class="mt-2 text-sm text-stone-300">
-              Строительство начато. Рабочие закончат его по игровому времени.
-            </p>
-            <p class="mt-2 text-sm text-amber-100/80">
-              Готовность: {format_time(@building_base.ready_at)}
-            </p>
+          <section :if={@building_base} id="base-building" class="bse-building">
+            <span class="bse-building__mark" aria-hidden="true">⌂</span>
+            <div>
+              <p class="bse-deed__eyebrow">стройка под надзором</p>
+              <h2>{@building_base.name}</h2>
+              <p>Рабочие закончат владение по игровому времени.</p>
+              <b>Готовность: {format_time(@building_base.ready_at)}</b>
+            </div>
           </section>
 
-          <section
-            :if={@can_establish?}
-            id="base-establish"
-            class="rounded-xl border border-amber-500/25 bg-stone-900/70 p-6"
-          >
-            <h2 class="font-serif text-2xl text-amber-100">
+          <section :if={@can_establish?} id="base-establish" class="bse-deed bse-deed--acquisition">
+            <p class="bse-deed__eyebrow">купчая и строительная запись</p>
+            <h2 class="bse-deed__title">
               {if @location.kind == :city,
                 do: "Купить городское жильё",
                 else: "Начать строительство базы"}
             </h2>
-            <p class="mt-2 text-sm text-stone-400">
+            <p class="bse-deed__copy">
               {if @location.kind == :city,
                 do: "Городское жильё сразу даёт защищённое хранилище после оплаты.",
                 else:
                   "Полевое владение станет доступно после оплаты, материалов и завершения строительства."}
             </p>
-            <div
-              id="base-acquisition-quote"
-              class="mt-4 rounded-lg border border-amber-400/20 bg-stone-950/45 p-4 text-sm"
-            >
-              <p class="font-medium text-amber-100">
-                Цена: {@acquisition_quote.subtotal} ◈ + налог {@acquisition_quote.tax_amount} ◈
-                ({format_tax_rate(@acquisition_quote.tax_rate_bps)}) = {@acquisition_quote.total_coin_cost} ◈
+            <div id="base-acquisition-quote" class="bse-quote">
+              <p>
+                Цена: <b>{@acquisition_quote.subtotal} ◈</b>
+                + налог {@acquisition_quote.tax_amount} ◈ ({format_tax_rate(
+                  @acquisition_quote.tax_rate_bps
+                )}) = <strong>{@acquisition_quote.total_coin_cost} ◈</strong>
               </p>
-              <p class="mt-1 text-stone-400">Ваш баланс: {@balance} ◈</p>
-              <p :if={@acquisition_quote.build_days > 0} class="mt-1 text-stone-400">
+              <p>Ваш кошель: {@balance} ◈</p>
+              <p :if={@acquisition_quote.build_days > 0}>
                 Срок: {@acquisition_quote.build_days} игровых дней
               </p>
-              <ul
-                :if={@acquisition_quote.materials != []}
-                id="base-build-materials"
-                class="mt-2 space-y-1 text-stone-300"
-              >
+              <ul :if={@acquisition_quote.materials != []} id="base-build-materials">
                 <li :for={material <- @acquisition_quote.materials}>
                   {material.code}: {material.available}/{material.quantity}
                 </li>
@@ -505,7 +510,7 @@ defmodule MMGOWeb.BaseLive do
               for={@establish_form}
               id="base-establish-form"
               phx-submit="establish"
-              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+              class="bse-form bse-form--establish"
             >
               <.input
                 field={@establish_form[:name]}
@@ -517,38 +522,39 @@ defmodule MMGOWeb.BaseLive do
                 id="base-establish-submit"
                 type="submit"
                 disabled={not @can_afford_acquisition?}
-                class="mb-4 rounded-md bg-amber-300 px-4 py-3 font-semibold text-stone-950 transition hover:bg-amber-200 disabled:cursor-not-allowed disabled:opacity-45"
+                class="bse-seal-button"
               >
-                {if @location.kind == :city, do: "Оформить", else: "Начать"}
+                {if @location.kind == :city, do: "Оформить купчую", else: "Начать стройку"}
               </button>
             </.form>
           </section>
 
-          <section
-            id="base-other-bases"
-            class="rounded-xl border border-stone-700 bg-stone-900/60 p-5"
-          >
-            <h2 class="font-serif text-xl text-stone-100">Доступные владения</h2>
-            <p :if={@bases == []} class="mt-2 text-sm text-stone-400">
+          <section id="base-other-bases" class="bse-keyboard">
+            <div class="bse-keyboard__rail" aria-hidden="true"></div>
+            <div class="bse-keyboard__head">
+              <div>
+                <p class="bse-deed__eyebrow">связка ключей</p>
+                <h2>Доступные владения</h2>
+              </div>
+              <button
+                id="base-refresh"
+                type="button"
+                phx-click="refresh"
+                class="bse-keyboard__refresh"
+              >
+                обновить
+              </button>
+            </div>
+            <p :if={@bases == []} class="bse-empty">
               У вас пока нет других доступных владений.
             </p>
-            <ul class="mt-3 space-y-2 text-sm text-stone-300">
-              <li
-                :for={base <- @bases}
-                id={"base-known-#{base.id}"}
-                class="flex justify-between rounded bg-stone-950/35 px-3 py-2"
-              >
-                <span>{base.name} · {base.location.name}</span><span>{base.status}</span>
+            <ul class="bse-known-bases">
+              <li :for={base <- @bases} id={"base-known-#{base.id}"}>
+                <span class="bse-key__bow" aria-hidden="true">◉</span>
+                <span>{base.name}<small>{base.location.name}</small></span>
+                <b>{base_status_label(base.status)}</b>
               </li>
             </ul>
-            <button
-              id="base-refresh"
-              type="button"
-              phx-click="refresh"
-              class="mt-4 text-sm text-amber-200 underline decoration-amber-500/40 underline-offset-4"
-            >
-              Обновить состояние
-            </button>
           </section>
         </div>
       </main>
@@ -673,6 +679,11 @@ defmodule MMGOWeb.BaseLive do
   defp format_tax_rate(tax_rate_bps) do
     :erlang.float_to_binary(tax_rate_bps / 100, decimals: 2) <> "%"
   end
+
+  defp base_status_label(:building), do: "строится"
+  defp base_status_label(:active), do: "действует"
+  defp base_status_label(:abandoned), do: "покинута"
+  defp base_status_label(_status), do: "состояние уточняется"
 
   defp error_message(:travelling), do: "Нельзя пользоваться базой во время пути."
   defp error_message(:active_base_not_found), do: "Здесь нет активной базы."

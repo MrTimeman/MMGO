@@ -9,10 +9,18 @@
 @import "./screens/base.css";
 @import "./screens/economy.css";
 @import "./screens/crafting.css";
+@import "./screens/duel.css";
 @import "./screens/dungeon.css";
 @import "./screens/org.css";
 @import "./screens/academy.css";
+@import "./screens/academy-assessments.css";
+@import "./screens/academy-hall.css";
+@import "./screens/academia.css";
+@import "./screens/academy-clubs.css";
 @import "./screens/overlays.css";
+@import "./screens/spellbook.css";
+@import "./screens/records.css";
+@import "./screens/entry.css";
 
 @source "../css";
 @source "../js";
@@ -95,6 +103,245 @@ body {
 
 code {
   font-family: var(--font-mono);
+}
+
+/* System feedback arrives as a small pinned note, so even transient
+   chrome belongs to the same physical world as the screens beneath it. */
+.game-flash-stack {
+  position: fixed;
+  z-index: 50;
+  top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
+  right: 0.75rem;
+  display: flex;
+  width: min(calc(100vw - 1.5rem), 24rem);
+  flex-direction: column;
+  gap: 0.65rem;
+}
+
+.game-flash {
+  position: relative;
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: 0.65rem;
+  padding: 0.85rem 0.9rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.15rem;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 1.35rem, color-mix(in srgb, var(--parch-ink) 5%, transparent) 1.37rem),
+    linear-gradient(135deg, var(--parch-paper-light), var(--parch-paper));
+  box-shadow:
+    0 0.8rem 1.8rem color-mix(in srgb, black 38%, transparent),
+    0.18rem 0.22rem 0 color-mix(in srgb, var(--parch-paper-dark) 62%, black);
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  line-height: 1.4;
+  transform: rotate(-0.15deg);
+}
+
+.game-flash::before {
+  content: "";
+  position: absolute;
+  top: 0.32rem;
+  left: 50%;
+  width: 0.6rem;
+  height: 0.6rem;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, var(--parch-gold-glow), var(--parch-gold));
+  box-shadow: 0 0.15rem 0.25rem color-mix(in srgb, black 42%, transparent);
+}
+
+.game-flash--error {
+  border-left: 3px solid var(--parch-red);
+  transform: rotate(0.15deg);
+}
+
+.game-flash__icon {
+  flex: 0 0 auto;
+  width: 1.15rem;
+  height: 1.15rem;
+  margin-top: 0.05rem;
+  color: var(--parch-gold);
+}
+
+.game-flash--error .game-flash__icon { color: var(--parch-red); }
+.game-flash__copy p { margin: 0; }
+.game-flash__title { color: var(--parch-red); font-weight: 700; }
+.game-flash__spacer { flex: 1; }
+.game-flash__close {
+  flex: 0 0 auto;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--parch-ink-faint);
+  cursor: pointer;
+}
+.game-flash__close > span { width: 1rem; height: 1rem; }
+
+@media (max-width: 480px) {
+  .game-flash-stack {
+    right: 0.55rem;
+    width: calc(100vw - 1.1rem);
+  }
+}
+
+.atmo-control {
+  position: fixed;
+  z-index: 40;
+  right: 0.8rem;
+  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.8rem);
+  max-width: calc(100vw - 1.6rem);
+}
+
+.atmo-control__button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  padding: 0.48rem 0.75rem;
+  align-items: center;
+  gap: 0.45rem;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 48%, var(--parch-leather-dark));
+  border-radius: 0.2rem;
+  background:
+    linear-gradient(180deg, color-mix(in srgb, var(--parch-leather) 85%, black), var(--parch-leather-dark));
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--parch-stitch) 10%, transparent),
+    0 0.45rem 1rem color-mix(in srgb, black 38%, transparent);
+  color: var(--parch-paper);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, transform 0.15s ease;
+}
+
+.atmo-control__button:not(:disabled):hover {
+  transform: translateY(-1px);
+  border-color: var(--parch-gold-bright);
+  color: var(--parch-gold-glow);
+}
+
+.atmo-control__button:disabled {
+  cursor: not-allowed;
+  opacity: 0.62;
+}
+
+.atmo-control__icon {
+  width: 1rem;
+  height: 1rem;
+  color: var(--parch-gold-glow);
+}
+
+/* Neutral form controls are inked onto parchment by default. Individual
+   places can override them (chalkboard, iron console, etc.) via their
+   scoped screen selectors without inheriting modern browser-card chrome. */
+.game-field {
+  margin-bottom: 1rem;
+}
+
+.game-field__label,
+.game-field__check-label {
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  font-size: 0.86rem;
+  font-weight: 700;
+}
+
+.game-field__label {
+  display: block;
+  margin-bottom: 0.35rem;
+}
+
+.game-field__check-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.65rem;
+}
+
+.game-input {
+  width: 100%;
+  min-height: 2.85rem;
+  padding: 0.58rem 0.75rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.14rem;
+  background:
+    linear-gradient(180deg, var(--parch-paper-light), color-mix(in srgb, var(--parch-paper) 82%, var(--parch-paper-dark)));
+  box-shadow: inset 0 1px color-mix(in srgb, white 42%, transparent);
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  font-size: 0.9rem;
+  outline: none;
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.game-input:focus {
+  border-color: var(--parch-gold);
+  box-shadow:
+    inset 0 1px color-mix(in srgb, white 42%, transparent),
+    0 0 0 2px color-mix(in srgb, var(--parch-gold) 18%, transparent);
+}
+
+.game-input--textarea {
+  min-height: 8rem;
+  resize: vertical;
+}
+
+.game-input--error { border-color: var(--parch-red); }
+
+.game-check {
+  width: 1.1rem;
+  height: 1.1rem;
+  border: 1px solid var(--parch-ink-faint);
+  border-radius: 0.1rem;
+  background: var(--parch-paper-light);
+  color: var(--parch-red);
+  accent-color: var(--parch-red);
+}
+
+.game-field__error {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin: 0.35rem 0 0;
+  color: var(--parch-red);
+  font-family: var(--font-hand);
+  font-size: 0.9rem;
+}
+
+.game-field__error > span {
+  width: 1rem;
+  height: 1rem;
+}
+
+.game-button {
+  display: inline-flex;
+  min-height: 2.75rem;
+  padding: 0.52rem 0.9rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--parch-stitch) 42%, var(--parch-leather-dark));
+  border-radius: 0.18rem;
+  background: linear-gradient(180deg, var(--parch-leather), var(--parch-leather-dark));
+  box-shadow:
+    inset 0 0 0 2px color-mix(in srgb, var(--parch-stitch) 10%, transparent),
+    0 0.25rem 0 color-mix(in srgb, var(--parch-leather-dark) 75%, black);
+  color: var(--parch-paper-light);
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, border-color 0.15s ease;
+}
+
+.game-button:hover {
+  transform: translateY(-1px);
+  border-color: var(--parch-gold);
+}
+
+.game-button--primary {
+  border-color: var(--parch-gold);
+  background: linear-gradient(180deg, var(--parch-gold-glow), var(--parch-gold-bright));
+  color: var(--parch-ink);
 }
 
 /* ============================================================

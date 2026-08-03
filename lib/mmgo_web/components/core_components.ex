@@ -56,19 +56,19 @@ defmodule MMGOWeb.CoreComponents do
       {@rest}
     >
       <div class={[
-        "flex w-full items-start gap-3 rounded-3xl border px-4 py-3 text-sm shadow-lg shadow-stone-950/10 backdrop-blur",
-        @kind == :info && "border-sky-200 bg-sky-50/95 text-sky-950",
-        @kind == :error && "border-rose-200 bg-rose-50/95 text-rose-950"
+        "game-flash",
+        @kind == :info && "game-flash--info",
+        @kind == :error && "game-flash--error"
       ]}>
-        <.icon :if={@kind == :info} name="hero-information-circle" class="size-5 shrink-0" />
-        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="size-5 shrink-0" />
-        <div>
-          <p :if={@title} class="font-semibold">{@title}</p>
+        <.icon :if={@kind == :info} name="hero-information-circle" class="game-flash__icon" />
+        <.icon :if={@kind == :error} name="hero-exclamation-circle" class="game-flash__icon" />
+        <div class="game-flash__copy">
+          <p :if={@title} class="game-flash__title">{@title}</p>
           <p>{msg}</p>
         </div>
-        <div class="flex-1" />
-        <button type="button" class="group self-start cursor-pointer" aria-label={gettext("close")}>
-          <.icon name="hero-x-mark" class="size-5 opacity-40 group-hover:opacity-70" />
+        <div class="game-flash__spacer" />
+        <button type="button" class="game-flash__close" aria-label="Закрыть">
+          <.icon name="hero-x-mark" />
         </button>
       </div>
     </div>
@@ -91,10 +91,8 @@ defmodule MMGOWeb.CoreComponents do
 
   def button(%{rest: rest} = assigns) do
     variants = %{
-      "primary" =>
-        "inline-flex items-center justify-center rounded-full border border-stone-900 bg-stone-900 px-5 py-2.5 text-sm font-semibold text-white transition hover:-translate-y-0.5 hover:bg-black focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900",
-      nil =>
-        "inline-flex items-center justify-center rounded-full border border-stone-300 bg-white px-5 py-2.5 text-sm font-semibold text-stone-900 transition hover:-translate-y-0.5 hover:border-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-stone-900"
+      "primary" => "game-button game-button--primary",
+      nil => "game-button"
     }
 
     assigns =
@@ -206,8 +204,8 @@ defmodule MMGOWeb.CoreComponents do
       end)
 
     ~H"""
-    <div class="mb-4 space-y-2">
-      <label for={@id} class="inline-flex items-center gap-3 text-sm font-medium text-stone-800">
+    <div class="game-field">
+      <label for={@id} class="game-field__check-label">
         <input
           type="hidden"
           name={@name}
@@ -223,7 +221,7 @@ defmodule MMGOWeb.CoreComponents do
           checked={@checked}
           class={
             @class ||
-              "size-4 rounded border border-stone-400 bg-white text-stone-900 focus:ring-2 focus:ring-amber-400"
+              "game-check"
           }
           {@rest}
         />
@@ -236,17 +234,17 @@ defmodule MMGOWeb.CoreComponents do
 
   def input(%{type: "select"} = assigns) do
     ~H"""
-    <div class="mb-4 space-y-2">
-      <label :if={@label} for={@id} class="block text-sm font-medium text-stone-800">{@label}</label>
+    <div class="game-field">
+      <label :if={@label} for={@id} class="game-field__label">{@label}</label>
       <div>
         <select
           id={@id}
           name={@name}
           class={[
             @class ||
-              "w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm transition focus:border-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-200",
+              "game-input",
             @errors != [] &&
-              (@error_class || "border-rose-400 focus:border-rose-500 focus:ring-rose-200")
+              (@error_class || "game-input--error")
           ]}
           multiple={@multiple}
           {@rest}
@@ -262,17 +260,17 @@ defmodule MMGOWeb.CoreComponents do
 
   def input(%{type: "textarea"} = assigns) do
     ~H"""
-    <div class="mb-4 space-y-2">
-      <label :if={@label} for={@id} class="block text-sm font-medium text-stone-800">{@label}</label>
+    <div class="game-field">
+      <label :if={@label} for={@id} class="game-field__label">{@label}</label>
       <div>
         <textarea
           id={@id}
           name={@name}
           class={[
             @class ||
-              "min-h-32 w-full rounded-3xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm transition focus:border-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-200",
+              "game-input game-input--textarea",
             @errors != [] &&
-              (@error_class || "border-rose-400 focus:border-rose-500 focus:ring-rose-200")
+              (@error_class || "game-input--error")
           ]}
           {@rest}
         >{Phoenix.HTML.Form.normalize_value("textarea", @value)}</textarea>
@@ -285,8 +283,8 @@ defmodule MMGOWeb.CoreComponents do
   # All other inputs text, datetime-local, url, password, etc. are handled here...
   def input(assigns) do
     ~H"""
-    <div class="mb-4 space-y-2">
-      <label :if={@label} for={@id} class="block text-sm font-medium text-stone-800">{@label}</label>
+    <div class="game-field">
+      <label :if={@label} for={@id} class="game-field__label">{@label}</label>
       <div>
         <input
           type={@type}
@@ -295,9 +293,9 @@ defmodule MMGOWeb.CoreComponents do
           value={Phoenix.HTML.Form.normalize_value(@type, @value)}
           class={[
             @class ||
-              "w-full rounded-2xl border border-stone-300 bg-white px-4 py-3 text-sm text-stone-900 shadow-sm transition focus:border-stone-900 focus:outline-none focus:ring-2 focus:ring-amber-200",
+              "game-input",
             @errors != [] &&
-              (@error_class || "border-rose-400 focus:border-rose-500 focus:ring-rose-200")
+              (@error_class || "game-input--error")
           ]}
           {@rest}
         />
@@ -310,8 +308,8 @@ defmodule MMGOWeb.CoreComponents do
   # Helper used by inputs to generate form errors
   defp error(assigns) do
     ~H"""
-    <p class="mt-1.5 flex items-center gap-2 text-sm text-rose-700">
-      <.icon name="hero-exclamation-circle" class="size-5" />
+    <p class="game-field__error">
+      <.icon name="hero-exclamation-circle" />
       {render_slot(@inner_block)}
     </p>
     """
@@ -378,7 +376,7 @@ defmodule MMGOWeb.CoreComponents do
           <tr>
             <th :for={col <- @col} class="px-4 py-3">{col[:label]}</th>
             <th :if={@action != []} class="px-4 py-3">
-              <span class="sr-only">{gettext("Actions")}</span>
+              <span class="sr-only">Действия</span>
             </th>
           </tr>
         </thead>

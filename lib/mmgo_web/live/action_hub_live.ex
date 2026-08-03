@@ -224,19 +224,20 @@ defmodule MMGOWeb.ActionHubLive do
 
           <article id={"activity-event-#{@event.id}"} class="evh-body">
             <p id="activity-world-date" class="evh-date">{format_world_time(@world_time)}</p>
-            <h2 class="font-serif text-xl text-amber-100">{@event.template.title}</h2>
+            <h2 class="evh-event-title">{@event.template.title}</h2>
             <p id="activity-event-body" class="evh-narrative">{@event.template.body}</p>
             <p id="activity-guidance" class="evh-guidance">
-              Выберите направление. Сначала откроется соответствующий экран; траты и необратимые действия всегда подтверждаются отдельно.
+              На указателях отмечены доступные отсюда места. Печать или монету попросят отдельно:
+              случайным касанием договор не заключить.
             </p>
 
-            <p class="evh-legend">Куда пойти дальше</p>
+            <p class="evh-legend">Указатели поблизости</p>
             <div id="activity-options" class="evh-actions">
               <button
                 :for={option <- @options}
                 id={"activity-option-#{option.code}"}
                 type="button"
-                class="evh-action text-left"
+                class="evh-action"
                 phx-click="resolve_option"
                 phx-value-event_id={@event.id}
                 phx-value-option_code={option.code}
@@ -247,7 +248,7 @@ defmodule MMGOWeb.ActionHubLive do
                   <span class="evh-action__title">{option.label}</span>
                   <span class="evh-action__hint">{option_hint(option.action_key)}</span>
                 </span>
-                <span class="evh-action__chev" aria-hidden="true">›</span>
+                <span class="evh-action__chev" aria-hidden="true">→</span>
               </button>
             </div>
 
@@ -263,50 +264,50 @@ defmodule MMGOWeb.ActionHubLive do
             <section
               :if={@secret_cult.can_hear_rumor? or @secret_cult.stage != :unknown}
               id="activity-secret-cult"
-              class="mt-8 border-t border-violet-500/25 pt-5"
+              class="evh-subscene evh-subscene--secret"
             >
-              <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">
+              <p class="evh-subscene__kicker">
                 необязательная зацепка
               </p>
-              <h2 class="mt-1 font-serif text-xl text-violet-100">Слух о тайном пути</h2>
+              <h2 class="evh-subscene__title">Слух о тайном пути</h2>
               <%= cond do %>
                 <% @secret_cult.can_hear_rumor? -> %>
-                  <p id="secret-cult-rumor-copy" class="mt-2 text-sm leading-6 text-stone-300">
+                  <p id="secret-cult-rumor-copy" class="evh-subscene__copy">
                     В трактирных разговорах мелькает имя Хранителя. Говорят, под Горной Стражей есть
                     путь, который не отмечен на картах.
                   </p>
                   <button
                     id="secret-cult-hear-rumor"
                     type="button"
-                    class="mt-4 rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:border-violet-200 hover:bg-violet-300/10"
+                    class="evh-object-btn evh-object-btn--secret"
                     phx-click="hear_secret_cult_rumor"
                   >
                     Расспросить о Хранителе
                   </button>
                 <% @secret_cult.can_reveal_passage? -> %>
-                  <p id="secret-cult-watchtower-copy" class="mt-2 text-sm leading-6 text-stone-300">
+                  <p id="secret-cult-watchtower-copy" class="evh-subscene__copy">
                     Камни Горной Стражи отвечают на услышанное имя. Здесь можно потребовать встречу с
                     Хранителем и открыть путь к Башне.
                   </p>
                   <button
                     id="secret-cult-reveal-passage"
                     type="button"
-                    class="mt-4 rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:border-violet-200 hover:bg-violet-300/10"
+                    class="evh-object-btn evh-object-btn--secret"
                     phx-click="reveal_secret_cult_passage"
                   >
                     Позвать Хранителя
                   </button>
                 <% @secret_cult.passage_available? -> %>
-                  <p id="secret-cult-passage-open" class="mt-2 text-sm leading-6 text-emerald-100">
+                  <p id="secret-cult-passage-open" class="evh-subscene__copy evh-subscene__copy--open">
                     Вы носите знак прохода. Сеть Культа может безопасно перенести вас между связными
                     точками, включая Столицу и Башню.
                   </p>
-                  <div id="secret-cult-network" class="mt-4 flex flex-wrap gap-2">
+                  <div id="secret-cult-network" class="evh-object-actions">
                     <button
                       :for={destination <- @secret_cult.passage_destinations}
                       id={"secret-cult-travel-#{destination.id}"}
                       type="button"
-                      class="rounded border border-emerald-300/50 px-3 py-2 text-sm text-emerald-100 transition hover:border-emerald-200 hover:bg-emerald-300/10"
+                      class="evh-object-btn evh-object-btn--passage"
                       phx-click="use_secret_cult_passage"
                       phx-value-destination-id={destination.id}
                     >
@@ -314,11 +315,14 @@ defmodule MMGOWeb.ActionHubLive do
                     </button>
                   </div>
                 <% @secret_cult.stage == :rumor_heard -> %>
-                  <p id="secret-cult-rumor-heard" class="mt-2 text-sm leading-6 text-stone-300">
+                  <p id="secret-cult-rumor-heard" class="evh-subscene__copy">
                     Вы знаете, куда идти: Хранитель ждёт у Горной Стражи, в горах перед Башней.
                   </p>
                 <% true -> %>
-                  <p id="secret-cult-passage-revoked" class="mt-2 text-sm leading-6 text-stone-400">
+                  <p
+                    id="secret-cult-passage-revoked"
+                    class="evh-subscene__copy evh-subscene__copy--muted"
+                  >
                     След прохода остался, но действующего права на сеть Культа сейчас нет.
                   </p>
               <% end %>
@@ -331,29 +335,29 @@ defmodule MMGOWeb.ActionHubLive do
                   not is_nil(@scavenging.latest_completed_attempt)
               }
               id="activity-scavenging"
-              class="mt-8 border-t border-stone-700/70 pt-5"
+              class="evh-subscene evh-subscene--field"
             >
-              <div class="flex flex-wrap items-baseline justify-between gap-3">
-                <h2 class="font-serif text-xl text-amber-100">Поиск ресурсов</h2>
+              <div class="evh-subscene__head">
+                <h2 class="evh-subscene__title">Поиск ресурсов</h2>
                 <button
                   id="activity-refresh-scavenging"
                   type="button"
-                  class="text-xs text-stone-400 underline-offset-2 transition hover:text-stone-200 hover:underline"
+                  class="evh-tool-link"
                   phx-click="refresh_activity"
                 >
-                  Обновить
+                  сверить записи
                 </button>
               </div>
 
               <article
                 :if={@scavenging.active_attempt}
                 id={"activity-attempt-#{@scavenging.active_attempt.id}"}
-                class="mt-3 rounded-md border border-amber-500/35 bg-stone-950/45 p-3"
+                class="evh-status-slip evh-status-slip--active"
               >
-                <p class="text-sm text-amber-100">
+                <p class="evh-status-slip__title">
                   Идёт поиск: {@scavenging.active_attempt.resource_name}
                 </p>
-                <p class="mt-1 text-xs text-stone-400">
+                <p class="evh-status-slip__meta">
                   Ищем {@scavenging.active_attempt.quantity_requested} ед. · завершение {format_completion(
                     @scavenging.active_attempt.completes_at
                   )}
@@ -363,12 +367,12 @@ defmodule MMGOWeb.ActionHubLive do
               <article
                 :if={@scavenging.latest_completed_attempt}
                 id={"activity-scavenge-result-#{@scavenging.latest_completed_attempt.id}"}
-                class="mt-3 rounded-md border border-emerald-500/35 bg-stone-950/45 p-3"
+                class="evh-status-slip evh-status-slip--done"
               >
-                <p class="text-sm text-emerald-100">
+                <p class="evh-status-slip__title">
                   Поиск завершён: {@scavenging.latest_completed_attempt.resource_name}
                 </p>
-                <p class="mt-1 text-xs text-stone-400">
+                <p class="evh-status-slip__meta">
                   Добыто {@scavenging.latest_completed_attempt.quantity_yielded} ед. · опыт +{@scavenging.latest_completed_attempt.xp_awarded}
                 </p>
               </article>
@@ -376,16 +380,16 @@ defmodule MMGOWeb.ActionHubLive do
               <ul
                 :if={@scavenging.available_caches != []}
                 id="activity-scavenge-caches"
-                class="mt-3 space-y-2"
+                class="evh-ledger"
               >
                 <li
                   :for={resource_cache <- @scavenging.available_caches}
                   id={"activity-scavenge-cache-#{resource_cache.id}"}
-                  class="flex items-center justify-between gap-3 rounded-md border border-stone-700/80 bg-stone-950/40 px-3 py-2"
+                  class="evh-ledger__row"
                 >
-                  <span>
-                    <span class="block text-sm text-stone-100">{resource_cache.name}</span>
-                    <span class="block text-xs text-stone-500">
+                  <span class="evh-ledger__entry">
+                    <span class="evh-ledger__name">{resource_cache.name}</span>
+                    <span class="evh-ledger__meta">
                       Осталось: {resource_cache.quantity_remaining} из {resource_cache.quantity_total}
                     </span>
                   </span>
@@ -393,7 +397,7 @@ defmodule MMGOWeb.ActionHubLive do
                     :if={is_nil(@scavenging.active_attempt)}
                     id={"activity-start-scavenge-#{resource_cache.id}"}
                     type="button"
-                    class="rounded border border-emerald-500/50 px-2 py-1 text-xs text-emerald-100 transition hover:border-emerald-300 hover:bg-emerald-400/10"
+                    class="evh-object-btn evh-object-btn--small"
                     phx-click="start_scavenging"
                     phx-value-resource_cache_id={resource_cache.id}
                     phx-disable-with="Начинаем…"
@@ -407,28 +411,28 @@ defmodule MMGOWeb.ActionHubLive do
             <section
               :if={@nearby_characters != []}
               id="activity-nearby"
-              class="mt-8 border-t border-stone-700/70 pt-5"
+              class="evh-subscene evh-subscene--travellers"
             >
-              <div class="flex items-baseline justify-between gap-3">
-                <h2 class="font-serif text-xl text-amber-100">Путники рядом</h2>
-                <span class="text-xs uppercase tracking-[0.14em] text-stone-500">
+              <div class="evh-subscene__head">
+                <h2 class="evh-subscene__title">Путники рядом</h2>
+                <span class="evh-subscene__place">
                   {@location.name}
                 </span>
               </div>
-              <ul class="mt-3 space-y-2">
+              <ul class="evh-ledger evh-ledger--people">
                 <li
                   :for={nearby <- @nearby_characters}
                   id={"activity-nearby-#{nearby.id}"}
-                  class="flex items-center justify-between gap-3 rounded-md border border-stone-700/80 bg-stone-950/40 px-3 py-2"
+                  class="evh-ledger__row"
                 >
-                  <span>
-                    <span class="block text-sm text-stone-100">{nearby.name}</span>
-                    <span class="block text-xs text-stone-500">уровень {nearby.level}</span>
+                  <span class="evh-ledger__entry">
+                    <span class="evh-ledger__name">{nearby.name}</span>
+                    <span class="evh-ledger__meta">уровень {nearby.level}</span>
                   </span>
                   <button
                     id={"activity-start-encounter-#{nearby.id}"}
                     type="button"
-                    class="rounded border border-amber-500/50 px-2 py-1 text-xs text-amber-100 transition hover:border-amber-300 hover:bg-amber-400/10"
+                    class="evh-object-btn evh-object-btn--small"
                     phx-click="start_overworld_encounter"
                     phx-value-target_id={nearby.id}
                     phx-disable-with="Открываем встречу…"
@@ -439,26 +443,30 @@ defmodule MMGOWeb.ActionHubLive do
               </ul>
             </section>
 
-            <section :if={@open_encounters != []} id="activity-open-encounters" class="mt-5">
-              <h2 class="font-serif text-xl text-amber-100">Незавершённые встречи</h2>
+            <section
+              :if={@open_encounters != []}
+              id="activity-open-encounters"
+              class="evh-subscene evh-subscene--encounters"
+            >
+              <h2 class="evh-subscene__title">Незавершённые встречи</h2>
               <article
                 :for={encounter <- @open_encounters}
                 id={"activity-encounter-#{encounter.id}"}
-                class="mt-3 rounded-md border border-amber-500/35 bg-stone-950/45 p-3"
+                class="evh-encounter"
               >
-                <div class="flex flex-wrap items-baseline justify-between gap-2">
-                  <p class="text-sm text-stone-100">
+                <div class="evh-encounter__head">
+                  <p class="evh-encounter__name">
                     {encounter.counterpart.name}
-                    <span class="text-stone-500">· ур. {encounter.counterpart.level}</span>
+                    <span>· ур. {encounter.counterpart.level}</span>
                   </p>
-                  <p class="text-xs text-stone-400">{encounter_status_label(encounter.status)}</p>
+                  <p class="evh-encounter__status">{encounter_status_label(encounter.status)}</p>
                 </div>
 
-                <div :if={encounter.can_respond?} class="mt-3 flex flex-wrap gap-2">
+                <div :if={encounter.can_respond?} class="evh-object-actions">
                   <button
                     id={"activity-encounter-#{encounter.id}-greet"}
                     type="button"
-                    class="rounded border border-stone-600 px-2 py-1 text-xs text-stone-200 transition hover:border-stone-400"
+                    class="evh-object-btn evh-object-btn--small"
                     phx-click="respond_to_overworld_encounter"
                     phx-value-encounter_id={encounter.id}
                     phx-value-action="greet"
@@ -468,7 +476,7 @@ defmodule MMGOWeb.ActionHubLive do
                   <button
                     id={"activity-encounter-#{encounter.id}-trade"}
                     type="button"
-                    class="rounded border border-stone-600 px-2 py-1 text-xs text-stone-200 transition hover:border-stone-400"
+                    class="evh-object-btn evh-object-btn--small"
                     phx-click="respond_to_overworld_encounter"
                     phx-value-encounter_id={encounter.id}
                     phx-value-action="trade"
@@ -479,7 +487,7 @@ defmodule MMGOWeb.ActionHubLive do
                     :if={@overworld.attack_available?}
                     id={"activity-encounter-#{encounter.id}-attack"}
                     type="button"
-                    class="rounded border border-red-500/55 px-2 py-1 text-xs text-red-200 transition hover:border-red-300 hover:bg-red-500/10"
+                    class="evh-object-btn evh-object-btn--small evh-object-btn--danger"
                     phx-click="respond_to_overworld_encounter"
                     phx-value-encounter_id={encounter.id}
                     phx-value-action="attack"
@@ -489,7 +497,7 @@ defmodule MMGOWeb.ActionHubLive do
                   <button
                     id={"activity-encounter-#{encounter.id}-avoid"}
                     type="button"
-                    class="rounded border border-stone-600 px-2 py-1 text-xs text-stone-200 transition hover:border-stone-400"
+                    class="evh-object-btn evh-object-btn--small"
                     phx-click="respond_to_overworld_encounter"
                     phx-value-encounter_id={encounter.id}
                     phx-value-action="avoid"
@@ -497,7 +505,7 @@ defmodule MMGOWeb.ActionHubLive do
                     Разойтись
                   </button>
                 </div>
-                <p :if={not encounter.can_respond?} class="mt-2 text-xs text-stone-500">
+                <p :if={not encounter.can_respond?} class="evh-encounter__waiting">
                   Ваш ответ уже сделан; ждём решения другого путника.
                 </p>
               </article>

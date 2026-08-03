@@ -56,52 +56,134 @@ defmodule MMGOWeb.CraftLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="craft-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <.link id="craft-back-to-base" navigate={~p"/base"} class="map-back-link">← База</.link>
-          <header class="rounded-xl border border-orange-500/25 bg-stone-900/80 p-6 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.22em] text-orange-300/70">
-              мастерская · {@base.name}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-orange-100">Верстак</h1>
-            <p class="mt-2 text-sm text-stone-400">
-              Инструменты из котомки: {tool_list(@installed_tool_codes)}
-            </p>
-          </header>
+      <main id="craft-screen" class="game-screen crf-screen">
+        <div class="crf-root">
+          <.link id="craft-back-to-base" navigate={~p"/base"} class="crf-exit">
+            ← вернуться на базу
+          </.link>
 
           <div
             :if={@error}
             id="craft-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
+            class="crf-alert crf-alert--error"
           >
             {@error}
           </div>
 
           <section
+            id="craft-workshop-scene"
+            class="crf-workshop-scene"
+            aria-label="Кузнечная мастерская"
+          >
+            <div class="crf-workshop-scene__room" aria-hidden="true">
+              <div class="crf-lantern">
+                <span class="crf-lantern__chain"></span>
+                <span class="crf-lantern__cap"></span>
+                <span class="crf-lantern__glass"></span>
+                <span class="crf-lantern__base"></span>
+              </div>
+
+              <div class="crf-rear-bench">
+                <span class="crf-rear-bench__top"></span>
+                <span class="crf-grinder">
+                  <span class="crf-grinder__wheel"></span>
+                  <span class="crf-grinder__rest"></span>
+                  <span class="crf-grinder__base"></span>
+                </span>
+              </div>
+
+              <div class="crf-furnace">
+                <span class="crf-furnace__hood"></span>
+                <span class="crf-furnace__mouth">
+                  <i></i><i></i><i></i>
+                </span>
+                <span class="crf-furnace__stone crf-furnace__stone--one"></span>
+                <span class="crf-furnace__stone crf-furnace__stone--two"></span>
+                <span class="crf-furnace__stone crf-furnace__stone--three"></span>
+              </div>
+
+              <div class="crf-bellows">
+                <span class="crf-bellows__handle"></span>
+                <span class="crf-bellows__body"></span>
+                <span class="crf-bellows__nozzle"></span>
+              </div>
+
+              <div class="crf-scene-anvil">
+                <span class="crf-scene-anvil__face"></span>
+                <span class="crf-scene-anvil__waist"></span>
+                <span class="crf-scene-anvil__foot"></span>
+              </div>
+            </div>
+
+            <div class="crf-tool-rail" aria-hidden="true">
+              <span class="crf-tool-rail__peg crf-tool-rail__peg--one"></span>
+              <span class="crf-tool-rail__peg crf-tool-rail__peg--two"></span>
+              <span class="crf-tool-rail__peg crf-tool-rail__peg--three"></span>
+              <span class="crf-tool-rail__peg crf-tool-rail__peg--four"></span>
+              <span class="crf-hanging-hammer">
+                <span class="crf-hanging-hammer__head"></span>
+                <span class="crf-hanging-hammer__haft"></span>
+              </span>
+            </div>
+          </section>
+
+          <header class="crf-head">
+            <p class="crf-kicker">мастерская · {@base.name}</p>
+            <h1 class="crf-title">
+              {if @workspace, do: @workspace.name, else: "Верстак мастера"}
+            </h1>
+            <p class="crf-sub">
+              Жар, железо и точная работа. Здесь чертёж становится вещью.
+            </p>
+          </header>
+
+          <section class="crf-tools" aria-labelledby="craft-tools-title">
+            <p id="craft-tools-title" class="crf-label">Инструменты на стене</p>
+            <div class="crf-tools__row">
+              <span
+                :if={@installed_tool_codes == []}
+                class="crf-tool crf-tool--missing"
+              >
+                <span class="crf-tool__mark">×</span> пока пусто
+              </span>
+              <span
+                :for={code <- @installed_tool_codes}
+                class="crf-tool crf-tool--owned"
+              >
+                <span class="crf-tool__mark">✓</span>
+                {tool_code_label(code)}
+              </span>
+            </div>
+          </section>
+
+          <section
             :if={is_nil(@workspace)}
             id="craft-workshop-setup"
-            class="rounded-xl border border-orange-500/25 bg-orange-950/15 p-6"
+            class="crf-ledger crf-ledger--setup"
           >
-            <h2 class="font-serif text-2xl text-orange-100">Оборудовать верстак</h2>
-            <p class="mt-2 text-sm text-stone-400">
-              Коды установленных инструментов берутся из вашей реальной котомки.
+            <span class="crf-ledger__pin" aria-hidden="true"></span>
+            <p class="crf-ledger__eyebrow">запись мастера</p>
+            <h2 class="crf-ledger__title">Оборудовать верстак</h2>
+            <p class="crf-ledger__copy">
+              Дайте рабочему месту имя. Инструменты будут отмечены по вашей настоящей котомке.
             </p>
             <.form
               for={@workshop_form}
               id="craft-workshop-form"
               phx-submit="create_workshop"
-              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+              class="crf-setup-form"
             >
               <.input
                 field={@workshop_form[:name]}
                 type="text"
                 label="Название"
                 placeholder="Верстак"
+                class="crf-paper-input"
               />
               <button
                 id="craft-create-workshop"
                 type="submit"
-                class="mb-4 rounded-md bg-orange-300 px-4 py-3 font-semibold text-stone-950 hover:bg-orange-200"
+                class="crf-do crf-do--ready"
               >
                 Оборудовать
               </button>
@@ -111,18 +193,28 @@ defmodule MMGOWeb.CraftLive do
           <section
             :if={@workspace && not @workspace_here?}
             id="craft-workshop-away"
-            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-6 text-sm text-amber-100"
+            class="crf-ledger crf-ledger--warning"
           >
-            Ваш активный верстак находится в другом месте. Вернитесь к нему, чтобы начать работу.
+            <p class="crf-ledger__eyebrow">пометка на полях</p>
+            <p class="crf-ledger__copy">
+              Ваш активный верстак находится в другом месте. Вернитесь к нему, чтобы начать работу.
+            </p>
           </section>
 
           <section
             :if={@workspace_here?}
             id="craft-start"
-            class="rounded-xl border border-orange-500/25 bg-orange-950/15 p-6"
+            class="crf-work-order"
           >
-            <h2 class="font-serif text-2xl text-orange-100">Начать работу</h2>
-            <p :if={@recipes == []} id="craft-recipes-empty" class="mt-3 text-sm text-stone-400">
+            <span class="crf-work-order__clip" aria-hidden="true"></span>
+            <div class="crf-work-order__head">
+              <div>
+                <p class="crf-ledger__eyebrow">заказ на изготовление</p>
+                <h2 class="crf-ledger__title">Положить чертёж на верстак</h2>
+              </div>
+              <span class="crf-work-order__stamp">кузница</span>
+            </div>
+            <p :if={@recipes == []} id="craft-recipes-empty" class="crf-ledger__copy">
               Для этого мира ещё не записаны чертежи.
             </p>
             <.form
@@ -130,7 +222,7 @@ defmodule MMGOWeb.CraftLive do
               for={@craft_form}
               id="craft-form"
               phx-submit="craft"
-              class="mt-4 grid gap-3 sm:grid-cols-[1fr_8rem_auto] sm:items-end"
+              class="crf-order-form"
             >
               <.input
                 field={@craft_form[:recipe_id]}
@@ -138,6 +230,7 @@ defmodule MMGOWeb.CraftLive do
                 label="Чертёж"
                 prompt="Выберите чертёж"
                 options={@recipe_options}
+                class="crf-paper-input"
               />
               <.input
                 field={@craft_form[:quantity]}
@@ -145,31 +238,38 @@ defmodule MMGOWeb.CraftLive do
                 label="Количество"
                 min="1"
                 inputmode="numeric"
+                class="crf-paper-input"
               />
               <button
                 id="craft-start-job"
                 type="submit"
-                class="mb-4 rounded-md bg-orange-300 px-4 py-3 font-semibold text-stone-950 hover:bg-orange-200"
+                class="crf-do crf-do--ready"
               >
-                Начать
+                В огонь
               </button>
             </.form>
           </section>
 
-          <section id="craft-jobs" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
-            <h2 class="font-serif text-xl text-stone-100">Работы</h2>
-            <p :if={@jobs == []} id="craft-jobs-empty" class="mt-3 text-sm text-stone-400">
+          <section id="craft-jobs" class="crf-job-board">
+            <div class="crf-job-board__head">
+              <div>
+                <p class="crf-label">Доска заказов</p>
+                <h2 class="crf-job-board__title">Работы</h2>
+              </div>
+              <span class="crf-job-board__nail" aria-hidden="true"></span>
+            </div>
+            <p :if={@jobs == []} id="craft-jobs-empty" class="crf-hint">
               Нет активных или завершённых работ.
             </p>
             <article
               :for={job <- @jobs}
               id={"craft-job-#{job.id}"}
-              class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+              class="crf-job-ticket"
             >
-              <div>
-                <p class="font-medium text-stone-100">{job.recipe.name} ×{job.quantity}</p>
-                <p class="text-stone-400">
-                  {job.status} · готовность {format_time(job.completes_at)}
+              <div class="crf-job-ticket__copy">
+                <p class="crf-job-ticket__name">{job.recipe.name} ×{job.quantity}</p>
+                <p class="crf-job-ticket__meta">
+                  {job_status_label(job.status)} · готовность {format_time(job.completes_at)}
                 </p>
               </div>
               <button
@@ -178,7 +278,7 @@ defmodule MMGOWeb.CraftLive do
                 type="button"
                 phx-click="collect"
                 phx-value-job-id={job.id}
-                class="rounded border border-orange-300/50 px-3 py-1.5 text-orange-100"
+                class="crf-job-ticket__collect"
               >
                 Проверить готовность
               </button>
@@ -189,9 +289,9 @@ defmodule MMGOWeb.CraftLive do
             id="craft-refresh"
             type="button"
             phx-click="refresh"
-            class="text-sm text-orange-200 underline decoration-orange-500/40 underline-offset-4"
+            class="crf-refresh"
           >
-            Обновить верстак
+            ↻ проверить угли и заказы
           </button>
         </div>
       </main>
@@ -250,10 +350,23 @@ defmodule MMGOWeb.CraftLive do
   end
 
   defp parse_positive(_value), do: {:error, :invalid_quantity}
-  defp tool_list([]), do: "нет"
-  defp tool_list(codes), do: Enum.join(codes, ", ")
   defp format_time(nil), do: "ожидает расчёта"
   defp format_time(time), do: Calendar.strftime(time, "%d.%m %H:%M UTC")
+
+  defp tool_code_label("demo_travel_ration"), do: "Дорожный паёк"
+  defp tool_code_label("demo_lumen_dust"), do: "Световая пыль"
+  defp tool_code_label("construction_material"), do: "Строевой камень"
+  defp tool_code_label("forge"), do: "Горн"
+  defp tool_code_label("anvil"), do: "Наковальня"
+  defp tool_code_label("hammer"), do: "Молот"
+  defp tool_code_label("workbench"), do: "Верстак"
+  defp tool_code_label(_code), do: "Неопознанный инструмент"
+
+  defp job_status_label(:active), do: "в работе"
+  defp job_status_label(:completed), do: "готово"
+  defp job_status_label(:claimed), do: "получено"
+  defp job_status_label(:failed), do: "сорвано"
+  defp job_status_label(_status), do: "состояние уточняется"
 
   defp error_message(:active_base_not_found), do: "Верстак доступен только на активной базе."
   defp error_message(:crafting_workshop_exists), do: "У вас уже есть активный верстак."

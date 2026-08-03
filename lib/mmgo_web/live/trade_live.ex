@@ -141,152 +141,171 @@ defmodule MMGOWeb.TradeLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="trade-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-4xl space-y-5">
-          <.link id="trade-back-to-map" navigate={~p"/map"} class="map-back-link">← Карта мира</.link>
+      <main id="trade-screen" class="game-root trd-root trd-root--live">
+        <.link id="trade-back-to-map" navigate={~p"/map"} class="trd-exit">
+          ← на площадь
+        </.link>
 
-          <header class="rounded-xl border border-amber-500/25 bg-stone-900/80 p-6 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">
-              торговая книга · {@location.name}
-            </p>
-            <div class="mt-2 flex flex-wrap items-end justify-between gap-3">
-              <h1 class="font-serif text-3xl text-amber-100">Торговля</h1>
-              <p
-                id="trade-balance"
-                class="rounded-full border border-amber-300/35 px-3 py-1 text-amber-100"
-              >
-                {@balance} ◈
+        <div class="trd-shell trd-shell--live">
+          <header class="trd-head trd-stall">
+            <div class="trd-stall__awning" aria-hidden="true"></div>
+            <div class="trd-stall__scene" aria-hidden="true">
+              <span class="trd-stall__lantern"></span>
+              <span class="trd-stall__shelves"></span>
+              <span class="trd-stall__keeper"></span>
+              <span class="trd-stall__counter"></span>
+            </div>
+            <div class="trd-head__bar">
+              <div class="trd-head__who">
+                <span class="trd-head__keeper">торговый ряд · {@location.name}</span>
+                <h1 class="trd-head__shop">Лавки и рынок</h1>
+              </div>
+              <p id="trade-balance" class="trd-purse" title="ваш кошель">
+                <span class="trd-coin">◈</span>
+                <span class="trd-purse__n">{@balance}</span>
               </p>
             </div>
           </header>
 
-          <div
-            :if={@error}
-            id="trade-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
-          >
+          <div :if={@error} id="trade-error" class="trd-warn">
             {@error}
           </div>
 
-          <section id="trade-npc-shops" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
-            <h2 class="font-serif text-2xl text-stone-100">Лавки рядом</h2>
-            <p :if={@shops == []} id="trade-shops-empty" class="mt-3 text-sm text-stone-400">
+          <section id="trade-npc-shops" class="trd-counter-section">
+            <div class="trd-section-head">
+              <div>
+                <span class="trd-section-head__eyebrow">товар на прилавке</span>
+                <h2>Лавки рядом</h2>
+              </div>
+              <span class="trd-section-head__chalk" aria-hidden="true">цена мелом</span>
+            </div>
+            <p :if={@shops == []} id="trade-shops-empty" class="trd-empty">
               В этом месте нет открытых лавок.
             </p>
-            <div
-              :for={shop <- @shops}
-              id={"trade-shop-#{shop.id}"}
-              class="mt-5 rounded-lg border border-stone-700 bg-stone-950/45 p-4"
-            >
-              <h3 class="font-serif text-lg text-amber-100">{shop.name}</h3>
-              <p :if={shop.description} class="mt-1 text-sm text-stone-400">{shop.description}</p>
-              <ul class="mt-3 divide-y divide-stone-800">
+            <article :for={shop <- @shops} id={"trade-shop-#{shop.id}"} class="trd-shop">
+              <header class="trd-shop__sign">
+                <span aria-hidden="true">✦</span>
+                <div>
+                  <h3>{shop.name}</h3>
+                  <p :if={shop.description}>{shop.description}</p>
+                </div>
+              </header>
+              <ul class="trd-goods">
                 <li
                   :for={offer <- shop.offers}
                   id={"trade-shop-offer-#{offer.id}"}
-                  class="flex flex-wrap items-center justify-between gap-3 py-3 text-sm"
+                  class="trd-good"
                 >
-                  <span>{offer.item_template.name}</span>
-                  <span class="text-stone-400">
-                    купить {offer.buy_price} ◈ · продать {offer.sell_price} ◈
+                  <span class="trd-good__icon" aria-hidden="true">◇</span>
+                  <span class="trd-good__body">
+                    <b class="trd-good__name">{offer.item_template.name}</b>
+                    <span class="trd-good__note">
+                      лавка берёт за <span class="trd-coin">◈</span>{offer.sell_price}
+                    </span>
                   </span>
-                  <button
-                    :if={offer.buy_price > 0}
-                    id={"trade-buy-#{offer.id}"}
-                    type="button"
-                    phx-click="buy_shop"
-                    phx-value-offer-id={offer.id}
-                    class="rounded border border-amber-300/50 px-3 py-1.5 text-amber-100 hover:bg-amber-300/10"
-                  >
-                    Купить 1
-                  </button>
+                  <span class="trd-good__deal">
+                    <span class="trd-good__price">
+                      <span class="trd-coin">◈</span>{offer.buy_price}
+                    </span>
+                    <button
+                      :if={offer.buy_price > 0}
+                      id={"trade-buy-#{offer.id}"}
+                      type="button"
+                      phx-click="buy_shop"
+                      phx-value-offer-id={offer.id}
+                      class="trd-add"
+                    >
+                      Купить 1
+                    </button>
+                  </span>
                 </li>
               </ul>
-            </div>
+            </article>
 
-            <.form
+            <div
               :if={@sell_offer_options != [] and @inventory_options != []}
-              for={@sell_form}
-              id="trade-sell-form"
-              phx-submit="sell_shop"
-              class="mt-5 grid gap-3 md:grid-cols-4 md:items-end"
+              class="trd-receipt trd-receipt--inline"
             >
-              <.input
-                field={@sell_form[:offer_id]}
-                type="select"
-                label="Лавка покупает"
-                prompt="Выберите расценку"
-                options={@sell_offer_options}
-              />
-              <.input
-                field={@sell_form[:inventory_item_id]}
-                type="select"
-                label="Ваша вещь"
-                prompt="Выберите предмет"
-                options={@inventory_options}
-              />
-              <.input
-                field={@sell_form[:quantity]}
-                type="number"
-                label="Количество"
-                min="1"
-                inputmode="numeric"
-              />
-              <button
-                id="trade-sell"
-                type="submit"
-                class="mb-4 rounded-md border border-amber-300/50 px-4 py-3 font-semibold text-amber-100 hover:bg-amber-300/10"
-              >
-                Продать
-              </button>
-            </.form>
+              <div class="trd-receipt__deckle"></div>
+              <h3 class="trd-receipt__title">Расписка на продажу</h3>
+              <p class="trd-receipt__place">Лавочник заполнит сумму после передачи товара</p>
+              <.form for={@sell_form} id="trade-sell-form" phx-submit="sell_shop" class="trd-form">
+                <.input
+                  field={@sell_form[:offer_id]}
+                  type="select"
+                  label="Лавка покупает"
+                  prompt="Выберите расценку"
+                  options={@sell_offer_options}
+                />
+                <.input
+                  field={@sell_form[:inventory_item_id]}
+                  type="select"
+                  label="Ваша вещь"
+                  prompt="Выберите предмет"
+                  options={@inventory_options}
+                />
+                <.input
+                  field={@sell_form[:quantity]}
+                  type="number"
+                  label="Количество"
+                  min="1"
+                  inputmode="numeric"
+                />
+                <button id="trade-sell" type="submit" class="trd-receipt__seal">
+                  Ударить по рукам
+                </button>
+              </.form>
+              <div class="trd-receipt__stamp">торговый ряд</div>
+            </div>
           </section>
 
-          <section
-            id="trade-grimoire-catalog"
-            class="rounded-xl border border-amber-400/25 bg-amber-950/15 p-6"
-          >
-            <h2 class="font-serif text-2xl text-amber-100">Переплётная лавка</h2>
-            <p class="mt-2 text-sm leading-6 text-stone-400">
-              Гримуар покупается один раз: вместимость и вес переплёта не меняются. Новый том можно заполнить в кабинете формул, а запечатанный заменить только другой книгой.
+          <section id="trade-grimoire-catalog" class="trd-bindery">
+            <div class="trd-section-head">
+              <div>
+                <span class="trd-section-head__eyebrow">переплётная мастерская</span>
+                <h2>Полка чистых гримуаров</h2>
+              </div>
+            </div>
+            <p class="trd-bindery__copy">
+              Гримуар покупается один раз: вместимость и вес переплёта не меняются. Новый том можно
+              заполнить в кабинете формул, а запечатанный заменить только другой книгой.
             </p>
-            <div class="mt-5 grid gap-3 md:grid-cols-2">
+            <div class="trd-grimoire-shelf">
               <article
                 :for={tier <- @grimoire_tiers}
                 id={"trade-grimoire-tier-#{tier.key}"}
-                class="rounded-lg border border-amber-200/15 bg-stone-950/45 p-4"
+                class="trd-volume"
               >
-                <div class="flex items-start justify-between gap-3">
-                  <div>
-                    <h3 class="font-serif text-lg text-amber-100">{tier.name}</h3>
-                    <p class="mt-1 text-sm text-stone-400">
-                      {tier.capacity} формул · вес {tier.weight}
-                    </p>
-                  </div>
-                  <span class="shrink-0 rounded-full border border-amber-300/25 px-2.5 py-1 text-sm text-amber-100">
-                    {tier.price} ◈
-                  </span>
-                </div>
+                <span class="trd-volume__bands" aria-hidden="true"></span>
+                <h3>{tier.name}</h3>
+                <p>{tier.capacity} формул · вес {tier.weight}</p>
+                <span class="trd-volume__price"><span class="trd-coin">◈</span>{tier.price}</span>
                 <button
                   id={"trade-buy-grimoire-#{tier.key}"}
                   type="button"
                   phx-click="buy_grimoire"
                   phx-value-tier={tier.key}
-                  class="mt-4 rounded border border-amber-300/50 px-3 py-1.5 text-sm font-semibold text-amber-100 transition hover:bg-amber-300/10"
+                  class="trd-volume__buy"
                 >
-                  Купить переплёт
+                  снять с полки
                 </button>
               </article>
             </div>
+            <div class="trd-grimoire-shelf__plank" aria-hidden="true"></div>
           </section>
 
           <section
             :if={@legal_market_enabled?}
             id="trade-legal-market"
-            class="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-6"
+            class="trd-market-board trd-market-board--legal"
           >
-            <h2 class="font-serif text-2xl text-emerald-100">Официальный рынок</h2>
-            <p class="mt-2 text-sm text-stone-400">
+            <span class="trd-market-board__nail trd-market-board__nail--left" aria-hidden="true">
+            </span>
+            <span class="trd-market-board__nail trd-market-board__nail--right" aria-hidden="true">
+            </span>
+            <p class="trd-market-board__eyebrow">доска с княжеской печатью</p>
+            <h2>Официальный рынок</h2>
+            <p class="trd-market-board__copy">
               Налог при продаже: {@legal_market_tax_rate_bps / 100}% — он идёт в казну автоматически.
             </p>
 
@@ -295,7 +314,7 @@ defmodule MMGOWeb.TradeLive do
               for={@listing_form}
               id="trade-listing-form"
               phx-submit="create_listing"
-              class="mt-5 grid gap-3 md:grid-cols-4 md:items-end"
+              class="trd-form trd-posting-form"
             >
               <.input
                 field={@listing_form[:inventory_item_id]}
@@ -321,36 +340,33 @@ defmodule MMGOWeb.TradeLive do
               <button
                 id="trade-create-listing"
                 type="submit"
-                class="mb-4 rounded-md bg-emerald-300 px-4 py-3 font-semibold text-stone-950 hover:bg-emerald-200"
+                class="trd-posting-form__pin"
               >
-                Выставить
+                Приколоть объявление
               </button>
             </.form>
 
-            <p
-              :if={@market_listings == []}
-              id="trade-listings-empty"
-              class="mt-5 text-sm text-stone-400"
-            >
+            <p :if={@market_listings == []} id="trade-listings-empty" class="trd-board-empty">
               На рынке пока нет объявлений.
             </p>
-            <ul id="trade-market-listings" class="mt-4 space-y-2">
+            <ul id="trade-market-listings" class="trd-notices">
               <li
                 :for={listing <- @market_listings}
                 id={"trade-listing-#{listing.id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+                class="trd-notice"
               >
-                <span>
+                <span class="trd-notice__pin" aria-hidden="true"></span>
+                <span class="trd-notice__copy">
                   {listing.item_template.name} ×{listing.quantity} · {listing.total_price} ◈
                 </span>
-                <div class="flex gap-2">
+                <span class="trd-notice__actions">
                   <button
                     :if={listing.seller_character_id != @character.id}
                     id={"trade-buy-listing-#{listing.id}"}
                     type="button"
                     phx-click="buy_listing"
                     phx-value-listing-id={listing.id}
-                    class="rounded border border-emerald-300/50 px-3 py-1.5 text-emerald-100"
+                    class="trd-notice__act"
                   >
                     Купить
                   </button>
@@ -360,11 +376,11 @@ defmodule MMGOWeb.TradeLive do
                     type="button"
                     phx-click="cancel_listing"
                     phx-value-listing-id={listing.id}
-                    class="rounded border border-stone-500 px-3 py-1.5 text-stone-200"
+                    class="trd-notice__act trd-notice__act--muted"
                   >
                     Снять
                   </button>
-                </div>
+                </span>
               </li>
             </ul>
           </section>
@@ -372,66 +388,71 @@ defmodule MMGOWeb.TradeLive do
           <section
             :if={@black_market_enabled?}
             id="trade-black-market"
-            class="rounded-xl border border-violet-500/25 bg-violet-950/15 p-6"
+            class="trd-market-board trd-market-board--black"
           >
-            <h2 class="font-serif text-2xl text-violet-100">Чёрный рынок</h2>
-            <p class="mt-2 text-sm text-stone-400">
+            <span class="trd-market-board__nail trd-market-board__nail--left" aria-hidden="true">
+            </span>
+            <span class="trd-market-board__nail trd-market-board__nail--right" aria-hidden="true">
+            </span>
+            <p class="trd-market-board__eyebrow">записки за задней стеной</p>
+            <h2>Чёрный рынок</h2>
+            <p class="trd-market-board__copy">
               Здесь нет налога и нет гарантии доставки: после оплаты товар остаётся обещанием продавца.
             </p>
 
-            <.form
+            <div
               :if={@inventory_options != []}
-              for={@black_offer_form}
-              id="trade-black-offer-form"
-              phx-submit="create_black_offer"
-              class="mt-5 grid gap-3 md:grid-cols-4 md:items-end"
+              class="trd-receipt trd-receipt--inline trd-receipt--black"
             >
-              <.input
-                field={@black_offer_form[:inventory_item_id]}
-                type="select"
-                label="Ваш предмет"
-                prompt="Выберите предмет"
-                options={@inventory_options}
-              />
-              <.input
-                field={@black_offer_form[:quantity]}
-                type="number"
-                label="Количество"
-                min="1"
-                inputmode="numeric"
-              />
-              <.input
-                field={@black_offer_form[:unit_price]}
-                type="number"
-                label="Цена за единицу"
-                min="1"
-                inputmode="numeric"
-              />
-              <button
-                id="trade-create-black-offer"
-                type="submit"
-                class="mb-4 rounded-md bg-violet-300 px-4 py-3 font-semibold text-stone-950 hover:bg-violet-200"
+              <div class="trd-receipt__deckle"></div>
+              <h3 class="trd-receipt__title">Записка без подписи</h3>
+              <p class="trd-receipt__place">Ни печати, ни защиты закона</p>
+              <.form
+                for={@black_offer_form}
+                id="trade-black-offer-form"
+                phx-submit="create_black_offer"
+                class="trd-form"
               >
-                Предложить
-              </button>
-            </.form>
+                <.input
+                  field={@black_offer_form[:inventory_item_id]}
+                  type="select"
+                  label="Ваш предмет"
+                  prompt="Выберите предмет"
+                  options={@inventory_options}
+                />
+                <.input
+                  field={@black_offer_form[:quantity]}
+                  type="number"
+                  label="Количество"
+                  min="1"
+                  inputmode="numeric"
+                />
+                <.input
+                  field={@black_offer_form[:unit_price]}
+                  type="number"
+                  label="Цена за единицу"
+                  min="1"
+                  inputmode="numeric"
+                />
+                <button id="trade-create-black-offer" type="submit" class="trd-receipt__seal">
+                  Оставить в тени
+                </button>
+              </.form>
+            </div>
 
-            <p
-              :if={@black_market_offers == []}
-              id="trade-black-offers-empty"
-              class="mt-5 text-sm text-stone-400"
-            >
+            <p :if={@black_market_offers == []} id="trade-black-offers-empty" class="trd-board-empty">
               Тайных предложений пока нет.
             </p>
-            <ul id="trade-black-offers" class="mt-4 space-y-2">
+            <ul id="trade-black-offers" class="trd-notices trd-notices--black">
               <li
                 :for={offer <- @black_market_offers}
                 id={"trade-black-offer-#{offer.id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+                class="trd-notice trd-notice--black"
               >
-                <span>
+                <span class="trd-notice__pin" aria-hidden="true"></span>
+                <span class="trd-notice__copy">
                   {offer.item_template.name} ×{offer.quantity} · {offer.total_price} ◈
-                  <small class="block text-violet-200/70">
+                  <small>
                     риск дозора {format_bps(Map.fetch!(@black_market_risks, offer.id).chance_bps)} ·
                     штраф при поимке {Map.fetch!(@black_market_risks, offer.id).fine_amount} ◈
                   </small>
@@ -442,28 +463,26 @@ defmodule MMGOWeb.TradeLive do
                   type="button"
                   phx-click="accept_black_offer"
                   phx-value-offer-id={offer.id}
-                  class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
+                  class="trd-notice__act trd-notice__act--black"
                 >
                   Оплатить
                 </button>
               </li>
             </ul>
 
-            <div :if={@black_market_deals != []} id="trade-black-deals" class="mt-5 space-y-2">
-              <h3 class="font-serif text-lg text-violet-100">Ваши обязательства</h3>
+            <div :if={@black_market_deals != []} id="trade-black-deals" class="trd-obligations">
+              <h3>Ваши обязательства</h3>
               <article
                 :for={deal <- @black_market_deals}
                 id={"trade-black-deal-#{deal.id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+                class="trd-obligation"
               >
                 <span>
-                  {deal.item_template.name} ×{deal.quantity} · {deal.status}
-                  <small class="block text-stone-400">
-                    срок доставки {delivery_due_label(deal)}
-                  </small>
+                  {deal.item_template.name} ×{deal.quantity} · {deal_status_label(deal.status)}
+                  <small>срок доставки {delivery_due_label(deal)}</small>
                   <small
                     :if={get_in(deal.metadata || %{}, ["npc_detection", "caught"]) == true}
-                    class="block text-rose-300"
+                    class="trd-obligation__caught"
                   >
                     Сделку заметил дозор; штраф списан, репутация снижена.
                   </small>
@@ -476,7 +495,7 @@ defmodule MMGOWeb.TradeLive do
                   type="button"
                   phx-click="fulfill_black_deal"
                   phx-value-deal-id={deal.id}
-                  class="rounded border border-violet-300/50 px-3 py-1.5 text-violet-100"
+                  class="trd-notice__act trd-notice__act--black"
                 >
                   Доставить
                 </button>
@@ -486,7 +505,7 @@ defmodule MMGOWeb.TradeLive do
                   type="button"
                   phx-click="default_black_deal"
                   phx-value-deal-id={deal.id}
-                  class="rounded border border-rose-300/50 px-3 py-1.5 text-rose-100"
+                  class="trd-notice__act trd-notice__act--danger"
                 >
                   Заявить о срыве
                 </button>
@@ -498,9 +517,9 @@ defmodule MMGOWeb.TradeLive do
             id="trade-refresh"
             type="button"
             phx-click="refresh"
-            class="text-sm text-amber-200 underline decoration-amber-500/40 underline-offset-4"
+            class="trd-refresh"
           >
-            Обновить торговую книгу
+            обновить записи лавочников
           </button>
         </div>
       </main>
@@ -629,6 +648,11 @@ defmodule MMGOWeb.TradeLive do
         "не определён"
     end
   end
+
+  defp deal_status_label(:awaiting_delivery), do: "ожидает доставки"
+  defp deal_status_label(:fulfilled), do: "доставлена"
+  defp deal_status_label(:defaulted), do: "сорвана"
+  defp deal_status_label(_status), do: "состояние уточняется"
 
   defp format_bps(bps) when is_integer(bps) do
     :erlang.float_to_binary(bps / 100, decimals: 2) <> "%"

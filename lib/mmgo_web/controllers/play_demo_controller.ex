@@ -23,8 +23,10 @@ defmodule MMGOWeb.PlayDemoController do
           |> put_demo_session(challenger, opponent)
           |> json(%{ok: true, character_id: challenger.id, opponent_id: opponent.id})
 
-        {:error, reason} ->
-          conn |> put_status(500) |> json(%{error: inspect(reason)})
+        {:error, _reason} ->
+          conn
+          |> put_status(500)
+          |> json(%{error: "Не удалось сбросить демонстрационную игру."})
       end
     end)
   end
@@ -36,9 +38,9 @@ defmodule MMGOWeb.PlayDemoController do
         |> put_demo_session(challenger, opponent)
         |> redirect(to: ~p"/map")
 
-      {:error, reason} ->
+      {:error, _reason} ->
         conn
-        |> put_flash(:error, "Play setup failed: #{inspect(reason)}")
+        |> put_flash(:error, "Не удалось подготовить игру. Попробуйте ещё раз.")
         |> redirect(to: ~p"/")
     end
   end
@@ -47,7 +49,7 @@ defmodule MMGOWeb.PlayDemoController do
     if Application.get_env(:mmgo, :local_demo_enabled, false) == true do
       action.(conn)
     else
-      send_resp(conn, :not_found, "Not found")
+      send_resp(conn, :not_found, "Страница не найдена")
     end
   end
 

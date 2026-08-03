@@ -82,7 +82,7 @@ defmodule MMGOWeb.PlayDemoLoopTest do
              &(&1.item_template.code == "demo_lumen_dust")
            )
 
-    assert [%{name: "Ember Spark"}] = Spells.list_spells_for_character(character.id)
+    assert [%{name: "Искра углей"}] = Spells.list_spells_for_character(character.id)
     assert %{status: :active} = Grimoires.active_grimoire_for_character(character.id)
   end
 
@@ -95,7 +95,7 @@ defmodule MMGOWeb.PlayDemoLoopTest do
 
     response = json_response(conn, 200)
 
-    assert response["character"]["name"] == "Demo Wizard"
+    assert response["character"]["name"] == "Учебный маг"
     assert response["character"]["current_location"]["slug"] == "capital-city"
     assert [%{"destination" => %{"slug" => "the-tower"}}] = response["routes"]
     assert response["active_journey"] == nil
@@ -178,14 +178,14 @@ defmodule MMGOWeb.PlayDemoLoopTest do
 
     conn = get(conn, ~p"/play/new")
 
-    assert response(conn, 404) == "Not found"
+    assert response(conn, 404) == "Страница не найдена"
 
     reset_conn =
       conn
       |> recycle()
       |> post(~p"/api/play/reset")
 
-    assert response(reset_conn, 404) == "Not found"
+    assert response(reset_conn, 404) == "Страница не найдена"
     refute Repo.get_by(Account, handle: "demo-player-1")
     refute Repo.get_by(Account, handle: "demo-bot-1")
   end

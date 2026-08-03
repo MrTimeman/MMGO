@@ -198,6 +198,8 @@ defmodule MMGOWeb.CombatLiveTest do
 
     assert has_element?(view, "#combat-flee")
     view |> element("#combat-flee") |> render_click()
+    assert has_element?(view, "#combat-flee-confirmation")
+    view |> element("#combat-flee-confirm") |> render_click()
     assert has_element?(view, "#combat-resolving")
 
     job =

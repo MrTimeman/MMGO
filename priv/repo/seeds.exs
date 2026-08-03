@@ -17,15 +17,24 @@ canonical_realm =
     nil ->
       Repo.insert!(%Realm{
         slug: "canonical",
-        name: "Canonical Realm",
+        name: "Основной мир",
         status: :active,
         ruleset_version: 1,
         is_default: true,
-        metadata: %{"description" => "Default MMGO realm for local development"}
+        metadata: %{"description" => "Основной мир закрытой альфы MMGO"}
       })
 
     realm ->
-      realm
+      if realm.name == "Canonical Realm" do
+        realm
+        |> Ecto.Changeset.change(%{
+          name: "Основной мир",
+          metadata: %{"description" => "Основной мир закрытой альфы MMGO"}
+        })
+        |> Repo.update!()
+      else
+        realm
+      end
   end
 
 {:ok, _treasury_account} = Economy.ensure_treasury_account(canonical_realm, 1_000_000_000)
@@ -358,7 +367,7 @@ canonical_dungeon =
       {:ok, dungeon} =
         Dungeons.create_dungeon(canonical_realm, %{
           slug: "tower-dungeon",
-          name: "Tower Dungeon",
+          name: "Подземелье Башни",
           status: :active,
           entrance_location_id: tower.id
         })
@@ -366,17 +375,25 @@ canonical_dungeon =
       dungeon
 
     dungeon ->
-      dungeon
+      if dungeon.name == "Tower Dungeon" do
+        dungeon |> Ecto.Changeset.change(name: "Подземелье Башни") |> Repo.update!()
+      else
+        dungeon
+      end
   end
 
 upper_halls =
   case Repo.get_by(Dungeons.Floor, dungeon_id: canonical_dungeon.id, number: 1) do
     nil ->
-      {:ok, floor} = Dungeons.create_floor(canonical_dungeon, %{number: 1, name: "Upper Halls"})
+      {:ok, floor} = Dungeons.create_floor(canonical_dungeon, %{number: 1, name: "Верхние залы"})
       floor
 
     floor ->
-      floor
+      if floor.name == "Upper Halls" do
+        floor |> Ecto.Changeset.change(name: "Верхние залы") |> Repo.update!()
+      else
+        floor
+      end
   end
 
 entrance_node =
@@ -385,7 +402,7 @@ entrance_node =
       {:ok, node} =
         Dungeons.create_node(upper_halls, %{
           slug: "entrance",
-          name: "Entrance Hall",
+          name: "Входной зал",
           kind: :entrance,
           x: 0,
           y: 0,
@@ -395,7 +412,11 @@ entrance_node =
       node
 
     node ->
-      node
+      if node.name == "Entrance Hall" do
+        node |> Ecto.Changeset.change(name: "Входной зал") |> Repo.update!()
+      else
+        node
+      end
   end
 
 rest_node =
@@ -404,7 +425,7 @@ rest_node =
       {:ok, node} =
         Dungeons.create_node(upper_halls, %{
           slug: "rest-chamber",
-          name: "Rest Chamber",
+          name: "Комната отдыха",
           kind: :rest,
           x: 1,
           y: 0,
@@ -414,7 +435,11 @@ rest_node =
       node
 
     node ->
-      node
+      if node.name == "Rest Chamber" do
+        node |> Ecto.Changeset.change(name: "Комната отдыха") |> Repo.update!()
+      else
+        node
+      end
   end
 
 case Repo.get_by(Dungeons.Link, from_node_id: entrance_node.id, to_node_id: rest_node.id) do
@@ -602,7 +627,7 @@ sealed_annex =
     metadata: %{
       "seeded" => true,
       "topology_role" => "alternate_passage",
-      "route_note" => "A quieter route around the main archive"
+      "route_note" => "Тихий обход главного архива"
     }
   })
 
@@ -632,7 +657,7 @@ mirror_bridge =
     metadata: %{
       "seeded" => true,
       "topology_role" => "alternate_passage",
-      "route_note" => "A risky passage that avoids the central reach"
+      "route_note" => "Опасный проход в обход центральных залов"
     }
   })
 

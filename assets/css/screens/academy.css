@@ -564,18 +564,20 @@
 /* pinned-note look for rows */
 .bb-table-wrap {
   width: 100%;
+  max-width: 100%;
   overflow-x: auto;
   border-radius: 3px;
   box-shadow: 0 4px 10px -3px rgba(0,0,0,0.6);
   -webkit-overflow-scrolling: touch;
 }
-.bb-table { width: 100%; min-width: 34rem; border-collapse: collapse; background: var(--parch-paper);
+.bb-table { width: 100%; min-width: 34rem; table-layout: fixed; border-collapse: collapse; background: var(--parch-paper);
   color: var(--parch-ink); border-radius: 3px; overflow: hidden;
 }
 .bb-table th { font-family: var(--font-sans); font-size: 0.6rem; letter-spacing: 0.08em;
   text-transform: uppercase; text-align: left; padding: 0.5rem 0.6rem;
   background: var(--parch-paper-dark); color: var(--parch-ink-faint); }
-.bb-table td { padding: 0.5rem 0.6rem; border-top: 1px solid var(--parch-vignette); font-size: 0.85rem; }
+.bb-table td { padding: 0.5rem 0.6rem; border-top: 1px solid var(--parch-vignette); font-size: 0.85rem;
+  overflow-wrap: anywhere; }
 
 @media (max-width: 36rem) {
   .bulletin-board {
@@ -613,7 +615,7 @@
 
   .bb-table td {
     display: grid;
-    grid-template-columns: minmax(5.5rem, 0.8fr) minmax(0, 1.4fr);
+    grid-template-columns: minmax(4.5rem, 0.8fr) minmax(0, 1.4fr);
     gap: 0.65rem;
     padding: 0.35rem 0;
     border: 0;
@@ -651,42 +653,243 @@
 }
 .bb-list a { color: var(--parch-red); font-weight: 700; text-decoration: underline; }
 .bb-list code { background: rgba(0,0,0,0.08); padding: 0 0.25rem; border-radius: 2px; }
+.bb-muted { color: var(--parch-ink-faint); font-style: italic; }
 .bb-nav { max-width: 30rem; margin: 0.5rem auto 0; text-align: center; }
 .bb-nav a { color: var(--color-accent); font-family: var(--font-sans); font-size: 0.75rem;
   letter-spacing: 0.08em; text-transform: uppercase; text-decoration: none; }
 
 /* ---- Study desk: term ledger ---------------------------------- */
 .study-desk {
-  position: absolute; inset: 0; overflow-y: auto; overflow-x: hidden;
-  font-family: var(--font-serif); color: var(--color-text);
-  background: radial-gradient(ellipse at 50% -8%, #241a10 0%, #120d08 55%, #0a0705 100%);
-  padding: 3rem 0.9rem 3rem;
+  min-height: 100svh;
+  overflow-x: clip;
+  padding: 2.8rem 0.75rem 4rem;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  background:
+    radial-gradient(ellipse at 50% -8%, rgba(158, 109, 32, 0.2), transparent 27rem),
+    repeating-linear-gradient(88deg, transparent 0 3.5rem, rgba(0, 0, 0, 0.12) 3.55rem 3.7rem),
+    #0d0906;
 }
-.study-desk > .map-back-link { display: inline-flex; }
-.study-desk > h1 { max-width: 30rem; margin: 0.4rem auto 1rem; text-align: center;
-  font-size: 1.5rem; color: #f2eadd; }
-.desk-enrollment, .desk-terms {
-  max-width: 30rem; margin: 0 auto 0.9rem;
-  background: linear-gradient(180deg, var(--acd-panel-2), var(--acd-panel));
-  border: 1px solid var(--acd-hair); border-radius: 0.7rem; padding: 1rem;
+
+.study-desk__folio {
+  width: min(100%, 34rem);
+  margin: 0 auto;
 }
-.desk-enrollment h2, .desk-terms h2 { font-size: 1.1rem; color: #ece3d5; margin: 0 0 0.6rem; }
-.desk-enrollment p { font-size: 0.88rem; color: var(--color-text-muted); margin: 0.25rem 0; }
-.desk-enrollment strong { color: #ece3d5; }
-.terms-table { width: 100%; border-collapse: collapse; font-size: 0.85rem; }
-.terms-table th { font-family: var(--font-sans); font-size: 0.6rem; letter-spacing: 0.08em;
-  text-transform: uppercase; color: var(--color-text-muted); text-align: left;
-  padding: 0.45rem 0.5rem; border-bottom: 1px solid var(--acd-hair); }
-.terms-table td { padding: 0.5rem; border-bottom: 1px solid rgba(58,47,36,0.5); color: #ded3c3; }
-.terms-table a { color: var(--color-accent); text-decoration: none; font-weight: 700; }
-.study-desk button {
-  margin-top: 0.8rem; font-family: var(--font-sans); font-size: 0.72rem; letter-spacing: 0.08em;
-  text-transform: uppercase; padding: 0.55rem 1rem; border-radius: 0.5rem; cursor: pointer;
-  background: linear-gradient(180deg, var(--parch-gold-bright), var(--parch-gold)); color: #120c06;
-  border: 1px solid var(--parch-gold); font-weight: 700;
+
+.study-desk__folio > .map-back-link { display: inline-flex; }
+
+.study-desk__heading {
+  position: relative;
+  margin: 0.7rem 0 1rem;
+  padding: 1.2rem 1.25rem 1.3rem 2rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 35%, var(--parch-leather-dark));
+  border-radius: 0.25rem 0.75rem 0.75rem 0.25rem;
+  background:
+    linear-gradient(90deg, rgba(0, 0, 0, 0.38) 0 1.1rem, transparent 1.1rem),
+    radial-gradient(circle at 74% 0%, rgba(214, 168, 73, 0.14), transparent 12rem),
+    var(--parch-leather);
+  box-shadow: inset 1rem 0 1rem rgba(0, 0, 0, 0.32), 0 0.9rem 1.6rem rgba(0, 0, 0, 0.36);
 }
-.study-desk > p { max-width: 30rem; margin: 1rem auto; color: var(--color-text-muted); text-align: center; }
-.study-desk > p a { color: var(--color-accent); }
+
+.study-desk__heading::before {
+  content: "";
+  position: absolute;
+  inset-block: 0.6rem;
+  left: 0.68rem;
+  width: 2px;
+  background: repeating-linear-gradient(to bottom, var(--parch-stitch) 0 4px, transparent 4px 10px);
+}
+
+.study-desk__heading p,
+.study-desk__heading span {
+  color: color-mix(in srgb, var(--parch-paper) 76%, transparent);
+}
+
+.study-desk__heading p {
+  margin: 0;
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+}
+
+.study-desk__heading h1 {
+  margin: 0.15rem 0 0.28rem;
+  color: var(--parch-paper-light);
+  font-size: clamp(1.6rem, 7vw, 2.15rem);
+}
+
+.study-desk__heading span { font-size: 0.82rem; }
+
+.desk-sheet {
+  position: relative;
+  margin: 0 0 1rem;
+  padding: 1.15rem 1rem 1.25rem 1.35rem;
+  color: var(--parch-ink);
+  border: 1px solid var(--parch-vignette);
+  border-radius: 0.16rem;
+  background:
+    linear-gradient(rgba(78, 48, 25, 0.045) 1px, transparent 1px) 0 2.45rem / 100% 1.55rem,
+    radial-gradient(circle at 22% 4%, var(--parch-paper-light), var(--parch-paper) 72%, var(--parch-paper-dark));
+  box-shadow: inset 0 0 2.3rem rgba(78, 48, 25, 0.1), 0 0.8rem 1.5rem rgba(0, 0, 0, 0.34);
+}
+
+.desk-sheet__pin {
+  position: absolute;
+  top: -0.26rem;
+  left: 50%;
+  width: 0.62rem;
+  height: 0.62rem;
+  border-radius: 50%;
+  background: var(--parch-red);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.42);
+}
+
+.desk-sheet__kicker {
+  margin: 0 0 0.2rem;
+  color: var(--parch-red);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.13em;
+  text-transform: uppercase;
+}
+
+.desk-sheet h2 {
+  margin: 0 0 0.75rem;
+  color: var(--parch-ink);
+  font-size: 1.3rem;
+}
+
+.desk-enrollment__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0.65rem 1rem;
+  margin: 0;
+}
+
+.desk-enrollment__facts > div:last-child { grid-column: 1 / -1; }
+.desk-enrollment__facts dt {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.desk-enrollment__facts dd { margin: 0.12rem 0 0; font-weight: 700; overflow-wrap: anywhere; }
+
+.desk-terms__heading {
+  display: flex;
+  align-items: end;
+  justify-content: space-between;
+  gap: 1rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 2px solid var(--parch-ink);
+}
+.desk-terms__heading h2 { margin: 0; }
+.desk-terms__heading > span {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+}
+
+.terms-table-wrap { width: 100%; max-width: 100%; overflow-x: auto; -webkit-overflow-scrolling: touch; }
+.terms-table { width: 100%; table-layout: fixed; border-collapse: collapse; font-size: 0.84rem; }
+.terms-table th {
+  padding: 0.55rem 0.45rem;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  letter-spacing: 0.07em;
+  text-align: left;
+  text-transform: uppercase;
+  border-bottom: 1px solid var(--parch-vignette);
+}
+.terms-table td {
+  padding: 0.58rem 0.45rem;
+  color: var(--parch-ink);
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-vignette) 65%, transparent);
+  overflow-wrap: anywhere;
+}
+.terms-table a { color: var(--parch-red); font-weight: 700; text-decoration: underline; }
+.terms-table__row--failed td:nth-child(2) { color: var(--parch-red); font-weight: 700; }
+.terms-table__row--pending td:nth-child(2) { color: var(--parch-ink-faint); font-style: italic; }
+.terms-table__empty td { padding: 1rem 0.45rem; color: var(--parch-ink-faint); text-align: center; }
+
+.desk-terms__actions {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 0.9rem;
+}
+.desk-terms__actions p {
+  margin: 0;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+}
+.desk-terms__actions button {
+  justify-self: start;
+  min-height: 2.6rem;
+  padding: 0.55rem 0.9rem;
+  color: var(--parch-paper-light);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  cursor: pointer;
+  border: 1px solid color-mix(in srgb, var(--parch-red) 75%, black);
+  border-radius: 0.2rem;
+  background: linear-gradient(180deg, #9b3f35, var(--parch-red));
+  box-shadow: 0 0.25rem 0.45rem rgba(0, 0, 0, 0.24);
+}
+
+.desk-sheet--empty { text-align: center; }
+.desk-sheet--empty a { color: var(--parch-red); font-weight: 700; }
+
+@media (max-width: 36rem) {
+  .study-desk { padding-inline: 0.55rem; }
+  .desk-sheet { padding-inline: 0.75rem; }
+  .desk-enrollment__facts { grid-template-columns: 1fr; }
+  .desk-enrollment__facts > div:last-child { grid-column: auto; }
+
+  .terms-table thead { display: none; }
+  .terms-table,
+  .terms-table tbody,
+  .terms-table tr,
+  .terms-table td { display: block; width: 100%; }
+  .terms-table tr {
+    padding: 0.4rem 0.2rem;
+    border-bottom: 1px solid var(--parch-vignette);
+  }
+  .terms-table td {
+    display: grid;
+    grid-template-columns: minmax(4.7rem, 0.75fr) minmax(0, 1.4fr);
+    gap: 0.55rem;
+    padding: 0.28rem 0;
+    border: 0;
+  }
+  .terms-table td::before {
+    content: attr(data-label);
+    color: var(--parch-ink-faint);
+    font-family: var(--font-sans);
+    font-size: 0.58rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+  }
+  .terms-table__empty td { display: block; padding: 0.8rem 0; }
+  .terms-table__empty td::before { content: none; }
+  .desk-terms__actions button { width: 100%; justify-self: stretch; }
+}
+
+@media (max-width: 22rem) {
+  .desk-terms__heading { align-items: flex-start; flex-direction: column; gap: 0.2rem; }
+  .terms-table td { grid-template-columns: 1fr; gap: 0.1rem; }
+}
 
 /* ---- Exam room: calm single-column timed exam ----------------- */
 .exam-room {

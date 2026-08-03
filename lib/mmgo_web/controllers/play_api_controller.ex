@@ -25,20 +25,22 @@ defmodule MMGOWeb.PlayApiController do
       {:error, :not_found} ->
         conn
         |> put_status(:unauthorized)
-        |> json(%{ok: false, error: "player session not started"})
+        |> json(%{ok: false, error: "Сеанс игрока не начат."})
 
       {:error, :inactive} ->
         conn
         |> put_status(:unauthorized)
-        |> json(%{ok: false, error: "player session not started"})
+        |> json(%{ok: false, error: "Сеанс игрока не начат."})
 
       {:error, :missing_destination} ->
         conn
         |> put_status(:bad_request)
-        |> json(%{ok: false, error: "destination_slug is required"})
+        |> json(%{ok: false, error: "Не указано место назначения."})
 
       {:error, :no_direct_route} ->
-        conn |> put_status(:unprocessable_entity) |> json(%{ok: false, error: "no direct route"})
+        conn
+        |> put_status(:unprocessable_entity)
+        |> json(%{ok: false, error: "Прямого пути к выбранному месту нет."})
 
       {:error, %Ecto.Changeset{} = changeset} ->
         conn
@@ -151,9 +153,6 @@ defmodule MMGOWeb.PlayApiController do
     }
   end
 
-  defp format_changeset(changeset) do
-    changeset.errors
-    |> Enum.map(fn {field, {message, _opts}} -> "#{field}: #{message}" end)
-    |> Enum.join(", ")
-  end
+  defp format_changeset(_changeset),
+    do: "Путь не удалось начать. Проверьте место назначения и состояние персонажа."
 end

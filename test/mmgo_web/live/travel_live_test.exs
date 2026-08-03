@@ -66,7 +66,7 @@ defmodule MMGOWeb.TravelLiveTest do
     assert has_element?(view, "#travel-overload-state")
     assert has_element?(view, "#travel-waypoint-0")
     assert has_element?(view, "#travel-waypoint-2")
-    assert has_element?(view, "#travel-open-inventory")
+    refute has_element?(view, "#travel-open-inventory")
 
     refute has_element?(view, "#atmosphere-audio")
 
@@ -81,7 +81,7 @@ defmodule MMGOWeb.TravelLiveTest do
     assert {:error, {:live_redirect, %{to: "/map", flash: flash}}} =
              live(session_conn(conn, character), ~p"/travel")
 
-    assert flash["info"] =~ "active journey"
+    assert flash["info"] =~ "никуда не путешествуете"
   end
 
   defp session_conn(conn, character) do

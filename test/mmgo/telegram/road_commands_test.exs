@@ -34,7 +34,7 @@ defmodule MMGO.Telegram.RoadCommandsTest do
     assert {:ok, encounter_text} =
              Commands.process_message(initiator, %{"text" => "/road encounter roadtarget"})
 
-    assert encounter_text =~ "Overworld encounter created"
+    assert encounter_text =~ "Дорожная встреча создана"
 
     [encounter] = Overworld.list_open_encounters_for_character(initiator.id)
 
@@ -44,7 +44,7 @@ defmodule MMGO.Telegram.RoadCommandsTest do
     assert {:ok, attack_text} =
              Commands.process_message(initiator, %{"text" => "/road attack #{encounter.id}"})
 
-    assert attack_text =~ "Overworld combat started"
+    assert attack_text =~ "Дорожный бой начат"
 
     loaded_encounter = Overworld.get_encounter!(encounter.id)
     assert loaded_encounter.status == :escalated

@@ -172,6 +172,8 @@ defmodule MMGOWeb.DuelLiveTest do
 
     {:ok, combat_view, _html} = live(session_conn(conn, challenger), ~p"/combat/#{combat.id}")
     combat_view |> element("#combat-flee") |> render_click()
+    assert has_element?(combat_view, "#combat-flee-confirmation")
+    combat_view |> element("#combat-flee-confirm") |> render_click()
 
     perform_all_actions_worker(active_duel.combat_id)
 

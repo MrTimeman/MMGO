@@ -1,0 +1,874 @@
+/* Academy assessments — paper belongs on a desk, not inside dashboard cards.
+   Shared by the lecture notebook, examination folio and thesis protocol. */
+
+.acd-assessment {
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  background:
+    radial-gradient(circle at 50% -10%, color-mix(in srgb, var(--parch-gold) 14%, transparent), transparent 38rem),
+    repeating-linear-gradient(92deg, color-mix(in srgb, black 4%, transparent) 0 1px, transparent 1px 11px),
+    linear-gradient(145deg, color-mix(in srgb, var(--parch-leather-dark) 80%, black), var(--color-bg));
+}
+
+.acd-assessment--lecture {
+  background:
+    radial-gradient(circle at 72% 8%, color-mix(in srgb, var(--arc-blue) 12%, transparent), transparent 32rem),
+    repeating-linear-gradient(92deg, color-mix(in srgb, black 4%, transparent) 0 1px, transparent 1px 11px),
+    linear-gradient(145deg, color-mix(in srgb, var(--parch-leather-dark) 76%, black), var(--color-bg));
+}
+
+.acd-assessment__desk {
+  width: min(100%, 48rem);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 3.5rem);
+}
+
+.acd-assessment__tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.acd-assessment__exit {
+  color: var(--color-text-muted);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  text-decoration: none;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.acd-assessment__exit:hover {
+  color: var(--parch-gold-glow);
+  transform: translateX(-2px);
+}
+
+.acd-assessment__kicker {
+  margin: 0;
+  color: color-mix(in srgb, var(--parch-gold-glow) 78%, var(--color-text));
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.acd-clock-seal,
+.acd-lecture-ticket {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.55rem;
+  min-height: 2.6rem;
+  padding: 0.38rem 0.72rem;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 58%, var(--color-border));
+  border-radius: 0.25rem;
+  background: color-mix(in srgb, var(--parch-leather) 72%, black);
+  box-shadow: inset 0 0 0 2px color-mix(in srgb, var(--parch-gold) 12%, transparent);
+  color: var(--parch-gold-glow);
+  font-family: var(--font-sans);
+}
+
+.acd-clock-seal span {
+  color: var(--color-text-muted);
+  font-size: 0.58rem;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.acd-clock-seal strong { font-size: 0.8rem; }
+
+.acd-lecture-ticket {
+  border-color: color-mix(in srgb, var(--arc-blue-bright) 32%, var(--color-border));
+  color: color-mix(in srgb, var(--arc-blue-bright) 60%, var(--color-text));
+  font-size: 0.72rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.acd-exam-cover,
+.acd-lecture-book {
+  position: relative;
+  overflow: hidden;
+  padding: 2rem 2rem 2.1rem 3.7rem;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 46%, var(--parch-leather-dark));
+  border-radius: 0.35rem 0.8rem 0.8rem 0.35rem;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, black 24%, transparent), transparent 1.3rem),
+    radial-gradient(circle at 80% 0, color-mix(in srgb, var(--parch-gold) 11%, transparent), transparent 17rem),
+    linear-gradient(145deg, var(--parch-leather), var(--parch-leather-dark));
+  box-shadow:
+    0 1.4rem 2.5rem color-mix(in srgb, black 50%, transparent),
+    inset 0 0 0 4px color-mix(in srgb, var(--parch-gold) 11%, transparent),
+    inset 1rem 0 1.3rem color-mix(in srgb, black 34%, transparent);
+}
+
+.acd-exam-cover__cord,
+.acd-lecture-book__spine {
+  position: absolute;
+  inset-block: 0;
+  left: 2rem;
+  width: 2px;
+  background: color-mix(in srgb, var(--parch-stitch) 56%, transparent);
+  box-shadow: -0.25rem 0 color-mix(in srgb, black 20%, transparent);
+}
+
+.acd-exam-cover__seal {
+  position: absolute;
+  top: 1.4rem;
+  right: 1.5rem;
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--parch-gold-glow) 40%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, var(--parch-gold-bright), var(--parch-gold));
+  box-shadow: 0 0.4rem 0.8rem color-mix(in srgb, black 38%, transparent);
+  color: var(--parch-leather-dark);
+  font-size: 1.2rem;
+  font-weight: 700;
+}
+
+.acd-exam-cover h1,
+.acd-lecture-book h1 {
+  max-width: calc(100% - 3rem);
+  margin: 0.35rem 0 0;
+  color: var(--parch-paper-light);
+  font-size: clamp(2rem, 8vw, 3rem);
+  line-height: 1;
+  text-shadow: 0 2px 8px color-mix(in srgb, black 55%, transparent);
+}
+
+.acd-exam-cover__copy,
+.acd-lecture-book__body {
+  max-width: 38rem;
+  margin: 1.1rem 0 0;
+  color: color-mix(in srgb, var(--parch-paper) 77%, var(--color-text-muted));
+  font-size: 0.94rem;
+  line-height: 1.65;
+}
+
+.acd-exam-cover__note,
+.acd-lecture-book__margin {
+  display: inline-block;
+  margin: 1rem 0 0;
+  padding-top: 0.55rem;
+  border-top: 1px solid color-mix(in srgb, var(--parch-gold) 44%, transparent);
+  color: var(--parch-gold-glow);
+  font-family: var(--font-hand);
+  font-size: 1.02rem;
+}
+
+.acd-lecture-book {
+  border-color: color-mix(in srgb, var(--arc-blue) 35%, var(--parch-leather-dark));
+  background:
+    linear-gradient(90deg, color-mix(in srgb, black 26%, transparent), transparent 1.3rem),
+    radial-gradient(circle at 78% 0, color-mix(in srgb, var(--arc-blue) 11%, transparent), transparent 17rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--parch-leather) 74%, var(--arc-blue-deep)), var(--parch-leather-dark));
+}
+
+.acd-lecture-book__bookmark {
+  position: absolute;
+  top: 0;
+  right: 2rem;
+  width: 1.1rem;
+  height: 4.2rem;
+  background: var(--parch-red);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 80%, 0 100%);
+  filter: drop-shadow(0 0.2rem 0.15rem color-mix(in srgb, black 40%, transparent));
+}
+
+.acd-red-ink {
+  margin: 1rem 0;
+  padding: 0.8rem 1rem;
+  border-left: 3px solid var(--parch-red);
+  background: color-mix(in srgb, var(--parch-red) 18%, var(--color-surface));
+  color: color-mix(in srgb, var(--color-danger) 52%, white);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+}
+
+.acd-exam-folio,
+.acd-lecture-folio,
+.acd-result-sheet {
+  position: relative;
+  margin-top: 1rem;
+  padding: 1.6rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.2rem;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 1.85rem, color-mix(in srgb, var(--parch-ink) 6%, transparent) 1.87rem),
+    radial-gradient(circle at 12% 3%, var(--parch-paper-light), var(--parch-paper) 54%, color-mix(in srgb, var(--parch-paper-dark) 72%, var(--parch-paper)));
+  box-shadow:
+    0 1.25rem 2.2rem color-mix(in srgb, black 42%, transparent),
+    0.25rem 0.35rem 0 color-mix(in srgb, var(--parch-paper-dark) 65%, black);
+  color: var(--parch-ink);
+}
+
+.acd-exam-folio::before,
+.acd-lecture-folio::before,
+.acd-result-sheet::before {
+  content: "";
+  position: absolute;
+  inset-block: 1rem;
+  left: 0.72rem;
+  width: 1px;
+  background: color-mix(in srgb, var(--parch-red) 24%, transparent);
+}
+
+.acd-exam-folio__heading {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-ink) 22%, transparent);
+}
+
+.acd-exam-folio__heading span {
+  font-size: 1.25rem;
+  font-weight: 700;
+}
+
+.acd-exam-folio__heading small,
+.acd-lecture-folio__instruction {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+}
+
+.acd-exam-folio > div,
+.acd-lecture-folio > div { margin-bottom: 0.9rem; }
+
+.acd-exam-folio label,
+.acd-lecture-folio label {
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  font-size: 0.93rem;
+  font-weight: 700;
+}
+
+.acd-paper-control {
+  width: 100%;
+  min-height: 2.9rem;
+  margin-top: 0.35rem;
+  padding: 0.6rem 2.4rem 0.6rem 0.72rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-ink) 42%, transparent);
+  border-radius: 0;
+  background-color: color-mix(in srgb, var(--parch-paper-light) 52%, transparent);
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+  box-shadow: none;
+  outline: none;
+}
+
+.acd-paper-control:focus {
+  border-bottom-color: var(--parch-gold);
+  background-color: color-mix(in srgb, var(--parch-paper-light) 82%, transparent);
+}
+
+.acd-quill-button,
+.acd-result-sheet__return,
+.acd-margin-note-button {
+  display: inline-flex;
+  min-height: 3rem;
+  align-items: center;
+  justify-content: center;
+  padding: 0.65rem 1rem;
+  border: 1px solid color-mix(in srgb, var(--parch-ink) 44%, transparent);
+  border-radius: 0.18rem;
+  background: var(--parch-ink);
+  color: var(--parch-paper-light);
+  font-family: var(--font-serif);
+  font-size: 0.88rem;
+  font-weight: 700;
+  text-decoration: none;
+  cursor: pointer;
+  transition: transform 0.15s ease, background-color 0.15s ease;
+}
+
+.acd-quill-button {
+  width: 100%;
+  margin-top: 0.5rem;
+}
+
+.acd-quill-button:hover,
+.acd-result-sheet__return:hover {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--parch-ink) 82%, black);
+}
+
+.acd-quill-button--lecture {
+  background: color-mix(in srgb, var(--parch-ink) 80%, var(--arc-blue-deep));
+}
+
+.acd-margin-note-button {
+  width: 100%;
+  margin-top: 0.75rem;
+  border-color: color-mix(in srgb, var(--color-text-muted) 35%, transparent);
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-hand);
+  font-weight: 400;
+}
+
+.acd-margin-note-button:hover { color: var(--parch-gold-glow); }
+
+.acd-lecture-folio__instruction {
+  margin: 0 0 1.1rem;
+  padding-bottom: 0.7rem;
+  border-bottom: 1px dotted color-mix(in srgb, var(--parch-ink) 28%, transparent);
+  line-height: 1.45;
+}
+
+.acd-result-sheet {
+  transform: rotate(-0.25deg);
+}
+
+.acd-result-sheet__stamp {
+  position: absolute;
+  top: 1.25rem;
+  right: 1.35rem;
+  display: grid;
+  width: 3.3rem;
+  height: 3.3rem;
+  place-items: center;
+  border: 2px solid color-mix(in srgb, var(--color-safe) 58%, var(--parch-ink));
+  border-radius: 50%;
+  color: color-mix(in srgb, var(--color-safe) 52%, var(--parch-ink));
+  font-size: 1.6rem;
+  transform: rotate(8deg);
+}
+
+.acd-result-sheet__kicker {
+  margin: 0;
+  color: var(--parch-red);
+  font-family: var(--font-sans);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.17em;
+  text-transform: uppercase;
+}
+
+.acd-result-sheet h2 {
+  margin: 0.4rem 0 0;
+  color: var(--parch-ink);
+  font-size: clamp(2rem, 9vw, 3rem);
+}
+
+.acd-result-sheet__copy {
+  max-width: 35rem;
+  margin: 0.65rem 0 1rem;
+  color: var(--parch-ink-faint);
+  line-height: 1.55;
+}
+
+@media (max-width: 520px) {
+  .acd-assessment__desk {
+    padding-inline: 0.7rem;
+  }
+
+  .acd-assessment__tools {
+    align-items: flex-start;
+  }
+
+  .acd-clock-seal {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 0.05rem;
+  }
+
+  .acd-exam-cover,
+  .acd-lecture-book {
+    padding: 1.6rem 1.2rem 1.6rem 2.6rem;
+  }
+
+  .acd-exam-cover__cord,
+  .acd-lecture-book__spine { left: 1.25rem; }
+
+  .acd-exam-cover__seal {
+    top: 1rem;
+    right: 0.9rem;
+    width: 2.25rem;
+    height: 2.25rem;
+  }
+
+  .acd-exam-folio,
+  .acd-lecture-folio,
+  .acd-result-sheet { padding: 1.25rem 1rem 1.35rem 1.35rem; }
+
+  .acd-exam-folio__heading {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+}
+
+/* Thesis defense — a council chamber with a bound protocol, professor
+   nameplates and a paper ballot laid on the central table. */
+.acd-defense {
+  position: fixed;
+  inset: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  background:
+    radial-gradient(ellipse at 50% -12%, color-mix(in srgb, var(--arc-blue-deep) 30%, var(--parch-gold) 7%), transparent 34rem),
+    linear-gradient(110deg, color-mix(in srgb, black 24%, transparent), transparent 18%, color-mix(in srgb, black 22%, transparent) 42%),
+    color-mix(in srgb, var(--color-bg) 88%, var(--parch-leather-dark));
+}
+
+.acd-defense__hall {
+  width: min(100%, 66rem);
+  min-height: 100%;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 4rem);
+}
+
+.acd-defense__tools,
+.acd-protocol-cover__head,
+.acd-panel-table__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
+.acd-defense__tools { align-items: center; margin-bottom: 1rem; }
+
+.acd-defense__exit,
+.acd-defense__refresh {
+  border: 0;
+  background: transparent;
+  color: var(--color-text-muted);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  text-decoration: none;
+  cursor: pointer;
+  transition: color 0.15s ease, transform 0.15s ease;
+}
+
+.acd-defense__exit:hover {
+  color: var(--parch-gold-glow);
+  transform: translateX(-2px);
+}
+
+.acd-defense__refresh:hover { color: var(--parch-gold-glow); }
+
+.acd-protocol-cover {
+  position: relative;
+  overflow: hidden;
+  padding: 2rem 2rem 2rem 3.9rem;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 38%, var(--parch-leather-dark));
+  border-radius: 0.3rem 0.85rem 0.85rem 0.3rem;
+  background:
+    radial-gradient(circle at 82% 0, color-mix(in srgb, var(--arc-blue) 11%, transparent), transparent 20rem),
+    linear-gradient(145deg, color-mix(in srgb, var(--parch-leather) 76%, var(--arc-blue-deep)), var(--parch-leather-dark));
+  box-shadow:
+    0 1.5rem 3rem color-mix(in srgb, black 52%, transparent),
+    inset 0 0 0 4px color-mix(in srgb, var(--parch-stitch) 9%, transparent),
+    inset 1.2rem 0 1.4rem color-mix(in srgb, black 38%, transparent);
+}
+
+.acd-protocol-cover__hinge {
+  position: absolute;
+  inset-block: 0;
+  left: 2.1rem;
+  width: 2px;
+  background: color-mix(in srgb, var(--parch-stitch) 50%, transparent);
+}
+
+.acd-protocol-cover__crest {
+  position: absolute;
+  right: 1.4rem;
+  bottom: 1.25rem;
+  display: grid;
+  width: 3.2rem;
+  height: 3.2rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--parch-gold-glow) 35%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, var(--parch-gold-bright), var(--parch-gold));
+  box-shadow: 0 0.45rem 0.9rem color-mix(in srgb, black 42%, transparent);
+  color: var(--parch-leather-dark);
+  font-size: 1.35rem;
+  font-weight: 700;
+}
+
+.acd-protocol-cover__head > div { min-width: 0; }
+
+.acd-protocol-cover__kicker,
+.acd-dossier__kicker,
+.acd-verdict-card__kicker,
+.acd-panel-table__head p,
+.acd-ballot__kicker,
+.acd-history-ledger__title {
+  margin: 0;
+  color: color-mix(in srgb, var(--arc-blue-bright) 54%, var(--parch-paper));
+  font-family: var(--font-sans);
+  font-size: 0.63rem;
+  font-weight: 700;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+}
+
+.acd-protocol-cover h1 {
+  max-width: 42rem;
+  margin: 0.38rem 0 0;
+  color: var(--parch-paper-light);
+  font-size: clamp(1.9rem, 6vw, 3.2rem);
+  line-height: 1.02;
+  text-shadow: 0 2px 10px color-mix(in srgb, black 55%, transparent);
+}
+
+.acd-protocol-cover__copy {
+  max-width: 43rem;
+  margin: 1rem 0 0;
+  color: color-mix(in srgb, var(--parch-paper) 74%, var(--color-text-muted));
+  font-size: 0.94rem;
+  line-height: 1.58;
+}
+
+.acd-protocol-cover__copy strong { color: var(--parch-paper-light); }
+
+.acd-phase-seal {
+  flex: 0 0 auto;
+  padding: 0.4rem 0.65rem;
+  border: 1px solid color-mix(in srgb, var(--arc-blue-bright) 36%, var(--color-border));
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, var(--arc-blue-deep) 48%, black);
+  color: color-mix(in srgb, var(--arc-blue-bright) 65%, white);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  transform: rotate(1deg);
+}
+
+.acd-phase-seal.is-accepted {
+  border-color: color-mix(in srgb, var(--color-safe) 48%, var(--color-border));
+  color: color-mix(in srgb, var(--color-safe) 52%, white);
+}
+
+.acd-phase-seal.is-rejected {
+  border-color: color-mix(in srgb, var(--parch-red) 60%, var(--color-border));
+  color: color-mix(in srgb, var(--color-danger) 56%, white);
+}
+
+.acd-dossier-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.45fr) minmax(16rem, 0.8fr);
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+.acd-defense .acd-dossier,
+.acd-verdict-card,
+.acd-defense .acd-ballot,
+.acd-history-ledger {
+  position: relative;
+  padding: 1.4rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.18rem;
+  background:
+    repeating-linear-gradient(0deg, transparent 0 1.7rem, color-mix(in srgb, var(--parch-ink) 5%, transparent) 1.72rem),
+    radial-gradient(circle at 12% 2%, var(--parch-paper-light), var(--parch-paper) 58%, color-mix(in srgb, var(--parch-paper-dark) 68%, var(--parch-paper)));
+  box-shadow: 0 1rem 2rem color-mix(in srgb, black 36%, transparent);
+  color: var(--parch-ink);
+}
+
+.acd-defense .acd-dossier { transform: rotate(-0.2deg); }
+.acd-dossier__kicker,
+.acd-verdict-card__kicker,
+.acd-ballot__kicker,
+.acd-history-ledger__title { color: var(--parch-red); }
+
+.acd-dossier__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 1rem;
+  margin: 1rem 0 0;
+}
+
+.acd-dossier__facts dt {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 0.87rem;
+}
+
+.acd-dossier__facts dd {
+  margin: 0.2rem 0 0;
+  color: var(--parch-ink);
+  font-weight: 700;
+}
+
+.acd-dossier__id {
+  overflow-wrap: anywhere;
+  font-family: var(--font-mono);
+  font-size: 0.66rem;
+  font-weight: 400 !important;
+}
+
+.acd-dossier__note {
+  margin: 1rem 0 0;
+  padding-top: 0.75rem;
+  border-top: 1px dotted color-mix(in srgb, var(--parch-ink) 28%, transparent);
+  color: var(--parch-ink-faint);
+  line-height: 1.5;
+}
+
+.acd-verdict-card {
+  align-self: stretch;
+  padding-right: 4rem;
+  transform: rotate(0.35deg);
+}
+
+.acd-verdict-card h2 {
+  margin: 0.45rem 0 0;
+  color: var(--parch-ink);
+  font-size: 1.6rem;
+}
+
+.acd-verdict-card > p:last-child {
+  margin: 0.7rem 0 0;
+  color: var(--parch-ink-faint);
+  line-height: 1.5;
+}
+
+.acd-verdict-card__wax {
+  position: absolute;
+  right: 1rem;
+  bottom: 1rem;
+  display: grid;
+  width: 2.8rem;
+  height: 2.8rem;
+  place-items: center;
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, color-mix(in srgb, var(--parch-red) 75%, white), var(--parch-red));
+  box-shadow: 0 0.35rem 0.7rem color-mix(in srgb, black 32%, transparent);
+  color: var(--parch-paper);
+}
+
+.acd-panel-table {
+  margin-top: 1.2rem;
+  padding: 1.4rem;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 35%, var(--color-border));
+  border-radius: 0.3rem;
+  background:
+    radial-gradient(ellipse at 50% 100%, color-mix(in srgb, var(--parch-gold) 8%, transparent), transparent 80%),
+    linear-gradient(145deg, color-mix(in srgb, var(--parch-leather) 65%, black), var(--parch-leather-dark));
+  box-shadow:
+    0 1.4rem 2.5rem color-mix(in srgb, black 46%, transparent),
+    inset 0 0 0 3px color-mix(in srgb, var(--parch-stitch) 7%, transparent);
+}
+
+.acd-panel-table__head { align-items: flex-end; }
+.acd-panel-table__head h2 {
+  margin: 0.25rem 0 0;
+  color: var(--parch-paper-light);
+  font-size: 1.5rem;
+}
+
+.acd-panel-table__head > span {
+  color: var(--color-text-muted);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+}
+
+.acd-panel-table__warning {
+  margin: 1rem 0 0;
+  padding: 0.7rem 0.85rem;
+  border-left: 2px solid var(--parch-gold);
+  background: color-mix(in srgb, var(--parch-gold) 9%, black);
+  color: var(--parch-paper);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+
+.acd-panel {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.75rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acd-panelist {
+  position: relative;
+  min-width: 0;
+  padding: 1rem 0.85rem 0.85rem;
+  border: 1px solid color-mix(in srgb, var(--parch-stitch) 28%, transparent);
+  border-radius: 0.2rem;
+  background: color-mix(in srgb, var(--color-surface) 78%, black);
+  text-align: center;
+}
+
+.acd-panelist__portrait {
+  display: grid;
+  width: 2.8rem;
+  height: 2.8rem;
+  margin: 0 auto 0.65rem;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 38%, transparent);
+  border-radius: 50%;
+  background: radial-gradient(circle at 35% 28%, var(--color-surface-2), var(--color-bg));
+  color: var(--parch-gold-glow);
+  font-size: 1.15rem;
+}
+
+.acd-panelist__name,
+.acd-panelist__role,
+.acd-panelist__vote { margin: 0; }
+.acd-panelist__name { color: var(--parch-paper-light); font-weight: 700; }
+.acd-panelist__role {
+  margin-top: 0.2rem;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.acd-panelist__vote {
+  margin-top: 0.8rem;
+  padding-top: 0.55rem;
+  border-top: 1px solid color-mix(in srgb, var(--color-border) 42%, transparent);
+  color: var(--parch-gold-glow);
+  font-family: var(--font-hand);
+  font-size: 0.92rem;
+}
+
+.acd-defense .acd-ballot {
+  margin-top: 1.2rem;
+  transform: rotate(-0.15deg);
+}
+
+.acd-ballot__clip {
+  position: absolute;
+  top: -0.4rem;
+  left: 50%;
+  width: 3rem;
+  height: 1rem;
+  border: 2px solid color-mix(in srgb, var(--color-border) 68%, var(--color-text-muted));
+  border-bottom: 0;
+  border-radius: 1rem 1rem 0 0;
+  transform: translateX(-50%);
+}
+
+.acd-ballot h2 {
+  margin: 0.4rem 0 0;
+  color: var(--parch-ink);
+  font-size: 1.5rem;
+}
+
+.acd-ballot__copy {
+  max-width: 43rem;
+  margin: 0.55rem 0 0;
+  color: var(--parch-ink-faint);
+  line-height: 1.5;
+}
+
+.acd-ballot__choices {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0.65rem;
+  margin-top: 1rem;
+}
+
+.acd-vote-button {
+  min-height: 3rem;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid color-mix(in srgb, var(--parch-ink) 36%, transparent);
+  border-radius: 0.15rem;
+  background: color-mix(in srgb, var(--parch-paper-light) 64%, transparent);
+  color: var(--parch-ink);
+  font-family: var(--font-serif);
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background-color 0.15s ease, transform 0.15s ease;
+}
+
+.acd-vote-button:hover { transform: translateY(-1px) rotate(-0.3deg); }
+.acd-vote-button--accept {
+  border-color: color-mix(in srgb, var(--color-safe) 44%, var(--parch-ink));
+  color: color-mix(in srgb, var(--color-safe) 42%, var(--parch-ink));
+}
+.acd-vote-button--revise {
+  border-color: color-mix(in srgb, var(--parch-gold) 58%, var(--parch-ink));
+}
+.acd-vote-button--reject {
+  border-color: color-mix(in srgb, var(--parch-red) 58%, var(--parch-ink));
+  color: var(--parch-red);
+}
+
+.acd-history-ledger {
+  margin-top: 1.2rem;
+}
+
+.acd-history-ledger ul {
+  margin: 0.8rem 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.acd-history-ledger li {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.55rem 0;
+  border-bottom: 1px dotted color-mix(in srgb, var(--parch-ink) 26%, transparent);
+}
+
+.acd-history-ledger time {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-hand);
+  font-size: 0.85rem;
+}
+
+@media (max-width: 760px) {
+  .acd-dossier-grid { grid-template-columns: 1fr; }
+  .acd-panel { grid-template-columns: 1fr; }
+  .acd-panelist {
+    display: grid;
+    grid-template-columns: auto 1fr;
+    column-gap: 0.75rem;
+    text-align: left;
+  }
+  .acd-panelist__portrait {
+    grid-row: 1 / 4;
+    margin: 0;
+  }
+  .acd-panelist__vote {
+    margin-top: 0.35rem;
+    padding-top: 0.35rem;
+  }
+}
+
+@media (max-width: 520px) {
+  .acd-defense__hall { padding-inline: 0.7rem; }
+  .acd-protocol-cover {
+    padding: 1.6rem 1.1rem 1.7rem 2.7rem;
+  }
+  .acd-protocol-cover__hinge { left: 1.35rem; }
+  .acd-protocol-cover__head { flex-direction: column; }
+  .acd-protocol-cover__crest {
+    right: 0.8rem;
+    bottom: 0.8rem;
+    width: 2.5rem;
+    height: 2.5rem;
+  }
+  .acd-dossier__facts { grid-template-columns: 1fr; }
+  .acd-ballot__choices { grid-template-columns: 1fr; }
+}

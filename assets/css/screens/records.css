@@ -1,0 +1,463 @@
+/* Personal records: letters, atlases, manifests and research dossiers. */
+
+.mail-scene {
+  min-height: 100svh;
+  padding: 2.6rem 0.8rem 4rem;
+  color: var(--color-text);
+  background:
+    radial-gradient(circle at 52% 0%, color-mix(in srgb, var(--parch-gold) 11%, transparent), transparent 25rem),
+    repeating-linear-gradient(92deg, transparent 0 28px, rgba(0, 0, 0, 0.16) 29px 31px),
+    var(--color-bg);
+}
+
+.mail-desk {
+  width: min(100%, 31rem);
+  margin: 0 auto;
+}
+
+.mail-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.mail-exit,
+.mail-refresh {
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.mail-exit {
+  text-decoration: none;
+}
+
+.mail-refresh {
+  min-height: 2.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+}
+
+.mail-exit:hover,
+.mail-refresh:hover {
+  color: var(--parch-gold-bright);
+}
+
+.mail-ledger {
+  position: relative;
+  margin: 1rem 0 1.2rem;
+  padding: 1.2rem 1.15rem 1.15rem 2rem;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 38%, var(--parch-leather-dark));
+  border-radius: 0.25rem 0.65rem 0.65rem 0.25rem;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--parch-leather-dark) 82%, transparent) 0 1.15rem, transparent 1.15rem),
+    radial-gradient(circle at 72% 0%, color-mix(in srgb, var(--parch-gold) 13%, transparent), transparent 11rem),
+    var(--parch-leather);
+  box-shadow: inset 1rem 0 1rem rgba(0, 0, 0, 0.35), 0 12px 22px rgba(0, 0, 0, 0.36);
+}
+
+.mail-ledger__cord {
+  position: absolute;
+  top: 0.45rem;
+  bottom: 0.45rem;
+  left: 0.68rem;
+  width: 2px;
+  background: repeating-linear-gradient(
+    to bottom,
+    var(--parch-stitch) 0 4px,
+    transparent 4px 10px
+  );
+}
+
+.mail-ledger p {
+  color: var(--parch-gold-bright);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+}
+
+.mail-ledger h1 {
+  margin: 0.15rem 0 0.28rem;
+  color: var(--parch-paper-light);
+  font-family: var(--font-serif);
+  font-size: 1.85rem;
+}
+
+.mail-ledger > span:last-child {
+  color: color-mix(in srgb, var(--parch-paper) 76%, transparent);
+  font-size: 0.86rem;
+  line-height: 1.45;
+}
+
+.mail-stack {
+  display: grid;
+  gap: 0.75rem;
+}
+
+.mail-letter {
+  padding: 0.9rem 0.78rem;
+}
+
+.mail-letter--spoiled {
+  filter: grayscale(0.55) saturate(0.62);
+  opacity: 0.78;
+}
+
+.mail-stamp {
+  flex: 0 0 auto;
+  padding: 0.16rem 0.34rem;
+  color: var(--parch-ink-faint);
+  border: 1px solid currentColor;
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  transform: rotate(-2deg);
+}
+
+.mail-stamp--sent {
+  color: #45623b;
+}
+
+.mail-stamp--failed {
+  color: var(--parch-red);
+}
+
+.mail-stamp--discarded {
+  color: var(--parch-ink-faint);
+}
+
+.mail-stamp--pending {
+  color: var(--parch-gold);
+}
+
+.mail-delivered,
+.mail-error {
+  margin-top: 0.45rem;
+  font-family: var(--font-hand);
+  font-size: 0.98rem;
+}
+
+.mail-delivered {
+  color: #45623b;
+}
+
+.mail-error {
+  color: var(--parch-red);
+  border-left: 2px solid currentColor;
+  padding-left: 0.5rem;
+}
+
+.mail-empty {
+  transform: rotate(-0.6deg);
+}
+
+/* Federal atlas — a leather folio containing passports and loose manifests. */
+
+.realm-scene {
+  min-height: 100svh;
+  overflow-y: auto;
+  padding: 2.6rem 0.75rem 4rem;
+  color: var(--color-text);
+  background:
+    radial-gradient(ellipse at 48% 0%, color-mix(in srgb, var(--parch-gold) 12%, transparent), transparent 28rem),
+    repeating-linear-gradient(88deg, transparent 0 38px, rgba(0, 0, 0, 0.18) 39px 42px),
+    var(--color-bg);
+}
+
+.realm-atlas {
+  display: grid;
+  width: min(100%, 36rem);
+  margin: 0 auto;
+  gap: 1rem;
+}
+
+.realm-tools {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.75rem;
+}
+
+.realm-exit,
+.realm-tool {
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.realm-tool {
+  min-height: 2.5rem;
+  border: 0;
+  border-bottom: 1px solid var(--color-border);
+  background: transparent;
+}
+
+.realm-exit:hover,
+.realm-tool:hover {
+  color: var(--parch-gold-bright);
+}
+
+.realm-cover {
+  position: relative;
+  padding: 1.35rem 1.25rem 1.4rem 2.15rem;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--parch-gold) 38%, var(--parch-leather-dark));
+  border-radius: 0.35rem 0.8rem 0.8rem 0.35rem;
+  background:
+    linear-gradient(90deg, color-mix(in srgb, var(--parch-leather-dark) 86%, transparent) 0 1.25rem, transparent 1.25rem),
+    radial-gradient(circle at 74% 0%, color-mix(in srgb, var(--parch-gold) 16%, transparent), transparent 13rem),
+    repeating-linear-gradient(105deg, rgba(255,255,255,0.018) 0 2px, transparent 2px 8px),
+    var(--parch-leather);
+  box-shadow: inset 1.1rem 0 1rem rgba(0, 0, 0, 0.4), 0 15px 26px rgba(0, 0, 0, 0.42);
+}
+
+.realm-cover::after {
+  content: "◈";
+  position: absolute;
+  right: 1.25rem;
+  bottom: 0.9rem;
+  display: grid;
+  width: 2.7rem;
+  height: 2.7rem;
+  place-items: center;
+  color: var(--parch-gold-bright);
+  border: 1px double color-mix(in srgb, var(--parch-gold) 65%, transparent);
+  border-radius: 50%;
+  opacity: 0.52;
+}
+
+.realm-cover p {
+  color: var(--parch-gold-bright);
+  font-family: var(--font-sans);
+}
+
+.realm-cover h1 {
+  color: var(--parch-paper-light);
+}
+
+.realm-cover > p:last-child {
+  max-width: 30rem;
+  color: color-mix(in srgb, var(--parch-paper) 76%, transparent);
+}
+
+.realm-slip,
+.realm-passport,
+.realm-pages,
+.realm-history {
+  color: var(--parch-ink);
+  border: 1px solid var(--parch-vignette);
+  border-radius: 0.18rem;
+  background:
+    linear-gradient(rgba(74, 47, 28, 0.045) 1px, transparent 1px) 0 2.4rem / 100% 1.55rem,
+    radial-gradient(ellipse at 30% 5%, var(--parch-paper-light), var(--parch-paper) 62%, var(--parch-paper-dark));
+  box-shadow: inset 0 0 34px rgba(74, 47, 28, 0.12), 0 11px 22px rgba(0, 0, 0, 0.34);
+}
+
+.realm-slip {
+  padding: 0.75rem 0.85rem;
+}
+
+.realm-slip--error {
+  color: var(--parch-red);
+  border-left: 0.3rem solid var(--parch-red);
+}
+
+.realm-passport {
+  position: relative;
+  padding: 1.15rem 1.1rem 1.2rem 1.8rem;
+  border-left: 0.65rem solid color-mix(in srgb, var(--parch-leather) 82%, var(--parch-red));
+}
+
+.realm-passport::after {
+  content: "ПОДТВЕРЖДЕНО";
+  position: absolute;
+  right: 1rem;
+  bottom: 0.85rem;
+  padding: 0.22rem 0.35rem;
+  color: color-mix(in srgb, var(--parch-red) 68%, transparent);
+  border: 1px solid currentColor;
+  font-family: var(--font-sans);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.09em;
+  transform: rotate(-4deg);
+}
+
+.realm-passport--active {
+  border-left-color: var(--parch-gold);
+}
+
+.realm-passport--active::after {
+  content: "В ПУТИ";
+}
+
+.realm-pages,
+.realm-history {
+  position: relative;
+  padding: 1.2rem 1rem 1.3rem 1.45rem;
+}
+
+.realm-pages::before,
+.realm-history::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0.72rem;
+  width: 1px;
+  background: color-mix(in srgb, var(--parch-red) 24%, transparent);
+}
+
+.realm-passport .text-stone-100,
+.realm-passport .text-stone-200,
+.realm-passport .text-stone-300,
+.realm-pages .text-stone-100,
+.realm-pages .text-stone-200,
+.realm-pages .text-stone-300,
+.realm-history .text-stone-100,
+.realm-history .text-stone-200,
+.realm-history .text-stone-300 {
+  color: var(--parch-ink);
+}
+
+.realm-passport .text-stone-400,
+.realm-passport .text-stone-500,
+.realm-pages .text-stone-400,
+.realm-pages .text-stone-500,
+.realm-history .text-stone-400,
+.realm-history .text-stone-500 {
+  color: var(--parch-ink-faint);
+}
+
+.realm-note {
+  margin-top: 1rem;
+  padding: 0.85rem;
+  color: var(--parch-ink-faint);
+  border: 1px dashed color-mix(in srgb, var(--parch-ink-faint) 48%, transparent);
+  font-family: var(--font-hand);
+  font-size: 1.05rem;
+}
+
+.realm-manifest-grid {
+  display: grid;
+  gap: 0.8rem;
+  margin-top: 1rem;
+}
+
+.realm-manifest {
+  position: relative;
+  padding: 1rem 0.95rem;
+  color: var(--parch-ink);
+  border: 1px solid color-mix(in srgb, var(--parch-ink-faint) 38%, transparent);
+  background: color-mix(in srgb, var(--parch-paper-light) 58%, transparent);
+  box-shadow: 2px 3px 0 color-mix(in srgb, var(--parch-paper-dark) 55%, transparent);
+}
+
+.realm-manifest:nth-child(even) {
+  transform: rotate(0.18deg);
+}
+
+.realm-manifest .text-stone-100,
+.realm-manifest .text-stone-200,
+.realm-manifest .text-stone-300 {
+  color: var(--parch-ink);
+}
+
+.realm-manifest .text-stone-400,
+.realm-manifest .text-stone-500 {
+  color: var(--parch-ink-faint);
+}
+
+.realm-seal {
+  padding: 0.18rem 0.38rem;
+  border: 1px solid currentColor;
+  font-family: var(--font-sans);
+  font-size: 0.58rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  transform: rotate(-2deg);
+}
+
+.realm-seal--open {
+  color: color-mix(in srgb, var(--color-safe) 46%, var(--parch-ink));
+}
+
+.realm-seal--closed {
+  color: var(--parch-ink-faint);
+}
+
+.realm-transfer {
+  display: grid;
+  gap: 0.65rem;
+  margin-top: 1rem;
+  padding-top: 0.85rem;
+  border-top: 1px dashed color-mix(in srgb, var(--parch-ink-faint) 42%, transparent);
+}
+
+.realm-transfer label {
+  color: var(--parch-ink-faint);
+}
+
+.realm-transfer input {
+  color: var(--parch-ink);
+  border-color: color-mix(in srgb, var(--parch-ink-faint) 48%, transparent);
+  border-radius: 0.15rem;
+  background: rgba(255, 250, 230, 0.48);
+}
+
+.realm-transfer__seal,
+.realm-seal-action {
+  min-height: 2.75rem;
+  padding: 0.55rem 0.75rem;
+  color: var(--parch-paper-light);
+  border: 1px solid color-mix(in srgb, var(--parch-red) 78%, black);
+  border-radius: 0.18rem;
+  background: linear-gradient(
+    color-mix(in srgb, var(--parch-red) 86%, white),
+    var(--parch-red)
+  );
+  font-family: var(--font-serif);
+  font-weight: 700;
+}
+
+.realm-manifest__warning {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  color: var(--parch-red);
+  border-top: 1px dashed currentColor;
+  font-family: var(--font-hand);
+}
+
+.realm-history__entry {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.7rem;
+  padding: 0.6rem 0;
+  color: var(--parch-ink);
+  border-bottom: 1px solid color-mix(in srgb, var(--parch-ink-faint) 28%, transparent);
+  font-size: 0.88rem;
+}
+
+@media (min-width: 620px) {
+  .realm-manifest-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .realm-transfer {
+    grid-template-columns: 1fr auto;
+    align-items: end;
+  }
+}

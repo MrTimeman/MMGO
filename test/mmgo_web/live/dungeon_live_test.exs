@@ -92,6 +92,51 @@ defmodule MMGOWeb.DungeonLiveTest do
     assert {:error, {:live_redirect, %{to: "/play"}}} = live(conn, ~p"/dungeon")
   end
 
+  test "keeps a level chart sealed until a real run exists", %{
+    conn: conn,
+    leader: leader
+  } do
+    {:ok, view, _html} = live(session_conn(conn, leader), ~p"/dungeon/level/1")
+
+    assert has_element?(view, "#dungeon-level-screen")
+    assert has_element?(view, "#dungeon-level-sealed")
+    refute has_element?(view, "#dungeon-level-map")
+  end
+
+  test "charts persisted nodes and confirms a real movement from the level graph", %{
+    conn: conn,
+    leader: leader,
+    entrance: entrance,
+    rest: rest,
+    danger: danger
+  } do
+    {:ok, gate, _html} = live(session_conn(conn, leader), ~p"/dungeon")
+    gate |> element("#dungeon-enter") |> render_click()
+
+    {:ok, view, _html} = live(session_conn(conn, leader), ~p"/dungeon/level/1")
+
+    assert has_element?(view, "#dungeon-level-map")
+    assert has_element?(view, "#dungeon-party-marker")
+    assert has_element?(view, "#dungeon-graph-node-#{entrance.id}.dng-node--party")
+    assert has_element?(view, "#dungeon-graph-node-#{rest.id}.dng-node--reachable")
+    assert has_element?(view, "#dungeon-graph-node-#{danger.id}.dng-node--reachable")
+    assert has_element?(view, "[id^='dungeon-edge-']")
+    assert has_element?(view, "#dungeon-refresh-map")
+
+    view |> element("#dungeon-graph-move-#{rest.id}") |> render_click()
+    assert has_element?(view, "#dungeon-move-sheet")
+    assert has_element?(view, "#dungeon-confirm-move")
+
+    view |> element("#dungeon-confirm-move") |> render_click()
+
+    assert has_element?(view, "#dungeon-level-current-node", "Rest Chamber")
+    assert has_element?(view, "#dungeon-graph-node-#{rest.id}.dng-node--party")
+    refute has_element?(view, "#dungeon-move-sheet")
+
+    view |> element("#dungeon-toggle-legend") |> render_click()
+    assert has_element?(view, "#dungeon-legend")
+  end
+
   test "shows the party's loot agreement without implying an enforced claim rule", %{
     conn: conn,
     leader: leader,

@@ -104,24 +104,24 @@ defmodule MMGO.Telegram.RealmCommandsTest do
     assert {:ok, migrate_text} =
              Commands.process_message(character, %{"text" => "/realms migrate silver-sea 100"})
 
-    assert migrate_text =~ "Migration started"
+    assert migrate_text =~ "Переселение"
 
     assert {:ok, migrations_text} =
              Commands.process_message(character, %{"text" => "/realms migrations"})
 
-    assert migrations_text =~ "canonical -> silver-sea"
+    assert migrations_text =~ "canonical → silver-sea"
   end
 
   test "/admin federation commands register sync and show manifest", %{character: character} do
     assert {:ok, manifest_text} =
              Commands.process_message(character, %{"text" => "/admin federation manifest"})
 
-    assert manifest_text =~ "Local realm manifest"
+    assert manifest_text =~ "Манифест локального мира"
 
     assert {:ok, sync_text} =
              Commands.process_message(character, %{"text" => "/admin federation sync silver-sea"})
 
-    assert sync_text =~ "Synced remote realm"
+    assert sync_text =~ "Удалённый мир silver-sea синхронизирован"
   end
 
   defp character_fixture(realm, location, handle, name) do

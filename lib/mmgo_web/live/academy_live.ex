@@ -47,6 +47,16 @@ defmodule MMGOWeb.AcademyLive do
   end
 
   @impl true
+  def handle_event("change_program", %{"academy_program" => attrs}, socket) do
+    params =
+      socket.assigns.state
+      |> program_params()
+      |> Map.merge(attrs)
+
+    {:noreply, assign(socket, :program_form, to_form(params, as: :academy_program))}
+  end
+
+  @impl true
   def handle_event("start_program", %{"academy_program" => attrs}, socket) do
     case Play.start_academy_program(socket.assigns.character, attrs) do
       {:ok, state} ->
@@ -161,7 +171,7 @@ defmodule MMGOWeb.AcademyLive do
       {:ok, state} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Клубное окно закрыто, ведомость передана на мидтерм.")
+         |> put_flash(:info, "Клубное окно закрыто, ведомость передана на промежуточный экзамен.")
          |> assign_state(state)}
 
       {:error, reason} ->
@@ -173,63 +183,129 @@ defmodule MMGOWeb.AcademyLive do
   def handle_event("refresh", _params, socket), do: {:noreply, refresh_academy(socket)}
 
   @impl true
-  def render(assigns) do
+  def render(%{state: _state, live_action: :timetable} = assigns),
+    do: timetable_room(assigns)
+
+  def render(%{state: _state, live_action: :grades} = assigns),
+    do: grades_room(assigns)
+
+  def render(%{state: _state, live_action: :library} = assigns),
+    do: library_room(assigns)
+
+  def render(%{state: _state, live_action: :courses} = assigns),
+    do: courses_room(assigns)
+
+  def render(%{state: _state, live_action: :progress} = assigns),
+    do: progress_room(assigns)
+
+  def render(%{state: _state} = assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="academy-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-5xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
-            <.link
-              id="academy-back-to-map"
-              navigate={~p"/map"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
-            >
-              ← Карта мира
+      <main id="academy-screen" class="acd-screen academy-hall">
+        <div class="academy-hall__vault" aria-hidden="true">
+          <i></i><i></i><i></i>
+        </div>
+
+        <div class="acd-shell academy-hall__shell">
+          <div class="academy-hall__topbar">
+            <.link id="academy-back-to-map" navigate={~p"/map"} class="acd-exit academy-hall__exit">
+              <span aria-hidden="true">←</span> Покинуть Академию
             </.link>
             <button
               id="academy-refresh"
               type="button"
               phx-click="refresh"
-              class="rounded border border-stone-600 px-3 py-2 text-sm text-stone-200"
+              class="academy-hall__bell"
+              aria-label="Обновить академические записи"
+              title="Позвать архивариуса"
             >
-              Обновить
+              <span aria-hidden="true">⌁</span> Архивариус
             </button>
           </div>
 
-          <header class="rounded-2xl border border-sky-400/25 bg-gradient-to-br from-slate-900 via-stone-950 to-sky-950/30 p-7 shadow-2xl">
-            <p class="text-xs uppercase tracking-[0.25em] text-sky-200/75">
-              академия · {action_label(@live_action || :overview)}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-sky-100">{academy_heading(@state)}</h1>
-            <p class="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-              Учебные записи, термины и курсы читаются из состояния мира; экзамен проверяет только ваш активный термин.
+          <header class="academy-hall__atrium">
+            <div class="academy-hall__lantern academy-hall__lantern--left" aria-hidden="true">
+              <span></span>
+            </div>
+            <div class="academy-hall__lantern academy-hall__lantern--right" aria-hidden="true">
+              <span></span>
+            </div>
+            <div class="academy-hall__crest" aria-hidden="true">
+              <span>A</span>
+            </div>
+            <p class="acd-eyebrow">Большой холл · {action_label(@live_action || :overview)}</p>
+            <h1>{academy_heading(@state)}</h1>
+            <p class="academy-hall__motto">
+              Искусство долговечно, память мира — каждая запись здесь скреплена печатью.
             </p>
           </header>
 
-          <div
-            :if={@error}
-            id="academy-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
-          >
-            {@error}
+          <div :if={@error} id="academy-error" class="academy-hall__error">
+            <span class="academy-hall__error-seal" aria-hidden="true">!</span>
+            <p>{@error}</p>
           </div>
 
-          <section id="academy-status" class="grid gap-4 lg:grid-cols-[1.4fr_1fr]">
-            <article class="rounded-2xl border border-stone-700 bg-stone-900/80 p-5 shadow-lg">
-              <p class="text-xs uppercase tracking-[0.2em] text-stone-500">учебная запись</p>
+          <nav
+            id="academy-navigation"
+            class="academy-hall__doors"
+            aria-label="Залы Академии"
+          >
+            <.link navigate={~p"/academy"} class="academy-hall__door">
+              <span class="academy-hall__door-number">I</span>
+              <span><strong>Холл</strong><small>регистратура</small></span>
+            </.link>
+            <.link navigate={~p"/academy/timetable"} class="academy-hall__door">
+              <span class="academy-hall__door-number">II</span>
+              <span><strong>Расписание</strong><small>колокола и занятия</small></span>
+            </.link>
+            <.link navigate={~p"/academy/grades"} class="academy-hall__door">
+              <span class="academy-hall__door-number">III</span>
+              <span><strong>Ведомость</strong><small>оценки и ранг</small></span>
+            </.link>
+            <.link navigate={~p"/academy/courses"} class="academy-hall__door">
+              <span class="academy-hall__door-number">IV</span>
+              <span><strong>Курсы</strong><small>аудитории</small></span>
+            </.link>
+            <.link navigate={~p"/academy/library"} class="academy-hall__door">
+              <span class="academy-hall__door-number">V</span>
+              <span><strong>Библиотека</strong><small>полки и гримуары</small></span>
+            </.link>
+            <.link navigate={~p"/academy/progress"} class="academy-hall__door">
+              <span class="academy-hall__door-number">VI</span>
+              <span><strong>Путь</strong><small>ступени образования</small></span>
+            </.link>
+            <.link navigate={~p"/academy/clubs"} class="academy-hall__door">
+              <span class="academy-hall__door-number">VII</span>
+              <span><strong>Клубы</strong><small>общества студентов</small></span>
+            </.link>
+            <.link navigate={~p"/academy/research"} class="academy-hall__door">
+              <span class="academy-hall__door-number">VIII</span>
+              <span><strong>Наука</strong><small>кафедры и тезисы</small></span>
+            </.link>
+            <.link navigate={~p"/academy/bulletin-board"} class="academy-hall__door">
+              <span class="academy-hall__door-number">IX</span>
+              <span><strong>Доска</strong><small>объявления</small></span>
+            </.link>
+          </nav>
+
+          <section id="academy-status" class="academy-hall__registrar">
+            <article class="academy-dossier">
+              <div class="academy-dossier__pin" aria-hidden="true"></div>
+              <p class="academy-paper__kicker">Личное дело студента</p>
               <%= if @state.enrollment do %>
-                <h2 id="academy-enrollment" class="mt-2 font-serif text-2xl text-stone-100">
-                  {program_label(@state.enrollment.program_type)}
-                </h2>
-                <p class="mt-2 text-sm text-stone-300">
-                  Статус: {enrollment_status(@state.enrollment.status)} · завершение {format_time(
-                    @state.enrollment.expected_completion_at
-                  )}
+                <h2 id="academy-enrollment">{program_label(@state.enrollment.program_type)}</h2>
+                <p class="academy-dossier__line">
+                  <span>Запись</span>
+                  <strong>{enrollment_status(@state.enrollment.status)}</strong>
+                </p>
+                <p class="academy-dossier__line">
+                  <span>Ожидаемое завершение</span>
+                  <strong>{format_time(@state.enrollment.expected_completion_at)}</strong>
                 </p>
                 <p
                   :if={@state.specialization}
                   id="academy-specialization"
-                  class="mt-3 text-sm text-sky-100"
+                  class="academy-dossier__specialization"
                 >
                   Путь: {track_label(@state.specialization.track)}{school_suffix(
                     @state.specialization
@@ -238,114 +314,120 @@ defmodule MMGOWeb.AcademyLive do
                 <p
                   :if={retraining_enrollment?(@state.enrollment)}
                   id="academy-retraining-enrollment"
-                  class="mt-2 text-sm text-amber-100"
+                  class="academy-paper__annotation"
                 >
-                  Переподготовка идёт: прежняя специализация сохранится до вашего выпуска, затем уйдёт в архив.
+                  Переподготовка идёт: прежняя специализация сохранится до выпуска, затем уйдёт в архив.
                 </p>
               <% else %>
-                <h2 id="academy-no-enrollment" class="mt-2 font-serif text-2xl text-stone-100">
-                  Свободная запись
-                </h2>
-                <p class="mt-2 text-sm text-stone-400">
-                  Следующая доступная программа зависит от уже завершённого обучения.
+                <h2 id="academy-no-enrollment">Свободная запись</h2>
+                <p class="academy-paper__body">
+                  Ваше дело ждёт следующей ступени. Регистратор проверит завершённое обучение перед зачислением.
                 </p>
                 <p
                   :if={@state.latest_enrollment}
                   id="academy-last-outcome"
-                  class="mt-3 text-sm text-sky-100"
+                  class="academy-paper__annotation"
                 >
                   Последний выпуск: {program_label(@state.latest_enrollment.program_type)} · {outcome_label(
                     @state.academic_record && @state.academic_record.outcome_tier
                   )}
                 </p>
               <% end %>
+              <div class="academy-dossier__signature">
+                <span>реестр Академии</span>
+                <i aria-hidden="true">A</i>
+              </div>
             </article>
 
-            <article
-              id="academy-progress-summary"
-              class="rounded-2xl border border-emerald-400/20 bg-emerald-950/15 p-5 shadow-lg"
-            >
-              <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/75">успеваемость</p>
-              <p class="mt-2 font-serif text-3xl text-emerald-100">
-                {gpa_label(@state.academic_record && @state.academic_record.gpa)}
-              </p>
-              <p class="text-sm text-stone-300">
-                Проваленных терминов: {record_failed_terms(@state.academic_record)}
-              </p>
-              <p
-                :if={@state.academic_record && @state.academic_record.cohort_rank}
-                id="academy-cohort-standing"
-                class="mt-2 text-sm text-emerald-100"
-              >
-                Когорта: №{@state.academic_record.cohort_rank} из {@state.academic_record.cohort_size}
-              </p>
-              <p
-                :if={@state.academic_record && @state.academic_record.merit_scholarship_eligible?}
-                id="academy-merit-grant"
-                class="mt-1 text-sm text-amber-100"
-              >
-                Доступен merit grant на Academy Core.
-              </p>
-              <p
-                :if={@state.charity_stipend}
-                id="academy-charity-stipend"
-                class="mt-1 text-sm text-amber-100"
-              >
-                Получена стипендия Фонда Просвещения: {Map.get(@state.charity_stipend, "amount")} ◈.
-              </p>
-              <div
-                :if={@state.academic_titles != []}
-                id="academy-academic-titles"
-                class="mt-3 space-y-1 border-t border-amber-300/15 pt-3 text-sm text-amber-100"
-              >
-                <p class="text-xs uppercase tracking-[0.16em] text-amber-100/70">
-                  академические титулы
+            <article id="academy-progress-summary" class="academy-gradebook">
+              <div class="academy-gradebook__spine" aria-hidden="true"></div>
+              <div class="academy-gradebook__page">
+                <p class="academy-paper__kicker">Учебная ведомость</p>
+                <div class="academy-gradebook__gpa">
+                  <span>Средний балл</span>
+                  <strong>{gpa_label(@state.academic_record && @state.academic_record.gpa)}</strong>
+                </div>
+                <dl class="academy-gradebook__facts">
+                  <div>
+                    <dt>Провалено терминов</dt>
+                    <dd>{record_failed_terms(@state.academic_record)}</dd>
+                  </div>
+                  <div>
+                    <dt>Текущий термин</dt>
+                    <dd>{term_label(@state.current_term)}</dd>
+                  </div>
+                </dl>
+                <p
+                  :if={@state.academic_record && @state.academic_record.cohort_rank}
+                  id="academy-cohort-standing"
+                  class="academy-gradebook__honor"
+                >
+                  Место в когорте: №{@state.academic_record.cohort_rank} из {@state.academic_record.cohort_size}
                 </p>
                 <p
-                  :for={title <- @state.academic_titles}
-                  id={"academy-academic-title-#{title.enrollment_id}"}
+                  :if={@state.academic_record && @state.academic_record.merit_scholarship_eligible?}
+                  id="academy-merit-grant"
+                  class="academy-gradebook__honor"
                 >
-                  {title.title}
+                  Допущен к стипендии за заслуги.
                 </p>
-              </div>
-              <p
-                :if={@state.academic_record && @state.academic_record.valedictorian?}
-                id="academy-valedictorian"
-                class="mt-1 text-sm text-violet-100"
-              >
-                Звание: {@state.academic_record.valedictorian_title}.
-              </p>
-              <div
-                :if={@state.valedictorian_honors != []}
-                id="academy-valedictorian-titles"
-                class="mt-3 space-y-1 border-t border-violet-300/15 pt-3 text-sm text-violet-100"
-              >
-                <p class="text-xs uppercase tracking-[0.16em] text-violet-200/70">звания</p>
                 <p
-                  :for={honor <- @state.valedictorian_honors}
-                  id={"academy-valedictorian-title-#{honor.enrollment_id}"}
+                  :if={@state.charity_stipend}
+                  id="academy-charity-stipend"
+                  class="academy-gradebook__honor"
                 >
-                  {honor.title}
-                  <span :if={honor.hall_of_fame_until} class="text-stone-400">
-                    · доска до {format_time(honor.hall_of_fame_until)}
+                  Стипендия Фонда Просвещения: {Map.get(@state.charity_stipend, "amount")} ◈.
+                </p>
+                <div
+                  :if={@state.academic_titles != []}
+                  id="academy-academic-titles"
+                  class="academy-gradebook__titles"
+                >
+                  <p>Академические титулы</p>
+                  <span
+                    :for={title <- @state.academic_titles}
+                    id={"academy-academic-title-#{title.enrollment_id}"}
+                  >
+                    {title.title}
                   </span>
+                </div>
+                <p
+                  :if={@state.academic_record && @state.academic_record.valedictorian?}
+                  id="academy-valedictorian"
+                  class="academy-gradebook__honor"
+                >
+                  {@state.academic_record.valedictorian_title}
                 </p>
+                <div
+                  :if={@state.valedictorian_honors != []}
+                  id="academy-valedictorian-titles"
+                  class="academy-gradebook__titles"
+                >
+                  <p>Лауреатские звания</p>
+                  <span
+                    :for={honor <- @state.valedictorian_honors}
+                    id={"academy-valedictorian-title-#{honor.enrollment_id}"}
+                  >
+                    {honor.title}
+                    <small :if={honor.hall_of_fame_until}>
+                      · доска до {format_time(honor.hall_of_fame_until)}
+                    </small>
+                  </span>
+                </div>
               </div>
-              <p class="mt-3 text-sm text-stone-400">
-                Текущий термин: {term_label(@state.current_term)}
-              </p>
             </article>
           </section>
 
           <section
             :if={@state.starter_outcomes}
             id="academy-starter-outcomes"
-            class="rounded-2xl border border-violet-400/30 bg-violet-950/20 p-6 shadow-lg"
+            class="academy-award-case"
           >
-            <div class="flex flex-wrap items-start justify-between gap-4">
+            <div class="academy-award-case__glass">
+              <div class="academy-award-case__seal" aria-hidden="true">A</div>
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">выпускной набор</p>
-                <h2 class="mt-1 font-serif text-2xl text-violet-100">
+                <p class="acd-eyebrow">Выпускной набор</p>
+                <h2>
                   {starter_track_label(@state.starter_outcomes)} · {starter_quality_label(
                     @state.starter_outcomes
                   )}
@@ -353,35 +435,35 @@ defmodule MMGOWeb.AcademyLive do
                 <p
                   :if={starter_title(@state.starter_outcomes)}
                   id="academy-starter-title"
-                  class="mt-2 text-sm text-amber-100"
+                  class="academy-award-case__title"
                 >
                   Звание: {starter_title(@state.starter_outcomes)}
                 </p>
-                <p class="mt-2 max-w-2xl text-sm text-stone-300">
-                  Награды уже внесены в мир: это не памятная запись, а ваши заклинания, рецепты или инструменты.
+                <p>
+                  Награды уже внесены в мир: заклинания, рецепты и инструменты выданы по выпускной ведомости.
                 </p>
               </div>
               <.link
                 id="academy-open-starter-rewards"
                 navigate={starter_destination(@state.starter_outcomes)}
-                class="rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 hover:bg-violet-950/60"
+                class="acd-btn acd-btn--primary"
               >
                 Открыть набор
               </.link>
             </div>
-            <ul id="academy-starter-reward-list" class="mt-4 grid gap-2 md:grid-cols-3">
+            <ul id="academy-starter-reward-list" class="academy-award-case__shelf">
               <li
                 :for={reward <- starter_rewards(@state.starter_outcomes)}
                 id={"academy-starter-reward-#{starter_reward_id(reward)}"}
-                class="rounded-lg border border-violet-300/15 bg-stone-950/55 px-4 py-3 text-sm text-stone-100"
               >
+                <span aria-hidden="true"></span>
                 {starter_reward_label(reward)}
               </li>
             </ul>
             <p
               :if={starter_reagent_label(@state.starter_outcomes)}
               id="academy-starter-reagent"
-              class="mt-3 text-sm text-amber-100"
+              class="academy-award-case__reagent"
             >
               {starter_reagent_label(@state.starter_outcomes)}
             </p>
@@ -390,20 +472,19 @@ defmodule MMGOWeb.AcademyLive do
           <section
             :if={@state.valedictorian_bonus}
             id="academy-valedictorian-bonus"
-            class="rounded-2xl border border-amber-300/35 bg-amber-950/20 p-6 shadow-lg"
+            class="academy-sealed-letter"
           >
-            <p class="text-xs uppercase tracking-[0.2em] text-amber-100/80">награда валедикториана</p>
-            <h2 class="mt-1 font-serif text-2xl text-amber-100">
-              {@state.valedictorian_bonus.title}
-            </h2>
-            <p class="mt-2 max-w-2xl text-sm leading-6 text-stone-300">
-              Выберите одну школу для именной Лауреатской печати. Заклинание будет создано в вашей библиотеке, а выбранная школа останется разрешённой для этой награды.
+            <div class="academy-sealed-letter__fold" aria-hidden="true"></div>
+            <p class="academy-paper__kicker">Личная грамота ректора</p>
+            <h2>{@state.valedictorian_bonus.title}</h2>
+            <p class="academy-paper__body">
+              Выберите одну школу для именной Лауреатской печати. Заклинание будет создано в вашей библиотеке.
             </p>
             <.form
               for={@valedictorian_form}
               id="academy-valedictorian-bonus-form"
               phx-submit="claim_valedictorian_spell"
-              class="mt-4 flex flex-wrap items-end gap-3"
+              class="academy-paper-form academy-paper-form--compact"
             >
               <.input
                 field={@valedictorian_form[:school]}
@@ -414,262 +495,264 @@ defmodule MMGOWeb.AcademyLive do
               <button
                 id="academy-claim-valedictorian-spell"
                 type="submit"
-                class="rounded-lg bg-amber-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+                class="academy-wax-button"
               >
                 Получить заклинание
               </button>
             </.form>
           </section>
 
-          <section
-            :if={@state.enrollment == nil and @state.program_options != []}
-            id="academy-programs"
-            class="rounded-2xl border border-sky-400/20 bg-sky-950/15 p-6 shadow-lg"
-          >
-            <h2 class="font-serif text-2xl text-sky-100">Следующая ступень</h2>
-            <p class="mt-2 text-sm text-stone-400">
-              Академия сама проверяет право на поступление и параметры выбранного пути.
-            </p>
-            <.form
-              for={@program_form}
-              id="academy-program-form"
-              phx-submit="start_program"
-              class="mt-4 grid gap-3 md:grid-cols-2"
-            >
-              <.input
-                field={@program_form[:program_type]}
-                type="select"
-                label="Программа"
-                options={program_options(@state.program_options)}
-              />
-              <.input
-                field={@program_form[:track]}
-                type="select"
-                label="Путь (для Academy Core)"
-                options={track_options()}
-              />
-              <.input
-                field={@program_form[:primary_school]}
-                type="select"
-                label="Первая школа (для чародейства)"
-                options={school_options()}
-              />
-              <.input
-                field={@program_form[:secondary_school]}
-                type="select"
-                label="Вторая школа (для чародейства)"
-                options={school_options()}
-              />
-              <button
-                id="academy-start-program"
-                type="submit"
-                class="rounded-lg bg-sky-300 px-4 py-3 text-sm font-semibold text-stone-950 hover:bg-sky-200"
-              >
-                Открыть запись
-              </button>
-            </.form>
-          </section>
+          <.academy_program_application
+            :if={@state.enrollment == nil && @state.program_options != []}
+            state={@state}
+            program_form={@program_form}
+          />
 
-          <section
-            :if={@state.enrollment}
-            id="academy-terms"
-            class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
-          >
-            <div class="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-stone-500">термины</p>
-                <h2 class="mt-1 font-serif text-2xl text-stone-100">Ведомость пути</h2>
-                <p id="academy-term-count" class="mt-1 text-sm text-stone-400">
-                  Зафиксировано терминов: {length(@state.terms)} из {@state.required_terms}
-                </p>
-                <p
-                  :if={@state.current_term_schedule}
-                  id="academy-current-term-window"
-                  class="mt-1 text-xs text-sky-100"
-                >
-                  Окно текущего термина: {format_time(@state.current_term_schedule.starts_at)} — {format_time(
-                    @state.current_term_schedule.ends_at
-                  )}
-                </p>
-                <p
-                  :if={is_nil(@state.current_term) && @state.next_term_schedule}
-                  id="academy-next-term-window"
-                  class="mt-1 text-xs text-sky-100"
-                >
-                  Следующий термин откроется: {format_time(@state.next_term_schedule.starts_at)}
-                </p>
-              </div>
-              <button
-                :if={is_nil(@state.current_term)}
-                id="academy-begin-term"
-                type="button"
-                phx-click="begin_term"
-                class="rounded bg-sky-300 px-3 py-2 text-sm font-semibold text-stone-950"
-              >
-                Начать следующий термин
-              </button>
-              <button
-                :if={@state.current_term && @state.term_progress.phase == :enrollment}
-                id="academy-open-lectures"
-                type="button"
-                phx-click="open_lecture_phase"
-                class="rounded bg-sky-300 px-3 py-2 text-sm font-semibold text-stone-950"
-              >
-                Закрыть выбор курсов
-              </button>
-              <.link
-                :if={@state.current_term && @state.term_progress.phase == :lectures}
-                id="academy-attend-lecture"
-                navigate={~p"/academy/lecture/#{@state.current_term.id}"}
-                class="rounded bg-violet-300 px-3 py-2 text-sm font-semibold text-stone-950 transition hover:bg-violet-200"
-              >
-                Открыть лекцию ({@state.term_progress.lectures_attended}/{@state.term_progress.lectures_required})
-              </.link>
-              <button
-                :if={@state.current_term && @state.term_progress.phase == :lectures}
-                id="academy-close-lectures"
-                type="button"
-                phx-click="close_lecture_phase"
-                class="rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-950/50"
-              >
-                Перейти к клубному окну
-              </button>
-              <.link
-                :if={@state.current_term && @state.term_progress.phase in [:midterm, :final]}
-                id="academy-open-exam"
-                navigate={~p"/academy/exam/#{@state.current_term.id}"}
-                class="rounded bg-amber-300 px-3 py-2 text-sm font-semibold text-stone-950"
-              >
-                {term_phase_label(@state.term_progress.phase)}
-              </.link>
+          <section :if={@state.enrollment} id="academy-terms" class="academy-term-ledger">
+            <div class="academy-term-ledger__binding" aria-hidden="true">
+              <i></i><i></i><i></i><i></i>
             </div>
-            <section
-              :if={@state.current_term && @state.term_progress.phase == :club_window}
-              id="academy-club-window"
-              class="mt-4 rounded-xl border border-emerald-400/25 bg-emerald-950/15 p-4"
-            >
-              <div class="flex flex-wrap items-center justify-between gap-3">
+            <div class="academy-term-ledger__page">
+              <header class="academy-ledger-heading">
                 <div>
-                  <p class="text-xs uppercase tracking-[0.16em] text-emerald-200/75">клубное окно</p>
-                  <p id="academy-club-window-attendance" class="mt-1 text-sm text-stone-200">
-                    Посещено событий: {@state.term_progress.club_events_attended}/ {@state.term_progress.club_events_required}
+                  <p class="academy-paper__kicker">Книга семестров</p>
+                  <h2>Ведомость пути</h2>
+                  <p id="academy-term-count">
+                    Зафиксировано терминов: {length(@state.terms)} из {@state.required_terms}
                   </p>
-                  <p class="mt-1 text-sm text-stone-400">
-                    Участие в реальном событии клуба фиксируется в ведомости и нужно для мерит-рейтинга.
+                  <p
+                    :if={@state.current_term_schedule}
+                    id="academy-current-term-window"
+                    class="academy-ledger-heading__note"
+                  >
+                    Текущий термин: {format_time(@state.current_term_schedule.starts_at)} — {format_time(
+                      @state.current_term_schedule.ends_at
+                    )}
+                  </p>
+                  <p
+                    :if={is_nil(@state.current_term) && @state.next_term_schedule}
+                    id="academy-next-term-window"
+                    class="academy-ledger-heading__note"
+                  >
+                    Следующий термин откроется: {format_time(@state.next_term_schedule.starts_at)}
                   </p>
                 </div>
-                <div class="flex flex-wrap gap-2">
+                <div class="academy-term-ledger__actions">
+                  <button
+                    :if={is_nil(@state.current_term) && term_startable?(@state)}
+                    id="academy-begin-term"
+                    type="button"
+                    phx-click="begin_term"
+                    class="academy-ink-button"
+                  >
+                    Начать следующий термин
+                  </button>
+                  <p
+                    :if={
+                      is_nil(@state.current_term) && @state.next_term_schedule &&
+                        not term_startable?(@state)
+                    }
+                    id="academy-term-not-open"
+                    class="academy-term-actions__notice"
+                  >
+                    Следующий термин откроется {format_time(@state.next_term_schedule.starts_at)}.
+                  </p>
+                  <p
+                    :if={is_nil(@state.current_term) && is_nil(@state.next_term_schedule)}
+                    id="academy-no-more-terms"
+                    class="academy-term-actions__notice"
+                  >
+                    Все предусмотренные сроки уже внесены в ведомость.
+                  </p>
+                  <button
+                    :if={@state.current_term && @state.term_progress.phase == :enrollment}
+                    id="academy-open-lectures"
+                    type="button"
+                    phx-click="open_lecture_phase"
+                    class="academy-ink-button"
+                  >
+                    Закрыть выбор курсов
+                  </button>
+                  <.link
+                    :if={@state.current_term && @state.term_progress.phase == :lectures}
+                    id="academy-attend-lecture"
+                    navigate={~p"/academy/lecture/#{@state.current_term.id}"}
+                    class="academy-ink-button"
+                  >
+                    Открыть лекцию ({@state.term_progress.lectures_attended}/{@state.term_progress.lectures_required})
+                  </.link>
+                  <button
+                    :if={@state.current_term && @state.term_progress.phase == :lectures}
+                    id="academy-close-lectures"
+                    type="button"
+                    phx-click="close_lecture_phase"
+                    class="academy-ink-button academy-ink-button--outline"
+                  >
+                    К клубному окну
+                  </button>
+                  <.link
+                    :if={@state.current_term && @state.term_progress.phase in [:midterm, :final]}
+                    id="academy-open-exam"
+                    navigate={~p"/academy/exam/#{@state.current_term.id}"}
+                    class="academy-ink-button"
+                  >
+                    {term_exam_action_label(@state.term_progress.phase)}
+                  </.link>
+                </div>
+              </header>
+
+              <div :if={@state.current_term} class="acd-phase academy-term-ledger__phase">
+                <div class="acd-phase__track">
+                  <div class={[
+                    "acd-phase__step",
+                    phase_step_class(@state.term_progress.phase, :enrollment)
+                  ]}>
+                    <span class="acd-phase__dot"></span><span class="acd-phase__label">Запись</span>
+                  </div>
+                  <div class={[
+                    "acd-phase__step",
+                    phase_step_class(@state.term_progress.phase, :lectures)
+                  ]}>
+                    <span class="acd-phase__dot"></span><span class="acd-phase__label">Лекции</span>
+                  </div>
+                  <div class={[
+                    "acd-phase__step",
+                    phase_step_class(@state.term_progress.phase, :club_window)
+                  ]}>
+                    <span class="acd-phase__dot"></span><span class="acd-phase__label">Клубы</span>
+                  </div>
+                  <div class={[
+                    "acd-phase__step",
+                    phase_step_class(@state.term_progress.phase, :midterm)
+                  ]}>
+                    <span class="acd-phase__dot"></span><span class="acd-phase__label">Промежуточный</span>
+                  </div>
+                  <div class={[
+                    "acd-phase__step",
+                    phase_step_class(@state.term_progress.phase, :final)
+                  ]}>
+                    <span class="acd-phase__dot"></span><span class="acd-phase__label">Итоговый</span>
+                  </div>
+                  <div class={[
+                    "acd-phase__step",
+                    phase_step_class(@state.term_progress.phase, :break)
+                  ]}>
+                    <span class="acd-phase__dot"></span><span class="acd-phase__label">Перерыв</span>
+                  </div>
+                </div>
+              </div>
+
+              <section
+                :if={@state.current_term && @state.term_progress.phase == :club_window}
+                id="academy-club-window"
+                class="academy-ledger-insert"
+              >
+                <div>
+                  <p class="academy-paper__kicker">Вклейка клубного секретаря</p>
+                  <p id="academy-club-window-attendance">
+                    Посещено событий:
+                    <strong>
+                      {@state.term_progress.club_events_attended}/ {@state.term_progress.club_events_required}
+                    </strong>
+                  </p>
+                  <p>
+                    Подтверждённое участие требуется для рейтинга на стипендию.
+                  </p>
+                </div>
+                <div class="academy-ledger-insert__actions">
                   <.link
                     id="academy-club-window-link"
                     navigate={~p"/academy/clubs"}
-                    class="rounded border border-emerald-300/50 px-3 py-2 text-sm text-emerald-100"
+                    class="academy-ink-link"
                   >
-                    К клубам
+                    Открыть книгу клубов
                   </.link>
                   <button
                     id="academy-close-club-window"
                     type="button"
                     phx-click="close_club_window"
-                    class="rounded bg-emerald-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                    class="academy-ink-button"
                   >
-                    Перейти к мидтерму
+                    Передать на промежуточный экзамен
                   </button>
                 </div>
-              </div>
-            </section>
-            <ul id="academy-term-list" class="mt-4 space-y-2">
-              <li
-                :for={term <- @state.terms}
-                id={"academy-term-#{term.id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-950/55 px-4 py-3 text-sm"
-              >
-                <span>Термин {term.term_number}</span>
-                <span class="text-stone-300">
-                  {term_status(term.status)} · {term_phase_label(term_phase(term))} · экзамен: {term.exam_score ||
-                    "—"}
-                </span>
-              </li>
-              <li
-                :if={@state.terms == []}
-                id="academy-terms-empty"
-                class="rounded-lg bg-stone-950/55 px-4 py-3 text-sm text-stone-400"
-              >
-                Термины ещё не начаты.
-              </li>
-            </ul>
+              </section>
+
+              <ul id="academy-term-list" class="academy-ledger-lines">
+                <li :for={term <- @state.terms} id={"academy-term-#{term.id}"}>
+                  <span>Термин {term.term_number}</span>
+                  <span>{term_status(term.status)}</span>
+                  <span>{term_phase_label(term_phase(term))}</span>
+                  <strong>{term.exam_score || "—"}</strong>
+                </li>
+                <li
+                  :if={@state.terms == []}
+                  id="academy-terms-empty"
+                  class="academy-ledger-lines__empty"
+                >
+                  Термины ещё не начаты.
+                </li>
+              </ul>
+            </div>
           </section>
 
           <section
             :if={@state.cohort_leaderboard != []}
             id="academy-cohort-leaderboard"
-            class="rounded-2xl border border-amber-400/20 bg-amber-950/10 p-6 shadow-lg"
+            class="academy-blackboard"
           >
-            <div class="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-amber-100/75">когорта</p>
-                <h2 class="mt-1 font-serif text-2xl text-amber-100">Открытая ведомость</h2>
-              </div>
-              <p class="text-sm text-stone-400">
-                Верхняя четверть и merit grant учитывают подтверждённое клубное участие.
-              </p>
-            </div>
-            <ol class="mt-4 space-y-2">
+            <div class="academy-blackboard__chalk" aria-hidden="true"></div>
+            <header>
+              <p class="acd-eyebrow">Открытая ведомость</p>
+              <h2>Рейтинг когорты</h2>
+              <p>Верхняя четверть и мерит-стипендия учитывают клубное участие.</p>
+            </header>
+            <ol>
               <li
                 :for={entry <- @state.cohort_leaderboard}
                 id={"academy-cohort-rank-#{entry.enrollment.id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-950/55 px-4 py-3 text-sm"
               >
-                <span>
-                  №{entry.rank} · {entry.character.name}
-                  <span :if={entry.ranking_eligible?} class="text-emerald-200">· merit</span>
-                </span>
-                <span class="text-stone-300">GPA {gpa_label(entry.gpa)}</span>
+                <strong>№{entry.rank}</strong>
+                <span>{entry.character.name}</span>
+                <em :if={entry.ranking_eligible?}>стипендия</em>
+                <b>Средний балл: {gpa_label(entry.gpa)}</b>
               </li>
             </ol>
           </section>
 
-          <section
-            :if={@state.current_term}
-            id="academy-courses"
-            class="rounded-2xl border border-violet-400/20 bg-violet-950/15 p-6 shadow-lg"
-          >
-            <div class="flex flex-wrap items-end justify-between gap-3">
+          <section :if={@state.current_term} id="academy-courses" class="academy-course-wing">
+            <header class="academy-course-wing__header">
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">
-                  каталог текущего термина
-                </p>
-                <h2 class="mt-1 font-serif text-2xl text-violet-100">Курсы realm</h2>
+                <p class="acd-eyebrow">Коридор текущего термина</p>
+                <h2>Аудитории и курсы</h2>
               </div>
-              <span class="text-sm text-stone-400">
+              <p>
                 {if @state.term_progress.phase == :enrollment,
-                  do: "Запись проверяет ваш термин, путь и realm.",
-                  else: "Выбор курсов закрыт; в ведомости остались только подтверждённые записи."}
-              </span>
-            </div>
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
+                  do: "Двери открыты для записи.",
+                  else: "Запись закрыта; таблички показывают подтверждённые курсы."}
+              </p>
+            </header>
+            <div class="academy-course-wing__corridor">
               <article
                 :for={course <- visible_courses(@state)}
                 id={"academy-course-#{course.id}"}
-                class="rounded-xl border border-violet-300/15 bg-stone-950/55 p-4"
+                class="academy-classroom"
               >
-                <p class="text-xs uppercase tracking-[0.16em] text-stone-500">
-                  {course_track_label(course.track)} · {course_school_label(course.school)}
-                </p>
-                <h3 class="mt-1 font-serif text-lg text-stone-100">{course.title}</h3>
-                <p class="mt-2 text-sm text-stone-400">{course_summary(course)}</p>
-                <p
-                  :if={enrolled?(course, @state.course_enrollments)}
-                  class="mt-3 text-sm text-emerald-200"
-                >
-                  Вы уже записаны.
-                </p>
-                <p
-                  :if={office_hours_attended?(course, @state.course_enrollments)}
-                  id={"academy-office-hours-attended-#{course.id}"}
-                  class="mt-2 text-sm text-amber-100"
-                >
-                  Приёмные часы посещены · +5 к итоговой ведомости курса.
-                </p>
+                <div class="academy-classroom__transom" aria-hidden="true"></div>
+                <div class="academy-classroom__plaque">
+                  <p>{course_track_label(course.track)} · {course_school_label(course.school)}</p>
+                  <h3>{course_title(course)}</h3>
+                  <span>{course_summary(course)}</span>
+                </div>
+                <div class="academy-classroom__status">
+                  <p :if={enrolled?(course, @state.course_enrollments)}>Ваша фамилия внесена.</p>
+                  <p
+                    :if={office_hours_attended?(course, @state.course_enrollments)}
+                    id={"academy-office-hours-attended-#{course.id}"}
+                  >
+                    Приёмные часы посещены · +5 к итоговой ведомости.
+                  </p>
+                </div>
                 <button
                   :if={
                     not enrolled?(course, @state.course_enrollments) &&
@@ -679,7 +762,7 @@ defmodule MMGOWeb.AcademyLive do
                   type="button"
                   phx-click="enroll_course"
                   phx-value-course-id={course.id}
-                  class="mt-3 rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100"
+                  class="academy-classroom__handle"
                 >
                   Записаться
                 </button>
@@ -693,45 +776,744 @@ defmodule MMGOWeb.AcademyLive do
                   type="button"
                   phx-click="attend_office_hours"
                   phx-value-course-id={course.id}
-                  class="mt-3 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+                  class="academy-classroom__handle"
                 >
-                  Посетить приёмные часы
+                  Постучать в кабинет
                 </button>
               </article>
-              <p
-                :if={visible_courses(@state) == []}
-                id="academy-courses-empty"
-                class="text-sm text-stone-400"
-              >
-                Для этого пути пока нет опубликованных курсов.
+              <p :if={visible_courses(@state) == []} id="academy-courses-empty" class="acd-empty">
+                Для этого пути пока нет открытых аудиторий.
               </p>
             </div>
           </section>
 
-          <nav
-            id="academy-navigation"
-            class="flex flex-wrap gap-2 rounded-2xl border border-stone-700 bg-stone-900/70 p-4 text-sm"
+          <footer class="academy-hall__footer">
+            <span aria-hidden="true">A</span>
+            <p>Архив Академии · записи принадлежат миру</p>
+          </footer>
+        </div>
+      </main>
+    </Layouts.app>
+    """
+  end
+
+  attr :active, :atom, required: true
+  attr :eyebrow, :string, required: true
+  attr :title, :string, required: true
+  attr :subtitle, :string, required: true
+  attr :glyph, :string, required: true
+
+  defp academy_room_header(assigns) do
+    ~H"""
+    <div class="academy-room__topbar">
+      <.link id="academy-back-to-hall" navigate={~p"/academy"} class="academy-room__exit">
+        <span aria-hidden="true">←</span> В главный холл
+      </.link>
+      <button
+        id="academy-refresh"
+        type="button"
+        phx-click="refresh"
+        class="academy-room__refresh"
+        aria-label="Обновить академические записи"
+      >
+        <span aria-hidden="true">⌁</span> Позвать архивариуса
+      </button>
+    </div>
+
+    <header class="academy-room__portal">
+      <div class="academy-room__lamp academy-room__lamp--left" aria-hidden="true"></div>
+      <div class="academy-room__lamp academy-room__lamp--right" aria-hidden="true"></div>
+      <span class="academy-room__glyph" aria-hidden="true">{@glyph}</span>
+      <p class="acd-eyebrow">{@eyebrow}</p>
+      <h1>{@title}</h1>
+      <p>{@subtitle}</p>
+    </header>
+
+    <nav
+      id="academy-navigation"
+      class="academy-room__bookmarks"
+      aria-label="Залы Академии"
+    >
+      <.link navigate={~p"/academy"} class={room_nav_class(@active, :overview)}>Холл</.link>
+      <.link navigate={~p"/academy/timetable"} class={room_nav_class(@active, :timetable)}>
+        Расписание
+      </.link>
+      <.link navigate={~p"/academy/grades"} class={room_nav_class(@active, :grades)}>
+        Ведомость
+      </.link>
+      <.link navigate={~p"/academy/library"} class={room_nav_class(@active, :library)}>
+        Библиотека
+      </.link>
+      <.link navigate={~p"/academy/courses"} class={room_nav_class(@active, :courses)}>
+        Курсы
+      </.link>
+      <.link navigate={~p"/academy/progress"} class={room_nav_class(@active, :progress)}>
+        Путь
+      </.link>
+    </nav>
+    """
+  end
+
+  attr :error, :string, default: nil
+
+  defp academy_room_error(assigns) do
+    ~H"""
+    <div :if={@error} id="academy-error" class="academy-room__error">
+      <span aria-hidden="true">!</span>
+      <p>{@error}</p>
+    </div>
+    """
+  end
+
+  attr :state, :map, required: true
+
+  defp term_rhythm(assigns) do
+    ~H"""
+    <div
+      :if={@state.current_term}
+      class="academy-rhythm"
+      aria-label="Ритм текущего термина"
+    >
+      <div
+        :for={
+          {phase, label} <- [
+            enrollment: "Запись",
+            lectures: "Лекции",
+            club_window: "Клубы",
+            midterm: "Аттестация",
+            final: "Экзамен",
+            break: "Перерыв"
+          ]
+        }
+        class={[
+          "academy-rhythm__step",
+          phase_step_class(@state.term_progress.phase, phase)
+        ]}
+      >
+        <span aria-hidden="true"></span>
+        <small>{label}</small>
+      </div>
+    </div>
+    """
+  end
+
+  attr :state, :map, required: true
+
+  defp term_action_controls(assigns) do
+    ~H"""
+    <div id="academy-term-actions" class="academy-term-actions">
+      <button
+        :if={is_nil(@state.current_term) && term_startable?(@state)}
+        id="academy-begin-term"
+        type="button"
+        phx-click="begin_term"
+        class="academy-ink-button"
+      >
+        Открыть следующий термин
+      </button>
+      <p
+        :if={
+          is_nil(@state.current_term) && @state.next_term_schedule &&
+            not term_startable?(@state)
+        }
+        id="academy-term-not-open"
+        class="academy-term-actions__notice"
+      >
+        Следующая запись откроется {format_time(@state.next_term_schedule.starts_at)}. Архив не
+        засчитает попытку раньше срока.
+      </p>
+      <p
+        :if={
+          is_nil(@state.current_term) && is_nil(@state.next_term_schedule) &&
+            @state.enrollment
+        }
+        id="academy-no-more-terms"
+        class="academy-term-actions__notice"
+      >
+        Все предусмотренные сроки уже внесены в ведомость. Архив ожидает итоговой записи
+        программы.
+      </p>
+      <button
+        :if={@state.current_term && @state.term_progress.phase == :enrollment}
+        id="academy-open-lectures"
+        type="button"
+        phx-click="open_lecture_phase"
+        class="academy-ink-button"
+      >
+        Закрыть выбор курсов
+      </button>
+      <.link
+        :if={@state.current_term && @state.term_progress.phase == :lectures}
+        id="academy-attend-lecture"
+        navigate={~p"/academy/lecture/#{@state.current_term.id}"}
+        class="academy-ink-button"
+      >
+        Открыть лекцию ({@state.term_progress.lectures_attended}/{@state.term_progress.lectures_required})
+      </.link>
+      <button
+        :if={@state.current_term && @state.term_progress.phase == :lectures}
+        id="academy-close-lectures"
+        type="button"
+        phx-click="close_lecture_phase"
+        class="academy-ink-button academy-ink-button--outline"
+      >
+        Перейти к клубам
+      </button>
+      <.link
+        :if={@state.current_term && @state.term_progress.phase in [:midterm, :final]}
+        id="academy-open-exam"
+        navigate={~p"/academy/exam/#{@state.current_term.id}"}
+        class="academy-ink-button"
+      >
+        {term_exam_action_label(@state.term_progress.phase)}
+      </.link>
+    </div>
+    """
+  end
+
+  attr :state, :map, required: true
+  attr :program_form, :any, required: true
+
+  defp academy_program_application(assigns) do
+    ~H"""
+    <section id="academy-programs" class="academy-application academy-room__application">
+      <div class="academy-application__header">
+        <div>
+          <p class="academy-paper__kicker">Форма № 17 · Регистратура</p>
+          <h2>Прошение о зачислении</h2>
+        </div>
+        <div class="academy-application__stamp" aria-hidden="true">ПОДАТЬ</div>
+      </div>
+      <p class="academy-paper__body">
+        Поля меняются вместе с выбранной ступенью. Школы стихий нужны только чародею
+        основного пути; алхимику и мастеру они не назначаются.
+      </p>
+      <.form
+        for={@program_form}
+        id="academy-program-form"
+        phx-change="change_program"
+        phx-submit="start_program"
+        class="academy-paper-form academy-paper-form--grid"
+      >
+        <.input
+          field={@program_form[:program_type]}
+          type="select"
+          label="Ступень обучения"
+          options={program_options(@state.program_options)}
+        />
+        <div
+          :if={program_form_value(@program_form, :program_type) == "academy_core"}
+          id="academy-track-fields"
+          class="academy-paper-form__conditional"
+        >
+          <.input
+            field={@program_form[:track]}
+            type="select"
+            label="Профессиональный путь"
+            options={track_options()}
+          />
+          <p class="academy-paper-form__help">
+            Чародей создаёт заклинания, алхимик изучает рецепты, мастер работает с инструментами.
+          </p>
+        </div>
+        <div
+          :if={
+            program_form_value(@program_form, :program_type) == "academy_core" &&
+              program_form_value(@program_form, :track) == "wizardry"
+          }
+          id="academy-wizardry-school-fields"
+          class="academy-paper-form__conditional academy-paper-form__conditional--schools"
+        >
+          <.input
+            field={@program_form[:primary_school]}
+            type="select"
+            label="Основная школа чародейства"
+            options={school_options()}
+          />
+          <.input
+            field={@program_form[:secondary_school]}
+            type="select"
+            label="Дополнительная школа чародейства"
+            options={school_options()}
+          />
+        </div>
+        <button id="academy-start-program" type="submit" class="academy-wax-button">
+          Скрепить и подать
+        </button>
+      </.form>
+    </section>
+    """
+  end
+
+  defp timetable_room(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="academy-timetable-screen" class="acd-screen academy-room academy-room--timetable">
+        <div class="academy-room__vault" aria-hidden="true"></div>
+        <div class="academy-room__shell">
+          <.academy_room_header
+            active={:timetable}
+            eyebrow="Колокола и занятия"
+            title="Расписание термина"
+            subtitle="Настенная книга показывает только настоящие сроки, посещения и открытые действия."
+            glyph="⌚"
+          />
+          <.academy_room_error error={@error} />
+
+          <section id="academy-terms" class="academy-agenda-board">
+            <div class="academy-agenda-board__frame">
+              <header class="academy-agenda-board__heading">
+                <div>
+                  <p class="academy-paper__kicker">Распорядок · текущая запись</p>
+                  <h2>{term_room_heading(@state)}</h2>
+                </div>
+                <p id="academy-term-count">
+                  {length(@state.terms)} из {@state.required_terms} терминов в архиве
+                </p>
+              </header>
+
+              <p
+                :if={@state.current_term_schedule}
+                id="academy-current-term-window"
+                class="academy-agenda-board__window"
+              >
+                Текущий срок: {format_time(@state.current_term_schedule.starts_at)} — {format_time(
+                  @state.current_term_schedule.ends_at
+                )}
+              </p>
+              <p
+                :if={is_nil(@state.current_term) && @state.next_term_schedule}
+                id="academy-next-term-window"
+                class="academy-agenda-board__window"
+              >
+                Следующий срок начнётся {format_time(@state.next_term_schedule.starts_at)}
+              </p>
+
+              <.term_rhythm state={@state} />
+              <.term_action_controls :if={@state.enrollment} state={@state} />
+
+              <div id="academy-term-list" class="academy-agenda">
+                <article
+                  :for={entry <- term_agenda(@state)}
+                  id={"academy-agenda-#{entry.key}"}
+                  class={["academy-agenda__entry", "academy-agenda__entry--#{entry.state}"]}
+                >
+                  <div class="academy-agenda__rail" aria-hidden="true">
+                    <span></span><i></i>
+                  </div>
+                  <div>
+                    <small>{entry.when}</small>
+                    <h3>{entry.title}</h3>
+                    <p>{entry.detail}</p>
+                  </div>
+                </article>
+                <p
+                  :if={term_agenda(@state) == []}
+                  id="academy-terms-empty"
+                  class="academy-paper-empty"
+                >
+                  Сначала подайте прошение о зачислении в главном холле.
+                </p>
+              </div>
+            </div>
+          </section>
+
+          <section
+            :if={@state.current_term && @state.term_progress.phase == :club_window}
+            id="academy-club-window"
+            class="academy-pinned-note"
           >
-            <.link navigate={~p"/academy"} class="rounded px-3 py-2 hover:bg-stone-800">Холл</.link>
-            <.link navigate={~p"/academy/timetable"} class="rounded px-3 py-2 hover:bg-stone-800">
-              Расписание
+            <span class="academy-pinned-note__pin" aria-hidden="true"></span>
+            <p class="academy-paper__kicker">Записка клубного секретаря</p>
+            <h2 id="academy-club-window-attendance">
+              Посещено событий: {@state.term_progress.club_events_attended}/{@state.term_progress.club_events_required}
+            </h2>
+            <p>Подтверждённое участие требуется для рейтинга стипендии.</p>
+            <div>
+              <.link id="academy-club-window-link" navigate={~p"/academy/clubs"}>
+                К книге клубов
+              </.link>
+              <button id="academy-close-club-window" type="button" phx-click="close_club_window">
+                Передать на аттестацию
+              </button>
+            </div>
+          </section>
+        </div>
+      </main>
+    </Layouts.app>
+    """
+  end
+
+  defp grades_room(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="academy-grades-screen" class="scene-desk academy-grade-room">
+        <div class="academy-grade-room__shell">
+          <.academy_room_header
+            active={:grades}
+            eyebrow="Архив успеваемости"
+            title="Личная ведомость"
+            subtitle="Оценки лежат в переплёте: никаких тесных таблиц и мелкого служебного шрифта."
+            glyph="✒"
+          />
+          <.academy_room_error error={@error} />
+
+          <div class="book academy-grade-volume">
+            <div class="book__spine"></div>
+            <div class="book__page">
+              <div class="book__leaf">
+                <p class="academy-paper__kicker">Книга успеваемости · личный экземпляр</p>
+                <h2 class="book__title">{@state.character.name}</h2>
+                <p class="book__subtitle">{grade_program_line(@state)}</p>
+
+                <section id="academy-progress-summary" class="academy-grade-summary">
+                  <div>
+                    <span>Средний балл</span>
+                    <strong>{active_gpa(@state)}</strong>
+                  </div>
+                  <div>
+                    <span>Провалено терминов</span>
+                    <strong>{active_failed_terms(@state)}</strong>
+                  </div>
+                  <div>
+                    <span>Место в когорте</span>
+                    <strong>{cohort_rank_label(@state.academic_record)}</strong>
+                  </div>
+                </section>
+
+                <div id="academy-term-list" class="academy-grade-records">
+                  <article
+                    :for={term <- @state.terms}
+                    id={"academy-term-#{term.id}"}
+                    class={["academy-grade-record", "academy-grade-record--#{term.status}"]}
+                  >
+                    <header>
+                      <div>
+                        <small>Термин {term.term_number}</small>
+                        <h3>{term_status(term.status)}</h3>
+                      </div>
+                      <span>{grade_term_mark(term)}</span>
+                    </header>
+                    <dl>
+                      <div>
+                        <dt>Аттестация</dt>
+                        <dd>{term_midterm_score(term)}</dd>
+                      </div>
+                      <div>
+                        <dt>Итог</dt>
+                        <dd>{term.exam_score || "—"}</dd>
+                      </div>
+                      <div>
+                        <dt>Этап</dt>
+                        <dd>{term_phase_label(term_phase(term))}</dd>
+                      </div>
+                    </dl>
+                  </article>
+                  <p :if={@state.terms == []} id="academy-terms-empty" class="academy-paper-empty">
+                    В переплёте пока нет ни одного термина.
+                  </p>
+                </div>
+
+                <section
+                  :if={@state.academic_record}
+                  id="academy-grade-outcome"
+                  class="academy-grade-outcome"
+                >
+                  <span aria-hidden="true">A</span>
+                  <div>
+                    <p>Итоговая запись</p>
+                    <strong>{outcome_label(@state.academic_record.outcome_tier)}</strong>
+                  </div>
+                </section>
+
+                <section
+                  :if={@state.academic_titles != [] || @state.valedictorian_honors != []}
+                  id="academy-academic-titles"
+                  class="academy-grade-honors"
+                >
+                  <p>Печати и почётные звания</p>
+                  <span
+                    :for={title <- @state.academic_titles}
+                    id={"academy-academic-title-#{title.enrollment_id}"}
+                  >
+                    {title.title}
+                  </span>
+                  <span
+                    :for={honor <- @state.valedictorian_honors}
+                    id={"academy-valedictorian-title-#{honor.enrollment_id}"}
+                  >
+                    {honor.title}
+                  </span>
+                </section>
+              </div>
+            </div>
+          </div>
+
+          <section
+            :if={@state.cohort_leaderboard != []}
+            id="academy-cohort-leaderboard"
+            class="academy-ranking-slip"
+          >
+            <p class="academy-paper__kicker">Вкладыш открытой ведомости</p>
+            <h2>Рейтинг когорты</h2>
+            <ol>
+              <li
+                :for={entry <- @state.cohort_leaderboard}
+                id={"academy-cohort-rank-#{entry.enrollment.id}"}
+              >
+                <strong>№{entry.rank}</strong>
+                <span>{entry.character.name}</span>
+                <small>Средний балл: {gpa_label(entry.gpa)}</small>
+              </li>
+            </ol>
+          </section>
+        </div>
+      </main>
+    </Layouts.app>
+    """
+  end
+
+  defp library_room(assigns) do
+    assigns = assign(assigns, :library_shelves, library_shelves(assigns.state))
+
+    ~H"""
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="academy-library-screen" class="acd-screen academy-room academy-room--library">
+        <div class="academy-library__window" aria-hidden="true"></div>
+        <div class="academy-room__shell">
+          <.academy_room_header
+            active={:library}
+            eyebrow="Тишина · лампы · пыль"
+            title="Библиотека Академии"
+            subtitle="Каталог мира стоит на настоящих полках; личные формулы хранятся в вашем гримуаре."
+            glyph="▰"
+          />
+          <.academy_room_error error={@error} />
+
+          <section id="academy-library-shelves" class="academy-library">
+            <div class="academy-library__ladder" aria-hidden="true"><i></i><i></i><i></i></div>
+            <article
+              :for={shelf <- @library_shelves}
+              id={"academy-library-shelf-#{shelf.key}"}
+              class="academy-library__bay"
+            >
+              <header>
+                <span>{shelf.mark}</span>
+                <div>
+                  <p>{shelf.kicker}</p>
+                  <h2>{shelf.title}</h2>
+                </div>
+              </header>
+              <div class="academy-library__shelf">
+                <article
+                  :for={book <- shelf.books}
+                  id={"academy-library-book-#{book.id}"}
+                  class={["academy-library__book", library_book_class(book.school)]}
+                >
+                  <div class="academy-library__book-spine" aria-hidden="true">
+                    <i></i><i></i>
+                  </div>
+                  <div class="academy-library__book-label">
+                    <small>{book_kind_label(book.kind)}</small>
+                    <h3>{book.title}</h3>
+                    <p>{book.detail}</p>
+                  </div>
+                </article>
+                <p :if={shelf.books == []} class="academy-library__dust">
+                  На этой полке пока только карточка архивариуса.
+                </p>
+              </div>
+            </article>
+          </section>
+
+          <aside class="academy-library__desk">
+            <div class="academy-library__desk-lamp" aria-hidden="true"></div>
+            <div>
+              <p class="academy-paper__kicker">Личный каталог</p>
+              <h2>Ваши заклинания лежат отдельно</h2>
+              <p>
+                Библиотека Академии показывает курсы и учебные записи. Собственные формулы,
+                гримуары и создание заклинаний находятся в личной книге магии.
+              </p>
+            </div>
+            <.link id="academy-open-spellbook" navigate={~p"/spellbook"} class="academy-wax-button">
+              Открыть личный гримуар
             </.link>
-            <.link navigate={~p"/academy/grades"} class="rounded px-3 py-2 hover:bg-stone-800">
-              Ведомость
-            </.link>
-            <.link navigate={~p"/academy/courses"} class="rounded px-3 py-2 hover:bg-stone-800">
-              Курсы
-            </.link>
-            <.link navigate={~p"/academy/clubs"} class="rounded px-3 py-2 hover:bg-stone-800">
-              Клубы
-            </.link>
-            <.link navigate={~p"/academy/research"} class="rounded px-3 py-2 hover:bg-stone-800">
-              Наука
-            </.link>
-            <.link navigate={~p"/academy/bulletin-board"} class="rounded px-3 py-2 hover:bg-stone-800">
-              Доска
-            </.link>
-          </nav>
+          </aside>
+
+          <div class="academy-library__forbidden">
+            <span aria-hidden="true">⚿</span>
+            <p>
+              <strong>Запретная секция.</strong>
+              Решётка открывается только по настоящей рекомендации наставника.
+            </p>
+          </div>
+        </div>
+      </main>
+    </Layouts.app>
+    """
+  end
+
+  defp courses_room(assigns) do
+    ~H"""
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="academy-courses-screen" class="acd-screen academy-room academy-room--courses">
+        <div class="academy-room__vault" aria-hidden="true"></div>
+        <div class="academy-room__shell">
+          <.academy_room_header
+            active={:courses}
+            eyebrow="Коридор аудиторий"
+            title="Курсы и запись"
+            subtitle="Кафедральные таблички показывают реальный каталог этого мира и состояние вашего термина."
+            glyph="❧"
+          />
+          <.academy_room_error error={@error} />
+
+          <.academy_program_application
+            :if={@state.enrollment == nil && @state.program_options != []}
+            state={@state}
+            program_form={@program_form}
+          />
+
+          <section :if={@state.enrollment} class="academy-course-register">
+            <div class="academy-course-register__paper">
+              <p class="academy-paper__kicker">Лист текущего термина</p>
+              <h2>{program_label(@state.enrollment.program_type)}</h2>
+              <p id="academy-term-count">
+                Зафиксировано терминов: {length(@state.terms)} из {@state.required_terms}
+              </p>
+              <p
+                :if={@state.next_term_schedule && is_nil(@state.current_term)}
+                id="academy-next-term-window"
+              >
+                Следующий срок: {format_time(@state.next_term_schedule.starts_at)}
+              </p>
+              <.term_rhythm state={@state} />
+              <.term_action_controls state={@state} />
+            </div>
+          </section>
+
+          <section id="academy-courses" class="academy-course-wing academy-course-wing--room">
+            <header class="academy-course-wing__header">
+              <div>
+                <p class="acd-eyebrow">Двери кафедр</p>
+                <h2>Доступные аудитории</h2>
+              </div>
+              <p>{course_window_note(@state)}</p>
+            </header>
+            <div class="academy-course-wing__corridor">
+              <article
+                :for={course <- visible_courses(@state)}
+                id={"academy-course-#{course.id}"}
+                class="academy-classroom"
+              >
+                <div class="academy-classroom__transom" aria-hidden="true"></div>
+                <div class="academy-classroom__plaque">
+                  <p>{course_track_label(course.track)} · {course_school_label(course.school)}</p>
+                  <h3>{course_title(course)}</h3>
+                  <span>{course_summary(course)}</span>
+                </div>
+                <div class="academy-classroom__status">
+                  <p :if={enrolled?(course, @state.course_enrollments)}>Ваша фамилия внесена.</p>
+                  <p
+                    :if={office_hours_attended?(course, @state.course_enrollments)}
+                    id={"academy-office-hours-attended-#{course.id}"}
+                  >
+                    Приёмные часы посещены · +5 к итоговой ведомости.
+                  </p>
+                </div>
+                <button
+                  :if={
+                    @state.current_term &&
+                      not enrolled?(course, @state.course_enrollments) &&
+                      @state.term_progress.phase == :enrollment
+                  }
+                  id={"academy-enroll-course-#{course.id}"}
+                  type="button"
+                  phx-click="enroll_course"
+                  phx-value-course-id={course.id}
+                  class="academy-classroom__handle"
+                >
+                  Записаться
+                </button>
+                <button
+                  :if={
+                    @state.current_term &&
+                      enrolled?(course, @state.course_enrollments) &&
+                      not office_hours_attended?(course, @state.course_enrollments) &&
+                      office_hours_open?(@state.term_progress.phase)
+                  }
+                  id={"academy-office-hours-#{course.id}"}
+                  type="button"
+                  phx-click="attend_office_hours"
+                  phx-value-course-id={course.id}
+                  class="academy-classroom__handle"
+                >
+                  Постучать в кабинет
+                </button>
+              </article>
+              <p :if={visible_courses(@state) == []} id="academy-courses-empty" class="acd-empty">
+                Для этого пути пока нет открытых аудиторий.
+              </p>
+            </div>
+          </section>
+        </div>
+      </main>
+    </Layouts.app>
+    """
+  end
+
+  defp progress_room(assigns) do
+    assigns = assign(assigns, :education_ladder, education_ladder(assigns.state))
+
+    ~H"""
+    <Layouts.app flash={@flash} current_scope={@current_scope}>
+      <main id="academy-progress-screen" class="acd-screen academy-room academy-room--progress">
+        <div class="academy-path__tower" aria-hidden="true"></div>
+        <div class="academy-room__shell">
+          <.academy_room_header
+            active={:progress}
+            eyebrow="От первой парты до кафедры"
+            title="Образовательный путь"
+            subtitle="Каменная лестница отмечает только ваши завершённые, текущие и ещё закрытые ступени."
+            glyph="✦"
+          />
+          <.academy_room_error error={@error} />
+
+          <section id="academy-education-ladder" class="academy-path">
+            <div class="academy-path__banister" aria-hidden="true"></div>
+            <article
+              :for={stage <- @education_ladder}
+              id={"academy-path-stage-#{stage.key}"}
+              class={["academy-path__stage", "academy-path__stage--#{stage.state}"]}
+            >
+              <div class="academy-path__step" aria-hidden="true">
+                <span>{stage.glyph}</span>
+              </div>
+              <div class="academy-path__plaque">
+                <header>
+                  <div>
+                    <small>{stage.span}</small>
+                    <h2>{stage.title}</h2>
+                  </div>
+                  <b>{stage_status_label(stage.state)}</b>
+                </header>
+                <p>{stage.detail}</p>
+                <div :if={stage.notes != []} class="academy-path__notes">
+                  <span :for={note <- stage.notes}>{note}</span>
+                </div>
+              </div>
+            </article>
+          </section>
+
+          <section id="academy-progress-summary" class="academy-path__certificate">
+            <div class="academy-path__seal" aria-hidden="true">A</div>
+            <div>
+              <p class="academy-paper__kicker">Текущее положение</p>
+              <h2>{progress_heading(@state)}</h2>
+              <p>{progress_summary(@state)}</p>
+            </div>
+          </section>
         </div>
       </main>
     </Layouts.app>
@@ -743,6 +1525,415 @@ defmodule MMGOWeb.AcademyLive do
       {:ok, state} -> assign_state(socket, state)
       {:error, _reason} -> push_navigate(socket, to: ~p"/map")
     end
+  end
+
+  defp phase_step_class(current, step) when current == step, do: "acd-phase__step--now"
+
+  defp phase_step_class(current, step) do
+    phases = [:enrollment, :lectures, :club_window, :midterm, :final, :break]
+
+    current_index = Enum.find_index(phases, &(&1 == current))
+    step_index = Enum.find_index(phases, &(&1 == step))
+
+    if current_index && step_index && step_index < current_index do
+      "acd-phase__step--done"
+    end
+  end
+
+  defp room_nav_class(active, room) do
+    [
+      "academy-room__bookmark",
+      active == room && "academy-room__bookmark--active"
+    ]
+  end
+
+  defp program_form_value(form, key) do
+    case form[key].value do
+      nil -> ""
+      value -> to_string(value)
+    end
+  end
+
+  defp term_startable?(%{current_term: nil, next_term_schedule: %{starts_at: starts_at}})
+       when not is_nil(starts_at) do
+    DateTime.compare(DateTime.utc_now(), starts_at) != :lt
+  end
+
+  defp term_startable?(_state), do: false
+
+  defp term_room_heading(%{enrollment: nil}), do: "Учебная запись ещё не открыта"
+
+  defp term_room_heading(%{current_term: nil, enrollment: enrollment}),
+    do: "#{program_label(enrollment.program_type)} · между терминами"
+
+  defp term_room_heading(%{current_term: term}),
+    do: "Термин #{term.term_number} · #{term_phase_label(term_phase(term))}"
+
+  defp term_agenda(%{enrollment: nil}), do: []
+
+  defp term_agenda(%{current_term: nil, terms: terms}) do
+    Enum.map(terms, fn term ->
+      %{
+        key: "term-#{term.id}",
+        state: archived_term_state(term.status),
+        when: "Архивная запись",
+        title: "Термин #{term.term_number} · #{term_status(term.status)}",
+        detail: archived_term_detail(term)
+      }
+    end)
+  end
+
+  defp term_agenda(%{current_term: _term, term_progress: progress} = state) do
+    [
+      %{
+        key: "enrollment",
+        phase: :enrollment,
+        title: "Выбор курсов",
+        detail:
+          "#{length(state.course_enrollments)} #{russian_course_count(length(state.course_enrollments))} внесено в лист."
+      },
+      %{
+        key: "lectures",
+        phase: :lectures,
+        title: "Лекционный цикл",
+        detail:
+          "Посещено #{progress.lectures_attended} из #{progress.lectures_required} обязательных лекций."
+      },
+      %{
+        key: "club-window",
+        phase: :club_window,
+        title: "Клубное окно",
+        detail:
+          "Подтверждено #{progress.club_events_attended} из #{progress.club_events_required} событий."
+      },
+      %{
+        key: "midterm",
+        phase: :midterm,
+        title: "Промежуточная аттестация",
+        detail:
+          if(progress.midterm_score,
+            do: "Оценка внесена: #{progress.midterm_score}.",
+            else: "Оценка ещё не внесена."
+          )
+      },
+      %{
+        key: "final",
+        phase: :final,
+        title: "Итоговый экзамен",
+        detail:
+          if(progress.final_score,
+            do: "Ответ принят: #{progress.final_score}.",
+            else: "Итог ожидает открытия экзамена."
+          )
+      },
+      %{
+        key: "break",
+        phase: :break,
+        title: "Закрытие ведомости",
+        detail: "После экзамена переплёт передадут в архив."
+      }
+    ]
+    |> Enum.map(fn entry ->
+      entry
+      |> Map.put(:state, agenda_phase_state(progress.phase, entry.phase))
+      |> Map.put(:when, agenda_when(state, entry.phase))
+    end)
+  end
+
+  defp archived_term_state(:failed), do: :missed
+  defp archived_term_state(:pending), do: :future
+  defp archived_term_state(:active), do: :now
+  defp archived_term_state(_status), do: :done
+
+  defp archived_term_detail(%{status: :pending}),
+    do: "Срок прошёл без открытия; до завершения программы он не считается проваленным."
+
+  defp archived_term_detail(%{exam_score: score}) when is_integer(score),
+    do: "Итоговая оценка: #{score}."
+
+  defp archived_term_detail(_term), do: "Итоговая оценка не внесена."
+
+  defp agenda_phase_state(current, current), do: :now
+
+  defp agenda_phase_state(current, phase) do
+    phases = [:enrollment, :lectures, :club_window, :midterm, :final, :break]
+    current_index = Enum.find_index(phases, &(&1 == current)) || 0
+    phase_index = Enum.find_index(phases, &(&1 == phase)) || 0
+    if phase_index < current_index, do: :done, else: :future
+  end
+
+  defp agenda_when(%{current_term_schedule: schedule}, :enrollment) when not is_nil(schedule),
+    do: "С #{format_time(schedule.starts_at)}"
+
+  defp agenda_when(%{current_term_schedule: schedule}, :break) when not is_nil(schedule),
+    do: "До #{format_time(schedule.ends_at)}"
+
+  defp agenda_when(_state, _phase), do: "Текущий термин"
+
+  defp russian_course_count(count) when rem(count, 10) == 1 and rem(count, 100) != 11,
+    do: "курс"
+
+  defp russian_course_count(count)
+       when rem(count, 10) in 2..4 and rem(count, 100) not in 12..14,
+       do: "курса"
+
+  defp russian_course_count(_count), do: "курсов"
+
+  defp grade_program_line(%{enrollment: enrollment, latest_enrollment: latest}) do
+    case enrollment || latest do
+      nil -> "Учебная запись не открыта"
+      record -> program_label(record.program_type)
+    end
+  end
+
+  defp active_gpa(%{gpa: gpa}) when not is_nil(gpa), do: gpa_label(gpa)
+
+  defp active_gpa(%{academic_record: %{gpa: gpa}}) when not is_nil(gpa),
+    do: gpa_label(gpa)
+
+  defp active_gpa(_state), do: "—"
+
+  defp active_failed_terms(%{failed_terms: failed_terms}) when is_integer(failed_terms),
+    do: failed_terms
+
+  defp active_failed_terms(%{academic_record: %{failed_terms: failed_terms}})
+       when is_integer(failed_terms),
+       do: failed_terms
+
+  defp active_failed_terms(_state), do: 0
+
+  defp cohort_rank_label(%{cohort_rank: rank, cohort_size: size})
+       when is_integer(rank) and is_integer(size),
+       do: "#{rank} из #{size}"
+
+  defp cohort_rank_label(_record), do: "—"
+
+  defp grade_term_mark(%{status: :failed}), do: "не зачтён"
+  defp grade_term_mark(%{status: :completed, exam_score: score}) when is_integer(score), do: score
+  defp grade_term_mark(%{status: :active}), do: "текущий"
+  defp grade_term_mark(_term), do: "—"
+
+  defp term_midterm_score(%{metadata: metadata}),
+    do: Map.get(metadata || %{}, "midterm_score") || "—"
+
+  defp library_shelves(state) do
+    enrolled_books =
+      Enum.flat_map(state.course_enrollments, fn
+        %{course: %{} = course, grade: grade} ->
+          [
+            %{
+              id: "enrolled-#{course.id}",
+              title: course_title(course),
+              detail:
+                if(grade,
+                  do: "Оценка по курсу: #{grade}.",
+                  else: course_summary(course)
+                ),
+              kind: :enrolled,
+              school: course.school
+            }
+          ]
+
+        _other ->
+          []
+      end)
+
+    catalog_books =
+      state
+      |> visible_courses()
+      |> Enum.reject(&enrolled?(&1, state.course_enrollments))
+      |> Enum.map(fn course ->
+        %{
+          id: "catalog-#{course.id}",
+          title: course_title(course),
+          detail: course_summary(course),
+          kind: {:course, course.track, course.school},
+          school: course.school
+        }
+      end)
+
+    record_books =
+      Enum.map(state.academic_titles ++ state.valedictorian_honors, fn title ->
+        %{
+          id: "record-#{title.enrollment_id}",
+          title: title.title,
+          detail: "Архивная грамота, подтверждённая печатью Академии.",
+          kind: :record,
+          school: nil
+        }
+      end)
+
+    [
+      %{
+        key: "current",
+        mark: "I",
+        kicker: "На руках",
+        title: "Курсы текущего термина",
+        books: enrolled_books
+      },
+      %{
+        key: "catalog",
+        mark: "II",
+        kicker: "Каталог мира",
+        title: "Учебные гримуары",
+        books: catalog_books
+      },
+      %{
+        key: "archive",
+        mark: "III",
+        kicker: "Личный архив",
+        title: "Грамоты и почётные записи",
+        books: record_books
+      }
+    ]
+  end
+
+  defp library_book_class(nil), do: "academy-library__book--general"
+  defp library_book_class(school), do: "academy-library__book--#{school}"
+
+  defp book_kind_label(:enrolled), do: "В вашей учебной записи"
+
+  defp book_kind_label({:course, track, school}),
+    do: "#{course_track_label(track)} · #{course_school_label(school)}"
+
+  defp book_kind_label(:record), do: "Личное дело"
+  defp book_kind_label(_kind), do: "Учебный гримуар"
+
+  defp course_window_note(%{current_term: nil}),
+    do: "Осмотрите каталог. Запись станет доступна после открытия термина."
+
+  defp course_window_note(%{term_progress: %{phase: :enrollment}}),
+    do: "Двери открыты для записи."
+
+  defp course_window_note(_state),
+    do: "Запись закрыта; таблички показывают подтверждённые курсы."
+
+  defp education_ladder(state) do
+    [
+      %{
+        key: :basic,
+        program: :basic_education,
+        glyph: "I",
+        title: "Базовое образование",
+        span: "10 терминов",
+        detail: "Всеобщая грамота, история мира и основы магической безопасности."
+      },
+      %{
+        key: :core,
+        program: :academy_core,
+        glyph: "II",
+        title: "Основной путь Академии",
+        span: "3 термина",
+        detail: "Чародейство, алхимия или мастерство с итоговой практической работой."
+      },
+      %{
+        key: :extended,
+        program: :extended_study,
+        glyph: "III",
+        title: "Углублённое обучение",
+        span: "2 термина",
+        detail: "Дополнительная специализация перед научной кафедрой."
+      },
+      %{
+        key: :academia,
+        program: :academia,
+        glyph: "IV",
+        title: "Академия наук",
+        span: "4 термина",
+        detail: "Наставник, исследование, публикации, тезис и открытая защита."
+      },
+      %{
+        key: :professor,
+        program: :professor,
+        glyph: "V",
+        title: "Профессорская кафедра",
+        span: "карьера",
+        detail: "Право вести курсы, брать учеников и участвовать в совете Академии."
+      }
+    ]
+    |> Enum.map(fn stage ->
+      Map.merge(stage, %{
+        state: education_stage_state(state, stage.program),
+        notes: education_stage_notes(state, stage.program)
+      })
+    end)
+  end
+
+  defp education_stage_state(state, :professor) do
+    if state.academic_titles != [], do: :future, else: :locked
+  end
+
+  defp education_stage_state(state, program) do
+    cond do
+      state.enrollment && state.enrollment.program_type == program ->
+        :now
+
+      Enum.any?(
+        state.enrollment_history,
+        &(&1.program_type == program && &1.status == :completed)
+      ) ->
+        :done
+
+      true ->
+        :locked
+    end
+  end
+
+  defp education_stage_notes(state, :professor) do
+    if state.academic_titles == [], do: [], else: ["Научные звания уже внесены в личное дело"]
+  end
+
+  defp education_stage_notes(state, program) do
+    enrollment =
+      if state.enrollment && state.enrollment.program_type == program do
+        state.enrollment
+      else
+        Enum.find(state.enrollment_history, &(&1.program_type == program))
+      end
+
+    case enrollment do
+      nil ->
+        []
+
+      %{status: :active} ->
+        [
+          "#{length(state.terms)} из #{state.required_terms} терминов",
+          track_note(enrollment)
+        ]
+        |> Enum.reject(&is_nil/1)
+
+      %{status: status, metadata: metadata} ->
+        [
+          enrollment_status(status),
+          outcome_label(Map.get(metadata || %{}, "outcome_tier"))
+        ]
+    end
+  end
+
+  defp track_note(%{track: nil}), do: nil
+  defp track_note(%{track: track}), do: "Путь: #{track_label(track)}"
+
+  defp stage_status_label(:done), do: "завершено"
+  defp stage_status_label(:now), do: "вы здесь"
+  defp stage_status_label(:future), do: "впереди"
+  defp stage_status_label(:locked), do: "закрыто"
+
+  defp progress_heading(%{enrollment: nil, latest_enrollment: nil}), do: "Начало пути"
+
+  defp progress_heading(%{enrollment: nil, latest_enrollment: latest}),
+    do: "#{program_label(latest.program_type)} · запись закрыта"
+
+  defp progress_heading(%{enrollment: enrollment}),
+    do: "#{program_label(enrollment.program_type)} · #{enrollment_status(enrollment.status)}"
+
+  defp progress_summary(%{enrollment: nil, program_options: []}),
+    do: "Регистратура пока не предлагает следующую ступень."
+
+  defp progress_summary(%{enrollment: nil}),
+    do: "Следующую доступную ступень можно открыть в главном холле или в коридоре курсов."
+
+  defp progress_summary(state) do
+    "#{length(state.terms)} из #{state.required_terms} терминов внесено; средний балл — #{active_gpa(state)}."
   end
 
   defp assign_state(socket, state) do
@@ -771,7 +1962,12 @@ defmodule MMGOWeb.AcademyLive do
       "secondary_school" => "air"
     }
 
-  defp program_options(options), do: Enum.map(options, &{&1.label, &1.code})
+  defp program_options(options) do
+    Enum.map(options, fn option ->
+      {String.replace(option.label, "Academy Core", "Ядро Академии"), option.code}
+    end)
+  end
+
   defp track_options, do: @track_options
   defp school_options, do: @school_options
 
@@ -803,7 +1999,7 @@ defmodule MMGOWeb.AcademyLive do
   defp action_label(:progress), do: "путь"
   defp action_label(_action), do: "холл"
   defp program_label(:basic_education), do: "Базовое образование"
-  defp program_label(:academy_core), do: "Academy Core"
+  defp program_label(:academy_core), do: "Ядро Академии"
   defp program_label(:extended_study), do: "Расширенный курс"
   defp program_label(:academia), do: "Академия наук"
   defp program_label(_program), do: "Учебная запись"
@@ -832,22 +2028,43 @@ defmodule MMGOWeb.AcademyLive do
   defp term_phase_label(:enrollment), do: "Выбор курсов"
   defp term_phase_label(:lectures), do: "Лекции"
   defp term_phase_label(:club_window), do: "Клубное окно"
-  defp term_phase_label(:midterm), do: "Открыть мидтерм"
-  defp term_phase_label(:final), do: "Открыть финал"
+  defp term_phase_label(:midterm), do: "Промежуточный экзамен"
+  defp term_phase_label(:final), do: "Итоговый экзамен"
   defp term_phase_label(:break), do: "Перерыв"
   defp term_phase_label(_phase), do: "Ведомость"
+  defp term_exam_action_label(:midterm), do: "Открыть промежуточный экзамен"
+  defp term_exam_action_label(:final), do: "Открыть итоговый экзамен"
+  defp term_exam_action_label(phase), do: term_phase_label(phase)
   defp track_label(:wizardry), do: "Чародейство"
   defp track_label(:alchemy), do: "Алхимия"
   defp track_label(:mastery), do: "Мастерство"
   defp track_label(_track), do: "Общий путь"
   defp course_track_label(track), do: track_label(track)
-  defp course_school_label(nil), do: "общий"
-  defp course_school_label(school), do: school |> to_string() |> String.capitalize()
+  defp course_school_label(nil), do: "общий курс"
+  defp course_school_label(school), do: school_label(school)
 
   defp school_suffix(%{track: :wizardry, primary_school: first, secondary_school: second}),
-    do: " · #{String.capitalize(to_string(first))} + #{String.capitalize(to_string(second))}"
+    do: " · #{school_label(first)} + #{school_label(second)}"
 
   defp school_suffix(_specialization), do: ""
+
+  defp school_label(:fire), do: "Огонь"
+  defp school_label(:water), do: "Вода"
+  defp school_label(:earth), do: "Земля"
+  defp school_label(:air), do: "Воздух"
+  defp school_label(:life), do: "Жизнь"
+  defp school_label(:death), do: "Смерть"
+  defp school_label(:chaos), do: "Хаос"
+  defp school_label(:order), do: "Порядок"
+  defp school_label("fire"), do: "Огонь"
+  defp school_label("water"), do: "Вода"
+  defp school_label("earth"), do: "Земля"
+  defp school_label("air"), do: "Воздух"
+  defp school_label("life"), do: "Жизнь"
+  defp school_label("death"), do: "Смерть"
+  defp school_label("chaos"), do: "Хаос"
+  defp school_label("order"), do: "Порядок"
+  defp school_label(school), do: to_string(school)
 
   defp retraining_enrollment?(%{metadata: metadata}),
     do: is_binary(Map.get(metadata || %{}, "retraining_from_specialization_id"))
@@ -858,10 +2075,15 @@ defmodule MMGOWeb.AcademyLive do
   defp record_failed_terms(nil), do: 0
   defp record_failed_terms(record), do: record.failed_terms
   defp outcome_label(:distinction), do: "с отличием"
+  defp outcome_label("distinction"), do: "с отличием"
   defp outcome_label(:pass), do: "зачёт"
+  defp outcome_label("pass"), do: "зачёт"
   defp outcome_label(:probation), do: "испытательный выпуск"
+  defp outcome_label("probation"), do: "испытательный выпуск"
   defp outcome_label(:expulsion), do: "отчисление"
+  defp outcome_label("expulsion"), do: "отчисление"
   defp outcome_label(:capstone_incomplete), do: "не пройден итоговый проект"
+  defp outcome_label("capstone_incomplete"), do: "не пройден итоговый проект"
   defp outcome_label(_outcome), do: "ведомость ожидает итогов"
 
   defp starter_track_label(%{"track" => "wizardry"}), do: "Чародейство"
@@ -894,7 +2116,7 @@ defmodule MMGOWeb.AcademyLive do
   end
 
   defp starter_reward_label(%{"kind" => "spell", "name" => name, "school" => school}),
-    do: "Заклинание: #{name} · #{String.capitalize(school)}"
+    do: "Заклинание: #{name} · #{school_label(school)}"
 
   defp starter_reward_label(%{"kind" => "recipe", "name" => name}), do: "Рецепт: #{name}"
   defp starter_reward_label(%{"kind" => "tool", "name" => name}), do: "Инструмент: #{name}"
@@ -920,6 +2142,32 @@ defmodule MMGOWeb.AcademyLive do
     do:
       course.syllabus["summary"] || course.metadata["summary"] ||
         "Описание курса появится в ведомости преподавателя."
+
+  defp course_title(%{title: title}), do: localized_course_title(title)
+
+  defp localized_course_title("History of the Realm"), do: "История мира"
+  defp localized_course_title("Elemental Literacy"), do: "Основы стихий"
+  defp localized_course_title("Overworld Survival"), do: "Выживание в открытом мире"
+  defp localized_course_title("Economic Basics"), do: "Основы экономики"
+  defp localized_course_title("Civic Law"), do: "Гражданское право"
+  defp localized_course_title("Latin Fundamentals"), do: "Основы латыни"
+  defp localized_course_title("Incantation Construction I"), do: "Создание заклинаний I"
+  defp localized_course_title("Dual-School Fundamentals"), do: "Основы двух школ"
+  defp localized_course_title("Spellcraft Practicum"), do: "Практикум по чародейству"
+  defp localized_course_title("Incantation Construction II"), do: "Создание заклинаний II"
+  defp localized_course_title("Arcane Mini-Thesis"), do: "Малая работа по чародейству"
+  defp localized_course_title("Ingredients Taxonomy"), do: "Систематика ингредиентов"
+  defp localized_course_title("Basic Brewing"), do: "Основы зельеварения"
+
+  defp localized_course_title("Recipe Development Practicum"),
+    do: "Практикум по созданию рецептов"
+
+  defp localized_course_title("Alchemy Mini-Thesis"), do: "Малая работа по алхимии"
+  defp localized_course_title("Materials Science"), do: "Материаловедение"
+  defp localized_course_title("Basic Forging"), do: "Основы кузнечного дела"
+  defp localized_course_title("Toolcraft Practicum"), do: "Практикум по инструментам"
+  defp localized_course_title("Mastery Mini-Thesis"), do: "Малая работа по мастерству"
+  defp localized_course_title(title), do: title
 
   defp error_message(:academy_location_unavailable),
     do: "Академические дела доступны только в городе."

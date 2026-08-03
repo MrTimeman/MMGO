@@ -107,7 +107,7 @@ defmodule MMGO.NotificationsTest do
   } do
     Bypass.expect_once(bypass, "POST", "/bottest-bot-token/sendMessage", fn conn ->
       {:ok, body, conn} = Plug.Conn.read_body(conn)
-      assert body =~ "journey"
+      assert body =~ "Путешествие"
       assert body =~ "555001"
       Plug.Conn.resp(conn, 200, ~s({"ok":true,"result":{"message_id":1}}))
     end)
@@ -169,8 +169,8 @@ defmodule MMGO.NotificationsTest do
                }
              })
 
-    assert text =~ "ended without graduation"
-    assert text =~ "capstone was not passed"
+    assert text =~ "без выпуска"
+    assert text =~ "итоговое испытание не пройдено"
   end
 
   defp character_fixture(realm, handle, name, telegram_user_id) do

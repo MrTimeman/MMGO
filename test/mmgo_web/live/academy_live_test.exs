@@ -40,15 +40,12 @@ defmodule MMGOWeb.AcademyLiveTest do
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/academy")
 
     assert has_element?(view, "#academy-program-form")
+    refute has_element?(view, "#academy-track-fields")
+    refute has_element?(view, "#academy-wizardry-school-fields")
 
     view
     |> form("#academy-program-form", %{
-      "academy_program" => %{
-        "program_type" => "basic_education",
-        "track" => "wizardry",
-        "primary_school" => "fire",
-        "secondary_school" => "air"
-      }
+      "academy_program" => %{"program_type" => "basic_education"}
     })
     |> render_submit()
 
@@ -62,6 +59,45 @@ defmodule MMGOWeb.AcademyLiveTest do
     assert has_element?(view, "#academy-term-count")
     assert has_element?(view, "#academy-current-term-window")
     assert has_element?(view, "#academy-cohort-leaderboard")
+  end
+
+  test "shows schools only for the wizardry path of the academy core", %{
+    conn: conn,
+    realm: realm,
+    city: city
+  } do
+    character = character_fixture(realm, city, "academy-form-path", "Academy Form", :new)
+    complete_basic_education(character)
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/academy")
+
+    assert has_element?(view, "#academy-track-fields")
+    assert has_element?(view, "#academy-wizardry-school-fields")
+
+    view
+    |> form("#academy-program-form", %{
+      "academy_program" => %{
+        "program_type" => "academy_core",
+        "track" => "alchemy",
+        "primary_school" => "fire",
+        "secondary_school" => "air"
+      }
+    })
+    |> render_change()
+
+    assert has_element?(view, "#academy-track-fields")
+    refute has_element?(view, "#academy-wizardry-school-fields")
+
+    view
+    |> form("#academy-program-form", %{
+      "academy_program" => %{"program_type" => "academy_core", "track" => "alchemy"}
+    })
+    |> render_submit()
+
+    enrollment = Academy.current_enrollment(character.id)
+    assert enrollment.track == :alchemy
+    assert is_nil(enrollment.metadata["primary_school"])
+    assert is_nil(enrollment.metadata["secondary_school"])
   end
 
   test "enrolls the scoped student's current term in a realm-valid course", %{
@@ -160,7 +196,7 @@ defmodule MMGOWeb.AcademyLiveTest do
     refute has_element?(view, "#academy-open-exam")
 
     view |> element("#academy-close-club-window") |> render_click()
-    assert has_element?(view, "#academy-open-exam", "Открыть мидтерм")
+    assert has_element?(view, "#academy-open-exam", "Открыть промежуточный экзамен")
   end
 
   test "shows the real starter rewards after academy core graduation", %{

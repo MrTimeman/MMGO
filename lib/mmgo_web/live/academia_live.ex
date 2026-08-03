@@ -86,7 +86,7 @@ defmodule MMGOWeb.AcademiaLive do
       {:ok, state} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Кафедра закрыта: вы получили статус Researcher Emeritus.")
+         |> put_flash(:info, "Кафедра закрыта: вы получили статус почётного исследователя.")
          |> assign(:error, nil)
          |> assign_state(state)}
 
@@ -152,7 +152,7 @@ defmodule MMGOWeb.AcademiaLive do
       {:ok, state} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Глава Академии утвердил допуск выпускника с probation.")
+         |> put_flash(:info, "Глава Академии утвердил испытательный допуск выпускника.")
          |> assign(:error, nil)
          |> assign_state(state)}
 
@@ -290,7 +290,7 @@ defmodule MMGOWeb.AcademiaLive do
       {:ok, state} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Курс опубликован в каталоге реалма.")
+         |> put_flash(:info, "Курс опубликован в каталоге мира.")
          |> assign(:error, nil)
          |> assign_state(state)}
 
@@ -306,13 +306,13 @@ defmodule MMGOWeb.AcademiaLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="academia-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-5xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
+      <main id="academia-screen" class="acd-screen acd-research-screen">
+        <div class="acd-research-shell">
+          <div class="acd-research-tools">
             <.link
               id="academia-back-academy"
               navigate={~p"/academy"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+              class="acd-exit"
             >
               ← В Академию
             </.link>
@@ -320,92 +320,99 @@ defmodule MMGOWeb.AcademiaLive do
               id="academia-refresh"
               type="button"
               phx-click="refresh"
-              class="rounded border border-stone-600 px-3 py-2 text-sm text-stone-200 transition hover:border-stone-400"
+              class="acd-clerk-action"
             >
-              Обновить записи
+              Сверить реестры
             </button>
           </div>
 
-          <header class="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-950/35 via-stone-950 to-sky-950/25 p-7 shadow-2xl">
-            <p class="text-xs uppercase tracking-[0.25em] text-amber-200/75">Академия наук</p>
-            <h1 class="mt-2 font-serif text-3xl text-amber-100">Исследования и кафедра</h1>
-            <p class="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-              Проекты, публикации и преподавание используют реальные записи мира. Завершение исследования назначается временем мира; тезис проходит отдельную открытую защиту.
-            </p>
+          <header class="acd-research-masthead">
+            <div class="acd-research-crest" aria-hidden="true">A</div>
+            <div class="acd-research-masthead__copy">
+              <p class="acd-eyebrow">Академия наук · архив кафедры</p>
+              <h1 class="acd-research-title">Исследования и кафедра</h1>
+              <p class="acd-research-intro">
+                Проекты, публикации и преподавание используют реальные записи мира. Завершение исследования назначается временем мира; тезис проходит отдельную открытую защиту.
+              </p>
+            </div>
+            <span class="acd-research-masthead__number">реестр XVII</span>
           </header>
 
           <div
             :if={@error}
             id="academia-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+            class="acd-red-slip"
           >
             {@error}
           </div>
 
-          <section class="grid gap-4 lg:grid-cols-2">
+          <section class="acd-folio-grid">
             <article
               id="academia-career"
-              class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+              class="acd-dossier acd-dossier--appointment"
             >
-              <p class="text-xs uppercase tracking-[0.2em] text-stone-500">статус кафедры</p>
+              <span class="acd-dossier__clip" aria-hidden="true"></span>
+              <p class="acd-kicker">личное дело · статус кафедры</p>
               <%= cond do %>
                 <% @state.professor -> %>
-                  <h2 id="academia-professor" class="mt-2 font-serif text-2xl text-emerald-100">
+                  <h2 id="academia-professor" class="acd-document-title">
                     Профессор
                   </h2>
-                  <p class="mt-3 text-sm leading-6 text-stone-300">
-                    Ваши курсы появляются в каталоге реалма; активные студенты смогут записываться только в совместимый термин и путь.
+                  <p class="acd-copy">
+                    Ваши курсы появляются в общем каталоге; активные студенты смогут записываться только в совместимый термин и путь.
                   </p>
                   <button
                     id="academia-retire-professor"
                     type="button"
                     phx-click="retire_professor"
-                    class="mt-5 rounded-lg border border-stone-500 px-4 py-3 text-sm font-semibold text-stone-200 transition hover:border-stone-300 hover:bg-stone-800"
+                    class="acd-ink-action acd-ink-action--muted"
                   >
                     Уйти в эмеритуру
                   </button>
                 <% @state.emeritus_professor -> %>
-                  <h2 id="academia-emeritus" class="mt-2 font-serif text-2xl text-violet-100">
-                    Researcher Emeritus
+                  <h2 id="academia-emeritus" class="acd-document-title">
+                    Почётный исследователь
                   </h2>
-                  <p class="mt-3 text-sm leading-6 text-stone-300">
-                    Вы больше не ведёте курсы, не участвуете в выборах главы и не берёте новых аспирантов. Право публикации и поручительства для probation-выпускников сохранено.
+                  <p class="acd-copy">
+                    Вы больше не ведёте курсы, не участвуете в выборах главы и не берёте новых аспирантов. Право публикации и поручительства для выпускников с испытательным допуском сохранено.
                   </p>
                 <% true -> %>
-                  <h2 id="academia-researcher" class="mt-2 font-serif text-2xl text-stone-100">
+                  <h2 id="academia-researcher" class="acd-document-title">
                     Исследователь
                   </h2>
-                  <p class="mt-3 text-sm leading-6 text-stone-300">
+                  <p class="acd-copy">
                     Профессорство открывается после принятой защиты тезиса. Назначение проверяется сервером, а не этой кнопкой.
                   </p>
                   <button
                     id="academia-appoint-professor"
                     type="button"
                     phx-click="appoint"
-                    class="mt-5 rounded-lg border border-amber-300/50 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-950/35"
+                    class="acd-ink-action"
                   >
                     Подать на кафедру
                   </button>
               <% end %>
+              <span class="acd-wax-seal acd-wax-seal--small" aria-hidden="true">каф.</span>
             </article>
 
-            <article class="rounded-2xl border border-sky-400/20 bg-sky-950/15 p-6 shadow-lg">
-              <p class="text-xs uppercase tracking-[0.2em] text-sky-200/75">активная работа</p>
+            <article class="acd-dossier acd-dossier--active">
+              <span class="acd-dossier__pin" aria-hidden="true"></span>
+              <p class="acd-kicker">лист наблюдений · активная работа</p>
               <%= if @state.active_project do %>
-                <h2 id="academia-active-project" class="mt-2 font-serif text-2xl text-sky-100">
+                <h2 id="academia-active-project" class="acd-document-title">
                   {@state.active_project.title}
                 </h2>
-                <p class="mt-3 text-sm text-stone-300">
+                <p class="acd-copy acd-copy--ruled">
                   {project_kind_label(@state.active_project.project_kind)} · завершение {format_time(
                     @state.active_project.completes_at
                   )}
                 </p>
               <% else %>
-                <h2 id="academia-no-active-project" class="mt-2 font-serif text-2xl text-sky-100">
+                <h2 id="academia-no-active-project" class="acd-document-title">
                   Стол свободен
                 </h2>
-                <p class="mt-3 text-sm text-stone-300">
-                  После завершения программы Academia можно начать одну исследовательскую работу.
+                <p class="acd-copy acd-copy--ruled">
+                  После завершения программы Академии наук можно начать одну исследовательскую работу.
                 </p>
               <% end %>
             </article>
@@ -413,25 +420,26 @@ defmodule MMGOWeb.AcademiaLive do
 
           <section
             id="academia-headship"
-            class="rounded-2xl border border-amber-400/25 bg-amber-950/15 p-6 shadow-lg"
+            class="acd-council-ledger"
           >
-            <div class="flex flex-wrap items-baseline justify-between gap-3">
+            <div class="acd-ledger-spine" aria-hidden="true"></div>
+            <div class="acd-ledger-heading">
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-amber-200/75">совет реалма</p>
-                <h2 id="academia-head" class="mt-1 font-serif text-2xl text-amber-100">
+                <p class="acd-kicker">протокол совета мира</p>
+                <h2 id="academia-head" class="acd-ledger-title">
                   Глава Академии: {academy_head_name(@state.headship.head)}
                 </h2>
               </div>
               <p
                 :if={@state.headship.term_active?}
                 id="academia-head-term"
-                class="text-sm text-amber-100"
+                class="acd-term-stamp"
               >
                 Полномочия до {format_time(@state.headship.term_ends_at)}
               </p>
             </div>
-            <p class="mt-3 text-sm leading-6 text-stone-300">
-              Только действующие профессора реалма выбирают главу на десятидневный срок. Состав избирателей фиксируется при открытии голосования; NPC-кафедра в него не входит.
+            <p class="acd-ledger-copy">
+              Только действующие профессора этого мира выбирают главу на десятидневный срок. Состав избирателей фиксируется при открытии голосования; кафедра наставников в него не входит.
             </p>
 
             <button
@@ -439,33 +447,34 @@ defmodule MMGOWeb.AcademiaLive do
               id="academia-open-head-election"
               type="button"
               phx-click="open_head_election"
-              class="mt-4 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100 transition hover:bg-amber-950/40"
+              class="acd-seal-action"
             >
               Открыть выборы главы
             </button>
 
             <%= if @state.headship.open_election do %>
-              <div id="academia-head-election" class="mt-5 border-t border-amber-300/20 pt-4">
-                <p id="academia-head-election-tally" class="text-sm text-stone-300">
+              <div id="academia-head-election" class="acd-ledger-section acd-ballot-sheet">
+                <p id="academia-head-election-tally" class="acd-ledger-note">
                   Голосов: {@state.headship.open_election.votes_cast}/ {@state.headship.open_election.voter_count}; закрытие {format_time(
                     @state.headship.open_election.closes_at
                   )}.
                 </p>
-                <div class="mt-4 grid gap-3 md:grid-cols-3">
+                <div class="acd-candidate-grid">
                   <article
                     :for={candidate <- @state.headship.open_election.candidates}
                     id={"academia-head-candidate-#{candidate.professor.character_id}"}
-                    class="rounded-xl border border-amber-300/15 bg-stone-950/55 p-4"
+                    class="acd-ballot"
                   >
-                    <p class="font-medium text-stone-100">{candidate.professor.character.name}</p>
-                    <p class="mt-1 text-sm text-stone-400">Поддержка: {candidate.votes}</p>
+                    <span class="acd-ballot__mark" aria-hidden="true"></span>
+                    <p class="acd-ballot__name">{candidate.professor.character.name}</p>
+                    <p class="acd-ballot__votes">Поддержка: {candidate.votes}</p>
                     <button
                       :if={@state.headship.open_election.can_vote?}
                       id={"academia-vote-head-#{candidate.professor.character_id}"}
                       type="button"
                       phx-click="vote_head"
                       phx-value-candidate-id={candidate.professor.character_id}
-                      class="mt-3 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100 transition hover:bg-amber-950/40"
+                      class="acd-ink-action acd-ink-action--compact"
                     >
                       Голосовать
                     </button>
@@ -474,7 +483,7 @@ defmodule MMGOWeb.AcademiaLive do
                 <p
                   :if={not @state.headship.open_election.can_vote?}
                   id="academia-head-vote-recorded"
-                  class="mt-3 text-sm text-stone-400"
+                  class="acd-margin-note"
                 >
                   Ваш голос уже учтён или вы не вошли в зафиксированный состав профессоров.
                 </p>
@@ -483,7 +492,7 @@ defmodule MMGOWeb.AcademiaLive do
                   id="academia-settle-head-election"
                   type="button"
                   phx-click="settle_head_election"
-                  class="mt-4 rounded border border-stone-500 px-3 py-2 text-sm text-stone-200"
+                  class="acd-clerk-action acd-clerk-action--on-paper"
                 >
                   Подвести итог срока голосования
                 </button>
@@ -493,25 +502,25 @@ defmodule MMGOWeb.AcademiaLive do
             <section
               :if={current_academy_head?(@state) and @state.headship_admission_candidates != []}
               id="academia-head-probation-admissions"
-              class="mt-5 border-t border-amber-300/20 pt-4"
+              class="acd-ledger-section"
             >
-              <h3 class="font-serif text-xl text-amber-100">Допуск probation-выпускников</h3>
-              <p class="mt-2 text-sm leading-6 text-stone-300">
-                Решение создаёт непередаваемую запись допуска к Academy Core и не меняет деньги или оценки кандидата.
+              <h3 class="acd-ledger-subtitle">Испытательный допуск выпускников</h3>
+              <p class="acd-ledger-copy">
+                Решение создаёт непередаваемую запись допуска в Ядро Академии и не меняет деньги или оценки кандидата.
               </p>
-              <div class="mt-4 grid gap-3 md:grid-cols-2">
+              <div class="acd-candidate-grid acd-candidate-grid--wide">
                 <article
                   :for={candidate <- @state.headship_admission_candidates}
                   id={"academia-head-admission-candidate-#{candidate.character.id}"}
-                  class="rounded-xl border border-amber-300/15 bg-stone-950/55 p-4"
+                  class="acd-approval-slip"
                 >
-                  <p class="font-medium text-stone-100">{candidate.character.name}</p>
+                  <p class="acd-approval-slip__name">{candidate.character.name}</p>
                   <button
                     id={"academia-head-admit-#{candidate.character.id}"}
                     type="button"
                     phx-click="admit_probation_as_head"
                     phx-value-candidate-id={candidate.character.id}
-                    class="mt-3 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100 transition hover:bg-amber-950/40"
+                    class="acd-ink-action acd-ink-action--compact"
                   >
                     Утвердить допуск
                   </button>
@@ -522,22 +531,22 @@ defmodule MMGOWeb.AcademiaLive do
             <section
               :if={current_academy_head?(@state)}
               id="academia-head-charity-stipends"
-              class="mt-5 border-t border-amber-300/20 pt-4"
+              class="acd-ledger-section"
             >
-              <div class="flex flex-wrap items-baseline justify-between gap-3">
+              <div class="acd-ledger-subhead">
                 <div>
-                  <h3 class="font-serif text-xl text-amber-100">Стипендии Фонда Просвещения</h3>
-                  <p class="mt-2 text-sm leading-6 text-stone-300">
-                    Разовая стипендия доступна только действующему студенту Academy Core с грантовым финансированием. Средства переходят из фонда прямо в его кошелёк и оставляют квитанцию в ведомости.
+                  <h3 class="acd-ledger-subtitle">Стипендии Фонда Просвещения</h3>
+                  <p class="acd-ledger-copy">
+                    Разовая стипендия доступна только действующему студенту Ядра Академии с грантовым финансированием. Средства переходят из фонда прямо в его кошелёк и оставляют квитанцию в ведомости.
                   </p>
                 </div>
-                <p id="academia-charity-fund-balance" class="text-sm text-amber-100">
+                <p id="academia-charity-fund-balance" class="acd-fund-seal">
                   В фонде: {@state.charity_fund_balance} ◈
                 </p>
               </div>
 
               <%= if @state.headship_charity_stipend_candidates == [] do %>
-                <p id="academia-charity-stipends-empty" class="mt-4 text-sm text-stone-400">
+                <p id="academia-charity-stipends-empty" class="acd-margin-note">
                   Сейчас нет студентов с грантовой записью, ожидающих первую стипендию.
                 </p>
               <% else %>
@@ -545,12 +554,13 @@ defmodule MMGOWeb.AcademiaLive do
                   for={@charity_stipend_form}
                   id="academia-charity-stipend-form"
                   phx-submit="award_charity_stipend"
-                  class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_auto] md:items-end"
+                  class="acd-form acd-form--triple"
                 >
                   <.input
                     field={@charity_stipend_form[:candidate_id]}
                     type="select"
                     label="Студент"
+                    class="acd-control"
                     options={
                       charity_stipend_candidate_options(@state.headship_charity_stipend_candidates)
                     }
@@ -561,11 +571,12 @@ defmodule MMGOWeb.AcademiaLive do
                     label="Сумма"
                     min="1"
                     inputmode="numeric"
+                    class="acd-control"
                   />
                   <button
                     id="academia-award-charity-stipend"
                     type="submit"
-                    class="rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100 transition hover:bg-amber-950/40"
+                    class="acd-seal-action"
                   >
                     Выдать стипендию
                   </button>
@@ -576,28 +587,29 @@ defmodule MMGOWeb.AcademiaLive do
             <section
               :if={current_academy_head?(@state)}
               id="academia-head-curriculum"
-              class="mt-5 border-t border-amber-300/20 pt-4"
+              class="acd-ledger-section"
             >
-              <h3 class="font-serif text-xl text-amber-100">Коррекция учебного плана</h3>
-              <p class="mt-2 text-sm leading-6 text-stone-300">
+              <h3 class="acd-ledger-subtitle">Коррекция учебного плана</h3>
+              <p class="acd-ledger-copy">
                 Глава Академии переносит только активные базовые курсы на допустимый термин. Это меняет будущий выбор курсов в каталоге, но не переименовывает курс и не трогает уже открытые ведомости.
               </p>
 
               <%= if @state.headship_curriculum_courses == [] do %>
-                <p id="academia-head-curriculum-empty" class="mt-4 text-sm text-stone-400">
-                  Базовые курсы для этого реалма ещё не посеяны.
+                <p id="academia-head-curriculum-empty" class="acd-margin-note">
+                  Базовые курсы для этого мира ещё не подготовлены.
                 </p>
               <% else %>
                 <.form
                   for={@curriculum_override_form}
                   id="academia-head-curriculum-form"
                   phx-submit="set_curriculum_override"
-                  class="mt-4 grid gap-3 md:grid-cols-[minmax(0,1fr)_10rem_auto] md:items-end"
+                  class="acd-form acd-form--triple"
                 >
                   <.input
                     field={@curriculum_override_form[:course_id]}
                     type="select"
                     label="Базовый курс"
+                    class="acd-control"
                     options={curriculum_course_options(@state.headship_curriculum_courses)}
                   />
                   <.input
@@ -607,43 +619,44 @@ defmodule MMGOWeb.AcademiaLive do
                     min="1"
                     max="10"
                     inputmode="numeric"
+                    class="acd-control"
                   />
                   <button
                     id="academia-set-curriculum-override"
                     type="submit"
-                    class="rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100 transition hover:bg-amber-950/40"
+                    class="acd-seal-action"
                   >
                     Перенести курс
                   </button>
                 </.form>
 
-                <div id="academia-head-curriculum-courses" class="mt-4 grid gap-3 md:grid-cols-2">
+                <div id="academia-head-curriculum-courses" class="acd-curriculum-grid">
                   <article
                     :for={curriculum <- @state.headship_curriculum_courses}
                     id={"academia-curriculum-course-#{curriculum.course.id}"}
-                    class="rounded-xl border border-amber-300/15 bg-stone-950/55 p-4"
+                    class="acd-curriculum-card"
                   >
-                    <p class="font-medium text-stone-100">{curriculum.course.title}</p>
-                    <p class="mt-1 text-sm text-stone-400">
+                    <p class="acd-curriculum-card__title">{curriculum.course.title}</p>
+                    <p class="acd-curriculum-card__terms">
                       Базово: {curriculum_terms_label(curriculum.base_term_numbers)} · сейчас: {curriculum_terms_label(
                         curriculum.effective_term_numbers
                       )}
                     </p>
-                    <p class="mt-1 text-xs uppercase tracking-wide text-amber-100/75">
+                    <p class="acd-curriculum-card__allowed">
                       Допустимые термины: {curriculum_terms_label(curriculum.allowed_term_numbers)}
                     </p>
                     <%= if curriculum.override do %>
                       <div
                         id={"academia-curriculum-override-#{curriculum.course.id}"}
-                        class="mt-3 flex flex-wrap items-center justify-between gap-3"
+                        class="acd-curriculum-card__override"
                       >
-                        <p class="text-sm text-amber-100">Перенос внесён в реестр реалма.</p>
+                        <p>Перенос внесён в реестр мира.</p>
                         <button
                           id={"academia-reset-curriculum-#{curriculum.course.id}"}
                           type="button"
                           phx-click="clear_curriculum_override"
                           phx-value-course-id={curriculum.course.id}
-                          class="rounded border border-stone-500 px-3 py-2 text-sm text-stone-200 transition hover:bg-stone-800"
+                          class="acd-clerk-action acd-clerk-action--on-paper"
                         >
                           Вернуть базовый план
                         </button>
@@ -657,17 +670,18 @@ defmodule MMGOWeb.AcademiaLive do
 
           <section
             id="academia-advisor"
-            class="rounded-2xl border border-violet-400/20 bg-violet-950/15 p-6 shadow-lg"
+            class="acd-appointment-letter"
           >
-            <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">наставник</p>
+            <span class="acd-appointment-letter__fold" aria-hidden="true"></span>
+            <p class="acd-kicker">закрытое назначение · наставник</p>
             <%= if @state.advisor do %>
-              <h2 id="academia-current-advisor" class="mt-2 font-serif text-2xl text-violet-100">
+              <h2 id="academia-current-advisor" class="acd-document-title">
                 {advisor_name(@state.advisor, @state.professors)}
               </h2>
-              <p class="mt-3 text-sm leading-6 text-stone-300">
+              <p class="acd-copy">
                 Связь уже закреплена в записи Академии. Наставник участвует в комиссии вашей будущей защиты, если остаётся действующим профессором.
               </p>
-              <p id="academia-advisor-bonus" class="mt-2 text-sm text-violet-100">
+              <p id="academia-advisor-bonus" class="acd-hand-note">
                 Новые исследования идут на 20% быстрее; базовая награда за работу не уменьшается.
               </p>
             <% else %>
@@ -675,34 +689,37 @@ defmodule MMGOWeb.AcademiaLive do
                 <% not @state.academia_admitted? -> %>
                   <h2
                     id="academia-advisor-admission-required"
-                    class="mt-2 font-serif text-2xl text-violet-100"
+                    class="acd-document-title"
                   >
-                    Сначала поступите в Academia
+                    Сначала поступите в Академию наук
                   </h2>
-                  <p class="mt-2 text-sm leading-6 text-stone-300">
-                    Наставник выбирается в момент поступления в Academia и ведёт вас через последующую исследовательскую работу.
+                  <p class="acd-copy">
+                    Наставник выбирается в момент поступления в Академию наук и ведёт вас через последующую исследовательскую работу.
                   </p>
                 <% @state.advisor_pick_eligible? -> %>
-                  <h2 id="academia-advisor-request" class="mt-2 font-serif text-2xl text-violet-100">
+                  <h2 id="academia-advisor-request" class="acd-document-title">
                     Выберите наставника
                   </h2>
-                  <p class="mt-2 text-sm leading-6 text-stone-300">
-                    Ваше место в верхней десятой части Academy Core даёт право запросить любого действующего профессора своего реалма.
+                  <p class="acd-copy">
+                    Ваше место в верхней десятой части Ядра Академии даёт право запросить любого действующего профессора своего мира.
                   </p>
-                  <div class="mt-5 grid gap-3 md:grid-cols-3">
+                  <div class="acd-portrait-grid">
                     <article
                       :for={professor <- @state.professors}
                       :if={professor.character_id != @state.character.id}
                       id={"academia-advisor-#{professor.character_id}"}
-                      class="rounded-xl border border-violet-300/15 bg-stone-950/55 p-4"
+                      class="acd-professor-slip"
                     >
-                      <p class="font-medium text-stone-100">{professor.character.name}</p>
+                      <span class="acd-professor-slip__portrait" aria-hidden="true">
+                        {String.first(professor.character.name)}
+                      </span>
+                      <p class="acd-professor-slip__name">{professor.character.name}</p>
                       <button
                         id={"academia-choose-advisor-#{professor.character_id}"}
                         type="button"
                         phx-click="choose_advisor"
                         phx-value-professor-id={professor.character_id}
-                        class="mt-3 rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-950/40"
+                        class="acd-ink-action acd-ink-action--compact"
                       >
                         Запросить
                       </button>
@@ -711,59 +728,67 @@ defmodule MMGOWeb.AcademiaLive do
                   <p
                     :if={not @state.advisor_match_available?}
                     id="academia-advisor-empty"
-                    class="mt-4 text-sm text-stone-400"
+                    class="acd-margin-note"
                   >
-                    В реалме пока нет другого действующего профессора.
+                    В этом мире пока нет другого действующего профессора.
                   </p>
                 <% true -> %>
-                  <h2 id="academia-advisor-match" class="mt-2 font-serif text-2xl text-violet-100">
+                  <h2 id="academia-advisor-match" class="acd-document-title">
                     Назначение наставника
                   </h2>
-                  <p class="mt-2 text-sm leading-6 text-stone-300">
-                    Право выбрать любого наставника получают выпускники верхней десятой части Academy Core. Остальным Академия подбирает действующего профессора по текущей нагрузке.
+                  <p class="acd-copy">
+                    Право выбрать любого наставника получают выпускники верхней десятой части Ядра Академии. Остальным Академия подбирает действующего профессора по текущей нагрузке.
                   </p>
                   <button
                     :if={@state.advisor_match_available?}
                     id="academia-match-advisor"
                     type="button"
                     phx-click="match_advisor"
-                    class="mt-5 rounded border border-violet-300/50 px-3 py-2 text-sm text-violet-100 transition hover:bg-violet-950/40"
+                    class="acd-ink-action"
                   >
                     Получить назначение
                   </button>
                   <p
                     :if={not @state.advisor_match_available?}
                     id="academia-advisor-empty"
-                    class="mt-4 text-sm text-stone-400"
+                    class="acd-margin-note"
                   >
-                    В реалме пока нет другого действующего профессора.
+                    В этом мире пока нет другого действующего профессора.
                   </p>
               <% end %>
             <% end %>
+            <span class="acd-wax-seal" aria-hidden="true">A</span>
           </section>
 
-          <section class="rounded-2xl border border-sky-400/20 bg-sky-950/15 p-6 shadow-lg">
-            <h2 class="font-serif text-2xl text-sky-100">Начать исследование</h2>
-            <p class="mt-2 text-sm text-stone-400">
+          <section class="acd-research-folio">
+            <span class="acd-folio-tab">форма R-12</span>
+            <h2 class="acd-document-title">Начать исследование</h2>
+            <p class="acd-copy">
               Вид и название проверяются в домене; одновременно может идти только один проект.
             </p>
             <.form
               for={@research_form}
               id="academia-research-form"
               phx-submit="start_research"
-              class="mt-5 grid gap-3 md:grid-cols-[1fr_2fr_auto]"
+              class="acd-form acd-form--research"
             >
               <.input
                 field={@research_form[:project_kind]}
                 type="select"
                 label="Вид работы"
+                class="acd-control"
                 options={research_kind_options()}
               />
-              <.input field={@research_form[:title]} type="text" label="Название" />
+              <.input
+                field={@research_form[:title]}
+                type="text"
+                label="Название"
+                class="acd-control"
+              />
               <button
                 id="academia-start-research"
                 type="submit"
-                class="self-end rounded-lg bg-sky-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-sky-200"
+                class="acd-seal-action"
               >
                 Начать
               </button>
@@ -773,40 +798,50 @@ defmodule MMGOWeb.AcademiaLive do
           <section
             :if={@state.professor}
             id="academia-course-publication"
-            class="rounded-2xl border border-emerald-400/20 bg-emerald-950/15 p-6 shadow-lg"
+            class="acd-course-folio"
           >
-            <h2 class="font-serif text-2xl text-emerald-100">Опубликовать курс</h2>
-            <p class="mt-2 text-sm text-stone-400">
+            <span class="acd-course-folio__ribbon" aria-hidden="true"></span>
+            <p class="acd-kicker">лист кафедры · новый курс</p>
+            <h2 class="acd-document-title">Опубликовать курс</h2>
+            <p class="acd-copy">
               Публикация одновременно создаёт запись каталога, поэтому студентам не нужно ждать отдельного ручного импорта.
             </p>
             <.form
               for={@course_form}
               id="academia-course-form"
               phx-submit="publish_course"
-              class="mt-5 grid gap-3 md:grid-cols-2"
+              class="acd-form acd-form--course"
             >
-              <.input field={@course_form[:title]} type="text" label="Название курса" />
+              <.input
+                field={@course_form[:title]}
+                type="text"
+                label="Название курса"
+                class="acd-control"
+              />
               <.input
                 field={@course_form[:summary]}
                 type="text"
                 label="Короткое описание"
+                class="acd-control"
               />
               <.input
                 field={@course_form[:track]}
                 type="select"
                 label="Путь"
+                class="acd-control"
                 options={track_options()}
               />
               <.input
                 field={@course_form[:school]}
                 type="select"
                 label="Школа"
+                class="acd-control"
                 options={school_options()}
               />
               <button
                 id="academia-publish-course"
                 type="submit"
-                class="rounded-lg bg-emerald-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-emerald-200"
+                class="acd-seal-action"
               >
                 Опубликовать
               </button>
@@ -816,26 +851,28 @@ defmodule MMGOWeb.AcademiaLive do
           <section
             :if={@state.recommendation_authority?}
             id="academia-recommendations"
-            class="rounded-2xl border border-amber-400/20 bg-amber-950/15 p-6 shadow-lg"
+            class="acd-recommendation-file"
           >
-            <h2 class="font-serif text-2xl text-amber-100">Поручительства</h2>
-            <p class="mt-2 text-sm leading-6 text-stone-300">
-              Профессор или Researcher Emeritus может запечатать непередаваемое поручительство для выпускника с probation. Оно открывает только поступление на Academy Core и остаётся в его академической записи.
+            <p class="acd-kicker">исходящая корреспонденция</p>
+            <h2 class="acd-document-title">Поручительства</h2>
+            <p class="acd-copy">
+              Профессор или почётный исследователь может запечатать непередаваемое поручительство для выпускника с испытательным допуском. Оно открывает только поступление в Ядро Академии и остаётся в его академической записи.
             </p>
-            <div class="mt-4 grid gap-3 md:grid-cols-2">
+            <div class="acd-letter-grid">
               <article
                 :for={candidate <- @state.recommendation_candidates}
                 id={"academia-recommendation-candidate-#{candidate.character.id}"}
-                class="rounded-xl border border-amber-300/15 bg-stone-950/55 p-4"
+                class="acd-recommendation-letter"
               >
-                <p class="font-medium text-stone-100">{candidate.character.name}</p>
-                <p class="mt-1 text-sm text-stone-400">Выпуск: probation</p>
+                <span class="acd-recommendation-letter__seal" aria-hidden="true"></span>
+                <p class="acd-recommendation-letter__name">{candidate.character.name}</p>
+                <p class="acd-recommendation-letter__status">Выпуск: испытательный допуск</p>
                 <button
                   id={"academia-write-recommendation-#{candidate.character.id}"}
                   type="button"
                   phx-click="write_recommendation"
                   phx-value-candidate-id={candidate.character.id}
-                  class="mt-3 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100 transition hover:bg-amber-950/40"
+                  class="acd-ink-action acd-ink-action--compact"
                 >
                   Выдать поручительство
                 </button>
@@ -843,37 +880,37 @@ defmodule MMGOWeb.AcademiaLive do
               <p
                 :if={@state.recommendation_candidates == []}
                 id="academia-recommendations-empty"
-                class="text-sm text-stone-400"
+                class="acd-margin-note"
               >
-                В этом реалме сейчас нет выпускников, ожидающих поручительства.
+                В этом мире сейчас нет выпускников, ожидающих поручительства.
               </p>
             </div>
           </section>
 
-          <section class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg">
-            <div class="flex flex-wrap items-end justify-between gap-3">
+          <section class="acd-archive-ledger">
+            <div class="acd-ledger-heading">
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-stone-500">ваши исследования</p>
-                <h2 class="mt-1 font-serif text-2xl text-stone-100">Архив работ</h2>
+                <p class="acd-kicker">ваши исследования</p>
+                <h2 class="acd-ledger-title">Архив работ</h2>
               </div>
-              <span class="text-sm text-stone-400">{@state.projects |> length()} записей</span>
+              <span class="acd-ledger-counter">{@state.projects |> length()} записей</span>
             </div>
-            <ul id="academia-projects" phx-update="stream" class="mt-5 space-y-2">
-              <li id="academia-projects-empty" class="hidden only:block text-sm text-stone-400">
+            <ul id="academia-projects" phx-update="stream" class="acd-project-register">
+              <li id="academia-projects-empty" class="acd-empty-stream">
                 Исследовательских записей ещё нет.
               </li>
               <li
                 :for={{dom_id, project} <- @streams.academia_projects}
                 id={dom_id}
-                class="rounded-lg border border-stone-700 bg-stone-950/50 px-4 py-3"
+                class="acd-project-entry"
               >
                 <div
                   id={"academia-project-#{project.id}"}
-                  class="flex flex-wrap items-center justify-between gap-3"
+                  class="acd-project-entry__row"
                 >
                   <div>
-                    <p class="font-medium text-stone-100">{project.title}</p>
-                    <p class="mt-1 text-sm text-stone-400">
+                    <p class="acd-project-entry__title">{project.title}</p>
+                    <p class="acd-project-entry__meta">
                       {project_kind_label(project.project_kind)} · {project_status_label(
                         project.status
                       )}
@@ -883,7 +920,7 @@ defmodule MMGOWeb.AcademiaLive do
                     :if={project.project_kind == :thesis and not is_nil(project.defense_state)}
                     id={"academia-thesis-#{project.id}"}
                     navigate={~p"/academy/thesis/#{project.id}"}
-                    class="text-sm text-violet-200 underline decoration-violet-500/40 underline-offset-4"
+                    class="acd-ink-link"
                   >
                     Протокол защиты
                   </.link>
@@ -892,21 +929,25 @@ defmodule MMGOWeb.AcademiaLive do
             </ul>
           </section>
 
-          <section class="rounded-2xl border border-violet-400/20 bg-violet-950/15 p-6 shadow-lg">
-            <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">библиотека реалма</p>
-            <ul id="academia-publications" phx-update="stream" class="mt-4 grid gap-3 md:grid-cols-2">
-              <li id="academia-publications-empty" class="hidden only:block text-sm text-stone-400">
+          <section class="acd-library-case">
+            <div class="acd-library-case__head">
+              <p class="acd-kicker">библиотека мира</p>
+              <h2>Каталог публикаций</h2>
+            </div>
+            <ul id="academia-publications" phx-update="stream" class="acd-publication-shelf">
+              <li id="academia-publications-empty" class="acd-empty-stream">
                 Публикаций пока нет.
               </li>
               <li
                 :for={{dom_id, publication} <- @streams.academia_publications}
                 id={dom_id}
-                class="rounded-lg border border-violet-300/15 bg-stone-950/50 px-4 py-3"
+                class="acd-publication-book"
               >
-                <p id={"academia-publication-#{publication.id}"} class="font-medium text-stone-100">
+                <span class="acd-publication-book__bands" aria-hidden="true"></span>
+                <p id={"academia-publication-#{publication.id}"} class="acd-publication-book__title">
                   {publication.title}
                 </p>
-                <p class="mt-1 text-sm text-stone-400">
+                <p class="acd-publication-book__kind">
                   {publication_kind_label(publication.publication_kind)}
                 </p>
               </li>
@@ -992,7 +1033,7 @@ defmodule MMGOWeb.AcademiaLive do
     [
       {"Выберите студента", ""}
       | Enum.map(candidates, fn %{character: character} ->
-          {"#{character.name} · Academy Core", character.id}
+          {"#{character.name} · Ядро Академии", character.id}
         end)
     ]
   end

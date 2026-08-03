@@ -53,7 +53,7 @@ defmodule MMGO.Telegram.ClubCommandsTest do
                "text" => "/club invite #{club.id} outsider"
              })
 
-    assert response =~ "Invitation"
+    assert response =~ "Приглашение"
     assert [_invitation] = Clubs.pending_invitations_for_character(outsider.id)
   end
 
@@ -64,14 +64,14 @@ defmodule MMGO.Telegram.ClubCommandsTest do
     assert {:ok, create_text} =
              Commands.process_message(founder, %{"text" => "/club create dueling Duel Society"})
 
-    assert create_text =~ "Club created"
+    assert create_text =~ "Клуб создан"
 
     [club] = Clubs.list_clubs_for_character(founder.id)
 
     assert {:ok, invite_text} =
              Commands.process_message(founder, %{"text" => "/club invite #{club.id} invitee"})
 
-    assert invite_text =~ "Invitation"
+    assert invite_text =~ "Приглашение"
 
     [invitation] = Clubs.pending_invitations_for_character(invitee.id)
 
@@ -81,7 +81,7 @@ defmodule MMGO.Telegram.ClubCommandsTest do
     assert {:ok, accept_text} =
              Commands.process_message(invitee, %{"text" => "/club accept #{invitation.id}"})
 
-    assert accept_text =~ "Joined club"
+    assert accept_text =~ "Вы вступили в клуб"
 
     assert {:ok, list_text} = Commands.process_message(invitee, %{"text" => "/club list"})
     assert list_text =~ club.name
@@ -89,7 +89,7 @@ defmodule MMGO.Telegram.ClubCommandsTest do
     assert {:ok, status_text} =
              Commands.process_message(invitee, %{"text" => "/club status #{club.id}"})
 
-    assert status_text =~ "Members: Clubber, Invitee"
+    assert status_text =~ "Участники: Clubber, Invitee"
   end
 
   defp character_fixture(realm, location, handle, name) do

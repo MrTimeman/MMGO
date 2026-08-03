@@ -17,7 +17,7 @@ defmodule MMGOWeb.TravelLive do
       {:ok, %{journey: nil}} ->
         {:ok,
          socket
-         |> put_flash(:info, "You do not have an active journey.")
+         |> put_flash(:info, "Сейчас вы никуда не путешествуете.")
          |> push_navigate(to: ~p"/map")}
 
       {:ok, state} ->
@@ -104,7 +104,7 @@ defmodule MMGOWeb.TravelLive do
             </ol>
           </section>
 
-          <section id="travel-progress-panel" class="trv-panel">
+          <section id="travel-progress-panel" class="trv-panel trv-panel--progress">
             <div class="trv-panel__head">
               <h2 class="trv-panel__title">Ход путешествия</h2>
               <span class="trv-panel__meta">{@progress.percent}% пройдено</span>
@@ -117,7 +117,7 @@ defmodule MMGOWeb.TravelLive do
             </p>
           </section>
 
-          <section id="travel-supplies-panel" class="trv-panel">
+          <section id="travel-supplies-panel" class="trv-panel trv-panel--supplies">
             <div class="trv-panel__head">
               <h2 class="trv-panel__title">Провизия и груз</h2>
               <span class="trv-panel__meta">{@food_units} ед. осталось в котомке</span>
@@ -149,9 +149,20 @@ defmodule MMGOWeb.TravelLive do
                 Перегруз добавил {@journey.encumbrance_penalty_days} дн.
               </span>
             </p>
+            <div
+              :if={@survival.starving? or @survival.encumbered?}
+              id="travel-danger-note"
+              class="trv-warn"
+            >
+              <span class="trv-warn__glyph" aria-hidden="true">!</span>
+              <p>
+                <strong>Помета проводника.</strong>
+                {travel_warning(@survival)}
+              </p>
+            </div>
           </section>
 
-          <section class="trv-panel" aria-label="Дорожный журнал">
+          <section class="trv-panel trv-panel--journal" aria-label="Дорожный журнал">
             <div class="trv-panel__head">
               <h2 class="trv-panel__title">Дорожный журнал</h2>
             </div>
@@ -164,9 +175,6 @@ defmodule MMGOWeb.TravelLive do
           </section>
 
           <div class="trv-acts">
-            <.link id="travel-open-inventory" navigate={~p"/inventory"} class="trv-btn">
-              Открыть котомку
-            </.link>
             <button
               id="travel-refresh"
               type="button"
@@ -186,7 +194,7 @@ defmodule MMGOWeb.TravelLive do
     case Play.travel_state(socket.assigns.character.id) do
       {:ok, %{journey: nil}} ->
         socket
-        |> put_flash(:info, "You have arrived at your destination.")
+        |> put_flash(:info, "Вы прибыли в место назначения.")
         |> push_navigate(to: ~p"/map")
 
       {:ok, state} ->
@@ -276,6 +284,18 @@ defmodule MMGOWeb.TravelLive do
 
   defp overload_status(%{carried_weight: weight, carry_capacity: capacity}) do
     "Перегруза нет: #{weight} / #{capacity} стоунов. Отступление доступно."
+  end
+
+  defp travel_warning(%{starving?: true, encumbered?: true}) do
+    "Провизия кончилась, а поклажа слишком тяжела. Переход займёт больше времени."
+  end
+
+  defp travel_warning(%{starving?: true}) do
+    "Провизия кончилась. Голод уже влияет на дорогу и силы путника."
+  end
+
+  defp travel_warning(%{encumbered?: true}) do
+    "Поклажа тяжелее нормы. Путь замедлен, отступить из боя не получится."
   end
 
   defp bar_pct(_value, max) when max <= 0, do: 0

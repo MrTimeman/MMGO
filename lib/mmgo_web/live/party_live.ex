@@ -100,104 +100,115 @@ defmodule MMGOWeb.PartyLive do
 
   @impl true
   def render(assigns) do
+    assigns =
+      assigns
+      |> assign(:ready_count, Enum.count(assigns.members, &member_ready?/1))
+      |> assign(:member_count, length(assigns.members))
+
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="party-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <.link id="party-back-to-map" navigate={~p"/map"} class="map-back-link">← Карта мира</.link>
-          <header class="rounded-xl border border-cyan-500/25 bg-stone-900/80 p-6 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.22em] text-cyan-300/70">
-              отряд · {location_name(@location)}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-cyan-100">Путники</h1>
+      <main id="party-screen" class="pty-scene">
+        <div class="pty-shell">
+          <.link id="party-back-to-map" navigate={~p"/map"} class="pty-exit">
+            ← На карту
+          </.link>
+
+          <header class="pty-banner">
+            <span class="pty-banner__crest">◆</span>
+            <p class="pty-banner__eyebrow">Отряд · {location_name(@location)}</p>
+            <h1 class="pty-banner__name">{if @party, do: @party.name, else: "Путники"}</h1>
           </header>
 
-          <div
-            :if={@error}
-            id="party-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
-          >
-            {@error}
+          <div :if={@error} id="party-error" class="pty-notice pty-notice--error">
+            <span>☒</span> {@error}
           </div>
 
-          <section
-            :if={is_nil(@party)}
-            id="party-create"
-            class="rounded-xl border border-cyan-500/25 bg-cyan-950/15 p-6"
-          >
-            <h2 class="font-serif text-2xl text-cyan-100">Собрать отряд</h2>
-            <p class="mt-2 text-sm text-stone-400">
-              Лидер приглашает только реальных путников рядом; каждый принимает приглашение сам.
+          <section :if={is_nil(@party)} id="party-create" class="pty-empty">
+            <p class="pty-empty__glyph">☾</p>
+            <h2 class="pty-empty__title">Вы путешествуете в одиночку</h2>
+            <p class="pty-empty__text">
+              Соберите спутников у одного костра. Лидер приглашает только путников рядом, а
+              каждый отвечает за себя.
             </p>
             <.form
               for={@create_form}
               id="party-create-form"
               phx-submit="create"
-              class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end"
+              class="pty-form"
             >
               <.input
                 field={@create_form[:name]}
                 type="text"
-                label="Название"
-                placeholder="Вольные делверы"
+                label="Имя отряда"
+                placeholder="Вольные путники"
               />
-              <button
-                id="party-create-submit"
-                type="submit"
-                class="mb-4 rounded-md bg-cyan-300 px-4 py-3 font-semibold text-stone-950 hover:bg-cyan-200"
-              >
-                Создать
+              <button id="party-create-submit" type="submit" class="pty-btn pty-btn--gold">
+                Собрать отряд
               </button>
             </.form>
           </section>
 
-          <section
-            :if={@party}
-            id="party-active"
-            class="rounded-xl border border-cyan-500/25 bg-cyan-950/15 p-6"
-          >
-            <div class="flex flex-wrap items-start justify-between gap-3">
-              <div>
-                <p class="text-xs uppercase tracking-[0.18em] text-cyan-300/70">активный отряд</p>
-                <h2 class="mt-1 font-serif text-2xl text-cyan-100">{@party.name}</h2>
+          <section :if={@party} id="party-active" class="pty-charter">
+            <p class="pty-charter__folio">
+              Походный устав · {location_name(@location)}
+            </p>
+            <section class="pty-readiness">
+              <div class="pty-readiness__seal" aria-hidden="true">✦</div>
+              <div class="pty-readiness__copy">
+                <span class="pty-readiness__label">Готовность к экспедиции</span>
+                <strong>{@ready_count} из {@member_count}</strong>
+                <p>
+                  Каждый путник ставит собственную печать. В глубину отряд входит только вместе.
+                </p>
               </div>
-              <button
-                id="party-leave"
-                type="button"
-                phx-click="leave"
-                class="rounded border border-stone-500 px-3 py-2 text-sm text-stone-200"
-              >
-                Покинуть
-              </button>
-            </div>
+            </section>
 
-            <ul id="party-members" class="mt-5 space-y-2">
+            <ul id="party-members" class="pty-members">
               <li
                 :for={membership <- @members}
                 id={"party-member-#{membership.character_id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
+                class="pty-card"
               >
-                <div>
-                  <span class="font-medium text-stone-100">{membership.character.name}</span><span class="ml-2 text-stone-400">ур. {membership.character.level} · {membership.role}</span>
-                </div>
-                <span class={
-                  if member_ready?(membership), do: "text-emerald-200", else: "text-amber-200"
-                }>
-                  {if member_ready?(membership), do: "готов", else: "не готов"}
+                <span class="pty-face-token" aria-hidden="true">
+                  {member_initial(membership.character.name)}
                 </span>
+                <div class="pty-card__body">
+                  <div class="pty-card__top">
+                    <h3 class="pty-card__name">
+                      {membership.character.name}
+                      <span
+                        :if={@party.leader_character_id == membership.character_id}
+                        class="pty-card__crown"
+                        title="лидер отряда"
+                      >
+                        ✦
+                      </span>
+                    </h3>
+                    <span class="pty-card__lvl">ур. {membership.character.level}</span>
+                  </div>
+                  <span class="pty-card__class">{membership.role}</span>
+                  <div class="pty-card__chips">
+                    <span class={[
+                      "pty-tag",
+                      if(member_ready?(membership), do: "pty-tag--good", else: "pty-tag--warn")
+                    ]}>
+                      {if member_ready?(membership), do: "печать поставлена", else: "не готов"}
+                    </span>
+                  </div>
+                </div>
               </li>
             </ul>
 
-            <div class="mt-5 flex flex-wrap gap-2">
+            <div class="pty-command">
               <button
                 :if={@self_ready?}
                 id="party-mark-unready"
                 type="button"
                 phx-click="ready"
                 phx-value-value="false"
-                class="rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+                class="pty-btn pty-btn--ghost"
               >
-                Снять готовность
+                Снять печать
               </button>
               <button
                 :if={not @self_ready?}
@@ -205,16 +216,16 @@ defmodule MMGOWeb.PartyLive do
                 type="button"
                 phx-click="ready"
                 phx-value-value="true"
-                class="rounded bg-emerald-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                class="pty-btn pty-btn--gold"
               >
-                Готов к экспедиции
+                Поставить печать готовности
               </button>
               <button
                 :if={@leader? and is_nil(@active_expedition)}
                 id="party-start-expedition"
                 type="button"
                 phx-click="start_expedition"
-                class="rounded bg-cyan-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                class="pty-btn pty-btn--gold"
               >
                 Начать экспедицию
               </button>
@@ -222,99 +233,119 @@ defmodule MMGOWeb.PartyLive do
                 :if={@active_expedition}
                 id="party-open-expedition"
                 navigate={~p"/dungeon"}
-                class="rounded bg-cyan-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                class="pty-btn pty-btn--gold"
               >
                 Открыть экспедицию
               </.link>
+              <button
+                id="party-leave"
+                type="button"
+                phx-click="leave"
+                class="pty-leave"
+              >
+                Покинуть отряд
+              </button>
             </div>
 
-            <div :if={@leader?} class="mt-6 grid gap-4 md:grid-cols-2">
+            <section class="pty-loot">
+              <h2 class="pty-loot__title">Делёж добычи</h2>
+              <div id="party-loot-policies" class="pty-loot__opts">
+                <button
+                  :for={{label, value} <- @loot_policies}
+                  id={"party-loot-#{value}"}
+                  type="button"
+                  phx-click="loot_policy"
+                  phx-value-value={value}
+                  disabled={not @leader?}
+                  class={[
+                    "pty-loot__opt",
+                    @loot_policy == value && "is-on"
+                  ]}
+                >
+                  {label}
+                </button>
+              </div>
+              <p class="pty-loot__desc">{loot_policy_description(@loot_policy)}</p>
+              <p class="pty-loot__xp">
+                Это договорённость отряда, а не невидимый замок: доступный трофей технически
+                может взять любой участник.
+              </p>
+            </section>
+
+            <section :if={@leader?} class="pty-invite">
+              <div class="pty-invite__head">
+                <h2 class="pty-invite__title">Позвать к костру</h2>
+                <span class="pty-invite__place">{location_name(@location)}</span>
+              </div>
               <.form
                 :if={@invite_options != []}
                 for={@invite_form}
                 id="party-invite-form"
                 phx-submit="invite"
+                class="pty-form"
               >
-                <h3 class="font-serif text-lg text-cyan-100">Позвать спутника</h3>
                 <.input
                   field={@invite_form[:character_id]}
                   type="select"
-                  label="Рядом"
-                  prompt="Выберите путника"
+                  label="Путники рядом"
+                  prompt="Выберите спутника"
                   options={@invite_options}
                 />
-                <button
-                  id="party-send-invite"
-                  type="submit"
-                  class="rounded border border-cyan-300/50 px-3 py-2 text-sm text-cyan-100"
-                >
-                  Пригласить
+                <button id="party-send-invite" type="submit" class="pty-btn pty-btn--ghost">
+                  Отправить приглашение
                 </button>
               </.form>
-              <div>
-                <h3 class="font-serif text-lg text-cyan-100">Делёж добычи</h3>
-                <div id="party-loot-policies" class="mt-3 flex flex-wrap gap-2">
-                  <button
-                    :for={{label, value} <- @loot_policies}
-                    id={"party-loot-#{value}"}
-                    type="button"
-                    phx-click="loot_policy"
-                    phx-value-value={value}
-                    class={
-                      if @loot_policy == value,
-                        do: "rounded bg-cyan-300 px-3 py-2 text-sm font-semibold text-stone-950",
-                        else: "rounded border border-stone-600 px-3 py-2 text-sm text-stone-200"
-                    }
-                  >
-                    {label}
-                  </button>
-                </div>
-              </div>
-            </div>
+              <p :if={@invite_options == []} class="pty-pending__empty">
+                Рядом нет свободных путников.
+              </p>
+            </section>
           </section>
 
           <section
             :if={@pending_invitations != []}
             id="party-invitations"
-            class="rounded-xl border border-emerald-500/25 bg-emerald-950/15 p-6"
+            class="pty-invite pty-invite--incoming"
           >
-            <h2 class="font-serif text-xl text-emerald-100">Приглашения</h2>
-            <article
-              :for={invitation <- @pending_invitations}
-              id={"party-invitation-#{invitation.id}"}
-              class="mt-3 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
-            >
-              <span>{invitation.party.name} · зовёт {inviter_name(invitation)}</span>
-              <div class="flex gap-2">
-                <button
-                  id={"party-accept-#{invitation.id}"}
-                  type="button"
-                  phx-click="accept"
-                  phx-value-invitation-id={invitation.id}
-                  class="rounded bg-emerald-300 px-3 py-2 font-semibold text-stone-950"
-                >
-                  Принять
-                </button>
-                <button
-                  id={"party-reject-#{invitation.id}"}
-                  type="button"
-                  phx-click="reject"
-                  phx-value-invitation-id={invitation.id}
-                  class="rounded border border-stone-600 px-3 py-2 text-stone-200"
-                >
-                  Отклонить
-                </button>
-              </div>
-            </article>
+            <div class="pty-invite__head">
+              <h2 class="pty-invite__title">Письма у костра</h2>
+              <span class="pty-invite__place">ждут ответа</span>
+            </div>
+            <ul class="pty-pending">
+              <li
+                :for={invitation <- @pending_invitations}
+                id={"party-invitation-#{invitation.id}"}
+                class="pty-pending__row"
+              >
+                <div>
+                  <strong class="pty-pending__name">{invitation.party.name}</strong>
+                  <span class="pty-pending__note">зовёт {inviter_name(invitation)}</span>
+                </div>
+                <div class="pty-pending__actions">
+                  <button
+                    id={"party-accept-#{invitation.id}"}
+                    type="button"
+                    phx-click="accept"
+                    phx-value-invitation-id={invitation.id}
+                    class="pty-btn pty-btn--gold"
+                  >
+                    Принять
+                  </button>
+                  <button
+                    id={"party-reject-#{invitation.id}"}
+                    type="button"
+                    phx-click="reject"
+                    phx-value-invitation-id={invitation.id}
+                    class="pty-btn pty-btn--ghost"
+                  >
+                    Отклонить
+                  </button>
+                </div>
+              </li>
+            </ul>
           </section>
 
-          <button
-            id="party-refresh"
-            type="button"
-            phx-click="refresh"
-            class="text-sm text-cyan-200 underline decoration-cyan-500/40 underline-offset-4"
-          >
-            Обновить отряд
+          <button id="party-refresh" type="button" phx-click="refresh" class="pty-refresh">
+            ↻ перечитать лист отряда
           </button>
         </div>
       </main>
@@ -395,10 +426,14 @@ defmodule MMGOWeb.PartyLive do
   end
 
   defp member_ready?(membership), do: Map.get(membership.metadata || %{}, "ready", true) == true
+  defp member_initial(name), do: name |> String.trim() |> String.first() || "?"
   defp location_name(nil), do: "неизвестное место"
   defp location_name(location), do: location.name
   defp inviter_name(%{inviter_character: nil}), do: "неизвестный путник"
   defp inviter_name(%{inviter_character: inviter}), do: inviter.name
+  defp loot_policy_description("leader"), do: "Лидер вписывает имя получателя рядом с трофеем."
+  defp loot_policy_description("free_for_all"), do: "Кто первым поднял трофей, тот его и несёт."
+  defp loot_policy_description(_policy), do: "Добыча переходит от одного участника к следующему."
   defp error_message(:travelling), do: "Нельзя приглашать спутников во время пути."
   defp error_message(:party_or_target_not_found), do: "Отряд или путник больше не доступны."
   defp error_message(:party_not_found), do: "Активный отряд не найден."

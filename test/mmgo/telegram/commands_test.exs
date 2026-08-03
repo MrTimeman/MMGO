@@ -86,25 +86,25 @@ defmodule MMGO.Telegram.CommandsTest do
     assert Operator.operator_handle?("botter")
 
     assert {:ok, status_text} = Commands.process_message(character, %{"text" => "/admin status"})
-    assert status_text =~ "System report"
+    assert status_text =~ "Системный отчёт"
 
     assert {:ok, realm_text} =
              Commands.process_message(character, %{"text" => "/admin realm canonical"})
 
-    assert realm_text =~ "Realm canonical"
+    assert realm_text =~ "Мир canonical"
 
     assert {:ok, profile_text} =
              Commands.process_message(character, %{"text" => "/admin profile botter"})
 
-    assert profile_text =~ "Profile for botter"
+    assert profile_text =~ "Профиль botter"
 
     assert {:ok, crime_text} =
              Commands.process_message(character, %{"text" => "/admin crime botter smuggling 12 5"})
 
-    assert crime_text =~ "Crime recorded"
+    assert crime_text =~ "зарегистрировано"
 
     assert {:ok, sweep_text} = Commands.process_message(character, %{"text" => "/admin sweep"})
-    assert sweep_text =~ "Maintenance sweep complete"
+    assert sweep_text =~ "Обслуживание завершено"
   end
 
   test "/status and /inventory expose current state", %{character: character} do
@@ -132,7 +132,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, response_text} =
              Commands.process_message(character, %{"text" => "/travel the-tower"})
 
-    assert response_text =~ "Journey started"
+    assert response_text =~ "Путь к"
 
     journey = Travel.active_journey(character.id)
     assert journey
@@ -145,12 +145,12 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, response_text} =
              Commands.process_message(character, %{"text" => "/academy start basic"})
 
-    assert response_text =~ "Basic education started"
+    assert response_text =~ "Базовое образование начато"
 
     assert {:ok, status_text} =
              Commands.process_message(character, %{"text" => "/academy status"})
 
-    assert status_text =~ "basic_education"
+    assert status_text =~ "базовое образование"
   end
 
   test "/alchemy commands create a workspace and start a brew", %{
@@ -235,7 +235,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, workspace_text} =
              Commands.process_message(character, %{"text" => "/alchemy setup cauldron"})
 
-    assert workspace_text =~ "Alchemy workspace ready"
+    assert workspace_text =~ "Алхимическая мастерская готова"
 
     assert {:ok, recipes_text} =
              Commands.process_message(character, %{"text" => "/alchemy recipes"})
@@ -245,7 +245,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, brew_text} =
              Commands.process_message(character, %{"text" => "/alchemy brew bot-potion 1"})
 
-    assert brew_text =~ "Brewing started"
+    assert brew_text =~ "поставлено вариться"
 
     assert {:ok, jobs_text} = Commands.process_message(character, %{"text" => "/alchemy jobs"})
     assert jobs_text =~ "Bot Potion"
@@ -323,7 +323,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, workspace_text} =
              Commands.process_message(character, %{"text" => "/craft setup forge"})
 
-    assert workspace_text =~ "Crafting workshop ready"
+    assert workspace_text =~ "Ремесленная мастерская готова"
 
     assert {:ok, recipes_text} =
              Commands.process_message(character, %{"text" => "/craft recipes"})
@@ -333,7 +333,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, craft_text} =
              Commands.process_message(character, %{"text" => "/craft build bot-sword 1"})
 
-    assert craft_text =~ "Crafting started"
+    assert craft_text =~ "Работа над"
 
     assert {:ok, jobs_text} = Commands.process_message(character, %{"text" => "/craft jobs"})
     assert jobs_text =~ "Bot Sword"
@@ -427,17 +427,17 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, expedition_text} =
              Commands.process_message(character, %{"text" => "/expedition start"})
 
-    assert expedition_text =~ "Expedition started"
+    assert expedition_text =~ "Экспедиция начата"
 
     assert {:ok, dungeon_enter_text} =
              Commands.process_message(character, %{"text" => "/dungeon enter"})
 
-    assert dungeon_enter_text =~ "Entered dungeon"
+    assert dungeon_enter_text =~ "Вы вошли в подземелье"
 
     assert {:ok, encounter_text} =
              Commands.process_message(character, %{"text" => "/encounter fight"})
 
-    assert encounter_text =~ "Encounter combat started"
+    assert encounter_text =~ "Бой во встрече начат"
 
     assert {:ok, spells_text} = Commands.process_message(character, %{"text" => "/spells"})
     assert spells_text =~ spell.name
@@ -446,7 +446,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, cast_text} =
              Commands.process_message(character, %{"text" => "/combat cast #{spell.id}"})
 
-    assert cast_text =~ "Spell queued"
+    assert cast_text =~ "Заклинание подготовлено"
 
     combat = Combat.active_combat_for_character(character.id)
 
@@ -461,7 +461,7 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, resolve_text} =
              Commands.process_message(character, %{"text" => "/combat resolve"})
 
-    assert resolve_text =~ "Combat resolved"
+    assert resolve_text =~ "Бой рассчитан"
 
     run =
       character.id
@@ -479,12 +479,12 @@ defmodule MMGO.Telegram.CommandsTest do
     assert {:ok, ritual_text} =
              Commands.process_message(character, %{"text" => "/dungeon ritual"})
 
-    assert ritual_text =~ "Return ritual started"
+    assert ritual_text =~ "Ритуал возвращения начат"
 
     assert {:ok, status_text} =
              Commands.process_message(character, %{"text" => "/dungeon status"})
 
-    assert status_text =~ "Extraction: return_ritual"
+    assert status_text =~ "Возвращение: ритуал возвращения"
   end
 
   defp character_fixture(realm, location, handle, name) do

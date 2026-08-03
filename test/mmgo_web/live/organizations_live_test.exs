@@ -72,7 +72,7 @@ defmodule MMGOWeb.OrganizationsLiveTest do
     conn = session_conn(conn, challenger)
 
     assert {:error, {:live_redirect, %{to: "/map", flash: flash}}} = live(conn, ~p"/orgs")
-    assert flash["error"] =~ "You need to be in a city"
+    assert flash["error"] =~ "нужно находиться в городе"
   end
 
   test "a character in a city (the demo starting location) mounts normally", %{
@@ -83,7 +83,7 @@ defmodule MMGOWeb.OrganizationsLiveTest do
 
     {:ok, _view, html} = live(conn, ~p"/orgs")
 
-    assert html =~ "Organizations"
+    assert html =~ "Организации"
   end
 
   test "index renders after a demo session with the create form", %{
@@ -94,7 +94,7 @@ defmodule MMGOWeb.OrganizationsLiveTest do
 
     {:ok, view, html} = live(conn, ~p"/orgs")
 
-    assert html =~ "Organizations"
+    assert html =~ "Организации"
     assert has_element?(view, "#org-create-form")
     assert has_element?(view, "#org-invitations")
   end
@@ -110,7 +110,7 @@ defmodule MMGOWeb.OrganizationsLiveTest do
     |> render_submit()
 
     assert has_element?(view, "#org-list", "Order of the Ember")
-    assert has_element?(view, "#org-list", "guild")
+    assert has_element?(view, "#org-list", "Гильдия")
   end
 
   test "detail page shows members and roles", %{conn: conn, challenger: challenger} do

@@ -85,112 +85,118 @@ defmodule MMGOWeb.DuelLive do
   end
 
   @impl true
-  def render(assigns) do
+  def render(%{character: _character} = assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="duel-screen" class="game-root min-h-full overflow-y-auto px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <.link id="duel-back-to-map" navigate={~p"/map"} class="map-back-link">
-            ← Карта мира
+      <main id="duel-screen" class="duel-scene">
+        <div class="duel-stage">
+          <.link id="duel-back-to-map" navigate={~p"/map"} class="duel-exit">
+            ← покинуть круг
           </.link>
 
-          <header class="border-b border-amber-500/20 pb-5">
-            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">
-              {location_label(@location)} · круг поединка
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-amber-200">Дуэль</h1>
-            <p id="duel-identity" class="mt-2 text-sm text-stone-400">
-              {@character.name} · кошель: {@balance} ◈
-            </p>
+          <header class="duel-mast">
+            <p>круг поединка · {location_label(@location)}</p>
+            <h1>Вызов на дуэль</h1>
+            <span id="duel-identity">{@character.name} · кошель {@balance} ◈</span>
           </header>
 
-          <div
-            :if={@error}
-            id="duel-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
-          >
-            {@error}
+          <div :if={@error} id="duel-error" class="duel__parchment duel-error" role="alert">
+            <span class="duel__badge duel__badge--rejected">печать не принята</span>
+            <p class="duel__text">{@error}</p>
           </div>
 
-          <section
-            id="duel-lobby"
-            class="rounded-xl border border-stone-700 bg-stone-900/70 p-6 shadow-xl"
-          >
-            <h2 class="font-serif text-xl text-stone-100">Вызвать игрока</h2>
-            <p class="mt-2 max-w-xl text-sm leading-6 text-stone-400">
-              Оба игрока должны стоять здесь. Ставка попадёт в эскроу только после принятия;
-              начатый бой нельзя отменить ради возврата — только завершить или бежать.
-            </p>
+          <section id="duel-lobby" class="duel">
+            <article class="duel__parchment duel__parchment--challenge">
+              <p class="duel__salutation">Достопочтенный соперник,</p>
+              <p class="duel__text">
+                Настоящим письмом {@character.name} предлагает честный поединок.
+                Ставка переходит под печать только после согласия обеих сторон.
+              </p>
 
-            <p
-              :if={@location.safe_zone}
-              id="duel-safe-zone"
-              class="mt-5 rounded-md border border-sky-400/30 bg-sky-950/30 px-4 py-3 text-sm text-sky-100"
-            >
-              Это безопасная зона. Поединки здесь запрещены — выйдите в опасную местность.
-            </p>
+              <div class="duel__vs-row">
+                <span class="duel__vs-side">
+                  <strong class="duel__vs-name">{@character.name}</strong>
+                  <small>вызывающий</small>
+                </span>
+                <span class="duel__vs-sep">против</span>
+                <span class="duel__vs-side">
+                  <strong class="duel__vs-name">имя будет вписано</strong>
+                  <small>соперник</small>
+                </span>
+              </div>
 
-            <p
-              :if={not @location.safe_zone and @opponents == []}
-              id="duel-opponents-empty"
-              class="mt-5 text-sm text-stone-400"
-            >
-              Рядом нет готовых к вызову игроков.
-            </p>
-
-            <.form
-              :if={not @location.safe_zone and @opponents != []}
-              for={@challenge_form}
-              id="duel-challenge-form"
-              phx-submit="challenge"
-              class="mt-5 grid gap-3 sm:grid-cols-[1fr_10rem_auto] sm:items-end"
-            >
-              <.input
-                field={@challenge_form[:opponent_id]}
-                type="select"
-                label="Соперник"
-                prompt="Выберите игрока"
-                options={@opponent_options}
-              />
-              <.input
-                field={@challenge_form[:stake]}
-                type="number"
-                label="Ставка"
-                min="1"
-                inputmode="numeric"
-              />
-              <button
-                id="duel-challenge"
-                type="submit"
-                class="mb-4 rounded-md bg-amber-300 px-5 py-3 font-serif font-semibold text-stone-950 transition hover:bg-amber-200"
+              <p
+                :if={@location.safe_zone}
+                id="duel-safe-zone"
+                class="duel-seal-note duel-seal-note--safe"
               >
-                Отправить вызов
-              </button>
-            </.form>
+                Городская печать запрещает поединки в этой безопасной зоне.
+              </p>
+
+              <p
+                :if={not @location.safe_zone and @opponents == []}
+                id="duel-opponents-empty"
+                class="duel__question"
+              >
+                Сейчас рядом нет игрока, готового принять письмо.
+              </p>
+
+              <.form
+                :if={not @location.safe_zone and @opponents != []}
+                for={@challenge_form}
+                id="duel-challenge-form"
+                phx-submit="challenge"
+                class="duel-challenge-form"
+              >
+                <.input
+                  field={@challenge_form[:opponent_id]}
+                  type="select"
+                  label="Кому адресован вызов"
+                  prompt="Выберите игрока"
+                  options={@opponent_options}
+                  class="duel-field"
+                />
+                <.input
+                  field={@challenge_form[:stake]}
+                  type="number"
+                  label="Ставка под печатью"
+                  min="1"
+                  inputmode="numeric"
+                  class="duel-field"
+                />
+                <button id="duel-challenge" type="submit" class="duel__btn duel__btn--wax">
+                  Запечатать и отправить
+                </button>
+              </.form>
+
+              <p class="duel__ministry">— реестр поединков Министерства Магии</p>
+            </article>
           </section>
 
-          <section
-            :if={@incoming != []}
-            id="duel-incoming"
-            class="rounded-xl border border-emerald-500/30 bg-emerald-950/20 p-5"
-          >
-            <h2 class="font-serif text-xl text-emerald-100">Вам бросили вызов</h2>
+          <section :if={@incoming != []} id="duel-incoming" class="duel-stack">
+            <p class="duel-stack__label">Письма, ожидающие вашей подписи</p>
             <article
               :for={duel <- @incoming}
               id={"duel-incoming-#{duel.id}"}
-              class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/50 p-4"
+              class="duel__parchment"
             >
-              <div>
-                <p class="font-medium text-stone-100">{duel.challenger_character.name}</p>
-                <p class="text-sm text-stone-400">Ставка: {duel.stake_amount} ◈ с каждой стороны</p>
+              <p class="duel__salutation">{@character.name},</p>
+              <div class="duel__vs-row">
+                <span class="duel__vs-side">
+                  <strong class="duel__vs-name">{duel.challenger_character.name}</strong>
+                  <small>бросает вызов</small>
+                </span>
+                <span class="duel__vs-sep">ставка</span>
+                <span class="duel__stake">{duel.stake_amount} ◈</span>
               </div>
-              <div class="flex gap-2">
+              <p class="duel__question">Примете ли вы условия?</p>
+              <div class="duel__actions">
                 <button
                   id={"duel-accept-#{duel.id}"}
                   type="button"
                   phx-click="accept"
                   phx-value-duel-id={duel.id}
-                  class="rounded-md bg-emerald-300 px-3 py-2 text-sm font-semibold text-stone-950"
+                  class="duel__btn duel__btn--accept"
                 >
                   Принять
                 </button>
@@ -199,38 +205,37 @@ defmodule MMGOWeb.DuelLive do
                   type="button"
                   phx-click="reject"
                   phx-value-duel-id={duel.id}
-                  class="rounded-md border border-stone-600 px-3 py-2 text-sm text-stone-200"
+                  class="duel__btn duel__btn--reject"
                 >
                   Отклонить
                 </button>
               </div>
+              <p class="duel__ministry">— ставка с каждой стороны</p>
             </article>
           </section>
 
-          <section
-            :if={@outgoing != []}
-            id="duel-outgoing"
-            class="rounded-xl border border-amber-500/25 bg-amber-950/15 p-5"
-          >
-            <h2 class="font-serif text-xl text-amber-100">Ожидают ответа</h2>
+          <section :if={@outgoing != []} id="duel-outgoing" class="duel-stack">
+            <p class="duel-stack__label">Отправленные письма</p>
             <article
               :for={duel <- @outgoing}
               id={"duel-outgoing-#{duel.id}"}
-              class="mt-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/50 p-4"
+              class="duel__parchment duel__parchment--waiting"
             >
-              <div>
-                <p class="font-medium text-stone-100">{duel.opponent_character.name}</p>
-                <p class="text-sm text-stone-400">Ставка: {duel.stake_amount} ◈ с каждой стороны</p>
-              </div>
+              <span class="duel__badge">ожидает ответа</span>
+              <p class="duel__salutation">{duel.opponent_character.name},</p>
+              <p class="duel__text">
+                Вызов отправлен со ставкой <strong class="duel__stake">{duel.stake_amount} ◈</strong>.
+              </p>
               <button
                 id={"duel-cancel-#{duel.id}"}
                 type="button"
                 phx-click="cancel"
                 phx-value-duel-id={duel.id}
-                class="rounded-md border border-stone-600 px-3 py-2 text-sm text-stone-200"
+                class="duel__btn duel__btn--reject"
               >
-                Отменить вызов
+                Отозвать письмо
               </button>
+              <p class="duel__ministry">— до принятия печать можно снять</p>
             </article>
           </section>
         </div>

@@ -197,7 +197,7 @@ deploy: release-check
 
     smoke_home_html="$(curl -fsS --max-time 5 "${smoke_url}/")"
     smoke_play_html="$(curl -fsS --max-time 5 "${smoke_url}/play")"
-    grep -Fq 'Ministry of MaGic Online' <<<"$smoke_home_html"
+    grep -Fq 'Министерство' <<<"$smoke_home_html"
     grep -Fq 'Войти в MMGO' <<<"$smoke_play_html"
     docker stop --timeout 15 "$smoke_name" >/dev/null
 

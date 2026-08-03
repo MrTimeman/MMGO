@@ -13,19 +13,11 @@ defmodule MMGOWeb.StudyDeskLive do
         {:ok, socket}
 
       {:ok, socket} ->
-        enrollment = Academy.current_enrollment(character.id)
-        terms = if enrollment, do: Academy.list_terms_for_enrollment(enrollment.id), else: []
-        gpa = if enrollment, do: Academy.gpa_for_enrollment(enrollment.id), else: nil
-        failed_count = if enrollment, do: Academy.failed_terms_count(enrollment.id), else: 0
-
         {:ok,
          socket
          |> assign(:page_title, "Учебный стол")
          |> assign(:character, character)
-         |> assign(:enrollment, enrollment)
-         |> assign(:terms, terms)
-         |> assign(:gpa, gpa)
-         |> assign(:failed_count, failed_count)}
+         |> refresh_desk()}
     end
   end
 
@@ -35,14 +27,16 @@ defmodule MMGOWeb.StudyDeskLive do
 
     case enrollment && Academy.begin_term(enrollment.id) do
       {:ok, _term} ->
-        terms = Academy.list_terms_for_enrollment(enrollment.id)
-        {:noreply, assign(socket, :terms, terms)}
+        {:noreply,
+         socket
+         |> put_flash(:info, "Следующий термин открыт.")
+         |> refresh_desk()}
 
       {:error, changeset} ->
         {:noreply, put_flash(socket, :error, error_message(changeset))}
 
       nil ->
-        {:noreply, put_flash(socket, :error, "No active enrollment.")}
+        {:noreply, put_flash(socket, :error, "Нет действующей учебной записи.")}
     end
   end
 
@@ -50,98 +44,191 @@ defmodule MMGOWeb.StudyDeskLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="study-desk">
-        <a href={~p"/academy"} class="map-back-link">← В холл Академии</a>
-        <h1>Учебный стол</h1>
+      <main id="study-desk-screen" class="study-desk">
+        <div class="study-desk__folio">
+          <.link id="study-desk-back" navigate={~p"/academy"} class="map-back-link">
+            ← В холл Академии
+          </.link>
+          <header class="study-desk__heading">
+            <p>Личная зачётная книга</p>
+            <h1>Учебный стол</h1>
+            <span>Архив Академии · экземпляр студента</span>
+          </header>
 
-        <%= if @enrollment do %>
-          <section class="desk-enrollment">
-            <h2>Зачётная запись</h2>
-            <p>Программа: <strong>{program_label(@enrollment.program_type)}</strong></p>
-            <p>Путь: <strong>{track_label(@enrollment.track)}</strong></p>
-            <p>Статус: <strong>{status_label(@enrollment.status)}</strong></p>
-            <p>Средний балл: <strong>{@gpa || "экзаменов ещё нет"}</strong></p>
-            <p>Проваленные термины: <strong>{@failed_count}</strong></p>
-            <p>
-              Ожидаемое завершение:
-              <strong>{Calendar.strftime(@enrollment.expected_completion_at, "%d.%m.%Y")}</strong>
-            </p>
-          </section>
+          <%= if @enrollment do %>
+            <section id="study-desk-enrollment" class="desk-enrollment desk-sheet">
+              <div class="desk-sheet__pin" aria-hidden="true"></div>
+              <p class="desk-sheet__kicker">Зачётная запись</p>
+              <h2>{program_label(@enrollment.program_type)}</h2>
+              <dl class="desk-enrollment__facts">
+                <div>
+                  <dt>Путь</dt>
+                  <dd>{track_label(@enrollment.track)}</dd>
+                </div>
+                <div>
+                  <dt>Состояние</dt>
+                  <dd>{status_label(@enrollment.status)}</dd>
+                </div>
+                <div>
+                  <dt>Средний балл</dt>
+                  <dd>{@gpa || "экзаменов ещё нет"}</dd>
+                </div>
+                <div>
+                  <dt>Провалено терминов</dt>
+                  <dd>{@failed_count}</dd>
+                </div>
+                <div>
+                  <dt>Завершение программы</dt>
+                  <dd>{format_time(@enrollment.expected_completion_at)}</dd>
+                </div>
+              </dl>
+            </section>
 
-          <section class="desk-terms">
-            <h2>Термины</h2>
-            <table class="terms-table">
-              <thead>
-                <tr>
-                  <th>#</th>
-                  <th>Состояние</th>
-                  <th>Экзамен</th>
-                  <th>Действие</th>
-                </tr>
-              </thead>
-              <tbody>
-                <%= for term <- @terms do %>
-                  <tr>
-                    <td>{term.term_number}</td>
-                    <td>{status_label(term.status)}</td>
-                    <td>{term.exam_score || "—"}</td>
-                    <td>
-                      <%= if term.status == :active do %>
-                        <.link navigate={~p"/academy/exam/#{term.id}"}>сдать экзамен</.link>
-                      <% end %>
-                    </td>
-                  </tr>
-                <% end %>
-                <%= if @terms == [] do %>
-                  <tr>
-                    <td colspan="4">
-                      <div class="acd-empty">
-                        Ни один термин не открыт. На столе лежит чистая ведомость.
-                      </div>
-                    </td>
-                  </tr>
-                <% end %>
-              </tbody>
-            </table>
+            <section id="study-desk-terms" class="desk-terms desk-sheet">
+              <div class="desk-terms__heading">
+                <div>
+                  <p class="desk-sheet__kicker">Архив сроков</p>
+                  <h2>Термины</h2>
+                </div>
+                <span>{length(@terms)} записей</span>
+              </div>
+              <div class="terms-table-wrap">
+                <table id="study-desk-terms-table" class="terms-table">
+                  <thead>
+                    <tr>
+                      <th>Термин</th>
+                      <th>Состояние</th>
+                      <th>Оценка</th>
+                      <th>Действие</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    <%= for term <- @terms do %>
+                      <tr id={"study-desk-term-#{term.id}"} class={"terms-table__row--#{term.status}"}>
+                        <td data-label="Термин">{term.term_number}</td>
+                        <td data-label="Состояние">{status_label(term.status)}</td>
+                        <td data-label="Оценка">{term.exam_score || "—"}</td>
+                        <td data-label="Действие">
+                          <.link :if={term.status == :active} navigate={~p"/academy/timetable"}>
+                            к расписанию
+                          </.link>
+                          <span :if={term.status != :active}>—</span>
+                        </td>
+                      </tr>
+                    <% end %>
+                    <%= if @terms == [] do %>
+                      <tr class="terms-table__empty">
+                        <td colspan="4">
+                          Ни один термин не открыт. На столе лежит чистая ведомость.
+                        </td>
+                      </tr>
+                    <% end %>
+                  </tbody>
+                </table>
+              </div>
 
-            <%= if Academy.current_term(@enrollment.id) == nil do %>
-              <button phx-click="begin_term">Начать следующий термин</button>
-            <% end %>
-          </section>
-        <% else %>
-          <p>
-            Вы пока не числитесь на программе. Посмотрите <.link navigate={
-              ~p"/academy/bulletin-board"
-            }>доску объявлений</.link>,
-            где писарь вывешивает набор и расписание.
-          </p>
-        <% end %>
-      </div>
+              <div id="study-desk-term-actions" class="desk-terms__actions">
+                <button
+                  :if={is_nil(@current_term) && term_startable?(@next_term_schedule)}
+                  id="study-desk-begin-term"
+                  type="button"
+                  phx-click="begin_term"
+                >
+                  Открыть следующий термин
+                </button>
+                <p :if={is_nil(@current_term) && term_waiting?(@next_term_schedule)}>
+                  Следующий термин откроется {format_time(@next_term_schedule.starts_at)}.
+                </p>
+                <p :if={is_nil(@current_term) && is_nil(@next_term_schedule)}>
+                  Все предусмотренные сроки уже внесены в книгу.
+                </p>
+              </div>
+            </section>
+          <% else %>
+            <section id="study-desk-empty" class="desk-sheet desk-sheet--empty">
+              <p>
+                Вы пока не числитесь на программе. Посмотрите <.link navigate={
+                  ~p"/academy/bulletin-board"
+                }>доску объявлений</.link>, где писарь вывешивает набор и расписание.
+              </p>
+            </section>
+          <% end %>
+        </div>
+      </main>
     </Layouts.app>
     """
   end
 
   defp error_message(%Ecto.Changeset{} = changeset) do
-    changeset.errors
-    |> Enum.map(fn {field, {msg, _}} -> "#{field}: #{msg}" end)
-    |> Enum.join(", ")
+    messages = Enum.map(changeset.errors, fn {_field, {message, _opts}} -> message end)
+
+    cond do
+      "the next term has not opened yet" in messages ->
+        "Следующий термин ещё не открыт. Дата указана на ведомости."
+
+      "a term is already active" in messages ->
+        "Текущий термин уже открыт."
+
+      "all program terms have already been recorded" in messages ->
+        "Все предусмотренные программой термины уже внесены в ведомость."
+
+      "enrollment is not active" in messages ->
+        "Учебная запись уже закрыта."
+
+      true ->
+        "Учебный архив отклонил действие. Обновите ведомость и попробуйте ещё раз."
+    end
   end
 
-  defp program_label(:basic), do: "Базовое образование"
-  defp program_label(:academy_core), do: "Academy Core"
+  defp refresh_desk(socket) do
+    enrollment = Academy.current_enrollment(socket.assigns.character.id)
+    terms = if enrollment, do: Academy.list_terms_for_enrollment(enrollment.id), else: []
+    current_term = if enrollment, do: Academy.current_term(enrollment.id), else: nil
+
+    next_term_schedule =
+      if enrollment && is_nil(current_term) do
+        Academy.term_schedule(enrollment, length(terms) + 1)
+      end
+
+    socket
+    |> assign(:enrollment, enrollment)
+    |> assign(:terms, terms)
+    |> assign(:current_term, current_term)
+    |> assign(:next_term_schedule, next_term_schedule)
+    |> assign(:gpa, if(enrollment, do: Academy.gpa_for_enrollment(enrollment.id), else: nil))
+    |> assign(
+      :failed_count,
+      if(enrollment, do: Academy.failed_terms_count(enrollment.id), else: 0)
+    )
+  end
+
+  defp term_startable?(%{starts_at: starts_at}),
+    do: DateTime.compare(DateTime.utc_now(), starts_at) != :lt
+
+  defp term_startable?(_schedule), do: false
+
+  defp term_waiting?(%{starts_at: starts_at}),
+    do: DateTime.compare(DateTime.utc_now(), starts_at) == :lt
+
+  defp term_waiting?(_schedule), do: false
+  defp format_time(datetime), do: Calendar.strftime(datetime, "%d.%m.%Y · %H:%M")
+
+  defp program_label(:basic_education), do: "Базовое образование"
+  defp program_label(:academy_core), do: "Ядро Академии"
   defp program_label(:extended_study), do: "Расширенный курс"
   defp program_label(:academia), do: "Академия наук"
-  defp program_label(other), do: other || "—"
+  defp program_label(_other), do: "Учебная программа"
 
   defp track_label(nil), do: "—"
   defp track_label(:wizardry), do: "Чародейство"
   defp track_label(:alchemy), do: "Алхимия"
   defp track_label(:mastery), do: "Мастерство"
-  defp track_label(other), do: other
+  defp track_label(_other), do: "Общий путь"
 
   defp status_label(:active), do: "идёт"
   defp status_label(:completed), do: "завершён"
   defp status_label(:failed), do: "провален"
+  defp status_label(:pending), do: "не открывался"
   defp status_label(:scheduled), do: "назначен"
-  defp status_label(other), do: other || "—"
+  defp status_label(_other), do: "ожидает"
 end

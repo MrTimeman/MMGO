@@ -13,8 +13,8 @@ defmodule MMGOWeb.MapLiveTest do
 
     {:ok, scoped_city} =
       Worlds.create_location(scoped_realm, %{
-        slug: "scoped-city",
-        name: "Scoped City",
+        slug: "amber-harbor",
+        name: "Amber Harbor",
         kind: :city,
         x: 100,
         y: 100,
@@ -23,8 +23,8 @@ defmodule MMGOWeb.MapLiveTest do
 
     {:ok, scoped_tower} =
       Worlds.create_location(scoped_realm, %{
-        slug: "scoped-tower",
-        name: "Scoped Tower",
+        slug: "the-tower",
+        name: "The Tower",
         kind: :tower,
         x: 200,
         y: 200,
@@ -58,7 +58,7 @@ defmodule MMGOWeb.MapLiveTest do
     nearby = character_fixture(scoped_realm, scoped_city, "nearby-player", "Nearby Player")
     outsider = character_fixture(default_realm, default_city, "outsider", "Outsider")
 
-    %{character: character, nearby: nearby, outsider: outsider}
+    %{character: character, destination: scoped_tower, nearby: nearby, outsider: outsider}
   end
 
   test "uses the current scope realm and real world overlay data", %{
@@ -68,12 +68,13 @@ defmodule MMGOWeb.MapLiveTest do
     {:ok, view, _html} = live(scoped_conn(conn, character), ~p"/map")
 
     assert has_element?(view, "#world-map[phx-hook='HexMap']")
-    assert has_element?(view, "#map-world-clock")
-    assert has_element?(view, "#map-current-location")
-    assert has_element?(view, "#map-activity-link")
+    assert has_element?(view, "#map-world-clock[aria-expanded='false']")
+    assert has_element?(view, "#map-current-location", "Янтарная Гавань")
     assert has_element?(view, "#map-character-panel")
-    assert has_element?(view, "#map-panel-close")
     assert has_element?(view, "#map-nearby-count", "Рядом: 1")
+    refute has_element?(view, "#map-activity-link")
+    refute has_element?(view, "#map-panel-close")
+    refute has_element?(view, "#map-panel-open")
     refute has_element?(view, "#game-primary-nav")
     assert has_element?(view, "#map-account-menu-toggle[aria-expanded='false']")
     refute has_element?(view, "#map-account-menu")
@@ -81,16 +82,22 @@ defmodule MMGOWeb.MapLiveTest do
     refute has_element?(view, "#atmosphere-audio")
     refute has_element?(view, "a[href='/healthz']")
 
-    view |> element("#map-panel-close") |> render_click()
+    view |> element("#map-world-clock") |> render_click()
+    assert has_element?(view, "#map-world-clock[aria-expanded='true']")
+    assert has_element?(view, "#map-world-calendar[role='dialog']")
+    assert has_element?(view, "#map-world-calendar .ovl-cal__season.is-now")
+    assert has_element?(view, "#map-world-calendar .ovl-cal__month-mark.is-now")
+    assert has_element?(view, "#map-world-calendar .ovl-cal__day[aria-current='date']")
+    assert has_element?(view, "#map-world-calendar .ovl-cal__day[aria-label='28-й день']")
     refute has_element?(view, "#map-character-panel")
-    assert has_element?(view, "#map-panel-open")
 
-    view |> element("#map-panel-open") |> render_click()
+    view |> element("#map-world-calendar-close") |> render_click()
+    assert has_element?(view, "#map-world-clock[aria-expanded='false']")
+    refute has_element?(view, "#map-world-calendar")
     assert has_element?(view, "#map-character-panel")
 
     view |> render_hook("map_location_selected", %{"selected" => true})
     refute has_element?(view, "#map-character-panel")
-    refute has_element?(view, "#map-panel-open")
 
     view |> render_hook("map_location_selected", %{"selected" => false})
     assert has_element?(view, "#map-character-panel")
@@ -102,6 +109,31 @@ defmodule MMGOWeb.MapLiveTest do
 
     view |> render_click("close_account_menu")
     refute has_element?(view, "#map-account-menu")
+  end
+
+  test "calendar and active journey slips never occupy the mobile bottom edge together", %{
+    conn: conn,
+    character: character
+  } do
+    {:ok, view, _html} = live(scoped_conn(conn, character), ~p"/map")
+
+    view |> render_hook("location_clicked", %{"slug" => "the-tower"})
+    assert has_element?(view, "#active-journey-card")
+
+    assert has_element?(
+             view,
+             "#active-journey-card .map-journey-slip__place--destination",
+             "Башня"
+           )
+
+    view |> element("#map-world-clock") |> render_click()
+    assert has_element?(view, "#map-world-calendar")
+    refute has_element?(view, "#active-journey-card")
+    refute has_element?(view, "#map-character-panel")
+
+    view |> element("#map-world-calendar-close") |> render_click()
+    refute has_element?(view, "#map-world-calendar")
+    assert has_element?(view, "#active-journey-card")
   end
 
   defp scoped_conn(conn, character) do

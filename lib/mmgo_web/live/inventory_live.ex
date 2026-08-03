@@ -107,80 +107,95 @@ defmodule MMGOWeb.InventoryLive do
             </div>
           </header>
 
-          <.form for={@search_form} id="inventory-search-form" phx-change="search" class="inv-search">
-            <.input
-              field={@search_form[:q]}
-              type="search"
-              placeholder="Искать в котомке…"
-              autocomplete="off"
-              class="inv-search__in"
-            />
-            <span class="inv-search__glass">⌕</span>
-          </.form>
+          <section class="inv-manifest" aria-label="Опись котомки">
+            <div class="inv-manifest__clip" aria-hidden="true"></div>
+            <p class="inv-manifest__folio">Дорожная опись · личная поклажа</p>
 
-          <nav
-            id="inventory-categories"
-            class="inv-chips"
-            aria-label="Категории предметов"
-          >
-            <button
-              :for={category <- @categories}
-              id={"inventory-category-#{category}"}
-              type="button"
-              class={["inv-chip", @filter == category && "inv-chip--on"]}
-              phx-click="filter"
-              phx-value-cat={category}
+            <.form
+              for={@search_form}
+              id="inventory-search-form"
+              phx-change="search"
+              class="inv-search"
             >
-              {category}
-            </button>
-          </nav>
+              <.input
+                field={@search_form[:q]}
+                type="search"
+                placeholder="Найти строку в описи…"
+                autocomplete="off"
+                class="inv-search__in"
+              />
+              <span class="inv-search__glass" aria-hidden="true">⌕</span>
+            </.form>
 
-          <p :if={@visible == []} id="inventory-empty" class="inv-empty">
-            В котомке пусто по этому запросу.
-          </p>
-
-          <ul id="inventory-items" class="inv-list">
-            <li
-              :for={item <- @visible}
-              id={"inventory-item-#{item.id}"}
+            <nav
+              id="inventory-categories"
+              class="inv-chips"
+              aria-label="Разделы описи"
             >
               <button
-                id={"inventory-open-#{item.id}"}
+                :for={category <- @categories}
+                id={"inventory-category-#{category}"}
                 type="button"
-                class={["inv-item", item.equipped && "inv-item--equipped"]}
-                phx-click="open"
-                phx-value-id={item.id}
-                aria-label={"Подробнее: #{item.name}"}
+                class={["inv-chip", @filter == category && "inv-chip--on"]}
+                phx-click="filter"
+                phx-value-cat={category}
               >
-                <.art_slot kind="icon" variant="dark" label={item.name} class="inv-item__icon" />
-                <span class="inv-item__body">
-                  <span class="inv-item__name">
-                    {item.name}<span :if={item.quantity > 1} class="inv-item__qty">×{item.quantity}</span>
-                  </span>
-                  <span class="inv-item__meta">
-                    <span class="inv-chip inv-chip--tag">{item.category}</span>
-                    <span :if={item.equipped} class="inv-item__eq">активен</span>
-                    <span :if={item.reserved_quantity > 0} class="inv-item__eq">
-                      занято: {item.reserved_quantity}
+                {category}
+              </button>
+            </nav>
+
+            <p :if={@visible == []} id="inventory-empty" class="inv-empty">
+              В этом разделе описи строк нет.
+            </p>
+
+            <ul id="inventory-items" class="inv-list">
+              <li
+                :for={item <- @visible}
+                id={"inventory-item-#{item.id}"}
+              >
+                <button
+                  id={"inventory-open-#{item.id}"}
+                  type="button"
+                  class={["inv-item", item.equipped && "inv-item--equipped"]}
+                  phx-click="open"
+                  phx-value-id={item.id}
+                  aria-label={"Подробнее: #{item.name}"}
+                >
+                  <.art_slot
+                    kind="icon"
+                    variant="parchment"
+                    label={item.name}
+                    class="inv-item__icon"
+                  />
+                  <span class="inv-item__body">
+                    <span class="inv-item__name">
+                      {item.name}<span :if={item.quantity > 1} class="inv-item__qty">×{item.quantity}</span>
+                    </span>
+                    <span class="inv-item__meta">
+                      <span class="inv-chip inv-chip--tag">{item.category}</span>
+                      <span :if={item.equipped} class="inv-item__eq">активен</span>
+                      <span :if={item.reserved_quantity > 0} class="inv-item__eq">
+                        занято: {item.reserved_quantity}
+                      </span>
                     </span>
                   </span>
-                </span>
-                <span class="inv-item__right">
-                  <span class="inv-item__weight">{item.weight * item.quantity} ст.</span>
-                  <span class="inv-item__chevron" aria-hidden="true">›</span>
-                </span>
-              </button>
-            </li>
-          </ul>
+                  <span class="inv-item__right">
+                    <span class="inv-item__weight">{item.weight * item.quantity} ст.</span>
+                    <span class="inv-item__chevron" aria-hidden="true">смотреть</span>
+                  </span>
+                </button>
+              </li>
+            </ul>
+          </section>
 
           <%= if @selected_item do %>
             <div id="inventory-detail-scrim" class="inv-sheet-scrim" phx-click="close">
               <div id="inventory-detail" class="inv-sheet" phx-click-away="close">
-                <div class="inv-sheet__grab"></div>
+                <div class="inv-sheet__grab" aria-hidden="true">карточка предмета</div>
                 <div class="inv-sheet__head">
                   <.art_slot
                     kind="scene"
-                    variant="dark"
+                    variant="parchment"
                     label={@selected_item.name}
                     class="inv-sheet__art"
                   />
@@ -200,7 +215,7 @@ defmodule MMGOWeb.InventoryLive do
 
                 <div class="inv-sheet__actions">
                   <button id="inventory-detail-close" type="button" class="inv-act" phx-click="close">
-                    Закрыть
+                    Убрать карточку
                   </button>
                 </div>
               </div>

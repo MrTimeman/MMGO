@@ -118,14 +118,14 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("event", ["current"], character) do
     case Events.current_event(character) do
       nil ->
-        {:ok, "No current event."}
+        {:ok, "Сейчас нет активного события."}
 
       event ->
         options = Enum.sort_by(event.template.options, & &1.position)
 
         {:ok,
          Enum.join(
-           [event.template.title, event.template.body, "Options:"] ++
+           [event.template.title, event.template.body, "Варианты:"] ++
              Enum.map(options, fn option ->
                "- #{option.code}: #{option.label}"
              end),
@@ -140,38 +140,39 @@ defmodule MMGO.Telegram.Commands do
       {:ok, option.result_text}
     else
       nil ->
-        {:ok, "No current event."}
+        {:ok, "Сейчас нет активного события."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not resolve event option: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось выбрать вариант события: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("event", _args, _character),
-    do: {:ok, "Usage: /event current | /event choose <option-code>"}
+    do: {:ok, "Формат: /event current | /event choose <option-code>"}
 
   defp dispatch("progression", ["milestones"], character) do
     grants = Progression.list_reward_grants(character.id)
     milestones = Progression.list_milestones()
 
     if milestones == [] do
-      {:ok, "No progression milestones are configured."}
+      {:ok, "Этапы развития пока не настроены."}
     else
       claimed = MapSet.new(Enum.map(grants, & &1.milestone_id))
 
       {:ok,
        Enum.join(
-         ["Progression milestones:"] ++
+         ["Этапы развития:"] ++
            Enum.map(milestones, fn milestone ->
-             status = if MapSet.member?(claimed, milestone.id), do: "claimed", else: "locked"
-             "- lvl #{milestone.level}: #{milestone.title} (#{status})"
+             status = if MapSet.member?(claimed, milestone.id), do: "получено", else: "закрыто"
+             "- уровень #{milestone.level}: #{milestone.title} (#{status})"
            end),
          "\n"
        )}
     end
   end
 
-  defp dispatch("progression", _args, _character), do: {:ok, "Usage: /progression milestones"}
+  defp dispatch("progression", _args, _character),
+    do: {:ok, "Формат: /progression milestones"}
 
   defp dispatch("routes", _args, character) do
     with %{id: location_id} = location <- character.current_location do
@@ -200,13 +201,13 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("road", ["encounter", handle], character) do
     with %{} = target <- Accounts.get_character_by_handle(character.realm_id, handle),
          {:ok, encounter} <- Overworld.create_encounter(character, target) do
-      {:ok, "Overworld encounter created: #{encounter.id}. Use /road status."}
+      {:ok, "Дорожная встреча создана: #{encounter.id}. Проверить: /road status."}
     else
       nil ->
-        {:ok, "No character with handle #{handle} found in your realm."}
+        {:ok, "В вашем мире не найден персонаж с именем #{handle}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not create encounter: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось создать встречу: #{format_changeset(changeset)}"}
     end
   end
 
@@ -214,18 +215,18 @@ defmodule MMGO.Telegram.Commands do
     encounters = Overworld.list_open_encounters_for_character(character.id)
 
     if encounters == [] do
-      {:ok, "No active overworld encounters."}
+      {:ok, "Сейчас нет активных дорожных встреч."}
     else
       {:ok,
        Enum.join(
-         ["Overworld encounters:"] ++
+         ["Дорожные встречи:"] ++
            Enum.map(encounters, fn encounter ->
              other_character =
                if encounter.initiator_character_id == character.id,
                  do: encounter.target_character.name,
                  else: encounter.initiator_character.name
 
-             "- #{encounter.id}: #{encounter.status} with #{other_character} at #{encounter.location.name}"
+             "- #{encounter.id}: #{status_label(encounter.status)} · #{other_character} · #{encounter.location.name}"
            end),
          "\n"
        )}
@@ -239,16 +240,16 @@ defmodule MMGO.Telegram.Commands do
       {:ok, road_response_text(action, result)}
     else
       nil ->
-        {:ok, "No matching overworld encounter found."}
+        {:ok, "Подходящая дорожная встреча не найдена."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not resolve overworld action: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось выполнить действие во встрече: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("road", _args, _character) do
     {:ok,
-     "Usage: /road encounter <handle> | /road status | /road greet <encounter-id> | /road trade <encounter-id> | /road attack <encounter-id> | /road avoid <encounter-id>"}
+     "Формат: /road encounter <handle> | /road status | /road greet <encounter-id> | /road trade <encounter-id> | /road attack <encounter-id> | /road avoid <encounter-id>"}
   end
 
   defp dispatch("travel", [destination_slug], character) do
@@ -257,17 +258,17 @@ defmodule MMGO.Telegram.Commands do
            Worlds.route_from_location_to_slug(location_id, destination_slug),
          {:ok, %{journey: journey}} <- Travel.start_journey(character, route) do
       {:ok,
-       "Journey started to #{destination_slug}. Arrival: #{Formatter.datetime(journey.arrival_at)}. Food consumed: #{journey.food_units_consumed}."}
+       "Путь к #{destination_slug} начат. Прибытие: #{Formatter.datetime(journey.arrival_at)}. Потрачено еды: #{journey.food_units_consumed}."}
     else
       nil ->
-        {:ok, "No direct route to #{destination_slug} from your current location."}
+        {:ok, "Из текущей локации нет прямого маршрута к #{destination_slug}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start journey: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать путь: #{format_changeset(changeset)}"}
     end
   end
 
-  defp dispatch("travel", _args, _character), do: {:ok, "Usage: /travel <location-slug>"}
+  defp dispatch("travel", _args, _character), do: {:ok, "Формат: /travel <location-slug>"}
 
   defp dispatch("journey", _args, character) do
     case Travel.active_journey(character.id) do
@@ -286,16 +287,16 @@ defmodule MMGO.Telegram.Commands do
     realms = Federation.list_remote_realms()
 
     if realms == [] do
-      {:ok, "No discoverable realms."}
+      {:ok, "Другие доступные миры не найдены."}
     else
       {:ok,
        Enum.join(
-         ["Discoverable realms:"] ++
+         ["Доступные миры:"] ++
            Enum.map(realms, fn realm ->
-             currency = realm.currency_code || "unknown"
-             endpoint = realm.public_endpoint || "no-endpoint"
+             currency = realm.currency_code || "валюта не указана"
+             endpoint = realm.public_endpoint || "адрес не указан"
              population = realm.population_hint || 1
-             "- #{realm.slug}: #{realm.name} (#{currency}, pop #{population}, #{endpoint})"
+             "- #{realm.slug}: #{realm.name} (#{currency}, население #{population}, #{endpoint})"
            end),
          "\n"
        )}
@@ -310,13 +311,13 @@ defmodule MMGO.Telegram.Commands do
          {:ok, quote} <-
            Federation.quote_remote_exchange(origin_realm, destination_realm, amount) do
       {:ok,
-       "Exchange quote: #{amount} #{origin_realm.currency_code || "src"} -> #{quote.converted_amount} #{destination_realm.currency_code || "dst"}. Source pop #{quote.source_population}, destination pop #{quote.destination_population}."}
+       "Расчёт обмена: #{amount} #{origin_realm.currency_code || "исходная валюта"} → #{quote.converted_amount} #{destination_realm.currency_code || "целевая валюта"}. Население исходного мира: #{quote.source_population}, целевого: #{quote.destination_population}."}
     else
       nil ->
-        {:ok, "No realm with slug #{realm_slug} found."}
+        {:ok, "Мир с кодом #{realm_slug} не найден."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not quote migration currency: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось рассчитать обмен при переселении: #{format_changeset(changeset)}"}
     end
   end
 
@@ -327,13 +328,13 @@ defmodule MMGO.Telegram.Commands do
          {:ok, %{migration: migration, remote_response: remote_response}} <-
            Federation.start_migration(character, destination_realm, amount) do
       {:ok,
-       "Migration started to #{destination_realm.name}. Remote character #{remote_response["destination_character_name"]}. Freeze ends #{Formatter.datetime(migration.freeze_ends_at)}."}
+       "Переселение в мир «#{destination_realm.name}» начато. Персонаж в новом мире: #{remote_response["destination_character_name"]}. Ограничение закончится #{Formatter.datetime(migration.freeze_ends_at)}."}
     else
       nil ->
-        {:ok, "No realm with slug #{realm_slug} found."}
+        {:ok, "Мир с кодом #{realm_slug} не найден."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start migration: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать переселение: #{format_changeset(changeset)}"}
     end
   end
 
@@ -341,17 +342,17 @@ defmodule MMGO.Telegram.Commands do
     migrations = Federation.list_migrations_for_account(character.account_id)
 
     if migrations == [] do
-      {:ok, "No realm migrations."}
+      {:ok, "Переселений между мирами нет."}
     else
       {:ok,
        Enum.join(
-         ["Realm migrations:"] ++
+         ["Переселения между мирами:"] ++
            Enum.map(migrations, fn migration ->
              destination_slug =
                (migration.remote_realm && migration.remote_realm.slug) ||
-                 (migration.destination_realm && migration.destination_realm.slug) || "unknown"
+                 (migration.destination_realm && migration.destination_realm.slug) || "неизвестно"
 
-             "- #{migration.id}: #{migration.origin_realm.slug} -> #{destination_slug} (#{migration.status})"
+             "- #{migration.id}: #{migration.origin_realm.slug} → #{destination_slug} (#{status_label(migration.status)})"
            end),
          "\n"
        )}
@@ -360,7 +361,7 @@ defmodule MMGO.Telegram.Commands do
 
   defp dispatch("realms", _args, _character) do
     {:ok,
-     "Usage: /realms list | /realms quote <realm-slug> <amount> | /realms migrate <realm-slug> <amount> | /realms migrations"}
+     "Формат: /realms list | /realms quote <realm-slug> <amount> | /realms migrate <realm-slug> <amount> | /realms migrations"}
   end
 
   defp dispatch("academy", ["status"], character) do
@@ -369,8 +370,8 @@ defmodule MMGO.Telegram.Commands do
 
     {:ok,
      [
-       "Enrollment: #{academy_enrollment_line(enrollment)}",
-       "Specialization: #{academy_specialization_line(specialization)}"
+       "Обучение: #{academy_enrollment_line(enrollment)}",
+       "Специализация: #{academy_specialization_line(specialization)}"
      ]
      |> Enum.join("\n")}
   end
@@ -379,10 +380,10 @@ defmodule MMGO.Telegram.Commands do
     case Academy.begin_basic_education(character) do
       {:ok, %{enrollment: enrollment}} ->
         {:ok,
-         "Basic education started. Completion: #{Formatter.datetime(enrollment.expected_completion_at)}."}
+         "Базовое образование начато. Завершение: #{Formatter.datetime(enrollment.expected_completion_at)}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start basic education: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать базовое образование: #{format_changeset(changeset)}"}
     end
   end
 
@@ -393,10 +394,10 @@ defmodule MMGO.Telegram.Commands do
          }) do
       {:ok, %{enrollment: enrollment}} ->
         {:ok,
-         "Wizardry track started. Completion: #{Formatter.datetime(enrollment.expected_completion_at)}."}
+         "Обучение чародейству начато. Завершение: #{Formatter.datetime(enrollment.expected_completion_at)}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start wizardry: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать обучение чародейству: #{format_changeset(changeset)}"}
     end
   end
 
@@ -404,10 +405,11 @@ defmodule MMGO.Telegram.Commands do
     case Academy.start_academy_track(character, String.to_existing_atom(track)) do
       {:ok, %{enrollment: enrollment}} ->
         {:ok,
-         "#{String.capitalize(track)} track started. Completion: #{Formatter.datetime(enrollment.expected_completion_at)}."}
+         "Направление «#{academy_track_label(track)}» начато. Завершение: #{Formatter.datetime(enrollment.expected_completion_at)}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start #{track}: #{format_changeset(changeset)}"}
+        {:ok,
+         "Не удалось начать направление «#{academy_track_label(track)}»: #{format_changeset(changeset)}"}
     end
   end
 
@@ -415,10 +417,10 @@ defmodule MMGO.Telegram.Commands do
     case Academy.start_extended_study(character) do
       {:ok, %{enrollment: enrollment}} ->
         {:ok,
-         "Extended study started. Completion: #{Formatter.datetime(enrollment.expected_completion_at)}."}
+         "Углублённое обучение начато. Завершение: #{Formatter.datetime(enrollment.expected_completion_at)}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start extended study: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать углублённое обучение: #{format_changeset(changeset)}"}
     end
   end
 
@@ -426,10 +428,10 @@ defmodule MMGO.Telegram.Commands do
     case Academy.start_academia(character) do
       {:ok, %{enrollment: enrollment}} ->
         {:ok,
-         "Academia started. Completion: #{Formatter.datetime(enrollment.expected_completion_at)}."}
+         "Академическая ступень начата. Завершение: #{Formatter.datetime(enrollment.expected_completion_at)}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start academia: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать академическую ступень: #{format_changeset(changeset)}"}
     end
   end
 
@@ -438,29 +440,29 @@ defmodule MMGO.Telegram.Commands do
 
     case NPCShops.pay_tuition(character, amount) do
       {:ok, _result} ->
-        {:ok, "Paid academy tuition: #{amount}."}
+        {:ok, "Внесена плата за обучение: #{amount}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not pay tuition: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось оплатить обучение: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("academy", _args, _character) do
     {:ok,
-     "Usage: /academy status | /academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia | /academy tuition <amount>"}
+     "Формат: /academy status | /academy start basic|wizardry <school1> <school2>|alchemy|mastery|extended|academia | /academy tuition <amount>"}
   end
 
   defp dispatch("academia", ["projects"], character) do
     projects = Academia.list_projects_for_character(character.id)
 
     if projects == [] do
-      {:ok, "No research projects."}
+      {:ok, "Исследовательских проектов нет."}
     else
       {:ok,
        Enum.join(
-         ["Research projects:"] ++
+         ["Исследовательские проекты:"] ++
            Enum.map(projects, fn project ->
-             "- #{project.id}: #{project.project_kind} #{project.title} (#{project.status})"
+             "- #{project.id}: #{project_kind_label(project.project_kind)} · #{project.title} (#{status_label(project.status)})"
            end),
          "\n"
        )}
@@ -471,15 +473,15 @@ defmodule MMGO.Telegram.Commands do
     title = Enum.join(title_parts, " ")
 
     if title == "" do
-      {:ok, "Usage: /academia start <spell|potion|tool|thesis|course> <title>"}
+      {:ok, "Формат: /academia start <spell|potion|tool|thesis|course> <title>"}
     else
       case Academia.start_project(character, project_kind, title) do
         {:ok, %{project: project}} ->
           {:ok,
-           "Research started: #{project.title}. Completion #{Formatter.datetime(project.completes_at)}."}
+           "Исследование «#{project.title}» начато. Завершение: #{Formatter.datetime(project.completes_at)}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not start research: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось начать исследование: #{format_changeset(changeset)}"}
       end
     end
   end
@@ -487,10 +489,10 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("academia", ["professor"], character) do
     case Academia.appoint_professor(character) do
       {:ok, professor} ->
-        {:ok, "Professor appointment granted at #{Formatter.datetime(professor.appointed_at)}."}
+        {:ok, "Звание профессора присвоено #{Formatter.datetime(professor.appointed_at)}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not appoint professor: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось присвоить звание профессора: #{format_changeset(changeset)}"}
     end
   end
 
@@ -498,34 +500,34 @@ defmodule MMGO.Telegram.Commands do
     title = Enum.join(title_parts, " ")
 
     if title == "" do
-      {:ok, "Usage: /academia publish-course <title>"}
+      {:ok, "Формат: /academia publish-course <title>"}
     else
       case Academia.publish_course(character, title) do
         {:ok, publication} ->
-          {:ok, "Course published: #{publication.title}."}
+          {:ok, "Курс опубликован: #{publication.title}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not publish course: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось опубликовать курс: #{format_changeset(changeset)}"}
       end
     end
   end
 
   defp dispatch("academia", _args, _character) do
     {:ok,
-     "Usage: /academia projects | /academia start <spell|potion|tool|thesis|course> <title> | /academia professor | /academia publish-course <title>"}
+     "Формат: /academia projects | /academia start <spell|potion|tool|thesis|course> <title> | /academia professor | /academia publish-course <title>"}
   end
 
   defp dispatch("base", ["status"], character) do
     bases = Bases.list_bases_for_character(character.id)
 
     if bases == [] do
-      {:ok, "No bases."}
+      {:ok, "У вас пока нет баз."}
     else
       {:ok,
        Enum.join(
-         ["Bases:"] ++
+         ["Ваши базы:"] ++
            Enum.map(bases, fn base ->
-             "- #{base.id}: #{base.name} @ #{base.location.name} (#{base.status}, cap #{base.storage_weight_capacity}, used #{Bases.storage_weight(base)})"
+             "- #{base.id}: #{base.name} · #{base.location.name} (#{status_label(base.status)}, вместимость #{base.storage_weight_capacity}, занято #{Bases.storage_weight(base)})"
            end),
          "\n"
        )}
@@ -535,13 +537,13 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("base", ["buy", location_slug], character) do
     with %{} = location <- Worlds.get_location_by_slug(character.realm_id, location_slug),
          {:ok, base} <- Bases.purchase_city_base(character, location) do
-      {:ok, "Base purchased: #{base.name} at #{location.name}."}
+      {:ok, "База «#{base.name}» куплена в локации «#{location.name}»."}
     else
       nil ->
-        {:ok, "No location with slug #{location_slug} found in your realm."}
+        {:ok, "В вашем мире не найдена локация с кодом #{location_slug}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not buy base: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось купить базу: #{format_changeset(changeset)}"}
     end
   end
 
@@ -549,13 +551,13 @@ defmodule MMGO.Telegram.Commands do
     with %{} = location <- Worlds.get_location_by_slug(character.realm_id, location_slug),
          {:ok, %{base: base}} <- Bases.start_custom_base_build(character, location) do
       {:ok,
-       "Base construction started at #{location.name}. Ready: #{Formatter.datetime(base.ready_at)}."}
+       "Строительство базы в локации «#{location.name}» начато. Готовность: #{Formatter.datetime(base.ready_at)}."}
     else
       nil ->
-        {:ok, "No location with slug #{location_slug} found in your realm."}
+        {:ok, "В вашем мире не найдена локация с кодом #{location_slug}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start base construction: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать строительство базы: #{format_changeset(changeset)}"}
     end
   end
 
@@ -564,11 +566,11 @@ defmodule MMGO.Telegram.Commands do
       items = Bases.list_storage_items(base.id)
 
       if items == [] do
-        {:ok, "Base storage is empty."}
+        {:ok, "Хранилище базы пусто."}
       else
         {:ok,
          Enum.join(
-           ["Storage for #{base.name}:"] ++
+           ["Хранилище базы «#{base.name}»:"] ++
              Enum.map(items, fn item ->
                "- #{item.id}: #{item.item_template.name} x#{item.quantity}"
              end),
@@ -576,7 +578,7 @@ defmodule MMGO.Telegram.Commands do
          )}
       end
     else
-      nil -> {:ok, "No owned base found for that id."}
+      nil -> {:ok, "Ваша база с таким идентификатором не найдена."}
     end
   end
 
@@ -590,13 +592,13 @@ defmodule MMGO.Telegram.Commands do
     with %{} = base <- load_owned_base(base_id, character.id),
          %{} = inventory_item <- load_owned_inventory_item(inventory_item_id, character.id),
          {:ok, _result} <- Bases.deposit_item(character, base, inventory_item, quantity) do
-      {:ok, "Deposited #{quantity} item(s) into #{base.name}."}
+      {:ok, "В хранилище базы «#{base.name}» помещено: #{quantity} ед."}
     else
       nil ->
-        {:ok, "Base or inventory item not found."}
+        {:ok, "База или предмет в инвентаре не найдены."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not deposit to base: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось поместить предмет в хранилище: #{format_changeset(changeset)}"}
     end
   end
 
@@ -610,42 +612,42 @@ defmodule MMGO.Telegram.Commands do
     with %{} = base <- load_owned_base(base_id, character.id),
          %{} = storage_item <- load_storage_item_for_base(storage_item_id, base.id),
          {:ok, _result} <- Bases.withdraw_item(character, base, storage_item, quantity) do
-      {:ok, "Withdrew #{quantity} item(s) from #{base.name}."}
+      {:ok, "Из хранилища базы «#{base.name}» забрано: #{quantity} ед."}
     else
       nil ->
-        {:ok, "Base or storage item not found."}
+        {:ok, "База или предмет в хранилище не найдены."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not withdraw from base: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось забрать предмет из хранилища: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("base", _args, _character) do
     {:ok,
-     "Usage: /base status | /base buy <location-slug> | /base build <location-slug> | /base storage <base-id> | /base deposit <base-id> <inventory-item-id> [quantity] | /base withdraw <base-id> <storage-item-id> [quantity]"}
+     "Формат: /base status | /base buy <location-slug> | /base build <location-slug> | /base storage <base-id> | /base deposit <base-id> <inventory-item-id> [quantity] | /base withdraw <base-id> <storage-item-id> [quantity]"}
   end
 
   defp dispatch("alchemy", ["workspace"], character) do
     case Alchemy.get_workshop_for_character(character.id) do
       nil ->
         {:ok,
-         "No active alchemy workspace. Use /alchemy setup [tool1,tool2,...] to create one at your current location."}
+         "Нет действующей алхимической мастерской. Создать её в текущей локации: /alchemy setup [tool1,tool2,...]."}
 
       workspace ->
         location_name = location_name_by_id(workspace.location_id)
 
         tools =
           if workspace.installed_tool_codes == [],
-            do: "none",
-            else: Enum.join(workspace.installed_tool_codes, ", ")
+            do: "нет",
+            else: tool_codes_label(workspace.installed_tool_codes)
 
         {:ok,
          Enum.join(
            [
-             "Workspace: #{workspace.name}",
-             "Location: #{location_name}",
-             "Status: #{workspace.status}",
-             "Tools: #{tools}"
+             "Мастерская: #{workspace.name}",
+             "Локация: #{location_name}",
+             "Состояние: #{status_label(workspace.status)}",
+             "Инструменты: #{tools}"
            ],
            "\n"
          )}
@@ -665,7 +667,7 @@ defmodule MMGO.Telegram.Commands do
         |> Enum.reject(&(&1 == ""))
 
       attrs = %{
-        name: "#{character.name}'s Workshop",
+        name: "Мастерская #{character.name}",
         location_id: location_id,
         installed_tool_codes: tool_codes
       }
@@ -679,13 +681,13 @@ defmodule MMGO.Telegram.Commands do
       case result do
         {:ok, workspace} ->
           {:ok,
-           "Alchemy workspace ready at #{location_name_by_id(workspace.location_id)} with tools: #{Enum.join(workspace.installed_tool_codes, ", ")}."}
+           "Алхимическая мастерская готова в локации «#{location_name_by_id(workspace.location_id)}». Инструменты: #{tool_codes_label(workspace.installed_tool_codes)}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not set up alchemy workspace: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось устроить алхимическую мастерскую: #{format_changeset(changeset)}"}
       end
     else
-      nil -> {:ok, "You must be at a location to set up an alchemy workspace."}
+      nil -> {:ok, "Чтобы устроить алхимическую мастерскую, нужно находиться в локации."}
     end
   end
 
@@ -693,13 +695,13 @@ defmodule MMGO.Telegram.Commands do
     recipes = Alchemy.list_recipes_for_character(character)
 
     if recipes == [] do
-      {:ok, "No alchemy recipes are currently registered."}
+      {:ok, "Алхимические рецепты пока не зарегистрированы."}
     else
       {:ok,
        Enum.join(
-         ["Alchemy recipes:"] ++
+         ["Алхимические рецепты:"] ++
            Enum.map(recipes, fn recipe ->
-             "- #{recipe.code}: #{recipe.name} -> #{recipe.result_item_template.name} (#{recipe.brew_time_game_days} game-days, difficulty #{recipe.difficulty})"
+             "- #{recipe.code}: #{recipe.name} → #{recipe.result_item_template.name} (#{recipe.brew_time_game_days} игровых дн., сложность #{recipe.difficulty})"
            end),
          "\n"
        )}
@@ -717,13 +719,13 @@ defmodule MMGO.Telegram.Commands do
          %{} = recipe <- Alchemy.get_recipe_by_code(recipe_code),
          {:ok, %{brew_job: brew_job}} <- Alchemy.brew(character, workspace, recipe, quantity) do
       {:ok,
-       "Brewing started for #{recipe.name}. Completion: #{Formatter.datetime(brew_job.completes_at)}. Quantity #{brew_job.quantity}."}
+       "Зелье «#{recipe.name}» поставлено вариться. Готовность: #{Formatter.datetime(brew_job.completes_at)}. Количество: #{brew_job.quantity}."}
     else
       nil ->
-        {:ok, "Recipe or workspace not found for brewing request."}
+        {:ok, "Для варки не найдены рецепт или мастерская."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start brew: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать варку: #{format_changeset(changeset)}"}
     end
   end
 
@@ -731,13 +733,13 @@ defmodule MMGO.Telegram.Commands do
     jobs = Alchemy.list_brew_jobs_for_character(character.id)
 
     if jobs == [] do
-      {:ok, "No brew jobs."}
+      {:ok, "Сейчас ничего не варится."}
     else
       {:ok,
        Enum.join(
-         ["Brew jobs:"] ++
+         ["Текущая варка:"] ++
            Enum.map(jobs, fn brew_job ->
-             "- #{brew_job.id}: #{brew_job.recipe.name} x#{brew_job.quantity} (#{brew_job.status})"
+             "- #{brew_job.id}: #{brew_job.recipe.name} ×#{brew_job.quantity} (#{status_label(brew_job.status)})"
            end),
          "\n"
        )}
@@ -746,7 +748,7 @@ defmodule MMGO.Telegram.Commands do
 
   defp dispatch("alchemy", _args, _character) do
     {:ok,
-     "Usage: /alchemy workspace | /alchemy setup [tool1,tool2,...] | /alchemy recipes | /alchemy brew <recipe-code> [quantity] | /alchemy jobs"}
+     "Формат: /alchemy workspace | /alchemy setup [tool1,tool2,...] | /alchemy recipes | /alchemy brew <recipe-code> [quantity] | /alchemy jobs"}
   end
 
   defp dispatch("npc", ["shops"], character) do
@@ -755,11 +757,11 @@ defmodule MMGO.Telegram.Commands do
          NPCShops.list_shops_for_location(character.current_location.id)) || []
 
     if shops == [] do
-      {:ok, "No NPC shops at your location."}
+      {:ok, "В этой локации нет лавок торговцев."}
     else
       {:ok,
        Enum.join(
-         ["NPC shops:"] ++
+         ["Лавки торговцев:"] ++
            Enum.map(shops, fn shop ->
              "- #{shop.code}: #{shop.name}"
            end),
@@ -773,14 +775,14 @@ defmodule MMGO.Telegram.Commands do
          %{} = shop <- NPCShops.get_shop_by_code(location_id, shop_code) do
       {:ok,
        Enum.join(
-         ["Shop #{shop.name}:"] ++
+         ["Лавка «#{shop.name}»:"] ++
            Enum.map(shop.offers, fn offer ->
-             "- #{offer.id}: #{offer.item_template.name} buy #{offer.buy_price} / sell #{offer.sell_price}"
+             "- #{offer.id}: #{offer.item_template.name} · купить за #{offer.buy_price} / продать за #{offer.sell_price}"
            end),
          "\n"
        )}
     else
-      nil -> {:ok, "No shop with code #{shop_code} at your current location."}
+      nil -> {:ok, "В текущей локации нет лавки с кодом #{shop_code}."}
     end
   end
 
@@ -793,13 +795,13 @@ defmodule MMGO.Telegram.Commands do
 
     with %{} = offer <- safe_get_offer(offer_id),
          {:ok, _result} <- NPCShops.buy(character, offer, quantity) do
-      {:ok, "Bought #{quantity} item(s) from the NPC shop."}
+      {:ok, "У торговца куплено: #{quantity} ед."}
     else
       nil ->
-        {:ok, "No NPC shop offer found."}
+        {:ok, "Предложение торговца не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not buy from NPC shop: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось совершить покупку: #{format_changeset(changeset)}"}
     end
   end
 
@@ -813,19 +815,19 @@ defmodule MMGO.Telegram.Commands do
     with %{} = offer <- safe_get_offer(offer_id),
          %{} = inventory_item <- load_owned_inventory_item(inventory_item_id, character.id),
          {:ok, %{payout: payout}} <- NPCShops.sell(character, offer, inventory_item, quantity) do
-      {:ok, "Sold #{quantity} item(s) to the NPC shop for #{payout}."}
+      {:ok, "Торговцу продано: #{quantity} ед. Выручка: #{payout}."}
     else
       nil ->
-        {:ok, "NPC offer or inventory item not found."}
+        {:ok, "Предложение торговца или предмет в инвентаре не найдены."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not sell to NPC shop: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось совершить продажу: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("npc", _args, _character) do
     {:ok,
-     "Usage: /npc shops | /npc browse <shop-code> | /npc buy <offer-id> [quantity] | /npc sell <offer-id> <inventory-item-id> [quantity]"}
+     "Формат: /npc shops | /npc browse <shop-code> | /npc buy <offer-id> [quantity] | /npc sell <offer-id> <inventory-item-id> [quantity]"}
   end
 
   defp dispatch("charity", ["donate", amount_raw], character) do
@@ -833,36 +835,36 @@ defmodule MMGO.Telegram.Commands do
 
     case NPCShops.donate_to_charity(character, amount) do
       {:ok, _result} ->
-        {:ok, "Donated #{amount} to the charity fund."}
+        {:ok, "В благотворительный фонд пожертвовано: #{amount}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not donate: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось сделать пожертвование: #{format_changeset(changeset)}"}
     end
   end
 
-  defp dispatch("charity", _args, _character), do: {:ok, "Usage: /charity donate <amount>"}
+  defp dispatch("charity", _args, _character), do: {:ok, "Формат: /charity donate <amount>"}
 
   defp dispatch("craft", ["workspace"], character) do
     case Crafting.get_workshop_for_character(character.id) do
       nil ->
         {:ok,
-         "No active crafting workshop. Use /craft setup [tool1,tool2,...] to create one at your current location."}
+         "Нет действующей ремесленной мастерской. Создать её в текущей локации: /craft setup [tool1,tool2,...]."}
 
       workshop ->
         location_name = location_name_by_id(workshop.location_id)
 
         tools =
           if workshop.installed_tool_codes == [],
-            do: "none",
-            else: Enum.join(workshop.installed_tool_codes, ", ")
+            do: "нет",
+            else: tool_codes_label(workshop.installed_tool_codes)
 
         {:ok,
          Enum.join(
            [
-             "Workshop: #{workshop.name}",
-             "Location: #{location_name}",
-             "Status: #{workshop.status}",
-             "Tools: #{tools}"
+             "Мастерская: #{workshop.name}",
+             "Локация: #{location_name}",
+             "Состояние: #{status_label(workshop.status)}",
+             "Инструменты: #{tools}"
            ],
            "\n"
          )}
@@ -882,7 +884,7 @@ defmodule MMGO.Telegram.Commands do
         |> Enum.reject(&(&1 == ""))
 
       attrs = %{
-        name: "#{character.name}'s Workshop",
+        name: "Мастерская #{character.name}",
         location_id: location_id,
         installed_tool_codes: tool_codes
       }
@@ -896,13 +898,13 @@ defmodule MMGO.Telegram.Commands do
       case result do
         {:ok, workshop} ->
           {:ok,
-           "Crafting workshop ready at #{location_name_by_id(workshop.location_id)} with tools: #{Enum.join(workshop.installed_tool_codes, ", ")}."}
+           "Ремесленная мастерская готова в локации «#{location_name_by_id(workshop.location_id)}». Инструменты: #{tool_codes_label(workshop.installed_tool_codes)}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not set up crafting workshop: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось устроить ремесленную мастерскую: #{format_changeset(changeset)}"}
       end
     else
-      nil -> {:ok, "You must be at a location to set up a crafting workshop."}
+      nil -> {:ok, "Чтобы устроить ремесленную мастерскую, нужно находиться в локации."}
     end
   end
 
@@ -910,13 +912,13 @@ defmodule MMGO.Telegram.Commands do
     recipes = Crafting.list_recipes()
 
     if recipes == [] do
-      {:ok, "No crafting recipes are currently registered."}
+      {:ok, "Ремесленные чертежи пока не зарегистрированы."}
     else
       {:ok,
        Enum.join(
-         ["Crafting recipes:"] ++
+         ["Ремесленные чертежи:"] ++
            Enum.map(recipes, fn recipe ->
-             "- #{recipe.code}: #{recipe.name} -> #{recipe.result_item_template.name} (#{recipe.craft_time_game_days} game-days, difficulty #{recipe.difficulty})"
+             "- #{recipe.code}: #{recipe.name} → #{recipe.result_item_template.name} (#{recipe.craft_time_game_days} игровых дн., сложность #{recipe.difficulty})"
            end),
          "\n"
        )}
@@ -934,13 +936,13 @@ defmodule MMGO.Telegram.Commands do
          %{} = recipe <- Crafting.get_recipe_by_code(recipe_code),
          {:ok, %{craft_job: craft_job}} <- Crafting.craft(character, workshop, recipe, quantity) do
       {:ok,
-       "Crafting started for #{recipe.name}. Completion: #{Formatter.datetime(craft_job.completes_at)}. Quantity #{craft_job.quantity}."}
+       "Работа над «#{recipe.name}» начата. Готовность: #{Formatter.datetime(craft_job.completes_at)}. Количество: #{craft_job.quantity}."}
     else
       nil ->
-        {:ok, "Recipe or workshop not found for crafting request."}
+        {:ok, "Для работы не найдены чертёж или мастерская."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start crafting: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать работу: #{format_changeset(changeset)}"}
     end
   end
 
@@ -948,13 +950,13 @@ defmodule MMGO.Telegram.Commands do
     jobs = Crafting.list_craft_jobs_for_character(character.id)
 
     if jobs == [] do
-      {:ok, "No craft jobs."}
+      {:ok, "Сейчас в мастерской нет работ."}
     else
       {:ok,
        Enum.join(
-         ["Craft jobs:"] ++
+         ["Работы в мастерской:"] ++
            Enum.map(jobs, fn craft_job ->
-             "- #{craft_job.id}: #{craft_job.recipe.name} x#{craft_job.quantity} (#{craft_job.status})"
+             "- #{craft_job.id}: #{craft_job.recipe.name} ×#{craft_job.quantity} (#{status_label(craft_job.status)})"
            end),
          "\n"
        )}
@@ -963,7 +965,7 @@ defmodule MMGO.Telegram.Commands do
 
   defp dispatch("craft", _args, _character) do
     {:ok,
-     "Usage: /craft workshop | /craft setup [tool1,tool2,...] | /craft recipes | /craft build <recipe-code> [quantity] | /craft jobs"}
+     "Формат: /craft workshop | /craft setup [tool1,tool2,...] | /craft recipes | /craft build <recipe-code> [quantity] | /craft jobs"}
   end
 
   defp dispatch("scavenge", [resource_code], character) do
@@ -980,35 +982,35 @@ defmodule MMGO.Telegram.Commands do
          {:ok, %{attempt: attempt}} <-
            Scavenging.start_attempt(character, resource_cache, quantity) do
       {:ok,
-       "Scavenging started for #{resource_code}. Completion: #{Formatter.datetime(attempt.completes_at)}. Quantity: #{attempt.quantity_requested}."}
+       "Сбор ресурса #{resource_code} начат. Завершение: #{Formatter.datetime(attempt.completes_at)}. Количество: #{attempt.quantity_requested}."}
     else
       nil ->
-        {:ok, "No available resource named #{resource_code} at your location."}
+        {:ok, "В текущей локации нет доступного ресурса #{resource_code}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start scavenging: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать сбор ресурсов: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("scavenge", _args, _character),
-    do: {:ok, "Usage: /scavenge <resource_code> [quantity]"}
+    do: {:ok, "Формат: /scavenge <resource_code> [quantity]"}
 
   defp dispatch("party", ["create" | name_parts], character) do
     name = if name_parts == [], do: nil, else: Enum.join(name_parts, " ")
 
     case Parties.create_party(character, if(name, do: %{name: name}, else: %{})) do
       {:ok, %{party: party}} ->
-        {:ok, "Party created: #{party.name}."}
+        {:ok, "Отряд создан: #{party.name}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not create party: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось создать отряд: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("party", ["status"], character) do
     case Parties.active_party_for_character(character.id) do
       nil ->
-        {:ok, "No active party."}
+        {:ok, "У вас нет активного отряда."}
 
       party ->
         members = Parties.list_active_members(party)
@@ -1016,8 +1018,8 @@ defmodule MMGO.Telegram.Commands do
         {:ok,
          Enum.join(
            [
-             "Party: #{party.name}",
-             "Members: #{Enum.map_join(members, ", ", & &1.character.name)}"
+             "Отряд: #{party.name}",
+             "Участники: #{Enum.map_join(members, ", ", & &1.character.name)}"
            ],
            "\n"
          )}
@@ -1025,13 +1027,13 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp dispatch("party", _args, _character),
-    do: {:ok, "Usage: /party create [name] | /party status"}
+    do: {:ok, "Формат: /party create [name] | /party status"}
 
   defp dispatch("org", ["create", kind | name_parts], character) do
     name = Enum.join(name_parts, " ")
 
     if name == "" do
-      {:ok, "Usage: /org create <cult|company|council|guild> <name>"}
+      {:ok, "Формат: /org create <cult|company|council|guild> <name>"}
     else
       attrs =
         if kind == "cult" do
@@ -1042,10 +1044,11 @@ defmodule MMGO.Telegram.Commands do
 
       case Organizations.create_organization(character, kind, name, attrs) do
         {:ok, %{organization: organization}} ->
-          {:ok, "Organization created: #{organization.name} (#{organization.kind})."}
+          {:ok,
+           "Организация создана: #{organization.name} (#{organization_kind_label(organization.kind)})."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not create organization: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось создать организацию: #{format_changeset(changeset)}"}
       end
     end
   end
@@ -1054,13 +1057,13 @@ defmodule MMGO.Telegram.Commands do
     orgs = Organizations.list_organizations_for_character(character.id)
 
     if orgs == [] do
-      {:ok, "No organizations."}
+      {:ok, "Вы не состоите в организациях."}
     else
       {:ok,
        Enum.join(
-         ["Organizations:"] ++
+         ["Организации:"] ++
            Enum.map(orgs, fn org ->
-             "- #{org.id}: #{org.name} (#{org.kind})"
+             "- #{org.id}: #{org.name} (#{organization_kind_label(org.kind)})"
            end),
          "\n"
        )}
@@ -1080,13 +1083,13 @@ defmodule MMGO.Telegram.Commands do
              rank: rank,
              permissions: permissions
            }) do
-      {:ok, "Role created: #{role.title} (#{role.code})."}
+      {:ok, "Должность создана: #{role.title} (#{role.code})."}
     else
       nil ->
-        {:ok, "No matching organization membership found."}
+        {:ok, "Подходящее членство в организации не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not create role: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось создать должность: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1095,13 +1098,13 @@ defmodule MMGO.Telegram.Commands do
          %{} = invitee <- Accounts.get_character_by_handle(character.realm_id, handle),
          %{} = role <- Enum.find(organization.roles, &(&1.code == role_code)),
          {:ok, invitation} <- Organizations.invite_member(organization, character, invitee, role) do
-      {:ok, "Organization invitation #{invitation.id} sent to #{handle}."}
+      {:ok, "Приглашение в организацию #{invitation.id} отправлено персонажу #{handle}."}
     else
       nil ->
-        {:ok, "Organization, invitee, or role not found."}
+        {:ok, "Организация, приглашённый персонаж или должность не найдены."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not invite member: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось пригласить участника: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1109,13 +1112,13 @@ defmodule MMGO.Telegram.Commands do
     invitations = Organizations.pending_invitations_for_character(character.id)
 
     if invitations == [] do
-      {:ok, "No pending organization invitations."}
+      {:ok, "Нет ожидающих приглашений в организации."}
     else
       {:ok,
        Enum.join(
-         ["Pending organization invitations:"] ++
+         ["Приглашения в организации:"] ++
            Enum.map(invitations, fn invitation ->
-             "- #{invitation.id}: #{invitation.organization.name} as #{invitation.role.title}"
+             "- #{invitation.id}: #{invitation.organization.name} · должность «#{invitation.role.title}»"
            end),
          "\n"
        )}
@@ -1125,26 +1128,26 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("org", ["accept", invitation_id], character) do
     with %{} = invitation <- load_org_invitation(invitation_id, character.id),
          {:ok, _membership} <- Organizations.accept_invitation(invitation, character) do
-      {:ok, "Organization invitation accepted."}
+      {:ok, "Приглашение в организацию принято."}
     else
       nil ->
-        {:ok, "No matching organization invitation found."}
+        {:ok, "Подходящее приглашение в организацию не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not accept invitation: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось принять приглашение: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("org", ["reject", invitation_id], character) do
     with %{} = invitation <- load_org_invitation(invitation_id, character.id),
          {:ok, _invitation} <- Organizations.reject_invitation(invitation, character) do
-      {:ok, "Organization invitation rejected."}
+      {:ok, "Приглашение в организацию отклонено."}
     else
       nil ->
-        {:ok, "No matching organization invitation found."}
+        {:ok, "Подходящее приглашение в организацию не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not reject invitation: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось отклонить приглашение: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1154,33 +1157,33 @@ defmodule MMGO.Telegram.Commands do
          {:ok, updated_character} <-
            Organizations.use_fast_travel(character, organization, location) do
       {:ok,
-       "Organization travel complete. New location: #{location_name_by_id(updated_character.current_location_id)}."}
+       "Переход организации завершён. Новая локация: #{location_name_by_id(updated_character.current_location_id)}."}
     else
       nil ->
-        {:ok, "Organization or location not found."}
+        {:ok, "Организация или локация не найдены."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not use organization travel: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось воспользоваться переходом организации: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("org", _args, _character) do
     {:ok,
-     "Usage: /org create <cult|company|council|guild> <name> | /org list | /org role <org-id> <code> <rank> <perm1,perm2,...> <title> | /org invite <org-id> <handle> <role-code> | /org invites | /org accept <invite-id> | /org reject <invite-id> | /org travel <org-id> <location-slug>"}
+     "Формат: /org create <cult|company|council|guild> <name> | /org list | /org role <org-id> <code> <rank> <perm1,perm2,...> <title> | /org invite <org-id> <handle> <role-code> | /org invites | /org accept <invite-id> | /org reject <invite-id> | /org travel <org-id> <location-slug>"}
   end
 
   defp dispatch("club", ["create", club_type | name_parts], character) do
     name = Enum.join(name_parts, " ")
 
     if name == "" do
-      {:ok, "Usage: /club create <type> <name>"}
+      {:ok, "Формат: /club create <type> <name>"}
     else
       case Clubs.create_club(character, %{club_type: club_type, name: name}) do
         {:ok, %{club: club}} ->
-          {:ok, "Club created: #{club.name} (#{club.club_type})."}
+          {:ok, "Клуб создан: #{club.name} (#{club_type_label(club.club_type)})."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not create club: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось создать клуб: #{format_changeset(changeset)}"}
       end
     end
   end
@@ -1189,13 +1192,13 @@ defmodule MMGO.Telegram.Commands do
     clubs = Clubs.list_clubs_for_character(character.id)
 
     if clubs == [] do
-      {:ok, "No active clubs."}
+      {:ok, "Вы не состоите в активных клубах."}
     else
       {:ok,
        Enum.join(
-         ["Clubs:"] ++
+         ["Клубы:"] ++
            Enum.map(clubs, fn club ->
-             "- #{club.id}: #{club.name} (#{club.club_type})"
+             "- #{club.id}: #{club.name} (#{club_type_label(club.club_type)})"
            end),
          "\n"
        )}
@@ -1209,14 +1212,14 @@ defmodule MMGO.Telegram.Commands do
       {:ok,
        Enum.join(
          [
-           "Club: #{club.name}",
-           "Type: #{club.club_type}",
-           "Members: #{Enum.map_join(members, ", ", & &1.character.name)}"
+           "Клуб: #{club.name}",
+           "Направление: #{club_type_label(club.club_type)}",
+           "Участники: #{Enum.map_join(members, ", ", & &1.character.name)}"
          ],
          "\n"
        )}
     else
-      nil -> {:ok, "No matching club membership found."}
+      nil -> {:ok, "Подходящее членство в клубе не найдено."}
     end
   end
 
@@ -1224,13 +1227,14 @@ defmodule MMGO.Telegram.Commands do
     with %{} = club <- load_member_club(club_id, character.id),
          %{} = invitee <- Accounts.get_character_by_handle(character.realm_id, handle),
          {:ok, %{invitation: invitation}} <- Clubs.invite_member(club, character, invitee) do
-      {:ok, "Invitation #{invitation.id} sent to #{handle}."}
+      {:ok, "Приглашение #{invitation.id} отправлено персонажу #{handle}."}
     else
       nil ->
-        {:ok, "Club or invitee not found, or your club role cannot send invitations."}
+        {:ok,
+         "Клуб или приглашённый персонаж не найдены, либо ваша роль не позволяет приглашать."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not invite member: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось пригласить участника: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1238,13 +1242,13 @@ defmodule MMGO.Telegram.Commands do
     invitations = Clubs.pending_invitations_for_character(character.id)
 
     if invitations == [] do
-      {:ok, "No pending club invitations."}
+      {:ok, "Нет ожидающих приглашений в клубы."}
     else
       {:ok,
        Enum.join(
-         ["Pending club invitations:"] ++
+         ["Приглашения в клубы:"] ++
            Enum.map(invitations, fn invitation ->
-             "- #{invitation.id}: #{invitation.club.name} from #{invitation.inviter_character.name}"
+             "- #{invitation.id}: #{invitation.club.name} · от #{invitation.inviter_character.name}"
            end),
          "\n"
        )}
@@ -1254,45 +1258,45 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("club", ["accept", invitation_id], character) do
     with %{} = invitation <- load_invitation(invitation_id, character.id),
          {:ok, %{club: club}} <- Clubs.accept_invitation(invitation, character) do
-      {:ok, "Joined club #{club.name}."}
+      {:ok, "Вы вступили в клуб «#{club.name}»."}
     else
       nil ->
-        {:ok, "No matching pending invitation found."}
+        {:ok, "Подходящее ожидающее приглашение не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not accept invitation: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось принять приглашение: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("club", ["reject", invitation_id], character) do
     with %{} = invitation <- load_invitation(invitation_id, character.id),
          {:ok, _updated_invitation} <- Clubs.reject_invitation(invitation, character) do
-      {:ok, "Invitation rejected."}
+      {:ok, "Приглашение отклонено."}
     else
       nil ->
-        {:ok, "No matching pending invitation found."}
+        {:ok, "Подходящее ожидающее приглашение не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not reject invitation: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось отклонить приглашение: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("club", ["leave", club_id], character) do
     with %{} = club <- load_member_club(club_id, character.id),
          {:ok, updated_club} <- Clubs.leave_club(club, character) do
-      {:ok, "Left club #{updated_club.name}."}
+      {:ok, "Вы вышли из клуба «#{updated_club.name}»."}
     else
       nil ->
-        {:ok, "No matching club membership found."}
+        {:ok, "Подходящее членство в клубе не найдено."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not leave club: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось выйти из клуба: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("club", _args, _character) do
     {:ok,
-     "Usage: /club create <type> <name> | /club list | /club status <club-id> | /club invite <club-id> <handle> | /club invites | /club accept <invite-id> | /club reject <invite-id> | /club leave <club-id>"}
+     "Формат: /club create <type> <name> | /club list | /club status <club-id> | /club invite <club-id> <handle> | /club invites | /club accept <invite-id> | /club reject <invite-id> | /club leave <club-id>"}
   end
 
   defp dispatch("duel", ["challenge", handle, stake_raw], character) do
@@ -1300,13 +1304,14 @@ defmodule MMGO.Telegram.Commands do
 
     with %{} = opponent <- Accounts.get_character_by_handle(character.realm_id, handle),
          {:ok, duel} <- PVP.challenge_duel(character, opponent, stake) do
-      {:ok, "Duel challenge sent to #{handle}. Duel id #{duel.id}. Stake #{duel.stake_amount}."}
+      {:ok,
+       "Вызов на дуэль отправлен персонажу #{handle}. Дуэль: #{duel.id}. Ставка: #{duel.stake_amount}."}
     else
       nil ->
-        {:ok, "No character with handle #{handle} found in your realm."}
+        {:ok, "В вашем мире не найден персонаж с именем #{handle}."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not challenge duel: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось вызвать на дуэль: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1314,16 +1319,16 @@ defmodule MMGO.Telegram.Commands do
     with %{} = duel <- load_owned_duel(duel_id, character.id, :pending),
          true <- duel.opponent_character_id == character.id,
          {:ok, updated_duel} <- PVP.accept_duel(duel, character) do
-      {:ok, "Duel accepted. Combat #{updated_duel.combat_id} is ready."}
+      {:ok, "Дуэль принята. Бой #{updated_duel.combat_id} готов."}
     else
       nil ->
-        {:ok, "No matching pending duel found."}
+        {:ok, "Подходящая ожидающая дуэль не найдена."}
 
       false ->
-        {:ok, "Only the challenged opponent can accept this duel."}
+        {:ok, "Принять дуэль может только вызванный соперник."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not accept duel: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось принять дуэль: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1331,29 +1336,29 @@ defmodule MMGO.Telegram.Commands do
     with %{} = duel <- load_owned_duel(duel_id, character.id, :pending),
          true <- duel.opponent_character_id == character.id,
          {:ok, _updated_duel} <- PVP.reject_duel(duel, character) do
-      {:ok, "Duel rejected."}
+      {:ok, "Дуэль отклонена."}
     else
       nil ->
-        {:ok, "No matching pending duel found."}
+        {:ok, "Подходящая ожидающая дуэль не найдена."}
 
       false ->
-        {:ok, "Only the challenged opponent can reject this duel."}
+        {:ok, "Отклонить дуэль может только вызванный соперник."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not reject duel: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось отклонить дуэль: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("duel", ["cancel", duel_id], character) do
     with %{} = duel <- load_owned_duel(duel_id, character.id),
          {:ok, _updated_duel} <- PVP.cancel_duel(duel, character) do
-      {:ok, "Duel cancelled."}
+      {:ok, "Дуэль отменена."}
     else
       nil ->
-        {:ok, "No matching duel found."}
+        {:ok, "Подходящая дуэль не найдена."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not cancel duel: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось отменить дуэль: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1361,18 +1366,18 @@ defmodule MMGO.Telegram.Commands do
     duels = PVP.list_open_duels_for_character(character.id)
 
     if duels == [] do
-      {:ok, "No open duels."}
+      {:ok, "Открытых дуэлей нет."}
     else
       {:ok,
        Enum.join(
-         ["Open duels:"] ++
+         ["Открытые дуэли:"] ++
            Enum.map(duels, fn duel ->
              opponent_id =
                if duel.challenger_character_id == character.id,
                  do: duel.opponent_character_id,
                  else: duel.challenger_character_id
 
-             "- #{duel.id}: status #{duel.status}, opponent ##{opponent_id}, stake #{duel.stake_amount}"
+             "- #{duel.id}: #{status_label(duel.status)}, соперник ##{opponent_id}, ставка #{duel.stake_amount}"
            end),
          "\n"
        )}
@@ -1382,26 +1387,26 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("duel", _args, _character),
     do:
       {:ok,
-       "Usage: /duel challenge <handle> <stake> | /duel accept <duel-id> | /duel reject <duel-id> | /duel cancel <duel-id> | /duel status"}
+       "Формат: /duel challenge <handle> <stake> | /duel accept <duel-id> | /duel reject <duel-id> | /duel cancel <duel-id> | /duel status"}
 
   defp dispatch("expedition", ["start"], character) do
     with %{} = party <- Parties.active_party_for_character(character.id),
          {:ok, %{expedition: expedition}} <- Parties.start_expedition(party) do
       {:ok,
-       "Expedition started at #{location_name_by_id(expedition.location_id)}. Food snapshot: #{expedition.food_units_snapshot}. Carry: #{expedition.carried_weight}/#{expedition.carry_capacity}."}
+       "Экспедиция начата в локации «#{location_name_by_id(expedition.location_id)}». Запас еды: #{expedition.food_units_snapshot}. Груз: #{expedition.carried_weight}/#{expedition.carry_capacity}."}
     else
       nil ->
-        {:ok, "You need an active party before starting an expedition."}
+        {:ok, "Для начала экспедиции нужен активный отряд."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start expedition: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать экспедицию: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("expedition", ["status"], character) do
     case Parties.active_expedition_for_character(character.id) do
       nil ->
-        {:ok, "No active expedition."}
+        {:ok, "Активной экспедиции нет."}
 
       expedition ->
         members = Parties.active_members_for_expedition(expedition.id)
@@ -1409,11 +1414,11 @@ defmodule MMGO.Telegram.Commands do
         {:ok,
          Enum.join(
            [
-             "Expedition: #{expedition.id}",
-             "Location: #{location_name_by_id(expedition.location_id)}",
-             "Members: #{length(members)}",
-             "Food snapshot: #{expedition.food_units_snapshot}",
-             "Carry: #{expedition.carried_weight}/#{expedition.carry_capacity}"
+             "Экспедиция: #{expedition.id}",
+             "Локация: #{location_name_by_id(expedition.location_id)}",
+             "Участники: #{length(members)}",
+             "Запас еды: #{expedition.food_units_snapshot}",
+             "Груз: #{expedition.carried_weight}/#{expedition.carry_capacity}"
            ],
            "\n"
          )}
@@ -1421,20 +1426,20 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp dispatch("expedition", _args, _character),
-    do: {:ok, "Usage: /expedition start | /expedition status"}
+    do: {:ok, "Формат: /expedition start | /expedition status"}
 
   defp dispatch("dungeon", ["enter"], character) do
     with %{} = expedition <- Parties.active_expedition_for_character(character.id),
          %{id: location_id} <- character.current_location,
          %{} = dungeon <- Dungeons.active_dungeon_at_location(character.realm_id, location_id),
          {:ok, %{run: run}} <- Dungeons.enter_dungeon(expedition, dungeon) do
-      {:ok, "Entered dungeon #{dungeon.name}. Current node: #{run.current_node.name}."}
+      {:ok, "Вы вошли в подземелье «#{dungeon.name}». Текущий зал: #{run.current_node.name}."}
     else
       nil ->
-        {:ok, "You must be at an active dungeon entrance with an expedition to enter a dungeon."}
+        {:ok, "Чтобы войти, экспедиция должна находиться у действующего входа в подземелье."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not enter dungeon: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось войти в подземелье: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1447,17 +1452,17 @@ defmodule MMGO.Telegram.Commands do
       {:ok,
        Enum.join(
          [
-           "Dungeon: #{run.dungeon.name}",
-           "Floor: #{run.current_floor.number}",
-           "Node: #{run.current_node.slug} — #{run.current_node.name}",
-           "Encounter: #{encounter_line(encounter)}",
-           "Extraction: #{extraction_line(extraction)}",
-           "Steps: #{run.steps_taken}"
+           "Подземелье: #{run.dungeon.name}",
+           "Этаж: #{run.current_floor.number}",
+           "Зал: #{run.current_node.slug} — #{run.current_node.name}",
+           "Встреча: #{encounter_line(encounter)}",
+           "Возвращение: #{extraction_line(extraction)}",
+           "Шагов: #{run.steps_taken}"
          ],
          "\n"
        )}
     else
-      nil -> {:ok, "No active dungeon run."}
+      nil -> {:ok, "Активного похода в подземелье нет."}
     end
   end
 
@@ -1467,13 +1472,15 @@ defmodule MMGO.Telegram.Commands do
          %{} = node <- Dungeons.get_node_by_slug_in_dungeon(run.dungeon_id, node_slug),
          {:ok, %{run: updated_run}} <- Dungeons.move_run(run, node.id) do
       encounter = Dungeons.current_encounter_for_run(updated_run.id)
-      {:ok, "Moved to #{updated_run.current_node.name}. Encounter: #{encounter_line(encounter)}."}
+
+      {:ok,
+       "Переход в зал «#{updated_run.current_node.name}». Встреча: #{encounter_line(encounter)}."}
     else
       nil ->
-        {:ok, "Node not found in the active dungeon run."}
+        {:ok, "Зал не найден в текущем подземелье."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not move in dungeon: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось перейти в другой зал: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1481,13 +1488,14 @@ defmodule MMGO.Telegram.Commands do
     with %{} = expedition <- Parties.active_expedition_for_character(character.id),
          %{} = run <- Dungeons.active_run_for_expedition(expedition.id),
          {:ok, %{run: updated_run}} <- Dungeons.extract_via_ascent(run) do
-      {:ok, "Dungeon extraction complete. Run #{updated_run.id} exited safely."}
+      {:ok,
+       "Выход из подземелья завершён. Экспедиция #{updated_run.id} выбралась в безопасности."}
     else
       nil ->
-        {:ok, "No active dungeon run."}
+        {:ok, "Активного похода в подземелье нет."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not extract: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось выйти из подземелья: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1496,13 +1504,13 @@ defmodule MMGO.Telegram.Commands do
          %{} = run <- Dungeons.active_run_for_expedition(expedition.id),
          {:ok, %{extraction: extraction}} <- Dungeons.start_return_ritual(run, character) do
       {:ok,
-       "Return ritual started. Extraction completes at #{Formatter.datetime(extraction.completes_at)}."}
+       "Ритуал возвращения начат. Выход завершится #{Formatter.datetime(extraction.completes_at)}."}
     else
       nil ->
-        {:ok, "No active dungeon run."}
+        {:ok, "Активного похода в подземелье нет."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start return ritual: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать ритуал возвращения: #{format_changeset(changeset)}"}
     end
   end
 
@@ -1512,34 +1520,34 @@ defmodule MMGO.Telegram.Commands do
       drops = Dungeons.list_drops_for_run(run.id)
 
       if drops == [] do
-        {:ok, "No dungeon drops recorded for this run."}
+        {:ok, "В этом походе добыча не найдена."}
       else
         {:ok,
          Enum.join(
-           ["Dungeon drops:"] ++
+           ["Добыча из подземелья:"] ++
              Enum.map(drops, fn drop ->
-               "- #{drop.id}: #{drop.name} x#{drop.quantity} (#{drop.drop_kind})"
+               "- #{drop.id}: #{drop.name} ×#{drop.quantity} (#{drop_kind_label(drop.drop_kind)})"
              end),
            "\n"
          )}
       end
     else
-      nil -> {:ok, "No active dungeon run."}
+      nil -> {:ok, "Активного похода в подземелье нет."}
     end
   end
 
   defp dispatch("dungeon", _args, _character),
     do:
       {:ok,
-       "Usage: /dungeon enter | /dungeon status | /dungeon move <node-slug> | /dungeon extract | /dungeon ritual | /dungeon drops"}
+       "Формат: /dungeon enter | /dungeon status | /dungeon move <node-slug> | /dungeon extract | /dungeon ritual | /dungeon drops"}
 
   defp dispatch("encounter", ["status"], character) do
     with %{} = expedition <- Parties.active_expedition_for_character(character.id),
          %{} = run <- Dungeons.active_run_for_expedition(expedition.id) do
       encounter = Dungeons.current_encounter_for_run(run.id)
-      {:ok, "Encounter: #{encounter_line(encounter)}"}
+      {:ok, "Встреча: #{encounter_line(encounter)}"}
     else
-      nil -> {:ok, "No active dungeon encounter."}
+      nil -> {:ok, "Активной встречи в подземелье нет."}
     end
   end
 
@@ -1549,18 +1557,18 @@ defmodule MMGO.Telegram.Commands do
          %{} = encounter <- Dungeons.current_encounter_for_run(run.id),
          {:ok, %{combat: combat}} <- Dungeons.start_encounter_combat(encounter) do
       {:ok,
-       "Encounter combat started. Combat id #{combat.id}. Use /combat status and /combat cast <spell-id>."}
+       "Бой во встрече начат. Бой: #{combat.id}. Команды: /combat status и /combat cast <spell-id>."}
     else
       nil ->
-        {:ok, "No active encounter available to fight."}
+        {:ok, "Нет активной встречи, в которой можно начать бой."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not start encounter combat: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось начать бой: #{format_changeset(changeset)}"}
     end
   end
 
   defp dispatch("encounter", _args, _character),
-    do: {:ok, "Usage: /encounter status | /encounter fight"}
+    do: {:ok, "Формат: /encounter status | /encounter fight"}
 
   defp dispatch("spells", _args, character) do
     case Grimoires.active_grimoire_for_character(character.id) do
@@ -1577,7 +1585,7 @@ defmodule MMGO.Telegram.Commands do
            Enum.join(
              ["Подготовленные заклинания:"] ++
                Enum.map(grimoire.entries, fn entry ->
-                 "- #{entry.spell.name} · #{entry.spell.school}"
+                 "- #{entry.spell.name} · #{spell_school_label(entry.spell.school)}"
                end),
              "\n"
            )}
@@ -1588,17 +1596,17 @@ defmodule MMGO.Telegram.Commands do
   defp dispatch("combat", ["status"], character) do
     case Combat.active_combat_for_character(character.id) do
       nil ->
-        {:ok, "No active combat."}
+        {:ok, "Активного боя нет."}
 
       combat ->
         {:ok,
          Enum.join(
            [
-             "Combat: #{combat.kind}",
-             "Turn: #{combat.turn_number}",
-             "Status: #{combat.status}",
-             "Party HP: #{(combat.sides["party"] && combat.sides["party"]["shared_hp"]) || (combat.sides["attackers"] && combat.sides["attackers"]["shared_hp"])}",
-             "Enemy HP: #{(combat.sides["encounter"] && combat.sides["encounter"]["shared_hp"]) || (combat.sides["defenders"] && combat.sides["defenders"]["shared_hp"])}"
+             "Бой: #{combat_kind_label(combat.kind)}",
+             "Ход: #{combat.turn_number}",
+             "Состояние: #{status_label(combat.status)}",
+             "Здоровье отряда: #{(combat.sides["party"] && combat.sides["party"]["shared_hp"]) || (combat.sides["attackers"] && combat.sides["attackers"]["shared_hp"])}",
+             "Здоровье противника: #{(combat.sides["encounter"] && combat.sides["encounter"]["shared_hp"]) || (combat.sides["defenders"] && combat.sides["defenders"]["shared_hp"])}"
            ],
            "\n"
          )}
@@ -1615,16 +1623,16 @@ defmodule MMGO.Telegram.Commands do
              spell_id: spell_id,
              target_side: combat_target_side(combat, participant.side)
            }) do
-      {:ok, "Spell queued for combat turn #{combat.turn_number}."}
+      {:ok, "Заклинание подготовлено для хода #{combat.turn_number}."}
     else
       nil ->
-        {:ok, "No active combat or no combat participant for this character."}
+        {:ok, "Активный бой не найден, либо персонаж не участвует в нём."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not queue spell: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось подготовить заклинание: #{format_changeset(changeset)}"}
 
       {:error, reason} ->
-        {:ok, "Could not queue spell: #{inspect(reason)}"}
+        {:ok, "Не удалось подготовить заклинание: #{inspect(reason)}"}
     end
   end
 
@@ -1633,16 +1641,16 @@ defmodule MMGO.Telegram.Commands do
          participant when not is_nil(participant) <-
            Enum.find(combat.participants, &(&1.character_id == character.id)),
          {:ok, _action} <- Combat.submit_action(combat, participant.id, %{action_type: :wait}) do
-      {:ok, "Wait action queued for combat turn #{combat.turn_number}."}
+      {:ok, "Ожидание подготовлено для хода #{combat.turn_number}."}
     else
       nil ->
-        {:ok, "No active combat or no combat participant for this character."}
+        {:ok, "Активный бой не найден, либо персонаж не участвует в нём."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not queue wait action: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось выбрать ожидание: #{format_changeset(changeset)}"}
 
       {:error, reason} ->
-        {:ok, "Could not queue wait action: #{inspect(reason)}"}
+        {:ok, "Не удалось выбрать ожидание: #{inspect(reason)}"}
     end
   end
 
@@ -1657,28 +1665,28 @@ defmodule MMGO.Telegram.Commands do
           {:ok, combat_resolution_text(resolved_combat)}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Combat resolved, but settlement failed: #{format_changeset(changeset)}"}
+          {:ok, "Бой завершён, но награды выдать не удалось: #{format_changeset(changeset)}"}
 
         {:error, reason} ->
-          {:ok, "Combat resolved, but settlement failed: #{inspect(reason)}"}
+          {:ok, "Бой завершён, но награды выдать не удалось: #{inspect(reason)}"}
       end
     else
       nil ->
-        {:ok, "No active combat."}
+        {:ok, "Активного боя нет."}
 
       false ->
-        {:ok, "Combat is not ready to resolve yet."}
+        {:ok, "Бой ещё не готов к расчёту хода."}
 
       {:error, %Changeset{} = changeset} ->
-        {:ok, "Could not resolve combat: #{format_changeset(changeset)}"}
+        {:ok, "Не удалось рассчитать бой: #{format_changeset(changeset)}"}
 
       {:error, reason} ->
-        {:ok, "Could not resolve combat: #{inspect(reason)}"}
+        {:ok, "Не удалось рассчитать бой: #{inspect(reason)}"}
     end
   end
 
   defp dispatch("combat", _args, _character),
-    do: {:ok, "Usage: /combat status | /combat cast <spell-id> | /combat wait | /combat resolve"}
+    do: {:ok, "Формат: /combat status | /combat cast <spell-id> | /combat wait | /combat resolve"}
 
   defp dispatch("admin", ["status"], character) do
     if operator_authorized?(character) do
@@ -1687,41 +1695,41 @@ defmodule MMGO.Telegram.Commands do
       {:ok,
        Enum.join(
          [
-           "System report:",
-           "Realms: #{report.realms}",
-           "Characters: #{report.characters}",
-           "Locations: #{report.locations}",
-           "Routes: #{report.routes}",
-           "Journeys: #{report.active_journeys}",
-           "Migrations: #{report.active_migrations}",
-           "Enrollments: #{report.active_enrollments}",
-           "Research projects: #{report.active_research_projects}",
-           "Professors: #{report.active_professors}",
-           "Publications: #{report.publications}",
-           "Brew jobs: #{report.active_brew_jobs}",
-           "Craft jobs: #{report.active_craft_jobs}",
-           "Active bases: #{report.active_bases}",
-           "Building bases: #{report.building_bases}",
-           "Dungeon cycles: #{report.active_dungeon_cycles}",
-           "Clubs: #{report.active_clubs}",
-           "Pending club invites: #{report.pending_club_invitations}",
-           "Scavenges: #{report.active_scavenge_attempts}",
-           "Expeditions: #{report.active_expeditions}",
-           "Runs: #{report.active_runs}",
-           "Combats: #{report.active_combats}",
-           "Listings: #{report.active_market_listings}",
-           "NPC shops: #{report.active_npc_shops}",
-           "NPC offers: #{report.npc_shop_offers}",
-           "Market bans: #{report.active_market_bans}",
-           "Open crimes: #{report.open_crimes}",
-           "Pending notifications: #{report.pending_notifications}",
-           "Treasury total: #{report.treasury_balance_total}",
-           "Character balances: #{report.character_balance_total}"
+           "Системный отчёт:",
+           "Миры: #{report.realms}",
+           "Персонажи: #{report.characters}",
+           "Локации: #{report.locations}",
+           "Маршруты: #{report.routes}",
+           "Активные пути: #{report.active_journeys}",
+           "Активные переселения: #{report.active_migrations}",
+           "Активное обучение: #{report.active_enrollments}",
+           "Исследовательские проекты: #{report.active_research_projects}",
+           "Профессора: #{report.active_professors}",
+           "Публикации: #{report.publications}",
+           "Варка зелий: #{report.active_brew_jobs}",
+           "Ремесленные работы: #{report.active_craft_jobs}",
+           "Активные базы: #{report.active_bases}",
+           "Строящиеся базы: #{report.building_bases}",
+           "Циклы подземелий: #{report.active_dungeon_cycles}",
+           "Клубы: #{report.active_clubs}",
+           "Ожидающие приглашения в клубы: #{report.pending_club_invitations}",
+           "Сборы ресурсов: #{report.active_scavenge_attempts}",
+           "Экспедиции: #{report.active_expeditions}",
+           "Походы: #{report.active_runs}",
+           "Бои: #{report.active_combats}",
+           "Объявления на рынке: #{report.active_market_listings}",
+           "Лавки торговцев: #{report.active_npc_shops}",
+           "Предложения торговцев: #{report.npc_shop_offers}",
+           "Запреты на торговлю: #{report.active_market_bans}",
+           "Незакрытые преступления: #{report.open_crimes}",
+           "Ожидающие уведомления: #{report.pending_notifications}",
+           "Всего в казне: #{report.treasury_balance_total}",
+           "Средства персонажей: #{report.character_balance_total}"
          ],
          "\n"
        )}
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1732,43 +1740,43 @@ defmodule MMGO.Telegram.Commands do
           {:ok,
            Enum.join(
              [
-               "Realm #{report.realm.slug} — #{report.realm.name}",
-               "Characters: #{report.characters}",
-               "Locations: #{report.locations}",
-               "Routes: #{report.routes}",
-               "Journeys: #{report.active_journeys}",
-               "Migrations: #{report.active_migrations}",
-               "Enrollments: #{report.active_enrollments}",
-               "Research projects: #{report.active_research_projects}",
-               "Professors: #{report.active_professors}",
-               "Publications: #{report.publications}",
-               "Brew jobs: #{report.active_brew_jobs}",
-               "Craft jobs: #{report.active_craft_jobs}",
-               "Active bases: #{report.active_bases}",
-               "Building bases: #{report.building_bases}",
-               "Dungeon cycles: #{report.active_dungeon_cycles}",
-               "Clubs: #{report.active_clubs}",
-               "Pending club invites: #{report.pending_club_invitations}",
-               "Scavenges: #{report.active_scavenge_attempts}",
-               "Expeditions: #{report.active_expeditions}",
-               "Runs: #{report.active_runs}",
-               "Combats: #{report.active_combats}",
-               "Listings: #{report.active_market_listings}",
-               "NPC shops: #{report.active_npc_shops}",
-               "NPC offers: #{report.npc_shop_offers}",
-               "Market bans: #{report.active_market_bans}",
-               "Open crimes: #{report.open_crimes}",
-               "Treasury: #{report.treasury_balance}",
-               "Character balances: #{report.character_balance_total}"
+               "Мир #{report.realm.slug} — #{report.realm.name}",
+               "Персонажи: #{report.characters}",
+               "Локации: #{report.locations}",
+               "Маршруты: #{report.routes}",
+               "Активные пути: #{report.active_journeys}",
+               "Активные переселения: #{report.active_migrations}",
+               "Активное обучение: #{report.active_enrollments}",
+               "Исследовательские проекты: #{report.active_research_projects}",
+               "Профессора: #{report.active_professors}",
+               "Публикации: #{report.publications}",
+               "Варка зелий: #{report.active_brew_jobs}",
+               "Ремесленные работы: #{report.active_craft_jobs}",
+               "Активные базы: #{report.active_bases}",
+               "Строящиеся базы: #{report.building_bases}",
+               "Циклы подземелий: #{report.active_dungeon_cycles}",
+               "Клубы: #{report.active_clubs}",
+               "Ожидающие приглашения в клубы: #{report.pending_club_invitations}",
+               "Сборы ресурсов: #{report.active_scavenge_attempts}",
+               "Экспедиции: #{report.active_expeditions}",
+               "Походы: #{report.active_runs}",
+               "Бои: #{report.active_combats}",
+               "Объявления на рынке: #{report.active_market_listings}",
+               "Лавки торговцев: #{report.active_npc_shops}",
+               "Предложения торговцев: #{report.npc_shop_offers}",
+               "Запреты на торговлю: #{report.active_market_bans}",
+               "Незакрытые преступления: #{report.open_crimes}",
+               "Казна: #{report.treasury_balance}",
+               "Средства персонажей: #{report.character_balance_total}"
              ],
              "\n"
            )}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not load realm report: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось загрузить отчёт по миру: #{format_changeset(changeset)}"}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1779,26 +1787,26 @@ defmodule MMGO.Telegram.Commands do
           {:ok,
            Enum.join(
              [
-               "Maintenance sweep complete:",
-               "Completed journeys: #{summary.completed_journeys}",
-               "Completed migrations: #{summary.completed_migrations}",
-               "Completed enrollments: #{summary.completed_enrollments}",
-               "Completed research projects: #{summary.completed_research_projects}",
-               "Completed brew jobs: #{summary.completed_brew_jobs}",
-               "Completed craft jobs: #{summary.completed_craft_jobs}",
-               "Completed bases: #{summary.completed_bases}",
-               "Completed dungeon cycles: #{summary.completed_dungeon_cycles}",
-               "Completed scavenges: #{summary.completed_attempts}",
-               "Refreshed caches: #{summary.refreshed_resource_caches}"
+               "Обслуживание завершено:",
+               "Завершённые пути: #{summary.completed_journeys}",
+               "Завершённые переселения: #{summary.completed_migrations}",
+               "Завершённое обучение: #{summary.completed_enrollments}",
+               "Завершённые исследования: #{summary.completed_research_projects}",
+               "Завершённая варка: #{summary.completed_brew_jobs}",
+               "Завершённые ремесленные работы: #{summary.completed_craft_jobs}",
+               "Завершённые базы: #{summary.completed_bases}",
+               "Завершённые циклы подземелий: #{summary.completed_dungeon_cycles}",
+               "Завершённые сборы ресурсов: #{summary.completed_attempts}",
+               "Обновлённые залежи ресурсов: #{summary.refreshed_resource_caches}"
              ],
              "\n"
            )}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not run maintenance sweep: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось выполнить обслуживание: #{format_changeset(changeset)}"}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1807,16 +1815,16 @@ defmodule MMGO.Telegram.Commands do
       with %{} = dungeon <- Dungeons.get_dungeon_by_slug(character.realm_id, dungeon_slug),
            {:ok, %{state: state}} <- Dungeons.maintain_dungeon_by_id(dungeon.id) do
         {:ok,
-         "Dungeon maintenance complete for #{dungeon.slug}. Cycle #{state.cycle_number}, pressure #{state.pressure_level}, anomaly #{state.anomaly_level}."}
+         "Подземелье #{dungeon.slug} обслужено. Цикл: #{state.cycle_number}, давление: #{state.pressure_level}, аномалия: #{state.anomaly_level}."}
       else
         nil ->
-          {:ok, "No dungeon with slug #{dungeon_slug} found in your realm."}
+          {:ok, "В вашем мире не найдено подземелье с кодом #{dungeon_slug}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not maintain dungeon: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось обслужить подземелье: #{format_changeset(changeset)}"}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1827,18 +1835,18 @@ defmodule MMGO.Telegram.Commands do
       {:ok,
        Enum.join(
          [
-           "Local realm manifest:",
-           "Slug: #{manifest.slug}",
-           "Name: #{manifest.name}",
-           "Currency: #{manifest.currency_code || "unknown"}",
-           "Endpoint: #{manifest.public_endpoint || "unset"}",
-           "Population: #{manifest.population_hint}",
-           "Magic scope: #{manifest.ruleset["magic_scope"]}"
+           "Манифест локального мира:",
+           "Код: #{manifest.slug}",
+           "Название: #{manifest.name}",
+           "Валюта: #{manifest.currency_code || "неизвестно"}",
+           "Адрес: #{manifest.public_endpoint || "не задан"}",
+           "Население: #{manifest.population_hint}",
+           "Область магии: #{manifest.ruleset["magic_scope"]}"
          ],
          "\n"
        )}
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1853,13 +1861,13 @@ defmodule MMGO.Telegram.Commands do
       case Federation.register_remote_realm(manifest_url, token) do
         {:ok, remote_realm} ->
           {:ok,
-           "Registered remote realm #{remote_realm.slug} at #{remote_realm.public_endpoint}."}
+           "Удалённый мир #{remote_realm.slug} зарегистрирован по адресу #{remote_realm.public_endpoint}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not register remote realm: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось зарегистрировать удалённый мир: #{format_changeset(changeset)}"}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1868,16 +1876,16 @@ defmodule MMGO.Telegram.Commands do
       with %{} = remote_realm <- Federation.get_remote_realm_by_slug(realm_slug),
            {:ok, updated_remote_realm} <- Federation.sync_remote_realm(remote_realm) do
         {:ok,
-         "Synced remote realm #{updated_remote_realm.slug}. Population #{updated_remote_realm.population_hint}."}
+         "Удалённый мир #{updated_remote_realm.slug} синхронизирован. Население: #{updated_remote_realm.population_hint}."}
       else
         nil ->
-          {:ok, "No remote realm with slug #{realm_slug} found."}
+          {:ok, "Удалённый мир с кодом #{realm_slug} не найден."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not sync remote realm: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось синхронизировать удалённый мир: #{format_changeset(changeset)}"}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1890,21 +1898,21 @@ defmodule MMGO.Telegram.Commands do
         {:ok,
          Enum.join(
            [
-             "Profile for #{handle}:",
-             "Reputation: #{(profile && profile.reputation_score) || 0}",
-             "Crimes: #{(profile && profile.crime_count) || 0}",
-             "Outstanding fines: #{(profile && profile.outstanding_fine) || 0}",
-             "NPC hostility: #{(profile && profile.npc_hostility_level) || 0}",
-             "Market ban until: #{(profile && profile.market_ban_until && Formatter.datetime(profile.market_ban_until)) || "none"}",
-             "Recent crimes: #{recent_crimes_line(crimes)}"
+             "Профиль #{handle}:",
+             "Репутация: #{(profile && profile.reputation_score) || 0}",
+             "Преступления: #{(profile && profile.crime_count) || 0}",
+             "Неоплаченные штрафы: #{(profile && profile.outstanding_fine) || 0}",
+             "Враждебность торговцев: #{(profile && profile.npc_hostility_level) || 0}",
+             "Запрет торговли до: #{(profile && profile.market_ban_until && Formatter.datetime(profile.market_ban_until)) || "нет"}",
+             "Последние преступления: #{recent_crimes_line(crimes)}"
            ],
            "\n"
          )}
       else
-        nil -> {:ok, "No character with handle #{handle} found in your realm."}
+        nil -> {:ok, "В вашем мире не найден персонаж с именем #{handle}."}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
@@ -1925,22 +1933,22 @@ defmodule MMGO.Telegram.Commands do
                metadata: %{"source" => "operator_command", "actor" => operator_handle(character)}
              }) do
         {:ok,
-         "Crime recorded for #{handle}. Type #{crime_record.crime_type}, severity #{crime_record.severity}, fine #{crime_record.fine_amount}."}
+         "Преступление персонажа #{handle} зарегистрировано. Вид: #{crime_type_label(crime_record.crime_type)}, тяжесть: #{crime_record.severity}, штраф: #{crime_record.fine_amount}."}
       else
         nil ->
-          {:ok, "No character with handle #{handle} found in your realm."}
+          {:ok, "В вашем мире не найден персонаж с именем #{handle}."}
 
         {:error, %Changeset{} = changeset} ->
-          {:ok, "Could not record crime: #{format_changeset(changeset)}"}
+          {:ok, "Не удалось зарегистрировать преступление: #{format_changeset(changeset)}"}
       end
     else
-      {:ok, "Unauthorized."}
+      {:ok, "Недостаточно прав."}
     end
   end
 
   defp dispatch("admin", _args, _character) do
     {:ok,
-     "Usage: /admin status | /admin realm <slug> | /admin sweep | /admin dungeon maintain <dungeon-slug> | /admin federation manifest | /admin federation register <manifest-url> [token] | /admin federation sync <realm-slug> | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
+     "Формат: /admin status | /admin realm <slug> | /admin sweep | /admin dungeon maintain <dungeon-slug> | /admin federation manifest | /admin federation register <manifest-url> [token] | /admin federation sync <realm-slug> | /admin profile <handle> | /admin crime <handle> <crime_type> <severity> [fine]"}
   end
 
   defp dispatch(_command, _args, _character) do
@@ -1968,13 +1976,13 @@ defmodule MMGO.Telegram.Commands do
     |> Repo.preload([:current_location, :account])
   end
 
-  defp location_name(%Character{current_location: nil}), do: "Unknown"
+  defp location_name(%Character{current_location: nil}), do: "неизвестно"
   defp location_name(%Character{current_location: location}), do: location.name
 
   defp location_name_by_id(location_id) do
     Worlds.get_location!(location_id).name
   rescue
-    Ecto.NoResultsError -> "Unknown"
+    Ecto.NoResultsError -> "неизвестно"
   end
 
   defp journey_status(nil), do: "вы на месте"
@@ -1989,13 +1997,173 @@ defmodule MMGO.Telegram.Commands do
   defp telegram_next_step(_journey),
     do: "переход уже идёт; /journey покажет время прибытия"
 
-  defp academy_enrollment_line(nil), do: "none"
+  defp academy_enrollment_line(nil), do: "нет"
 
   defp academy_enrollment_line(enrollment),
-    do: "#{enrollment.program_type} (#{enrollment.status})"
+    do: "#{academy_track_label(enrollment.program_type)} (#{status_label(enrollment.status)})"
 
-  defp academy_specialization_line(nil), do: "none"
-  defp academy_specialization_line(specialization), do: specialization.track |> to_string()
+  defp academy_specialization_line(nil), do: "нет"
+
+  defp academy_specialization_line(specialization),
+    do: academy_track_label(specialization.track)
+
+  defp academy_track_label(value) do
+    case to_string(value) do
+      "basic" -> "базовое образование"
+      "basic_education" -> "базовое образование"
+      "academy_core" -> "основная программа академии"
+      "wizardry" -> "чародейство"
+      "alchemy" -> "алхимия"
+      "mastery" -> "мастерство"
+      "extended" -> "углублённое обучение"
+      "extended_study" -> "углублённое обучение"
+      "academia" -> "академическая ступень"
+      _other -> "неизвестная программа"
+    end
+  end
+
+  defp project_kind_label(value) do
+    case to_string(value) do
+      "spell" -> "заклинание"
+      "potion" -> "зелье"
+      "tool" -> "инструмент"
+      "thesis" -> "диссертация"
+      "course" -> "учебный курс"
+      _other -> "исследовательский проект"
+    end
+  end
+
+  defp tool_codes_label(codes), do: Enum.map_join(codes, ", ", &tool_code_label/1)
+
+  defp tool_code_label(value) do
+    case to_string(value) do
+      "cauldron" -> "котёл"
+      "demo_travel_ration" -> "дорожный паёк"
+      "demo_lumen_dust" -> "светящаяся пыль"
+      "construction_material" -> "строительные материалы"
+      "forge" -> "горн"
+      "anvil" -> "наковальня"
+      "hammer" -> "молот"
+      "workbench" -> "верстак"
+      _other -> "неизвестный инструмент"
+    end
+  end
+
+  defp organization_kind_label(value) do
+    case to_string(value) do
+      "cult" -> "культ"
+      "company" -> "компания"
+      "council" -> "совет"
+      "guild" -> "гильдия"
+      _other -> "организация"
+    end
+  end
+
+  defp club_type_label(value) do
+    case to_string(value) do
+      "dueling" -> "дуэльный"
+      "academic" -> "учебный"
+      "social" -> "общественный"
+      "exploration" -> "исследовательский"
+      _other -> "клуб"
+    end
+  end
+
+  defp drop_kind_label(value) do
+    case to_string(value) do
+      "item" -> "предмет"
+      "currency" -> "монеты"
+      "resource" -> "ресурс"
+      "artifact" -> "артефакт"
+      _other -> "награда"
+    end
+  end
+
+  defp spell_school_label(value) do
+    case to_string(value) do
+      "fire" -> "огонь"
+      "water" -> "вода"
+      "air" -> "воздух"
+      "earth" -> "земля"
+      "light" -> "свет"
+      "darkness" -> "тьма"
+      _other -> "неизвестная школа"
+    end
+  end
+
+  defp combat_kind_label(value) do
+    case to_string(value) do
+      "duel" -> "дуэль"
+      "dungeon" -> "подземелье"
+      "encounter" -> "встреча"
+      "overworld" -> "дорожная встреча"
+      _other -> "бой"
+    end
+  end
+
+  defp crime_type_label(value) do
+    case to_string(value) do
+      "theft" -> "кража"
+      "fraud" -> "мошенничество"
+      "assault" -> "нападение"
+      "smuggling" -> "контрабанда"
+      _other -> "нарушение"
+    end
+  end
+
+  defp encounter_kind_label(value) do
+    case to_string(value) do
+      "combat" -> "бой"
+      "creature" -> "существо"
+      "hazard" -> "опасность"
+      "loot" -> "добыча"
+      "puzzle" -> "загадка"
+      "traveler" -> "путник"
+      _other -> "неизвестная встреча"
+    end
+  end
+
+  defp extraction_type_label(value) do
+    case to_string(value) do
+      "ascent" -> "подъём"
+      "return_ritual" -> "ритуал возвращения"
+      "ritual" -> "ритуал возвращения"
+      _other -> "возвращение"
+    end
+  end
+
+  defp combat_side_label(nil), do: "нет"
+
+  defp combat_side_label(value) do
+    case to_string(value) do
+      "party" -> "отряд"
+      "attackers" -> "нападающие"
+      "defenders" -> "защитники"
+      "encounter" -> "противник"
+      _other -> "не определён"
+    end
+  end
+
+  defp status_label(value) do
+    case to_string(value) do
+      "active" -> "активно"
+      "available" -> "доступно"
+      "building" -> "строится"
+      "cancelled" -> "отменено"
+      "completed" -> "завершено"
+      "failed" -> "провалено"
+      "finished" -> "завершено"
+      "in_progress" -> "в процессе"
+      "locked" -> "закрыто"
+      "open" -> "открыто"
+      "pending" -> "ожидает"
+      "rejected" -> "отклонено"
+      "resolved" -> "завершено"
+      "running" -> "идёт"
+      "succeeded" -> "успешно"
+      _other -> "состояние уточняется"
+    end
+  end
 
   defp route_destination(route, current_location_id) do
     cond do
@@ -2006,25 +2174,30 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp road_response_text(_action, %{combat: combat}),
-    do: "Overworld combat started: #{combat.id}. Use /combat status."
+    do: "Дорожный бой начат: #{combat.id}. Проверить: /combat status."
 
   defp road_response_text("greet", %{encounter: encounter}),
-    do: "You greeted the other traveler. Encounter status: #{encounter.status}."
+    do: "Вы поприветствовали путника. Состояние встречи: #{status_label(encounter.status)}."
 
   defp road_response_text("trade", %{encounter: encounter}),
-    do: "You proposed trade. Encounter status: #{encounter.status}."
+    do: "Вы предложили торговлю. Состояние встречи: #{status_label(encounter.status)}."
 
   defp road_response_text("avoid", %{encounter: encounter}),
-    do: "You avoided the encounter. Encounter status: #{encounter.status}."
+    do: "Вы избежали встречи. Состояние встречи: #{status_label(encounter.status)}."
 
   defp road_response_text(_action, %{encounter: encounter}),
-    do: "Encounter updated: #{encounter.status}."
+    do: "Встреча обновлена: #{status_label(encounter.status)}."
 
-  defp encounter_line(nil), do: "none"
-  defp encounter_line(encounter), do: "#{encounter.encounter_kind} (#{encounter.status})"
+  defp encounter_line(nil), do: "нет"
 
-  defp extraction_line(nil), do: "none"
-  defp extraction_line(extraction), do: "#{extraction.extraction_type} (#{extraction.status})"
+  defp encounter_line(encounter),
+    do: "#{encounter_kind_label(encounter.encounter_kind)} (#{status_label(encounter.status)})"
+
+  defp extraction_line(nil), do: "нет"
+
+  defp extraction_line(extraction),
+    do:
+      "#{extraction_type_label(extraction.extraction_type)} (#{status_label(extraction.status)})"
 
   defp combat_target_side(combat, participant_side) do
     combat.sides
@@ -2033,7 +2206,7 @@ defmodule MMGO.Telegram.Commands do
   end
 
   defp combat_resolution_text(combat) do
-    "Combat resolved. Turn #{combat.turn_number}, status #{combat.status}, winner #{combat.winner_side || "none"}."
+    "Бой рассчитан. Ход: #{combat.turn_number}, состояние: #{status_label(combat.status)}, победитель: #{combat_side_label(combat.winner_side)}."
   end
 
   defp operator_authorized?(%Character{} = character) do
@@ -2168,11 +2341,11 @@ defmodule MMGO.Telegram.Commands do
     Ecto.NoResultsError -> nil
   end
 
-  defp recent_crimes_line([]), do: "none"
+  defp recent_crimes_line([]), do: "нет"
 
   defp recent_crimes_line(crimes) do
     Enum.map_join(crimes, ", ", fn crime ->
-      "#{crime.crime_type}(sev #{crime.severity})"
+      "#{crime_type_label(crime.crime_type)} (тяжесть #{crime.severity})"
     end)
   end
 

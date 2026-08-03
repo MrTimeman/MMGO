@@ -52,6 +52,57 @@
 
 .org-exit:hover { color: var(--org-accent); }
 
+.org-hall-nav {
+  position: absolute;
+  top: 1rem;
+  right: 1rem;
+  z-index: 2;
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.08em;
+  text-decoration: none;
+  text-transform: uppercase;
+}
+
+.org-hall-nav:hover { color: var(--org-accent); }
+
+.org-wrap > section.org-card {
+  margin-top: 0.8rem;
+  padding: 0.9rem;
+}
+
+.org-wrap input:not([type="hidden"]),
+.org-wrap select,
+.org-wrap textarea {
+  width: 100%;
+  min-height: 2.7rem;
+  border: 0;
+  border-bottom: 1px solid color-mix(in srgb, var(--org-accent) 42%, var(--color-border));
+  border-radius: 0;
+  outline: none;
+  background: color-mix(in srgb, var(--color-bg) 72%, transparent);
+  padding: 0.55rem 0.65rem;
+  color: var(--color-text);
+  font-family: var(--font-serif);
+  box-shadow: none;
+}
+
+.org-wrap input:not([type="hidden"]):focus,
+.org-wrap select:focus,
+.org-wrap textarea:focus {
+  border-bottom-color: var(--org-accent);
+  box-shadow: inset 0 -2px 0 color-mix(in srgb, var(--org-accent) 22%, transparent);
+}
+
+.org-wrap label {
+  color: var(--color-text-muted);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
 .org-hall-head,
 .org-detail-head,
 .org-section,

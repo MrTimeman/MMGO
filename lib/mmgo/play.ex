@@ -66,8 +66,8 @@ defmodule MMGO.Play do
 
   @local_player_handle "demo-player-1"
   @local_opponent_handle "demo-bot-1"
-  @local_player_name "Demo Wizard"
-  @local_opponent_name "Shadow Bot"
+  @local_player_name "Учебный маг"
+  @local_opponent_name "Теневой страж"
   @starter_currency 1_000
   @starter_food_units 30
   @starter_ration_code "demo_travel_ration"
@@ -75,7 +75,7 @@ defmodule MMGO.Play do
   @starter_reagent_quantity 6
   @starter_build_material_code "construction_material"
   @starter_build_material_quantity 8
-  @starter_spell_name "Ember Spark"
+  @starter_spell_name "Искра углей"
   @demo_duel_stake 100
   @overworld_actions ~w(greet trade attack avoid)
   @organization_permissions ~w(invite_members manage_roles manage_treasury grant_fast_travel)
@@ -5151,14 +5151,28 @@ defmodule MMGO.Play do
   defp get_or_create_demo_character(realm, handle, name) do
     account =
       case Repo.get_by(Account, handle: handle) do
-        %Account{} = existing -> existing
-        nil -> create_demo_account!(handle, name)
+        %Account{} = existing ->
+          if existing.display_name == name do
+            existing
+          else
+            existing |> Ecto.Changeset.change(display_name: name) |> Repo.update!()
+          end
+
+        nil ->
+          create_demo_account!(handle, name)
       end
 
     character =
       case Repo.get_by(Character, account_id: account.id, realm_id: realm.id) do
-        %Character{} = existing -> existing
-        nil -> create_demo_character!(account, realm, name)
+        %Character{} = existing ->
+          if existing.name == name do
+            existing
+          else
+            existing |> Character.changeset(%{name: name}) |> Repo.update!()
+          end
+
+        nil ->
+          create_demo_character!(account, realm, name)
       end
 
     {:ok, character}
@@ -5290,12 +5304,12 @@ defmodule MMGO.Play do
   end
 
   defp ensure_starter_food(character, target_food_units) do
+    ration_template = get_or_create_starter_ration!()
     available_food_units = Survival.food_units_available(character)
 
     if available_food_units >= target_food_units do
       {:ok, :already_stocked}
     else
-      ration_template = get_or_create_starter_ration!()
       missing_units = target_food_units - available_food_units
       quantity = ceil_div(missing_units, ration_template.nutrition_units)
 
@@ -5306,7 +5320,7 @@ defmodule MMGO.Play do
   defp get_or_create_starter_ration! do
     get_or_create_item_template!(%{
       code: @starter_ration_code,
-      name: "Demo Travel Ration",
+      name: "Дорожный паёк",
       item_type: :food,
       stackable: true,
       weight: 1,
@@ -5327,7 +5341,7 @@ defmodule MMGO.Play do
   defp get_or_create_starter_reagent! do
     get_or_create_item_template!(%{
       code: @starter_reagent_code,
-      name: "Lumen Dust",
+      name: "Световая пыль",
       item_type: :ingredient,
       stackable: true,
       weight: 1,
@@ -5397,9 +5411,25 @@ defmodule MMGO.Play do
 
   defp ensure_starter_spell(character) do
     spell =
-      case Repo.get_by(Spell, creator_character_id: character.id, name: @starter_spell_name) do
+      case Repo.one(
+             from spell in Spell,
+               where:
+                 spell.creator_character_id == ^character.id and
+                   spell.name in [^@starter_spell_name, "Ember Spark"],
+               order_by: [desc: spell.name == ^@starter_spell_name],
+               limit: 1
+           ) do
         %Spell{} = spell ->
-          spell
+          if spell.name == @starter_spell_name do
+            spell
+          else
+            spell
+            |> Spell.changeset(%{
+              name: @starter_spell_name,
+              description: "Небольшое учебное пламя для первого боя."
+            })
+            |> Repo.update!()
+          end
 
         nil ->
           create_starter_spell!(character)
@@ -5415,7 +5445,7 @@ defmodule MMGO.Play do
         name: @starter_spell_name,
         formula: "Ignis Minima",
         school: :fire,
-        description: "A compact starter flame for testing the first combat loop.",
+        description: "Небольшое учебное пламя для первого боя.",
         level_requirement: 1,
         fatigue_cost: 2,
         cooldown_turns: 1,
@@ -5435,12 +5465,18 @@ defmodule MMGO.Play do
   defp ensure_starter_grimoire(character, spell) do
     case Grimoires.active_grimoire_for_character(character.id) do
       %Grimoire{} = grimoire ->
-        grimoire
+        if grimoire.name == "Starter Grimoire" do
+          grimoire
+          |> Grimoire.changeset(%{name: "Ученический гримуар"})
+          |> Repo.update!()
+        else
+          grimoire
+        end
 
       nil ->
         {:ok, grimoire} =
           Grimoires.create_grimoire(character, %{
-            name: "Starter Grimoire",
+            name: "Ученический гримуар",
             capacity: 5,
             weight: 1,
             metadata: %{"source" => "starter_kit"}

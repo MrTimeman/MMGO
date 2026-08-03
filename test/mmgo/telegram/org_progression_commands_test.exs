@@ -59,7 +59,7 @@ defmodule MMGO.Telegram.OrgProgressionCommandsTest do
     assert {:ok, create_text} =
              Commands.process_message(founder, %{"text" => "/org create cult Death Cult"})
 
-    assert create_text =~ "Organization created"
+    assert create_text =~ "Организация создана"
 
     [organization] = MMGO.Organizations.list_organizations_for_character(founder.id)
 
@@ -73,14 +73,14 @@ defmodule MMGO.Telegram.OrgProgressionCommandsTest do
                "text" => "/org role #{organization.id} acolyte 10 grant_fast_travel Acolyte"
              })
 
-    assert role_text =~ "Role created"
+    assert role_text =~ "Должность создана"
 
     assert {:ok, invite_text} =
              Commands.process_message(founder, %{
                "text" => "/org invite #{organization.id} inviteeorg acolyte"
              })
 
-    assert invite_text =~ "Organization invitation"
+    assert invite_text =~ "Приглашение в организацию"
 
     [invitation] = MMGO.Organizations.pending_invitations_for_character(invitee.id)
 
@@ -90,7 +90,7 @@ defmodule MMGO.Telegram.OrgProgressionCommandsTest do
     assert {:ok, accept_text} =
              Commands.process_message(invitee, %{"text" => "/org accept #{invitation.id}"})
 
-    assert accept_text =~ "accepted"
+    assert accept_text =~ "принято"
 
     _founder =
       founder |> Character.travel_changeset(%{current_location_id: tower.id}) |> Repo.update!()
@@ -101,7 +101,7 @@ defmodule MMGO.Telegram.OrgProgressionCommandsTest do
     assert {:ok, travel_text} =
              Commands.process_message(invitee, %{"text" => "/org travel #{organization.id} city"})
 
-    assert travel_text =~ "Organization travel complete"
+    assert travel_text =~ "Переход организации завершён"
   end
 
   defp character_fixture(realm, location, handle, name) do

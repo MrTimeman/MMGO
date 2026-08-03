@@ -10,7 +10,7 @@ defmodule MMGOWeb.RealmsLive do
   def mount(_params, _session, socket) do
     {:ok,
      socket
-     |> assign(:page_title, "Реалмы")
+     |> assign(:page_title, "Миры")
      |> assign(:error, nil)
      |> refresh_directory()}
   end
@@ -33,9 +33,9 @@ defmodule MMGOWeb.RealmsLive do
            ) do
       message =
         if result.remote_import_pending? do
-          "Переход зафиксирован, но удалённый реалм ещё не подтвердил прибытие. Ваше место в очереди сохранено; повторите подтверждение ниже."
+          "Переход зафиксирован, но удалённый мир ещё не подтвердил прибытие. Ваше место в очереди сохранено; повторите подтверждение ниже."
         else
-          "Переход подтверждён удалённым реалмом. Исходный персонаж заморожен до конца перехода."
+          "Переход подтверждён удалённым миром. Исходный персонаж заморожен до конца перехода."
         end
 
       {:noreply,
@@ -54,7 +54,7 @@ defmodule MMGOWeb.RealmsLive do
       {:ok, _result} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Удалённый реалм подтвердил сохранённый переход.")
+         |> put_flash(:info, "Удалённый мир подтвердил сохранённый переход.")
          |> assign(:error, nil)
          |> refresh_directory()}
 
@@ -72,14 +72,14 @@ defmodule MMGOWeb.RealmsLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="realms-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-5xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
+      <main id="realms-screen" class="realm-scene">
+        <div class="realm-atlas">
+          <div class="realm-tools">
             <.link
               :if={@state.character.status == :active}
               id="realms-back-map"
               navigate={~p"/map"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+              class="realm-exit"
             >
               ← Карта мира
             </.link>
@@ -87,33 +87,33 @@ defmodule MMGOWeb.RealmsLive do
               id="realms-refresh"
               type="button"
               phx-click="refresh"
-              class="rounded border border-stone-600 px-3 py-2 text-sm text-stone-200 transition hover:border-stone-400"
+              class="realm-tool"
             >
               Обновить каталог
             </button>
           </div>
 
-          <header class="rounded-2xl border border-indigo-400/25 bg-gradient-to-br from-indigo-950/45 via-stone-950 to-sky-950/30 p-7 shadow-2xl">
+          <header class="realm-cover">
             <p class="text-xs uppercase tracking-[0.25em] text-indigo-200/75">федеральный атлас</p>
-            <h1 class="mt-2 font-serif text-3xl text-indigo-100">Реалмы и переходы</h1>
+            <h1 class="mt-2 font-serif text-3xl text-indigo-100">Миры и переходы</h1>
             <p class="mt-3 max-w-3xl text-sm leading-6 text-stone-300">
-              Каталог показывает последнюю подтверждённую манифестацию каждого реалма. Переход создаёт новое прибытие в другом мире, конвертирует валюту и удерживает исходного персонажа на время заморозки. Инвентарь и база остаются в исходном реалме, а библиотека заклинаний не переносится по правилам миров.
+              Каталог показывает последнюю подтверждённую манифестацию каждого мира. Переход создаёт новое прибытие, конвертирует валюту и удерживает исходного персонажа на время заморозки. Инвентарь и владение остаются в исходном мире, а библиотека заклинаний не переносится.
             </p>
           </header>
 
           <div
             :if={@error}
             id="realms-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+            class="realm-slip realm-slip--error"
           >
             {@error}
           </div>
 
           <section
             id="realms-current"
-            class="rounded-2xl border border-sky-400/20 bg-sky-950/15 p-6 shadow-lg"
+            class="realm-passport"
           >
-            <p class="text-xs uppercase tracking-[0.2em] text-sky-200/75">ваш текущий реалм</p>
+            <p class="text-xs uppercase tracking-[0.2em] text-sky-200/75">ваш текущий мир</p>
             <div class="mt-2 flex flex-wrap items-baseline justify-between gap-3">
               <h2 class="font-serif text-2xl text-sky-100">{@state.current_realm.name}</h2>
               <span class="font-mono text-xs text-stone-500">{@state.current_realm.slug}</span>
@@ -128,7 +128,7 @@ defmodule MMGOWeb.RealmsLive do
           <section
             :if={@state.active_migration}
             id="realms-active-migration"
-            class="rounded-2xl border border-amber-400/30 bg-amber-950/20 p-6 shadow-lg"
+            class="realm-passport realm-passport--active"
           >
             <p class="text-xs uppercase tracking-[0.2em] text-amber-200/75">активный переход</p>
             <h2 class="mt-2 font-serif text-2xl text-amber-100">
@@ -152,7 +152,7 @@ defmodule MMGOWeb.RealmsLive do
                 <dd class="mt-1 text-stone-100">{@state.active_migration.destination_level}</dd>
               </div>
               <div>
-                <dt class="text-stone-500">XP при прибытии</dt>
+                <dt class="text-stone-500">Опыт при прибытии</dt>
                 <dd class="mt-1 text-stone-100">{@state.active_migration.destination_xp}</dd>
               </div>
             </dl>
@@ -170,7 +170,7 @@ defmodule MMGOWeb.RealmsLive do
                 type="button"
                 phx-click="retry_migration"
                 phx-value-migration-id={@state.active_migration.id}
-                class="mt-4 rounded-lg border border-amber-300/60 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-950/45"
+                class="realm-seal-action"
               >
                 Повторить подтверждение прибытия
               </button>
@@ -179,12 +179,12 @@ defmodule MMGOWeb.RealmsLive do
 
           <section
             id="realms-directory"
-            class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+            class="realm-pages"
           >
             <div class="flex flex-wrap items-end justify-between gap-3">
               <div>
                 <p class="text-xs uppercase tracking-[0.2em] text-stone-500">доступные манифесты</p>
-                <h2 class="mt-1 font-serif text-2xl text-stone-100">Другие реалмы</h2>
+                <h2 class="mt-1 font-serif text-2xl text-stone-100">Другие миры</h2>
               </div>
               <span class="text-sm text-stone-400">
                 {@state.remote_realms |> length()} в каталоге
@@ -194,16 +194,16 @@ defmodule MMGOWeb.RealmsLive do
             <p
               :if={@state.remote_realms == []}
               id="realms-empty"
-              class="mt-5 rounded-lg border border-stone-700 bg-stone-950/50 px-4 py-3 text-sm text-stone-400"
+              class="realm-note"
             >
               В каталоге нет активных удалённых манифестов.
             </p>
 
-            <ul :if={@state.remote_realms != []} class="mt-5 grid gap-4 md:grid-cols-2">
+            <ul :if={@state.remote_realms != []} class="realm-manifest-grid">
               <li
                 :for={realm <- @state.remote_realms}
                 id={"remote-realm-#{realm.id}"}
-                class="rounded-xl border border-stone-700 bg-stone-950/60 p-5"
+                class="realm-manifest"
               >
                 <div class="flex flex-wrap items-start justify-between gap-3">
                   <div>
@@ -248,7 +248,7 @@ defmodule MMGOWeb.RealmsLive do
                   for={@migration_form}
                   id={"realms-start-migration-#{realm.id}"}
                   phx-submit="start_migration"
-                  class="mt-5 grid gap-3 border-t border-stone-700 pt-4 sm:grid-cols-[1fr_auto]"
+                  class="realm-transfer"
                 >
                   <.input
                     id={"realms-migration-destination-#{realm.id}"}
@@ -268,7 +268,7 @@ defmodule MMGOWeb.RealmsLive do
                   <button
                     id={"realms-start-migration-submit-#{realm.id}"}
                     type="submit"
-                    class="self-end rounded-lg bg-indigo-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-indigo-200"
+                    class="realm-transfer__seal"
                   >
                     Начать переход
                   </button>
@@ -276,9 +276,9 @@ defmodule MMGOWeb.RealmsLive do
                 <p
                   :if={realm.allow_migration && realm.id not in @state.remote_migration_ready_ids}
                   id={"realms-migration-unavailable-#{realm.id}"}
-                  class="mt-5 border-t border-stone-700 pt-4 text-sm text-amber-100"
+                  class="realm-manifest__warning"
                 >
-                  Реалм объявил переходы, но защищённый канал прибытия ещё не настроен оператором.
+                  Мир объявил переходы, но защищённый канал прибытия ещё не настроен оператором.
                 </p>
               </li>
             </ul>
@@ -286,7 +286,7 @@ defmodule MMGOWeb.RealmsLive do
 
           <section
             id="realm-migration-history"
-            class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+            class="realm-history"
           >
             <p class="text-xs uppercase tracking-[0.2em] text-stone-500">ваша история переходов</p>
             <p
@@ -294,13 +294,13 @@ defmodule MMGOWeb.RealmsLive do
               id="realm-migrations-empty"
               class="mt-4 text-sm text-stone-400"
             >
-              Ваша учётная запись ещё не совершала переходов между реалмами.
+              Ваша учётная запись ещё не совершала переходов между мирами.
             </p>
             <ul :if={@state.migrations != []} class="mt-4 space-y-2">
               <li
                 :for={migration <- @state.migrations}
                 id={"realm-migration-#{migration.id}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-stone-700 bg-stone-950/50 px-4 py-3 text-sm"
+                class="realm-history__entry"
               >
                 <span>
                   {migration_origin_label(migration)} → {migration_destination_label(migration)}
@@ -328,7 +328,7 @@ defmodule MMGOWeb.RealmsLive do
 
       {:error, _reason} ->
         socket
-        |> put_flash(:error, "Не удалось открыть атлас реалмов.")
+        |> put_flash(:error, "Не удалось открыть атлас миров.")
         |> push_navigate(to: ~p"/map")
     end
   end
@@ -337,12 +337,10 @@ defmodule MMGOWeb.RealmsLive do
   defp migration_label(false), do: "переходы закрыты"
 
   defp migration_badge_class(true),
-    do:
-      "rounded-full border border-emerald-300/45 bg-emerald-950/35 px-3 py-1 text-xs font-semibold text-emerald-100"
+    do: "realm-seal realm-seal--open"
 
   defp migration_badge_class(false),
-    do:
-      "rounded-full border border-stone-500/45 bg-stone-800 px-3 py-1 text-xs font-semibold text-stone-200"
+    do: "realm-seal realm-seal--closed"
 
   defp magic_scope_label(ruleset) when is_map(ruleset) do
     case Map.get(ruleset, "magic_scope") do
@@ -355,16 +353,16 @@ defmodule MMGOWeb.RealmsLive do
   defp magic_scope_label(_ruleset), do: "не объявлены"
 
   defp migration_origin_label(%{origin_realm: %{name: name}}), do: name
-  defp migration_origin_label(_migration), do: "исходный реалм"
+  defp migration_origin_label(_migration), do: "исходный мир"
 
   defp migration_destination_label(%{destination_realm: %{name: name}}), do: name
   defp migration_destination_label(%{remote_realm: %{name: name}}), do: name
-  defp migration_destination_label(_migration), do: "неизвестный реалм"
+  defp migration_destination_label(_migration), do: "неизвестный мир"
 
   defp migration_status_label(:active), do: "в пути"
   defp migration_status_label(:completed), do: "завершён"
   defp migration_status_label(:cancelled), do: "отменён"
-  defp migration_status_label(status), do: to_string(status)
+  defp migration_status_label(_status), do: "неизвестно"
 
   defp remote_migration?(%{mode: :remote}), do: true
   defp remote_migration?(_migration), do: false
@@ -375,10 +373,10 @@ defmodule MMGOWeb.RealmsLive do
   defp remote_import_copy(migration) do
     case Federation.remote_import_status(migration) do
       :accepted ->
-        "Удалённый реалм подтвердил новое прибытие. Исходный персонаж останется заморожен до указанного срока и получит пассивный XP."
+        "Удалённый мир подтвердил новое прибытие. Исходный персонаж останется заморожен до указанного срока и получит пассивный опыт."
 
       :pending ->
-        "Удалённый реалм ещё не подтвердил прибытие. Запрос и ссылка перехода сохранены сервером; повторная попытка использует тот же безопасный идентификатор."
+        "Удалённый мир ещё не подтвердил прибытие. Запрос и ссылка перехода сохранены сервером; повторная попытка использует тот же безопасный идентификатор."
 
       _other ->
         "Статус удалённого прибытия уточняется."
@@ -397,11 +395,11 @@ defmodule MMGOWeb.RealmsLive do
   defp error_message(:invalid_migration_amount),
     do: "Укажите положительную сумму для конвертации."
 
-  defp error_message(:remote_realm_not_found), do: "Этот реалм больше не доступен для перехода."
+  defp error_message(:remote_realm_not_found), do: "Этот мир больше не доступен для перехода."
   defp error_message(:realm_migration_not_found), do: "Переход не принадлежит текущему персонажу."
 
   defp error_message(%Ecto.Changeset{}),
-    do: "Сервер не разрешил переход: проверьте баланс и условия реалма."
+    do: "Сервер не разрешил переход: проверьте баланс и условия мира."
 
   defp error_message(_reason), do: "Переход пока недоступен."
 

@@ -110,13 +110,17 @@ defmodule MMGOWeb.ClubEventLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="club-event-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
+      <main
+        id="club-event-screen"
+        class="acd-screen acd-club-event-scene"
+        data-event-kind={@event.kind}
+      >
+        <div class="acd-event-shell">
+          <nav class="acd-event-nav" aria-label="Клубное событие">
             <.link
               id="club-event-back"
               navigate={~p"/academy/clubs/#{@club.id}"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+              class="acd-exit acd-clubs-back"
             >
               ← К клубу
             </.link>
@@ -124,223 +128,242 @@ defmodule MMGOWeb.ClubEventLive do
               id="club-event-refresh"
               type="button"
               phx-click="refresh"
-              class="rounded border border-stone-600 px-3 py-2 text-sm text-stone-200 transition hover:border-stone-400"
+              class="acd-clubs-bell"
             >
-              Обновить
+              <span aria-hidden="true">↻</span> Сверить протокол
             </button>
-          </div>
+          </nav>
 
-          <header class="rounded-2xl border border-emerald-400/25 bg-gradient-to-br from-emerald-950/30 via-stone-950 to-sky-950/20 p-7 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.24em] text-emerald-200/75">
-              {@club.name} · {club_type_label(@club.club_type)}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-emerald-100">
-              {event_kind_label(@event.kind)}
-            </h1>
-            <p class="mt-3 text-sm leading-6 text-stone-300">{event_description(@event.kind)}</p>
+          <header class="acd-event-hall">
+            <div class="acd-event-hall__curtain acd-event-hall__curtain--left" aria-hidden="true">
+            </div>
+            <div class="acd-event-hall__curtain acd-event-hall__curtain--right" aria-hidden="true">
+            </div>
+            <div class="acd-event-hall__lamp" aria-hidden="true"></div>
+            <div class="acd-event-hall__stage">
+              <span class="acd-event-hall__crest" aria-hidden="true">
+                {event_kind_sigil(@event.kind)}
+              </span>
+              <p>{@club.name}</p>
+              <h1>{event_kind_label(@event.kind)}</h1>
+              <span>{club_type_label(@club.club_type)}</span>
+            </div>
           </header>
 
           <div
             :if={@error}
             id="club-event-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+            class="acd-clubs-error"
           >
             {@error}
           </div>
 
-          <section
-            id="club-event-details"
-            class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
-          >
-            <dl class="grid gap-4 text-sm sm:grid-cols-3">
-              <div>
-                <dt class="text-stone-500">Назначено</dt>
-                <dd class="mt-1 text-stone-100">{format_time(@event.scheduled_at)}</dd>
-              </div>
-              <div>
-                <dt class="text-stone-500">Статус</dt>
-                <dd id="club-event-status" class="mt-1 text-stone-100">
-                  {status_label(@event.status)}
-                </dd>
-              </div>
-              <div>
-                <dt class="text-stone-500">Ваш статус</dt>
-                <dd class="mt-1 text-stone-100">{membership_label(@membership)}</dd>
-              </div>
-            </dl>
-          </section>
+          <div class="acd-event-table">
+            <section class="acd-event-programme">
+              <span class="acd-event-programme__fold" aria-hidden="true"></span>
+              <header class="acd-event-programme__masthead">
+                <p>Академическая программа</p>
+                <h2>{event_kind_label(@event.kind)}</h2>
+                <span>{@club.name}</span>
+              </header>
+              <p class="acd-event-programme__description">{event_description(@event.kind)}</p>
 
-          <section
-            id="club-event-attendance"
-            class="rounded-2xl border border-violet-400/20 bg-violet-950/15 p-6 shadow-lg"
-          >
-            <%= cond do %>
-              <% @attendance -> %>
-                <div id="club-event-attended">
-                  <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/75">
-                    протокол принят
-                  </p>
-                  <h2 class="mt-2 font-serif text-2xl text-emerald-100">Вы уже присутствовали</h2>
-                  <p id="club-event-xp" class="mt-3 text-sm text-stone-300">
-                    Награда за это посещение: {attendance_xp(@attendance)} XP.
-                  </p>
-                  <p
-                    :if={research_note_credit(@attendance) > 0}
-                    id="club-event-research-note"
-                    class="mt-2 text-sm text-cyan-100"
-                  >
-                    Заметка передана в общий архив: она даст долю XP, когда другой участник круга завершит исследование.
-                  </p>
-                  <p
-                    :if={expedition_plan_credit(@attendance) > 0}
-                    id="club-event-expedition-plan"
-                    class="mt-2 text-sm text-lime-100"
-                  >
-                    Маршрутная заметка сохранена: она станет общим планом, если весь отряд подготовится перед походом.
-                  </p>
-                  <p
-                    :if={social_ties_formed(@attendance) > 0}
-                    id="club-event-social-ties"
-                    class="mt-2 text-sm text-rose-100"
-                  >
-                    Встреча укрепила связей: {social_ties_formed(@attendance)}.
-                  </p>
-                </div>
-              <% is_nil(@membership) -> %>
-                <div id="club-event-membership-required">
-                  <h2 class="font-serif text-2xl text-violet-100">Нужно состоять в клубе</h2>
-                  <p class="mt-3 text-sm leading-6 text-stone-300">
-                    Присутствие записывается только действующим участникам. Откройте карточку клуба, чтобы получить приглашение.
-                  </p>
-                </div>
-              <% @event.status not in [:scheduled, :active] -> %>
-                <div id="club-event-closed">
-                  <h2 class="font-serif text-2xl text-stone-100">Протокол закрыт</h2>
-                  <p class="mt-3 text-sm text-stone-400">
-                    Это событие больше не принимает посещения.
-                  </p>
-                </div>
-              <% @can_attend? -> %>
+              <section id="club-event-details" class="acd-event-programme__details">
+                <dl>
+                  <div>
+                    <dt>Назначено</dt>
+                    <dd>{format_time(@event.scheduled_at)}</dd>
+                  </div>
+                  <div>
+                    <dt>Статус</dt>
+                    <dd id="club-event-status">{status_label(@event.status)}</dd>
+                  </div>
+                  <div>
+                    <dt>Ваша запись</dt>
+                    <dd>{membership_label(@membership)}</dd>
+                  </div>
+                </dl>
+              </section>
+
+              <section id="club-event-attendance" class="acd-event-attendance">
+                <%= cond do %>
+                  <% @attendance -> %>
+                    <div
+                      id="club-event-attended"
+                      class="acd-attendance-entry acd-attendance-entry--signed"
+                    >
+                      <span class="acd-attendance-entry__stamp" aria-hidden="true">УЧТЕНО</span>
+                      <p>Протокол принят</p>
+                      <h2>Ваше имя уже внесено</h2>
+                      <p id="club-event-xp">
+                        Награда за это посещение: <strong>{attendance_xp(@attendance)} опыта</strong>.
+                      </p>
+                      <p
+                        :if={research_note_credit(@attendance) > 0}
+                        id="club-event-research-note"
+                      >
+                        Заметка передана в общий архив: она даст долю опыта, когда другой участник круга завершит исследование.
+                      </p>
+                      <p
+                        :if={expedition_plan_credit(@attendance) > 0}
+                        id="club-event-expedition-plan"
+                      >
+                        Маршрутная заметка сохранена: она станет общим планом, если весь отряд подготовится перед походом.
+                      </p>
+                      <p
+                        :if={social_ties_formed(@attendance) > 0}
+                        id="club-event-social-ties"
+                      >
+                        Встреча укрепила связей: {social_ties_formed(@attendance)}.
+                      </p>
+                    </div>
+                  <% is_nil(@membership) -> %>
+                    <div id="club-event-membership-required" class="acd-attendance-entry">
+                      <p>Условия посещения</p>
+                      <h2>Нужно состоять в клубе</h2>
+                      <span>
+                        Присутствие записывается только действующим участникам. Откройте карточку клуба, чтобы получить приглашение.
+                      </span>
+                    </div>
+                  <% @event.status not in [:scheduled, :active] -> %>
+                    <div id="club-event-closed" class="acd-attendance-entry">
+                      <p>Архивная отметка</p>
+                      <h2>Протокол закрыт</h2>
+                      <span>Это событие больше не принимает посещения.</span>
+                    </div>
+                  <% @can_attend? -> %>
+                    <div class="acd-attendance-entry acd-attendance-entry--open">
+                      <p>Строка участника</p>
+                      <h2>Внести себя в протокол</h2>
+                      <span>
+                        Награда за посещение сохранится на сервере и войдёт в клубную и академическую ведомость.
+                      </span>
+                      <button
+                        id="club-event-attend"
+                        type="button"
+                        phx-click="attend"
+                        class="acd-signature-button"
+                      >
+                        Поставить подпись
+                      </button>
+                    </div>
+                <% end %>
+              </section>
+              <footer class="acd-event-programme__footer">
+                <span>Печать клубной канцелярии</span>
+                <i aria-hidden="true">{event_kind_sigil(@event.kind)}</i>
+              </footer>
+            </section>
+
+            <section
+              :if={@event.kind == :duel_tournament && @attendance}
+              id="club-event-duels"
+              class="acd-duel-tray"
+            >
+              <div class="acd-duel-tray__heading">
+                <span aria-hidden="true">⚔</span>
                 <div>
-                  <p class="text-xs uppercase tracking-[0.2em] text-violet-200/75">ваше действие</p>
-                  <h2 class="mt-2 font-serif text-2xl text-violet-100">Внести себя в протокол</h2>
-                  <p class="mt-3 text-sm leading-6 text-stone-300">
-                    Награда за посещение сохранится на сервере и войдёт в клубную и академическую ведомость.
-                  </p>
-                  <button
-                    id="club-event-attend"
-                    type="button"
-                    phx-click="attend"
-                    class="mt-5 rounded-lg bg-violet-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-violet-200"
-                  >
-                    Присутствовать
-                  </button>
+                  <p>После отметки</p>
+                  <h2>Дружеские поединки</h2>
                 </div>
-            <% end %>
-          </section>
-
-          <section
-            :if={@event.kind == :duel_tournament && @attendance}
-            id="club-event-duels"
-            class="rounded-2xl border border-amber-400/25 bg-amber-950/15 p-6 shadow-lg"
-          >
-            <h2 class="font-serif text-2xl text-amber-100">Дружеские поединки</h2>
-            <p class="mt-2 text-sm leading-6 text-stone-300">
-              Только отметившиеся участники могут отправлять и принимать приглашения. Поединки не используют ставку и не переносят добычу.
-            </p>
-
-            <div
-              :if={@incoming_duel_challenges != []}
-              id="club-event-incoming-duels"
-              class="mt-4 space-y-3"
-            >
-              <article
-                :for={challenge <- @incoming_duel_challenges}
-                id={"club-event-duel-incoming-#{challenge["id"]}"}
-                class="flex flex-wrap items-center justify-between gap-3 rounded-lg bg-stone-950/55 p-3 text-sm"
-              >
-                <span>Вас вызвали на дружеский поединок.</span>
-                <div class="flex gap-2">
-                  <button
-                    id={"club-event-accept-duel-#{challenge["id"]}"}
-                    type="button"
-                    phx-click="accept_duel"
-                    phx-value-challenge-id={challenge["id"]}
-                    class="rounded bg-amber-300 px-3 py-2 font-semibold text-stone-950"
-                  >
-                    Принять
-                  </button>
-                  <button
-                    id={"club-event-reject-duel-#{challenge["id"]}"}
-                    type="button"
-                    phx-click="reject_duel"
-                    phx-value-challenge-id={challenge["id"]}
-                    class="rounded border border-stone-600 px-3 py-2 text-stone-200"
-                  >
-                    Отказать
-                  </button>
-                </div>
-              </article>
-            </div>
-
-            <div
-              :if={@outgoing_duel_challenges != []}
-              id="club-event-outgoing-duels"
-              class="mt-4 space-y-2"
-            >
-              <p
-                :for={challenge <- @outgoing_duel_challenges}
-                class="rounded-lg bg-stone-950/55 px-3 py-2 text-sm text-stone-300"
-              >
-                Приглашение на поединок ожидает ответа.
+              </div>
+              <p class="acd-duel-tray__rules">
+                Только отметившиеся участники могут отправлять и принимать приглашения. Поединки не используют ставку и не переносят добычу.
               </p>
-            </div>
 
-            <div
-              :if={@accepted_duel_challenges != []}
-              id="club-event-active-duels"
-              class="mt-4 space-y-2"
-            >
-              <.link
-                :for={challenge <- @accepted_duel_challenges}
-                id={"club-event-open-duel-#{challenge["id"]}"}
-                navigate={~p"/combat/#{challenge["combat_id"]}"}
-                class="inline-flex rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+              <div
+                :if={@incoming_duel_challenges != []}
+                id="club-event-incoming-duels"
+                class="acd-duel-tray__letters"
               >
-                Открыть текущий поединок
-              </.link>
-            </div>
-
-            <div
-              :if={@duel_opponents != []}
-              id="club-event-duel-opponents"
-              class="mt-5 grid gap-3 sm:grid-cols-2"
-            >
-              <article
-                :for={opponent <- @duel_opponents}
-                id={"club-event-duel-opponent-#{opponent.id}"}
-                class="rounded-lg border border-amber-300/15 bg-stone-950/55 p-3"
-              >
-                <p class="font-medium text-stone-100">{opponent.name}</p>
-                <button
-                  id={"club-event-challenge-duel-#{opponent.id}"}
-                  type="button"
-                  phx-click="challenge_duel"
-                  phx-value-opponent-id={opponent.id}
-                  class="mt-3 rounded border border-amber-300/50 px-3 py-2 text-sm text-amber-100"
+                <article
+                  :for={challenge <- @incoming_duel_challenges}
+                  id={"club-event-duel-incoming-#{challenge["id"]}"}
+                  class="acd-duel-challenge"
                 >
-                  Пригласить
-                </button>
-              </article>
-            </div>
-            <p
-              :if={@duel_opponents == [] && @incoming_duel_challenges == []}
-              id="club-event-duel-opponents-empty"
-              class="mt-4 text-sm text-stone-400"
-            >
-              Другие отметившиеся дуэлянты пока не готовы к приглашению.
-            </p>
-          </section>
+                  <span class="acd-duel-challenge__seal" aria-hidden="true">⚔</span>
+                  <p>Вас вызвали на дружеский поединок.</p>
+                  <div class="acd-duel-challenge__actions">
+                    <button
+                      id={"club-event-accept-duel-#{challenge["id"]}"}
+                      type="button"
+                      phx-click="accept_duel"
+                      phx-value-challenge-id={challenge["id"]}
+                      class="acd-btn acd-btn--primary"
+                    >
+                      Принять
+                    </button>
+                    <button
+                      id={"club-event-reject-duel-#{challenge["id"]}"}
+                      type="button"
+                      phx-click="reject_duel"
+                      phx-value-challenge-id={challenge["id"]}
+                      class="acd-btn acd-btn--danger"
+                    >
+                      Отказать
+                    </button>
+                  </div>
+                </article>
+              </div>
+
+              <div
+                :if={@outgoing_duel_challenges != []}
+                id="club-event-outgoing-duels"
+                class="acd-duel-tray__outgoing"
+              >
+                <p :for={challenge <- @outgoing_duel_challenges}>
+                  Приглашение на поединок ожидает ответа.
+                </p>
+              </div>
+
+              <div
+                :if={@accepted_duel_challenges != []}
+                id="club-event-active-duels"
+                class="acd-duel-tray__active"
+              >
+                <.link
+                  :for={challenge <- @accepted_duel_challenges}
+                  id={"club-event-open-duel-#{challenge["id"]}"}
+                  navigate={~p"/combat/#{challenge["combat_id"]}"}
+                  class="acd-btn acd-btn--primary"
+                >
+                  Открыть текущий поединок
+                </.link>
+              </div>
+
+              <div
+                :if={@duel_opponents != []}
+                id="club-event-duel-opponents"
+                class="acd-duel-roster"
+              >
+                <article
+                  :for={opponent <- @duel_opponents}
+                  id={"club-event-duel-opponent-#{opponent.id}"}
+                  class="acd-duel-roster__entry"
+                >
+                  <span aria-hidden="true">{String.first(opponent.name)}</span>
+                  <p>{opponent.name}</p>
+                  <button
+                    id={"club-event-challenge-duel-#{opponent.id}"}
+                    type="button"
+                    phx-click="challenge_duel"
+                    phx-value-opponent-id={opponent.id}
+                    class="acd-duel-roster__invite"
+                  >
+                    Послать вызов
+                  </button>
+                </article>
+              </div>
+              <p
+                :if={@duel_opponents == [] && @incoming_duel_challenges == []}
+                id="club-event-duel-opponents-empty"
+                class="acd-duel-tray__empty"
+              >
+                Другие отметившиеся дуэлянты пока не готовы к приглашению.
+              </p>
+            </section>
+          </div>
+          <div class="acd-event-table__edge" aria-hidden="true"></div>
         </div>
       </main>
     </Layouts.app>
@@ -380,7 +403,7 @@ defmodule MMGOWeb.ClubEventLive do
   defp event_description(:expedition_briefing),
     do: "Сбор перед вылазкой: клуб фиксирует участие и подготовку группы."
 
-  defp event_description(_kind), do: "Клубное событие реалма."
+  defp event_description(_kind), do: "Клубное событие этого мира."
 
   defp attendance_xp(attendance), do: Map.get(attendance.metadata || %{}, "xp_awarded", 0)
 
@@ -398,6 +421,11 @@ defmodule MMGOWeb.ClubEventLive do
   defp club_type_label(:research), do: "исследовательское общество"
   defp club_type_label(:expedition_planning), do: "экспедиционный стол"
   defp club_type_label(_type), do: "клуб"
+  defp event_kind_sigil(:general_meeting), do: "☙"
+  defp event_kind_sigil(:duel_tournament), do: "⚔"
+  defp event_kind_sigil(:research_session), do: "✎"
+  defp event_kind_sigil(:expedition_briefing), do: "◇"
+  defp event_kind_sigil(_kind), do: "◈"
   defp event_kind_label(:general_meeting), do: "Общий круг"
   defp event_kind_label(:duel_tournament), do: "Дуэльный турнир"
   defp event_kind_label(:research_session), do: "Исследовательская сессия"

@@ -32,110 +32,136 @@ defmodule MMGOWeb.FinanceLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="finance-screen" class="game-root min-h-full px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <.link id="finance-back-to-map" navigate={~p"/map"} class="map-back-link">
-            ← Карта мира
-          </.link>
-          <header class="rounded-xl border border-amber-500/25 bg-stone-900/80 p-6 shadow-xl">
-            <p class="text-xs uppercase tracking-[0.22em] text-amber-300/70">
-              счётная книга · {@location.name}
-            </p>
-            <h1 class="mt-2 font-serif text-3xl text-amber-100">Финансы</h1>
-            <p id="finance-balance" class="mt-3 text-lg text-amber-100">Ваш кошелёк: {@balance} ◈</p>
-          </header>
+      <main id="finance-screen" class="scene-desk fin-scene">
+        <div class="book fin-book">
+          <div class="book__spine"></div>
+          <div class="book__page">
+            <div class="book__ribbons" aria-hidden="true">
+              <span class="book__ribbon book__ribbon--active">Счета</span>
+              <span class="book__ribbon">Записи</span>
+            </div>
 
-          <div
-            :if={@error}
-            id="finance-error"
-            class="rounded-md border border-red-500/50 bg-red-950/30 px-4 py-3 text-sm text-red-200"
-          >
-            {@error}
+            <.link id="finance-back-to-map" navigate={~p"/map"} class="book__back">
+              ← закрыть книгу
+            </.link>
+
+            <div class="book__leaf">
+              <header class="fin-masthead">
+                <p class="fin-masthead__eyebrow">счётная книга · {@location.name}</p>
+                <h1 class="book__title">Финансы {@character.name}</h1>
+                <p class="book__subtitle">приход, расход и обязательства — без пропущенной монеты</p>
+              </header>
+
+              <div id="finance-balance" class="fin-balance">
+                <span class="fin-balance__label">В кошеле и на счету</span>
+                <span class="fin-balance__sum">
+                  <span class="fin-coin">◈</span>{@balance}
+                </span>
+                <span class="fin-balance__unit">монет княжества</span>
+              </div>
+
+              <div :if={@error} id="finance-error" class="fin-ink-error">
+                {@error}
+              </div>
+
+              <section id="finance-public-accounts" class="fin-flow">
+                <article class="fin-flow__col fin-flow__col--treasury">
+                  <span class="fin-flow__label">Казна королевства</span>
+                  <strong class="fin-flow__amt">{@treasury_balance}</strong>
+                  <span class="fin-flow__unit">◈ открытого счёта</span>
+                </article>
+                <article class="fin-flow__col fin-flow__col--charity">
+                  <span class="fin-flow__label">Фонд Просвещения</span>
+                  <strong class="fin-flow__amt">{@charity_balance}</strong>
+                  <span class="fin-flow__unit">◈ для учеников</span>
+                </article>
+              </section>
+
+              <section id="finance-actions" class="fin-actions">
+                <.form
+                  for={@donation_form}
+                  id="finance-donation-form"
+                  phx-submit="donate"
+                  class="fin-charity fin-action"
+                >
+                  <span class="fin-action__mark" aria-hidden="true">✦</span>
+                  <h2 class="fin-h">Пожертвование</h2>
+                  <p class="fin-charity__note">
+                    «Ваш взнос учит того, кому нечем платить за науку.»
+                  </p>
+                  <.input
+                    field={@donation_form[:amount]}
+                    type="number"
+                    label="Сумма"
+                    min="1"
+                    inputmode="numeric"
+                  />
+                  <button id="finance-donate" type="submit" class="fin-charity__btn">
+                    Внести в фонд
+                  </button>
+                </.form>
+
+                <.form
+                  for={@tuition_form}
+                  id="finance-tuition-form"
+                  phx-submit="pay_tuition"
+                  class="fin-action fin-action--tuition"
+                >
+                  <span class="fin-action__mark" aria-hidden="true">A</span>
+                  <h2 class="fin-h">Академическая пошлина</h2>
+                  <p class="fin-action__copy">
+                    Плата за обучение перечисляется прямо в казну и получает отдельную строку в
+                    книге.
+                  </p>
+                  <.input
+                    field={@tuition_form[:amount]}
+                    type="number"
+                    label="Сумма"
+                    min="1"
+                    inputmode="numeric"
+                  />
+                  <button id="finance-pay-tuition" type="submit" class="fin-action__btn">
+                    Поставить платёж
+                  </button>
+                </.form>
+              </section>
+
+              <section id="finance-ledger" class="fin-ledger-sheet">
+                <div class="fin-ledger-sheet__head">
+                  <div>
+                    <p class="fin-ledger-sheet__eyebrow">последние строки</p>
+                    <h2 class="fin-h">Журнал операций</h2>
+                  </div>
+                  <span class="fin-ledger-sheet__quill" aria-hidden="true">✒</span>
+                </div>
+                <p :if={@ledger_entries == []} id="finance-ledger-empty" class="fin-margin">
+                  В журнале пока нет операций.
+                </p>
+                <ul class="fin-plain fin-plain--ledger">
+                  <li class="fin-plain__header" aria-hidden="true">
+                    <span>Статья</span><span>Дата</span><span>Сумма</span>
+                  </li>
+                  <li
+                    :for={entry <- @ledger_entries}
+                    id={"finance-entry-#{entry.id}"}
+                    class="fin-plain__row"
+                  >
+                    <span class="fin-plain__what">{entry.entry_type}</span>
+                    <time class="fin-plain__date">{format_time(entry.inserted_at)}</time>
+                    <span class="fin-plain__amt">{entry.amount} ◈</span>
+                  </li>
+                </ul>
+                <p class="fin-margin">сверено рукою казначея</p>
+              </section>
+
+              <div class="fin-book__foot">
+                <span>Лист обновляется после каждой подтверждённой операции.</span>
+                <button id="finance-refresh" type="button" phx-click="refresh">
+                  обновить чернила
+                </button>
+              </div>
+            </div>
           </div>
-
-          <section id="finance-public-accounts" class="grid gap-3 sm:grid-cols-2">
-            <article class="rounded-xl border border-stone-700 bg-stone-900/70 p-5">
-              <p class="text-sm text-stone-400">Казна королевства</p>
-              <p class="mt-1 font-serif text-2xl text-stone-100">{@treasury_balance} ◈</p>
-            </article>
-            <article class="rounded-xl border border-stone-700 bg-stone-900/70 p-5">
-              <p class="text-sm text-stone-400">Благотворительный фонд</p>
-              <p class="mt-1 font-serif text-2xl text-stone-100">{@charity_balance} ◈</p>
-            </article>
-          </section>
-
-          <section
-            id="finance-actions"
-            class="grid gap-5 rounded-xl border border-amber-500/25 bg-amber-950/15 p-6 md:grid-cols-2"
-          >
-            <.form for={@donation_form} id="finance-donation-form" phx-submit="donate">
-              <h2 class="font-serif text-xl text-amber-100">Пожертвовать</h2>
-              <p class="mt-1 text-sm text-stone-400">
-                Деньги уходят в отдельный фонд и остаются в журнале.
-              </p>
-              <.input
-                field={@donation_form[:amount]}
-                type="number"
-                label="Сумма"
-                min="1"
-                inputmode="numeric"
-              />
-              <button
-                id="finance-donate"
-                type="submit"
-                class="rounded-md bg-amber-300 px-4 py-2 font-semibold text-stone-950 hover:bg-amber-200"
-              >
-                Внести
-              </button>
-            </.form>
-            <.form for={@tuition_form} id="finance-tuition-form" phx-submit="pay_tuition">
-              <h2 class="font-serif text-xl text-amber-100">Оплатить обучение</h2>
-              <p class="mt-1 text-sm text-stone-400">Плата перечисляется напрямую в казну.</p>
-              <.input
-                field={@tuition_form[:amount]}
-                type="number"
-                label="Сумма"
-                min="1"
-                inputmode="numeric"
-              />
-              <button
-                id="finance-pay-tuition"
-                type="submit"
-                class="rounded-md border border-amber-300/60 px-4 py-2 font-semibold text-amber-100 hover:bg-amber-300/10"
-              >
-                Оплатить
-              </button>
-            </.form>
-          </section>
-
-          <section id="finance-ledger" class="rounded-xl border border-stone-700 bg-stone-900/70 p-6">
-            <h2 class="font-serif text-xl text-stone-100">Ваш журнал операций</h2>
-            <p
-              :if={@ledger_entries == []}
-              id="finance-ledger-empty"
-              class="mt-3 text-sm text-stone-400"
-            >
-              В журнале пока нет операций.
-            </p>
-            <ul class="mt-3 space-y-2">
-              <li
-                :for={entry <- @ledger_entries}
-                id={"finance-entry-#{entry.id}"}
-                class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-700 bg-stone-950/45 p-3 text-sm"
-              >
-                <span>{entry.entry_type}</span><span>{entry.amount} ◈</span><span class="text-stone-500">{format_time(entry.inserted_at)}</span>
-              </li>
-            </ul>
-          </section>
-
-          <button
-            id="finance-refresh"
-            type="button"
-            phx-click="refresh"
-            class="text-sm text-amber-200 underline decoration-amber-500/40 underline-offset-4"
-          >
-            Обновить журнал
-          </button>
         </div>
       </main>
     </Layouts.app>

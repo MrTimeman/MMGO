@@ -108,7 +108,7 @@ defmodule MMGO.Telegram.AcademiaNpcCommandsTest do
     assert {:ok, project_text} =
              Commands.process_message(scholar, %{"text" => "/academia start spell Fire Study"})
 
-    assert project_text =~ "Research started"
+    assert project_text =~ "Исследование"
 
     assert {:ok, projects_text} =
              Commands.process_message(scholar, %{"text" => "/academia projects"})
@@ -126,24 +126,24 @@ defmodule MMGO.Telegram.AcademiaNpcCommandsTest do
     assert {:ok, buy_text} =
              Commands.process_message(scholar, %{"text" => "/npc buy #{offer_buy.id} 1"})
 
-    assert buy_text =~ "Bought"
+    assert buy_text =~ "У торговца куплено"
 
     assert {:ok, tuition_text} =
              Commands.process_message(scholar, %{"text" => "/academy tuition 10"})
 
-    assert tuition_text =~ "Paid academy tuition"
+    assert tuition_text =~ "Внесена плата за обучение"
 
     assert {:ok, charity_text} =
              Commands.process_message(scholar, %{"text" => "/charity donate 10"})
 
-    assert charity_text =~ "Donated 10"
+    assert charity_text =~ "пожертвовано: 10"
 
     assert {:ok, sell_text} =
              Commands.process_message(vendor, %{
                "text" => "/npc sell #{offer_sell.id} #{seller_stack.id} 2"
              })
 
-    assert sell_text =~ "Sold 2"
+    assert sell_text =~ "Торговцу продано: 2"
   end
 
   defp character_fixture(realm, location, handle, name) do

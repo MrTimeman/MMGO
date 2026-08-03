@@ -59,7 +59,7 @@ defmodule MMGO.Telegram.BaseCommandsTest do
     assert {:ok, buy_text} =
              Commands.process_message(character, %{"text" => "/base buy capital-city"})
 
-    assert buy_text =~ "Base purchased"
+    assert buy_text =~ "База «"
 
     [base] = Bases.list_bases_for_character(character.id)
 
@@ -71,7 +71,7 @@ defmodule MMGO.Telegram.BaseCommandsTest do
                "text" => "/base deposit #{base.id} #{ore_item.id} 2"
              })
 
-    assert deposit_text =~ "Deposited"
+    assert deposit_text =~ "помещено"
 
     [storage_item] = Bases.list_storage_items(base.id)
 
@@ -85,7 +85,7 @@ defmodule MMGO.Telegram.BaseCommandsTest do
                "text" => "/base withdraw #{base.id} #{storage_item.id} 1"
              })
 
-    assert withdraw_text =~ "Withdrew"
+    assert withdraw_text =~ "забрано"
   end
 
   defp character_fixture(realm, location, handle, name) do

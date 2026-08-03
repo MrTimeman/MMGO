@@ -15,12 +15,28 @@ const LOD_SPRITE = 0.6
 const LOD_FINE = 0.45
 const LOD_MID = 0.16
 
+const MAP_LAYERS = [
+  { key: "terrain", label: "Рельеф", mark: "⌁" },
+  { key: "political", label: "Владения", mark: "♜" },
+  { key: "infrastructure", label: "Пути и сети", mark: "⌘" },
+  { key: "economic", label: "Торговля", mark: "¤" },
+  { key: "diplomacy", label: "Дипломатия", mark: "⚭" },
+]
+
 const KIND = {
   city: { r: 16, fill: "#d6a643", stroke: "#fff1a8" },
   tower: { r: 18, fill: "#7c6df2", stroke: "#d8d1ff" },
   wilderness: { r: 12, fill: "#4f8f5b", stroke: "#b7efbf" },
   dungeon_entrance: { r: 15, fill: "#b94c4c", stroke: "#ffd0d0" },
   base: { r: 14, fill: "#8c9bad", stroke: "#e1e8f0" },
+}
+
+const KIND_LABEL = {
+  city: "город",
+  tower: "башня",
+  wilderness: "урочище",
+  dungeon_entrance: "вход в подземелье",
+  base: "убежище",
 }
 
 const FALLBACK_TERRAIN_COLOR = "#3a3a3a"
@@ -52,6 +68,7 @@ export const HexMapHook = {
 
     this.pathPreview = null
     this.activeFilter = "terrain"
+    this.layerMenuOpen = false
     this.orgs = []
     this.economic = []
     this.diplomacy = []
@@ -90,11 +107,20 @@ export const HexMapHook = {
       this.scheduleRender()
     })
 
+    this.handleEvent("close_map_sheet", () => {
+      this.selected = null
+      this.closeSheet()
+      this.scheduleRender()
+    })
+
+    this.handleEvent("close_map_layer_menu", () => this.setLayerMenuOpen(false))
+
     this.loadMapData()
   },
 
   destroyed() {
     this.cleanup?.()
+    this.controlCleanup?.()
     if (this.resizeObserver) this.resizeObserver.disconnect()
     if (this.rafId) cancelAnimationFrame(this.rafId)
   },
@@ -105,6 +131,43 @@ export const HexMapHook = {
     this.el.classList.add("hex-map")
     this.el.innerHTML = `
       <canvas class="hex-map__canvas"></canvas>
+      <div class="hex-map__layers" data-layer-control>
+        <button
+          class="hex-map__layer-toggle"
+          type="button"
+          aria-expanded="false"
+          aria-controls="hex-map-layer-menu"
+        >
+          <span class="hex-map__layer-compass" aria-hidden="true">✥</span>
+          <span class="hex-map__layer-toggle-copy">
+            <small>Слои атласа</small>
+            <strong data-layer-label>Рельеф</strong>
+          </span>
+          <span class="hex-map__layer-chevron" aria-hidden="true">⌄</span>
+        </button>
+        <div
+          id="hex-map-layer-menu"
+          class="hex-map__layer-menu"
+          role="radiogroup"
+          aria-label="Слой карты"
+          hidden
+        >
+          <p>Картографические кальки</p>
+          ${MAP_LAYERS.map(
+            layer => `
+              <button
+                type="button"
+                role="radio"
+                aria-checked="${layer.key === this.activeFilter}"
+                data-filter="${layer.key}"
+              >
+                <span aria-hidden="true">${layer.mark}</span>
+                ${layer.label}
+              </button>
+            `
+          ).join("")}
+        </div>
+      </div>
       <div class="hex-map__legend" hidden></div>
       <section class="hex-map__sheet" hidden></section>
     `
@@ -112,8 +175,86 @@ export const HexMapHook = {
     this.ctx = this.canvas.getContext("2d")
     this.sheet = this.el.querySelector(".hex-map__sheet")
     this.legend = this.el.querySelector(".hex-map__legend")
+    this.layerControl = this.el.querySelector("[data-layer-control]")
+    this.layerToggle = this.el.querySelector(".hex-map__layer-toggle")
+    this.layerMenu = this.el.querySelector(".hex-map__layer-menu")
+    this.layerLabel = this.el.querySelector("[data-layer-label]")
+
+    this.bindLayerControl()
+    this.updateLayerControl()
 
     this.resizeCanvas()
+  },
+
+  bindLayerControl() {
+    const toggle = event => {
+      event.stopPropagation()
+      this.setLayerMenuOpen(!this.layerMenuOpen)
+    }
+
+    const choose = event => {
+      const button = event.target.closest("[data-filter]")
+      if (!button) return
+
+      event.stopPropagation()
+      this.setActiveFilter(button.dataset.filter)
+      this.setLayerMenuOpen(false)
+    }
+
+    const dismiss = event => {
+      if (this.layerMenuOpen && !this.layerControl.contains(event.target)) {
+        this.setLayerMenuOpen(false)
+      }
+    }
+
+    const dismissWithKeyboard = event => {
+      if (event.key !== "Escape" || !this.layerMenuOpen) return
+
+      this.setLayerMenuOpen(false)
+      this.layerToggle.focus()
+    }
+
+    this.layerToggle.addEventListener("click", toggle)
+    this.layerMenu.addEventListener("click", choose)
+    document.addEventListener("pointerdown", dismiss)
+    document.addEventListener("keydown", dismissWithKeyboard)
+
+    this.controlCleanup = () => {
+      this.layerToggle.removeEventListener("click", toggle)
+      this.layerMenu.removeEventListener("click", choose)
+      document.removeEventListener("pointerdown", dismiss)
+      document.removeEventListener("keydown", dismissWithKeyboard)
+    }
+  },
+
+  setLayerMenuOpen(open) {
+    this.layerMenuOpen = open
+    this.layerMenu.hidden = !open
+    this.layerToggle.setAttribute("aria-expanded", String(open))
+    this.layerControl.classList.toggle("is-open", open)
+
+    if (open) this.pushEvent("close_account_menu", {})
+  },
+
+  setActiveFilter(filter) {
+    if (!MAP_LAYERS.some(layer => layer.key === filter)) return
+
+    this.activeFilter = filter
+    this.orgOverlay = null
+    this.updateLayerControl()
+    this.updateLegend()
+    this.scheduleRender()
+  },
+
+  updateLayerControl() {
+    const active = MAP_LAYERS.find(layer => layer.key === this.activeFilter) || MAP_LAYERS[0]
+    this.layerLabel.textContent = active.label
+
+    for (const button of this.layerMenu.querySelectorAll("[data-filter]")) {
+      const selected = button.dataset.filter === active.key
+      button.setAttribute("aria-checked", String(selected))
+      button.classList.toggle("is-active", selected)
+    }
   },
 
   updateLegend() {
@@ -594,12 +735,12 @@ export const HexMapHook = {
   // -- sheet ---------------------------------------------------------------
 
   openSheet(loc) {
-    const safe = loc.safe_zone ? "Safe" : "Wild"
+    const safe = loc.safe_zone ? "безопасное место" : "дикие земли"
     const action = loc.can_travel
-      ? `<button class="hex-map__travel" data-travel="${loc.slug}">Travel</button>`
+      ? `<button class="hex-map__travel" data-travel="${loc.slug}">Отправиться</button>`
       : this.player?.location_slug === loc.slug
-        ? `<span class="hex-map__here">You are here</span>`
-        : `<span class="hex-map__muted">No direct route</span>`
+        ? `<span class="hex-map__here">Вы здесь</span>`
+        : `<span class="hex-map__muted">Нет прямого пути</span>`
 
     // Map-first: activities are offered here, on the sheet of the place the
     // player is physically at (the server only sends actions in that case).
@@ -612,7 +753,7 @@ export const HexMapHook = {
     this.sheet.innerHTML = `
       <div>
         <h2>${escapeHtml(loc.name)}</h2>
-        <p>${safe} · ${loc.kind.replace("_", " ")}</p>
+        <p>${safe} · ${KIND_LABEL[loc.kind] || "неизведанное место"}</p>
         <p class="hex-map__preview" data-preview hidden></p>
       </div>
       ${actions ? `<div class="hex-map__actions">${actions}</div>` : ""}
@@ -643,7 +784,7 @@ export const HexMapHook = {
     if (this.pathPreview) {
       const { travel_days, food_units } = this.pathPreview
       el.hidden = false
-      el.textContent = `~${travel_days} day${travel_days === 1 ? "" : "s"} · ${food_units} food`
+      el.textContent = `≈ ${travel_days} дн. пути · еда: ${food_units}`
     } else {
       el.hidden = true
       el.textContent = ""
@@ -941,15 +1082,67 @@ export const HexMapHook = {
       ctx.strokeStyle = kind.stroke
       ctx.stroke()
 
+      ctx.restore()
+    }
+
+    const occupiedLabels = []
+    const maxLabelWidth = Math.min(160, Math.max(92, this.viewportWidth * 0.36))
+    const orderedLocations = [...this.locations].sort((a, b) => {
+      const priority = location => {
+        if (this.selected === location.slug) return 0
+        if (this.player?.location_slug === location.slug) return 1
+        if (location.can_travel) return 2
+        return 3
+      }
+
+      return priority(a) - priority(b)
+    })
+
+    for (const loc of orderedLocations) {
+      const pos = this.locationWorldPos(loc)
+      const kind = KIND[loc.kind] || KIND.wilderness
+      const screenX = pos.x * this.scale + this.tx
+      const screenY = pos.y * this.scale + this.ty + kind.r + 22
+
+      if (
+        screenX < -maxLabelWidth ||
+        screenX > this.viewportWidth + maxLabelWidth ||
+        screenY < -24 ||
+        screenY > this.viewportHeight + 24
+      ) {
+        continue
+      }
+
+      ctx.save()
+      ctx.translate(pos.x, pos.y)
+      ctx.scale(invScale, invScale)
       ctx.font = "18px var(--font-serif, serif)"
       ctx.textAlign = "center"
+      const label = fitCanvasText(ctx, loc.name, maxLabelWidth)
+      const labelWidth = Math.min(ctx.measureText(label).width, maxLabelWidth)
       ctx.lineWidth = 4
       ctx.strokeStyle = "#090d0c"
       ctx.fillStyle = "#f2eee8"
       const labelY = kind.r + 22
-      ctx.strokeText(loc.name, 0, labelY)
-      ctx.fillText(loc.name, 0, labelY)
+      const labelBox = {
+        left: screenX - labelWidth / 2 - 4,
+        right: screenX + labelWidth / 2 + 4,
+        top: screenY - 17,
+        bottom: screenY + 5,
+      }
+      const overlaps = occupiedLabels.some(
+        box =>
+          labelBox.left < box.right &&
+          labelBox.right > box.left &&
+          labelBox.top < box.bottom &&
+          labelBox.bottom > box.top
+      )
 
+      if (!overlaps) {
+        ctx.strokeText(label, 0, labelY)
+        ctx.fillText(label, 0, labelY)
+        occupiedLabels.push(labelBox)
+      }
       ctx.restore()
     }
 
@@ -1300,6 +1493,18 @@ function economicActivityLabel(level) {
   if (level >= 3) return "центр"
   if (level >= 2) return "оживление"
   return "след"
+}
+
+function fitCanvasText(ctx, value, maxWidth) {
+  const text = String(value || "")
+  if (ctx.measureText(text).width <= maxWidth) return text
+
+  let shortened = text
+  while (shortened.length > 1 && ctx.measureText(`${shortened}…`).width > maxWidth) {
+    shortened = shortened.slice(0, -1)
+  }
+
+  return `${shortened.trimEnd()}…`
 }
 
 function majorityKey(counts) {

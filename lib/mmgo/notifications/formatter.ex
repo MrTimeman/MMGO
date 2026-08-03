@@ -4,8 +4,7 @@ defmodule MMGO.Notifications.Formatter do
   def render(%Notification{kind: "journey_arrived", payload: payload}) do
     {:ok,
      %{
-       text:
-         "Your journey is complete. You have arrived at location ##{payload["to_location_id"]}.",
+       text: "Путешествие завершено. Вы прибыли в место №#{payload["to_location_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -14,19 +13,19 @@ defmodule MMGO.Notifications.Formatter do
     track_suffix =
       case payload["track"] do
         nil -> ""
-        track -> " Track: #{track}."
+        track -> " Путь: #{track_label(track)}."
       end
 
     text =
       case {payload["status"], payload["outcome_tier"]} do
         {"failed", "capstone_incomplete"} ->
-          "Your #{payload["program_type"]} enrollment ended without graduation: the final capstone was not passed.#{track_suffix}"
+          "Обучение по программе «#{program_label(payload["program_type"])}» завершилось без выпуска: итоговое испытание не пройдено.#{track_suffix}"
 
         {"failed", _outcome_tier} ->
-          "Your #{payload["program_type"]} enrollment ended without graduation.#{track_suffix}"
+          "Обучение по программе «#{program_label(payload["program_type"])}» завершилось без выпуска.#{track_suffix}"
 
         _other ->
-          "Your #{payload["program_type"]} enrollment is complete.#{track_suffix}"
+          "Обучение по программе «#{program_label(payload["program_type"])}» завершено.#{track_suffix}"
       end
 
     {:ok, %{text: text, opts: [parse_mode: "HTML"]}}
@@ -36,7 +35,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Scavenging complete. Yield: #{payload["quantity_yielded"]} unit(s). Attempt ##{payload["attempt_id"]}.",
+         "Поиск ресурсов завершён. Добыто: #{payload["quantity_yielded"]} ед. Запись №#{payload["attempt_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -45,7 +44,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Brewing complete. Yield: #{payload["yielded_quantity"]} unit(s). Brew job ##{payload["brew_job_id"]}.",
+         "Зелье готово. Получено: #{payload["yielded_quantity"]} ед. Варка №#{payload["brew_job_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -54,7 +53,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Crafting complete. Yield: #{payload["yielded_quantity"]} unit(s). Craft job ##{payload["craft_job_id"]}.",
+         "Работа в мастерской завершена. Получено: #{payload["yielded_quantity"]} ед. Заказ №#{payload["craft_job_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -63,7 +62,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Research complete. #{payload["project_kind"]}: #{payload["title"]}. Project ##{payload["project_id"]}.",
+         "Исследование завершено. #{project_kind_label(payload["project_kind"])}: #{payload["title"]}. Проект №#{payload["project_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -72,7 +71,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Base ready. Base ##{payload["base_id"]} at location ##{payload["location_id"]} is now active.",
+         "Владение готово. Дом №#{payload["base_id"]} в месте №#{payload["location_id"]} теперь действует.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -81,7 +80,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Realm migration started to #{payload["destination_realm_name"]}. Migration ##{payload["migration_id"]}. Freeze ends at #{payload["freeze_ends_at"] || "unknown"}.",
+         "Переход в мир «#{payload["destination_realm_name"]}» начался. Переход №#{payload["migration_id"]}. Заморозка закончится: #{payload["freeze_ends_at"] || "время не указано"}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -90,7 +89,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Realm migration complete. Passive XP awarded: #{payload["passive_xp_awarded"]}. Migration ##{payload["migration_id"]}.",
+         "Переход между мирами завершён. Получено пассивного опыта: #{payload["passive_xp_awarded"]}. Переход №#{payload["migration_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -99,7 +98,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Dungeon extraction complete. Run ##{payload["run_id"]} exited via #{payload["extraction_type"]}.",
+         "Выход из подземелья завершён. Экспедиция №#{payload["run_id"]} покинула глубины: #{extraction_label(payload["extraction_type"])}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -108,7 +107,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Dungeon run failed. Run ##{payload["run_id"]}. Lost drops recorded: #{payload["lost_item_count"]}.",
+         "Экспедиция в подземелье провалилась. Запись №#{payload["run_id"]}. Потеряно трофеев: #{payload["lost_item_count"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -117,7 +116,7 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Club invitation: #{payload["club_name"]} (#{payload["club_type"]}). Invitation ##{payload["invitation_id"]}.",
+         "Приглашение в клуб «#{payload["club_name"]}» (#{club_type_label(payload["club_type"])}). Письмо №#{payload["invitation_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
@@ -126,10 +125,44 @@ defmodule MMGO.Notifications.Formatter do
     {:ok,
      %{
        text:
-         "Organization invitation: #{payload["organization_name"]} (#{payload["organization_kind"]}). Invitation ##{payload["invitation_id"]}.",
+         "Приглашение в организацию «#{payload["organization_name"]}» (#{organization_kind_label(payload["organization_kind"])}). Письмо №#{payload["invitation_id"]}.",
        opts: [parse_mode: "HTML"]
      }}
   end
 
   def render(%Notification{}), do: {:error, :unsupported_notification_kind}
+
+  defp program_label("basic"), do: "Базовое образование"
+  defp program_label("academy_core"), do: "Ядро Академии"
+  defp program_label("extended_study"), do: "Расширенный курс"
+  defp program_label("academia"), do: "Академия наук"
+  defp program_label(_program), do: "неизвестная программа"
+
+  defp track_label("wizardry"), do: "Чародейство"
+  defp track_label("alchemy"), do: "Алхимия"
+  defp track_label("mastery"), do: "Мастерство"
+  defp track_label(_track), do: "не указан"
+
+  defp project_kind_label("spell"), do: "Заклинание"
+  defp project_kind_label("potion"), do: "Зелье"
+  defp project_kind_label("tool"), do: "Инструмент"
+  defp project_kind_label("thesis"), do: "Тезис"
+  defp project_kind_label(_kind), do: "Проект"
+
+  defp extraction_label("safe"), do: "безопасный выход"
+  defp extraction_label("forced"), do: "вынужденный выход"
+  defp extraction_label("emergency"), do: "аварийный выход"
+  defp extraction_label(_type), do: "способ не указан"
+
+  defp club_type_label("general_interest"), do: "общий круг"
+  defp club_type_label("dueling"), do: "дуэльный клуб"
+  defp club_type_label("research"), do: "исследовательское общество"
+  defp club_type_label("expedition_planning"), do: "экспедиционный стол"
+  defp club_type_label(_type), do: "иной круг"
+
+  defp organization_kind_label("guild"), do: "гильдия"
+  defp organization_kind_label("company"), do: "компания"
+  defp organization_kind_label("council"), do: "совет"
+  defp organization_kind_label("cult"), do: "культ"
+  defp organization_kind_label(_kind), do: "организация"
 end

@@ -12,6 +12,23 @@ defmodule MMGOWeb.MapLive do
   alias MMGO.Travel
 
   @org_colors ~w(#e05252 #529ee0 #58c470 #c9a227 #9a6ae0 #e0762e #3ec9b8 #d05a9e)
+  @world_seasons [
+    %{key: :spring, name: "Весна", glyph: "❀", months: "I—III"},
+    %{key: :summer, name: "Лето", glyph: "☀", months: "IV—VI"},
+    %{key: :autumn, name: "Осень", glyph: "❧", months: "VII—IX"},
+    %{key: :winter, name: "Зима", glyph: "❄", months: "X—XIII"}
+  ]
+  @legacy_location_names %{
+    "capital-city" => "Столица",
+    "amber-harbor" => "Янтарная Гавань",
+    "ash-crossing" => "Пепельный Перекрёсток",
+    "watchpoint" => "Дозорный Пост",
+    "the-tower" => "Башня",
+    "northeast-city" => "Восточный Предел",
+    "south-town" => "Южный Форт",
+    "far-south-village" => "Дальняя Слобода",
+    "mountain-watchtower" => "Горная Стража"
+  }
   @refresh_interval 30_000
 
   @impl true
@@ -19,9 +36,9 @@ defmodule MMGOWeb.MapLive do
     socket =
       socket
       |> assign(:page_title, "Карта мира")
-      |> assign(:map_panel_open?, true)
       |> assign(:map_location_selected?, false)
       |> assign(:account_menu_open?, false)
+      |> assign(:calendar_open?, false)
       |> refresh_world()
       |> schedule_refresh()
 
@@ -63,13 +80,36 @@ defmodule MMGOWeb.MapLive do
   end
 
   @impl true
-  def handle_event("toggle_map_panel", _params, socket) do
-    {:noreply, update(socket, :map_panel_open?, &(!&1))}
+  def handle_event("toggle_world_calendar", _params, socket) do
+    if socket.assigns.calendar_open? do
+      {:noreply, assign(socket, :calendar_open?, false)}
+    else
+      {:noreply,
+       socket
+       |> assign(:calendar_open?, true)
+       |> assign(:account_menu_open?, false)
+       |> push_event("close_map_sheet", %{})
+       |> push_event("close_map_layer_menu", %{})}
+    end
+  end
+
+  @impl true
+  def handle_event("close_world_calendar", _params, socket) do
+    {:noreply, assign(socket, :calendar_open?, false)}
   end
 
   @impl true
   def handle_event("toggle_account_menu", _params, socket) do
-    {:noreply, update(socket, :account_menu_open?, &(!&1))}
+    opening? = not socket.assigns.account_menu_open?
+
+    socket =
+      socket
+      |> assign(:account_menu_open?, opening?)
+      |> then(fn socket ->
+        if opening?, do: push_event(socket, "close_map_layer_menu", %{}), else: socket
+      end)
+
+    {:noreply, socket}
   end
 
   @impl true
@@ -89,9 +129,18 @@ defmodule MMGOWeb.MapLive do
           class="absolute inset-0"
         />
 
-        <header class="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-stone-950/90 via-stone-950/50 to-transparent px-3 pb-14 pt-3 text-stone-100">
+        <header class="map-overlay-header pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pb-14 pt-3">
           <div class="pointer-events-auto mx-auto flex max-w-5xl items-start justify-between gap-3">
-            <section id="map-world-clock" class="ovl-chip ovl-clock" aria-label="Время мира">
+            <button
+              id="map-world-clock"
+              type="button"
+              phx-click="toggle_world_calendar"
+              class="ovl-chip ovl-clock"
+              aria-label="Открыть календарь мира"
+              aria-haspopup="dialog"
+              aria-expanded={to_string(@calendar_open?)}
+              aria-controls="map-world-calendar"
+            >
               <span class="ovl-clock__dial" aria-hidden="true">
                 <span class="ovl-clock__arc"></span>
                 <span class="ovl-clock__glyph">{@world_time.season_glyph}</span>
@@ -102,9 +151,9 @@ defmodule MMGOWeb.MapLive do
                   {@world_time.year} год · {@world_time.season_name}
                 </span>
               </span>
-            </section>
+            </button>
 
-            <div class="relative" phx-click-away="close_account_menu">
+            <div class="map-account relative" phx-click-away="close_account_menu">
               <button
                 id="map-account-menu-toggle"
                 type="button"
@@ -112,21 +161,21 @@ defmodule MMGOWeb.MapLive do
                 aria-haspopup="menu"
                 aria-expanded={to_string(@account_menu_open?)}
                 aria-controls="map-account-menu"
-                class="group flex min-h-11 items-center gap-2 rounded-full border border-stone-700/70 bg-stone-950/80 px-3 py-2 text-right shadow-lg backdrop-blur transition hover:border-amber-300/45 hover:bg-stone-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+                class="map-account-trigger group flex min-h-11 items-center gap-2 px-3 py-2 text-right"
               >
                 <span>
-                  <span class="block font-sans text-xs font-bold text-amber-100">
+                  <span class="map-account-trigger__name block">
                     {@character.name}
                   </span>
-                  <span class="block font-sans text-[0.65rem] text-stone-400">
+                  <span class="map-account-trigger__level block">
                     уровень {@character.level}
                   </span>
                 </span>
                 <.icon
                   name="hero-chevron-down"
                   class={[
-                    "size-3.5 text-stone-400 transition duration-150",
-                    @account_menu_open? && "rotate-180 text-amber-200"
+                    "map-account-trigger__chevron size-3.5",
+                    @account_menu_open? && "rotate-180"
                   ]}
                 />
               </button>
@@ -135,104 +184,161 @@ defmodule MMGOWeb.MapLive do
                 :if={@account_menu_open?}
                 id="map-account-menu"
                 role="menu"
-                class="absolute right-0 top-[calc(100%+0.5rem)] w-48 overflow-hidden rounded-xl border border-stone-700/80 bg-stone-950/95 p-1.5 text-left shadow-2xl shadow-black/50 backdrop-blur-xl"
+                class="map-account-menu absolute right-0 top-[calc(100%+0.5rem)] w-48 overflow-hidden p-1.5 text-left"
               >
+                <p class="map-account-menu__heading">Личный дорожный журнал</p>
                 <.link
                   id="map-account-inventory"
                   navigate={~p"/inventory"}
                   role="menuitem"
-                  class="flex min-h-11 items-center gap-2.5 rounded-lg px-3 font-sans text-sm font-semibold text-stone-200 transition hover:bg-amber-200/10 hover:text-amber-100 focus-visible:bg-amber-200/10 focus-visible:text-amber-100 focus-visible:outline-none"
+                  class="map-account-menu__item flex min-h-11 items-center gap-2.5 px-3"
                 >
-                  <.icon name="hero-archive-box" class="size-4 text-amber-300" /> Инвентарь
+                  <.icon name="hero-archive-box" class="size-4" /> Инвентарь
                 </.link>
               </div>
             </div>
           </div>
         </header>
 
-        <aside
-          :if={is_nil(@active_journey) and @map_panel_open? and not @map_location_selected?}
-          id="map-character-panel"
-          class="absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-amber-500/25 bg-stone-950/92 p-4 text-stone-100 shadow-2xl shadow-black/50 backdrop-blur-xl"
-        >
-          <div class="flex items-start justify-between gap-4">
-            <div>
-              <p class="font-sans text-[0.65rem] font-bold uppercase tracking-[0.16em] text-stone-500">
-                Вы сейчас
-              </p>
-              <h1 id="map-current-location" class="mt-1 font-serif text-xl text-amber-100">
-                {location_name(@current_location)}
-              </h1>
-            </div>
-            <div class="flex shrink-0 items-center gap-2">
-              <span class="rounded-full border border-stone-700 bg-stone-900 px-2.5 py-1 font-sans text-xs text-stone-300">
-                Еда: {@survival.food_units}
-              </span>
+        <div :if={@calendar_open?} id="map-world-calendar-overlay" class="ovl-overlay">
+          <button
+            type="button"
+            class="ovl-scrim"
+            phx-click="close_world_calendar"
+            aria-label="Закрыть календарь"
+          >
+          </button>
+
+          <section
+            id="map-world-calendar"
+            class="ovl-sheet ovl-cal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="map-world-calendar-title"
+          >
+            <span class="ovl-sheet__grip" aria-hidden="true"></span>
+
+            <div class="ovl-sheet__head">
+              <div>
+                <p class="ovl-sheet__eyebrow">Мировой альманах</p>
+                <h2 id="map-world-calendar-title" class="ovl-sheet__title">
+                  {@world_time.month_name} · {@world_time.year}
+                </h2>
+              </div>
               <button
-                id="map-panel-close"
+                id="map-world-calendar-close"
                 type="button"
-                phx-click="toggle_map_panel"
-                aria-label="Скрыть подсказку"
-                class="inline-flex size-8 items-center justify-center rounded-full border border-stone-700 bg-stone-900 text-stone-300 transition hover:border-amber-300/60 hover:text-amber-100"
+                class="ovl-sheet__close"
+                phx-click="close_world_calendar"
+                aria-label="Закрыть календарь"
               >
                 <.icon name="hero-x-mark" class="size-4" />
               </button>
             </div>
-          </div>
 
-          <p class="mt-2 font-sans text-sm leading-5 text-stone-400">
-            Нажмите соседнее место, чтобы увидеть маршрут. Остаться и заняться делами можно через кнопку ниже.
-          </p>
+            <div class="ovl-cal__seasons" aria-label="Круг времён года">
+              <span
+                :for={season <- world_seasons()}
+                class={["ovl-cal__season", season.key == @world_time.season && "is-now"]}
+              >
+                <span class="ovl-cal__season-glyph" aria-hidden="true">{season.glyph}</span>
+                <span>{season.name}</span>
+                <small>{season.months}</small>
+              </span>
+            </div>
 
-          <div class="mt-4 flex items-center gap-3">
-            <.link
-              id="map-activity-link"
-              navigate={~p"/event"}
-              class="inline-flex min-h-11 flex-1 items-center justify-center gap-2 rounded-xl bg-amber-300 px-4 font-sans text-sm font-bold text-stone-950 transition hover:bg-amber-200"
-            >
-              <.icon name="hero-map-pin" class="size-4" /> Дела в {location_name(@current_location)}
-            </.link>
-            <span
-              :if={@nearby_characters != []}
-              id="map-nearby-count"
-              class="font-sans text-xs text-stone-400"
-            >
-              Рядом: {length(@nearby_characters)}
+            <div class="ovl-cal__month-ring" aria-label="Тринадцать месяцев года">
+              <span
+                :for={month <- 1..13}
+                class={["ovl-cal__month-mark", month == @world_time.month_number && "is-now"]}
+                aria-current={if(month == @world_time.month_number, do: "true", else: nil)}
+              >
+                {month}
+              </span>
+            </div>
+
+            <p class="ovl-cal__position">
+              {@world_time.month_number}-й месяц из 13 · {@world_time.day}-й день из 28 · день {@world_time.day_of_year} года
+            </p>
+
+            <div class="ovl-cal__grid" role="grid" aria-label={@world_time.month_name}>
+              <span
+                :for={day <- 1..28}
+                class={["ovl-cal__day", day == @world_time.day && "is-today"]}
+                role="gridcell"
+                aria-label={"#{day}-й день"}
+                aria-current={if(day == @world_time.day, do: "date", else: nil)}
+              >
+                <span class="ovl-cal__num">{day}</span>
+              </span>
+            </div>
+
+            <p class="ovl-cal__note">
+              <span class="ovl-cal__note-glyph" aria-hidden="true">✧</span>
+              Один день мира проходит примерно за четыре минуты. В месяце 28 дней, в году — 13 месяцев.
+            </p>
+          </section>
+        </div>
+
+        <aside
+          :if={is_nil(@active_journey) and not @map_location_selected? and not @calendar_open?}
+          id="map-character-panel"
+          class="map-journal absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 p-4"
+        >
+          <div class="flex items-start justify-between gap-4">
+            <div>
+              <p class="map-journal__eyebrow">
+                Вы сейчас
+              </p>
+              <h1 id="map-current-location" class="map-journal__title mt-1">
+                {location_name(@current_location)}
+              </h1>
+            </div>
+            <span class="map-journal__food shrink-0 px-2.5 py-1">
+              Еда: {@survival.food_units}
             </span>
           </div>
+
+          <p class="map-journal__copy mt-2">
+            Нажмите соседнее место, чтобы увидеть маршрут. Нажмите место под своим маркером, чтобы осмотреться.
+          </p>
+
+          <span
+            :if={@nearby_characters != []}
+            id="map-nearby-count"
+            class="map-journal__nearby mt-3 block"
+          >
+            Рядом: {length(@nearby_characters)}
+          </span>
 
           <.link
             :if={@notifications != []}
             id="map-notifications-history"
             navigate={~p"/notifications"}
-            class="mt-3 inline-flex items-center gap-1.5 font-sans text-xs text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+            class="map-journal__news mt-3 inline-flex items-center gap-1.5"
           >
             <.icon name="hero-bell" class="size-3.5" /> Новые вести: {length(@notifications)}
           </.link>
         </aside>
 
-        <button
-          :if={is_nil(@active_journey) and not @map_panel_open? and not @map_location_selected?}
-          id="map-panel-open"
-          type="button"
-          phx-click="toggle_map_panel"
-          class="absolute bottom-3 left-1/2 z-20 inline-flex min-h-11 -translate-x-1/2 items-center gap-2 rounded-full border border-amber-500/35 bg-stone-950/92 px-4 font-sans text-sm font-bold text-amber-100 shadow-xl backdrop-blur transition hover:border-amber-300/60 hover:bg-stone-900"
-        >
-          <.icon name="hero-information-circle" class="size-4" /> Что делать
-        </button>
-
         <.link
-          :if={@active_journey}
+          :if={not is_nil(@active_journey) and not @calendar_open?}
           id="active-journey-card"
           navigate={~p"/travel"}
-          class="absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 rounded-2xl border border-amber-500/45 bg-stone-950/92 px-4 py-3 text-sm text-stone-100 shadow-xl shadow-black/40 backdrop-blur"
+          class="map-journey-slip absolute bottom-3 left-1/2 z-20 w-[min(24rem,calc(100vw-1.5rem))] -translate-x-1/2 px-4 py-3"
         >
-          <p class="font-semibold text-amber-200">
-            {location_name(@active_journey.from_location)}
-            <span class="text-stone-500">→</span>
-            {location_name(@active_journey.to_location)}
+          <p class="map-journey-slip__route">
+            <span class="map-journey-slip__place">
+              <small>Откуда</small>
+              {location_name(@active_journey.from_location)}
+            </span>
+            <span class="map-journey-slip__arrow" aria-hidden="true">→</span>
+            <span class="map-journey-slip__place map-journey-slip__place--destination">
+              <small>Куда</small>
+              {location_name(@active_journey.to_location)}
+            </span>
           </p>
-          <p id="map-travel-state" class="mt-0.5 text-xs text-stone-400">
+          <p id="map-travel-state" class="map-journey-slip__note mt-0.5">
             Прибытие {format_datetime(@active_journey.arrival_at)} · запас пищи {@active_journey.food_units_consumed}
           </p>
         </.link>
@@ -354,7 +460,7 @@ defmodule MMGOWeb.MapLive do
 
     %{
       slug: location.slug,
-      name: location.name,
+      name: location_name(location),
       kind: location.kind,
       x: location.x,
       y: location.y,
@@ -467,10 +573,15 @@ defmodule MMGOWeb.MapLive do
   end
 
   defp location_name(nil), do: "неизвестное место"
-  defp location_name(location), do: location.name
+
+  defp location_name(location) do
+    Map.get(@legacy_location_names, location.slug, location.name)
+  end
 
   defp format_datetime(nil), do: "неизвестно"
   defp format_datetime(datetime), do: Calendar.strftime(datetime, "%d.%m · %H:%M UTC")
+
+  defp world_seasons, do: @world_seasons
 
   defp changeset_error(changeset) do
     changeset.errors

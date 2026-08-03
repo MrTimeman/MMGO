@@ -666,7 +666,7 @@ defmodule MMGO.PlayTest do
     assert "demo_travel_ration" in inventory
     assert "demo_lumen_dust" in inventory
 
-    assert [%{name: "Ember Spark"}] = Spells.list_spells_for_character(character.id)
+    assert [%{name: "Искра углей"}] = Spells.list_spells_for_character(character.id)
     assert %{status: :active} = Grimoires.active_grimoire_for_character(character.id)
   end
 
@@ -701,7 +701,7 @@ defmodule MMGO.PlayTest do
              :count
            ) >= 2
 
-    assert [%{name: "Ember Spark"}] = Spells.list_spells_for_character(reset.id)
+    assert [%{name: "Искра углей"}] = Spells.list_spells_for_character(reset.id)
   end
 
   test "start_new_local_session/0 funds characters through a real treasury transfer", %{

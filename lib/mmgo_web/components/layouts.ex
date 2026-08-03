@@ -30,61 +30,39 @@ defmodule MMGOWeb.Layouts do
     <div
       :if={@public}
       id="public-shell"
-      class="relative min-h-screen overflow-hidden bg-[#090807] text-stone-100"
+      class="public-shell"
     >
-      <div
-        aria-hidden="true"
-        class="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_18%_8%,rgba(217,169,54,0.16),transparent_28rem),radial-gradient(circle_at_88%_72%,rgba(124,43,34,0.14),transparent_32rem),linear-gradient(145deg,#0b0907_0%,#15100a_52%,#080706_100%)]"
-      >
-      </div>
-      <div
-        aria-hidden="true"
-        class="pointer-events-none absolute inset-0 opacity-[0.16] [background-image:linear-gradient(rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.035)_1px,transparent_1px)] [background-size:3rem_3rem] [mask-image:radial-gradient(circle_at_center,black,transparent_78%)]"
-      >
-      </div>
-
-      <header class="relative z-20 border-b border-white/10 bg-black/20 backdrop-blur-xl">
-        <div class="mx-auto flex min-h-18 max-w-7xl items-center justify-between gap-4 px-4 py-3 sm:px-6 lg:px-8">
+      <header class="public-header">
+        <div class="public-header__rail">
           <.link
             navigate={~p"/"}
             id="public-brand"
-            class="group flex min-w-0 items-center gap-3"
+            class="public-brand"
           >
-            <div class="relative flex size-11 shrink-0 items-center justify-center rounded-[1rem] border border-amber-300/45 bg-[conic-gradient(from_45deg,#2a1d0b,#9a6a18,#2a1d0b,#d5a72f,#2a1d0b)] p-px shadow-[0_0_2rem_rgba(217,169,54,0.12)] transition duration-300 group-hover:rotate-3 group-hover:scale-105">
-              <div class="flex size-full items-center justify-center rounded-[0.94rem] bg-[#120f0b] font-[family-name:var(--font-serif)] text-lg font-black text-amber-200">
-                M
-              </div>
-            </div>
-            <div class="min-w-0 leading-none">
-              <p class="truncate font-[family-name:var(--font-sans)] text-[0.62rem] font-bold uppercase tracking-[0.28em] text-amber-200/65 sm:text-[0.68rem]">
-                Ministry of MaGic Online
-              </p>
-              <p class="mt-1.5 font-[family-name:var(--font-serif)] text-lg font-bold tracking-[0.08em] text-stone-50">
-                MMGO
-              </p>
-            </div>
+            <span class="public-brand__seal">M</span>
+            <span class="public-brand__copy">
+              <small>Министерство Магии Онлайн</small>
+              <strong>MMGO</strong>
+            </span>
           </.link>
 
-          <div class="flex shrink-0 items-center gap-2">
-            <span class="hidden rounded-full border border-white/10 bg-white/5 px-3 py-1.5 font-[family-name:var(--font-sans)] text-[0.65rem] font-bold uppercase tracking-[0.16em] text-stone-400 sm:inline-flex">
-              Closed alpha
-            </span>
+          <div class="public-header__actions">
+            <span class="public-alpha-tag">закрытая альфа</span>
             <a
               id="public-bot-link"
               href="https://t.me/mmgo_bot?start=play"
               target="_blank"
               rel="noreferrer"
-              class="inline-flex min-h-10 items-center gap-2 rounded-full border border-amber-300/30 bg-amber-200 px-4 font-[family-name:var(--font-sans)] text-xs font-bold text-stone-950 shadow-[0_0.75rem_2.5rem_rgba(217,169,54,0.12)] transition duration-300 hover:-translate-y-0.5 hover:bg-amber-100 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-amber-200"
+              class="public-bot-button"
             >
-              <.icon name="hero-paper-airplane" class="size-4" />
-              <span class="hidden sm:inline">Открыть бота</span>
-              <span class="sm:hidden">Играть</span>
+              <.icon name="hero-paper-airplane" />
+              <span>Открыть бота</span>
             </a>
           </div>
         </div>
       </header>
 
-      <main id="public-content" class="relative z-10">
+      <main id="public-content" class="public-content">
         {render_slot(@inner_block)}
       </main>
 
@@ -109,7 +87,7 @@ defmodule MMGOWeb.Layouts do
 
     <div
       :if={not @public and is_nil(@current_scope)}
-      class="min-h-screen bg-[#090807] text-stone-100"
+      class="anonymous-shell"
     >
       <main>
         {render_slot(@inner_block)}
@@ -135,7 +113,7 @@ defmodule MMGOWeb.Layouts do
       data-active-source={@cue.active_source}
       data-loop={to_string(@cue.loop?)}
       data-label={@cue.label}
-      class="fixed bottom-4 right-4 z-40 max-w-[calc(100vw-2rem)]"
+      class="atmo-control"
       aria-label="Звуковая атмосфера мира"
     >
       <audio id="atmosphere-audio-player" preload="none" aria-hidden="true"></audio>
@@ -146,9 +124,9 @@ defmodule MMGOWeb.Layouts do
         disabled={not @cue.available?}
         aria-pressed="false"
         aria-describedby="atmosphere-audio-description"
-        class="inline-flex min-h-10 items-center gap-2 rounded-full border border-stone-600/80 bg-stone-950/90 px-3 py-2 text-xs font-medium text-stone-200 shadow-lg backdrop-blur transition enabled:hover:border-sky-300 enabled:hover:text-sky-100 disabled:cursor-not-allowed disabled:opacity-70"
+        class="atmo-control__button"
       >
-        <.icon name="hero-speaker-wave" class="size-4" />
+        <.icon name="hero-speaker-wave" class="atmo-control__icon" />
         <span data-atmosphere-status>
           <%= if @cue.available? do %>
             Звук мира: выкл.
@@ -197,7 +175,7 @@ defmodule MMGOWeb.Layouts do
     <div
       id={@id}
       aria-live="polite"
-      class="fixed left-3 right-3 top-3 z-50 flex flex-col gap-3 sm:left-auto sm:right-4 sm:top-4 sm:w-full sm:max-w-sm"
+      class="game-flash-stack"
     >
       <.flash kind={:info} flash={@flash} />
       <.flash kind={:error} flash={@flash} />
@@ -205,24 +183,24 @@ defmodule MMGOWeb.Layouts do
       <.flash
         id="client-error"
         kind={:error}
-        title={gettext("We can't find the internet")}
+        title="Связь с миром потеряна"
         phx-disconnected={show(".phx-client-error #client-error") |> JS.remove_attribute("hidden")}
         phx-connected={hide("#client-error") |> JS.set_attribute({"hidden", ""})}
         hidden
       >
-        {gettext("Attempting to reconnect")}
+        Пытаемся восстановить связь
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
 
       <.flash
         id="server-error"
         kind={:error}
-        title={gettext("Something went wrong!")}
+        title="Мир временно не отвечает"
         phx-disconnected={show(".phx-server-error #server-error") |> JS.remove_attribute("hidden")}
         phx-connected={hide("#server-error") |> JS.set_attribute({"hidden", ""})}
         hidden
       >
-        {gettext("Attempting to reconnect")}
+        Пытаемся восстановить связь
         <.icon name="hero-arrow-path" class="ml-1 size-3 motion-safe:animate-spin" />
       </.flash>
     </div>

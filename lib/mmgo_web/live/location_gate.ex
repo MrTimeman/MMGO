@@ -26,8 +26,8 @@ defmodule MMGOWeb.LocationGate do
   @type required_kind :: :tower | :city
 
   @flash_messages %{
-    tower: "Magic only works at the Tower. Travel there on the map.",
-    city: "You need to be in a city for that."
+    tower: "Магия действует только в Башне. Сначала доберитесь туда по карте.",
+    city: "Для этого нужно находиться в городе."
   }
 
   @doc """

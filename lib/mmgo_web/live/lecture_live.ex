@@ -65,33 +65,35 @@ defmodule MMGOWeb.LectureLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="academy-lecture-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
+      <main id="academy-lecture-screen" class="acd-assessment acd-assessment--lecture">
+        <div class="acd-assessment__desk">
+          <div class="acd-assessment__tools">
             <.link
               id="academy-lecture-back"
               navigate={~p"/academy"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+              class="acd-assessment__exit"
             >
-              ← В Академию
+              ← покинуть аудиторию
             </.link>
             <span
               id="academy-lecture-progress"
-              class="rounded border border-violet-300/35 bg-violet-950/25 px-3 py-2 text-sm text-violet-100"
+              class="acd-lecture-ticket"
             >
               Лекция {@state.lecture.number} из {@state.lectures_required}
             </span>
           </div>
 
-          <header class="rounded-2xl border border-violet-400/25 bg-gradient-to-br from-violet-950/40 via-stone-950 to-sky-950/25 p-7 shadow-2xl">
-            <p class="text-xs uppercase tracking-[0.25em] text-violet-200/75">
+          <header class="acd-lecture-book">
+            <span class="acd-lecture-book__spine" aria-hidden="true"></span>
+            <span class="acd-lecture-book__bookmark" aria-hidden="true"></span>
+            <p class="acd-assessment__kicker">
               термин {@state.term.term_number} · аудитория Академии
             </p>
-            <h1 class="mt-2 font-serif text-3xl text-violet-50">{@state.lecture.title}</h1>
-            <p id="academy-lecture-body" class="mt-4 text-sm leading-7 text-stone-300">
+            <h1>{@state.lecture.title}</h1>
+            <p id="academy-lecture-body" class="acd-lecture-book__body">
               {@state.lecture.body}
             </p>
-            <p class="mt-4 text-sm text-amber-100">
+            <p class="acd-lecture-book__margin">
               После этой лекции потолок финальной оценки: {@state.current_final_ceiling}.
             </p>
           </header>
@@ -99,7 +101,7 @@ defmodule MMGOWeb.LectureLive do
           <div
             :if={@error}
             id="academy-lecture-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+            class="acd-red-ink"
           >
             {@error}
           </div>
@@ -107,23 +109,24 @@ defmodule MMGOWeb.LectureLive do
           <%= if @submitted do %>
             <section
               id="academy-lecture-result"
-              class="rounded-2xl border border-emerald-400/25 bg-emerald-950/15 p-6 shadow-lg"
+              class="acd-result-sheet"
             >
-              <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/75">
+              <span class="acd-result-sheet__stamp" aria-hidden="true">✓</span>
+              <p class="acd-result-sheet__kicker">
                 лекция внесена в ведомость
               </p>
-              <h2 class="mt-2 font-serif text-3xl text-emerald-100">
+              <h2>
                 {@result.correct_answers} / {@result.question_count}
               </h2>
-              <p class="mt-3 text-sm leading-6 text-stone-300">
+              <p class="acd-result-sheet__copy">
                 Академия начислила знания и подняла потолок финала до {@result.final_ceiling}. Следующая лекция или клубное окно уже отражены в вашей ведомости.
               </p>
               <.link
                 id="academy-lecture-return"
                 navigate={~p"/academy"}
-                class="mt-5 inline-flex rounded-lg bg-emerald-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-emerald-200"
+                class="acd-result-sheet__return"
               >
-                Вернуться к термину
+                Закрыть конспект
               </.link>
             </section>
           <% else %>
@@ -131,9 +134,9 @@ defmodule MMGOWeb.LectureLive do
               for={@lecture_form}
               id="academy-lecture-form"
               phx-submit="submit"
-              class="space-y-4 rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+              class="acd-lecture-folio"
             >
-              <p class="text-sm text-stone-400">
+              <p class="acd-lecture-folio__instruction">
                 Короткая проверка фиксирует, что вы прочитали материал. Оценка не скрывает ответов и не принимает данные о персонаже из браузера.
               </p>
               <.input
@@ -142,13 +145,14 @@ defmodule MMGOWeb.LectureLive do
                 type="select"
                 label={question.label}
                 options={question.options}
+                class="acd-paper-control"
               />
               <button
                 id="academy-lecture-submit"
                 type="submit"
-                class="w-full rounded-lg bg-violet-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-violet-200"
+                class="acd-quill-button acd-quill-button--lecture"
               >
-                Внести лекцию в ведомость
+                Подписать конспект и внести в ведомость
               </button>
             </.form>
           <% end %>

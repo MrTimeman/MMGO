@@ -24,6 +24,7 @@ defmodule MMGOWeb.CombatLive do
          socket
          |> assign(:page_title, "Бой")
          |> assign(:action_error, nil)
+         |> assign(:flee_confirm?, false)
          |> assign_combat_state(state)
          |> schedule_refresh()}
 
@@ -59,7 +60,25 @@ defmodule MMGOWeb.CombatLive do
   end
 
   @impl true
+  def handle_event("change_action", %{"combat_action" => attrs}, socket) when is_map(attrs) do
+    {:noreply,
+     socket
+     |> assign(:action_form, action_form(socket.assigns.combat_state, attrs))
+     |> assign(:action_error, nil)}
+  end
+
+  @impl true
   def handle_event("flee", _params, socket) do
+    {:noreply, assign(socket, :flee_confirm?, true)}
+  end
+
+  @impl true
+  def handle_event("cancel_flee", _params, socket) do
+    {:noreply, assign(socket, :flee_confirm?, false)}
+  end
+
+  @impl true
+  def handle_event("confirm_flee", _params, socket) do
     state = socket.assigns.combat_state
 
     case Play.flee_combat(socket.assigns.current_scope.character, state.combat.id) do
@@ -67,6 +86,7 @@ defmodule MMGOWeb.CombatLive do
         {:noreply,
          socket
          |> assign_combat_state(updated_state)
+         |> assign(:flee_confirm?, false)
          |> assign(:action_error, nil)}
 
       {:error, reason} ->
@@ -95,6 +115,14 @@ defmodule MMGOWeb.CombatLive do
 
   @impl true
   def render(assigns) do
+    {enemy_side, ally_side} = arena_sides(assigns.combat_state)
+
+    assigns =
+      assigns
+      |> assign(:enemy_side, enemy_side)
+      |> assign(:ally_side, ally_side)
+      |> assign(:incantation_word_count, incantation_word_count(assigns.action_form))
+
     ~H"""
     <Layouts.app
       flash={@flash}
@@ -103,152 +131,117 @@ defmodule MMGOWeb.CombatLive do
     >
       <main
         id="combat-screen"
-        class="min-h-full bg-stone-950 px-4 py-6 text-stone-100 sm:px-6 sm:py-9"
+        class={[
+          "cbt-arena",
+          "cbt-arena--#{@combat_state.combat.kind}",
+          @combat_state.combat.status == :finished && "cbt-arena--over"
+        ]}
       >
-        <div class="mx-auto w-full max-w-6xl space-y-6">
-          <header class="overflow-hidden rounded-[2rem] border border-amber-400/20 bg-gradient-to-br from-stone-900 via-stone-950 to-amber-950/30 px-6 py-7 shadow-2xl sm:px-8">
-            <div class="flex flex-col gap-5 sm:flex-row sm:items-end sm:justify-between">
-              <div class="max-w-2xl">
-                <p class="text-xs font-semibold uppercase tracking-[0.28em] text-amber-300/80">
-                  {combat_kind_label(@combat_state.combat.kind)}
-                </p>
-                <h1 class="mt-2 font-serif text-3xl font-semibold tracking-tight text-amber-100 sm:text-4xl">
-                  Круг решения
-                </h1>
-                <p class="mt-3 text-sm leading-6 text-stone-300">
-                  Ход фиксируется на стороне мира. После печати действие нельзя подменить
-                  браузером, а исход появится после единого разрешения всех сторон.
-                </p>
-              </div>
+        <div class="cbt-vignette"></div>
 
-              <div class="flex flex-wrap items-center gap-3">
-                <span
-                  id="combat-status"
-                  class="rounded-full border border-amber-300/25 bg-amber-300/10 px-3 py-1.5 text-xs font-semibold uppercase tracking-[0.16em] text-amber-200"
-                >
-                  {combat_status_label(@combat_state.combat.status)}
-                </span>
-                <.link
-                  id="combat-back-to-map"
-                  navigate={~p"/map"}
-                  class="inline-flex min-h-11 items-center justify-center rounded-xl border border-stone-600 px-4 py-2 text-sm font-semibold text-stone-100 transition hover:border-amber-200 hover:bg-amber-100/10"
-                >
-                  <.icon name="hero-map" class="mr-2 size-4" /> Карта мира
-                </.link>
-              </div>
-            </div>
-          </header>
+        <header class="cbt-top">
+          <div class="cbt-topbar">
+            <.link id="combat-back-to-map" navigate={~p"/map"} class="cbt-flee-btn">
+              <span aria-hidden="true">‹</span> Карта мира
+            </.link>
+            <span id="combat-status" class="cbt-status">
+              {combat_kind_label(@combat_state.combat.kind)} · {combat_status_label(
+                @combat_state.combat.status
+              )}
+            </span>
+          </div>
+
+          <.combat_side_panel
+            :if={@enemy_side}
+            side={@enemy_side}
+            state={@combat_state}
+            align="enemy"
+          />
 
           <section
             :if={@combat_state.turn}
             id={"combat-turn-#{@combat_state.turn.id}"}
-            class="rounded-[1.75rem] border border-stone-700/80 bg-stone-900/80 p-5 shadow-xl sm:p-6"
+            class="cbt-turnrow"
           >
-            <div class="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">
-                  Текущий ход
-                </p>
-                <h2 class="mt-1 font-serif text-2xl text-stone-50">
-                  Ход {@combat_state.turn.number}
-                </h2>
-              </div>
-              <div class="rounded-2xl border border-amber-500/20 bg-stone-950/70 px-4 py-3 text-right">
-                <p class="text-xs font-semibold uppercase tracking-[0.16em] text-stone-500">
-                  Предел хода
-                </p>
-                <p id="combat-deadline" class="mt-1 font-mono text-sm text-amber-200">
-                  {deadline_label(@combat_state.deadline_at, @combat_state.resolving?)}
-                </p>
-              </div>
+            <span class="cbt-turn-line"></span>
+            <div class="cbt-turnring">
+              <svg viewBox="0 0 44 44" class="cbt-turnring__svg" aria-hidden="true">
+                <circle class="cbt-turnring__track" cx="22" cy="22" r="19" />
+                <circle
+                  class={[
+                    "cbt-turnring__sweep",
+                    (@combat_state.resolving? || @combat_state.awaiting?) && "is-held"
+                  ]}
+                  cx="22"
+                  cy="22"
+                  r="19"
+                />
+              </svg>
+              <span class="cbt-turnring__label">
+                <em>ход</em>{@combat_state.turn.number}
+              </span>
             </div>
-
-            <div class="mt-5 grid gap-4 md:grid-cols-2">
-              <article
-                :for={side <- @combat_state.sides}
-                id={"combat-side-#{side.id}"}
-                class="rounded-2xl border border-stone-700 bg-stone-950/55 p-4"
-              >
-                <div class="flex items-center justify-between gap-3">
-                  <h3 class="font-serif text-xl text-stone-100">{side.label}</h3>
-                  <span class="font-mono text-sm text-amber-200">
-                    {side.shared_hp} / {side.max_shared_hp}
-                  </span>
-                </div>
-                <div class="mt-3 h-2 overflow-hidden rounded-full bg-stone-800">
-                  <div
-                    class="h-full rounded-full bg-gradient-to-r from-amber-600 to-amber-300 transition-[width] duration-500"
-                    style={"width:#{hp_percent(side.shared_hp, side.max_shared_hp)}%"}
-                  >
-                  </div>
-                </div>
-                <ul class="mt-4 space-y-2 text-sm text-stone-300">
-                  <li
-                    :for={participant <- participants_on_side(@combat_state, side.id)}
-                    id={"combat-target-#{participant.id}"}
-                    class="flex items-center justify-between gap-3 rounded-xl bg-stone-900/70 px-3 py-2"
-                  >
-                    <span>{participant.display_name}</span>
-                    <span class={participant_status_class(participant.status)}>
-                      {participant_status_label(participant.status)}
-                    </span>
-                  </li>
-                </ul>
-              </article>
+            <div class="cbt-deadline">
+              <em>до печати</em>
+              <span id="combat-deadline">
+                {deadline_label(@combat_state.deadline_at, @combat_state.resolving?)}
+              </span>
             </div>
+            <span class="cbt-turn-line"></span>
           </section>
 
-          <section
+          <.combat_side_panel
+            :if={@ally_side}
+            side={@ally_side}
+            state={@combat_state}
+            align="ally"
+          />
+        </header>
+
+        <section class="cbt-log" role="log" aria-live="polite">
+          <article class="cbt-turn cbt-turn--prologue">
+            <p class="cbt-turn__prologue">
+              {combat_opening(@combat_state.combat.kind)}
+            </p>
+          </article>
+
+          <article
             :if={@combat_state.turn && @combat_state.turn.narration}
             id={"combat-narration-#{@combat_state.turn.id}"}
-            class="rounded-[1.75rem] border border-indigo-300/20 bg-indigo-950/30 px-5 py-5 shadow-lg"
+            class="cbt-turn cbt-turn--focus"
           >
-            <p class="text-xs font-semibold uppercase tracking-[0.2em] text-indigo-200/75">
-              Последнее разрешение
-            </p>
-            <p class="mt-2 font-serif text-lg leading-7 text-indigo-50">
-              {@combat_state.turn.narration}
-            </p>
-          </section>
+            <div class="cbt-turn__sep">
+              <span class="cbt-turn__label">Последнее разрешение</span>
+            </div>
+            <p class="cbt-turn__para">{@combat_state.turn.narration}</p>
+          </article>
 
-          <section
-            :if={@combat_state.spectator?}
-            id="combat-spectator"
-            class="rounded-[1.75rem] border border-violet-300/20 bg-violet-950/25 p-6 shadow-lg"
-          >
-            <div class="flex items-start gap-4">
-              <span class="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-violet-200/25 bg-violet-200/10 text-violet-100">
-                <.icon name="hero-eye" class="size-5" />
-              </span>
-              <div>
-                <h2 class="font-serif text-2xl text-violet-50">Вы наблюдаете за боем</h2>
-                <p class="mt-2 text-sm leading-6 text-violet-100/75">
-                  Этот круг проходит у вас на глазах. Хроника и итог доступны, но выбирать
-                  действия могут только его участники.
-                </p>
-              </div>
+          <section :if={@combat_state.spectator?} id="combat-spectator" class="cbt-observer">
+            <span class="cbt-observer__glyph"><.icon name="hero-eye" class="size-5" /></span>
+            <div>
+              <h2>Вы наблюдаете за кругом</h2>
+              <p>Хроника открыта, но печать действия принадлежит только участникам.</p>
             </div>
           </section>
 
           <section
             :if={@combat_state.combat.status == :finished}
             id="combat-outcome"
-            class="rounded-[1.75rem] border border-amber-300/30 bg-amber-950/25 p-6 text-center shadow-xl"
+            class={[
+              "cbt-outcome",
+              outcome_class(@combat_state) == :defeat && "cbt-outcome--defeat"
+            ]}
           >
-            <p class="text-xs font-semibold uppercase tracking-[0.22em] text-amber-200/80">
-              Бой завершён
-            </p>
-            <h2 class="mt-2 font-serif text-3xl text-amber-100">
-              Победа стороны {winner_label(@combat_state)}
-            </h2>
-            <p class="mx-auto mt-3 max-w-2xl text-sm leading-6 text-stone-300">
-              Итог сохранён. Связанные последствия боя будут применены его доменным контекстом.
-            </p>
+            <span class="cbt-outcome__seal">
+              {if outcome_class(@combat_state) == :defeat, do: "☒", else: "✦"}
+            </span>
+            <h2 class="cbt-outcome__title">Победа стороны {winner_label(@combat_state)}</h2>
+            <p class="cbt-outcome__sub">Исход вписан в хронику мира.</p>
             <.link
               :if={dungeon_combat?(@combat_state.combat)}
               id="combat-outcome-dungeon"
               navigate={~p"/dungeon"}
-              class="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+              class="cbt-outcome__btn"
             >
               Вернуться в экспедицию
             </.link>
@@ -256,97 +249,105 @@ defmodule MMGOWeb.CombatLive do
               :if={not dungeon_combat?(@combat_state.combat)}
               id="combat-outcome-map"
               navigate={~p"/map"}
-              class="mt-5 inline-flex min-h-11 items-center justify-center rounded-xl bg-amber-300 px-5 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+              class="cbt-outcome__btn"
             >
-              Вернуться к карте
+              Покинуть круг
             </.link>
           </section>
 
           <section
             :if={@combat_state.resolving? and @combat_state.combat.status != :finished}
             id="combat-resolving"
-            class="rounded-[1.75rem] border border-sky-300/20 bg-sky-950/25 p-6 shadow-lg"
+            class="cbt-seal cbt-seal--state"
           >
-            <div class="flex items-start gap-4">
-              <span class="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-sky-200/25 bg-sky-200/10 text-sky-100">
-                <.icon name="hero-arrow-path" class="size-5 animate-spin" />
-              </span>
-              <div>
-                <h2 class="font-serif text-2xl text-sky-50">Печати собраны</h2>
-                <p class="mt-2 text-sm leading-6 text-sky-100/75">
-                  Сервер разрешает ход по сохранённым снимкам действий. Экран обновится, когда
-                  результат будет записан.
-                </p>
-              </div>
+            <span class="cbt-seal__wax" aria-hidden="true">
+              <span class="cbt-seal__rune">ᛟ</span>
+            </span>
+            <div class="cbt-seal__copy">
+              <h2 class="cbt-seal__title">Печати собраны</h2>
+              <p class="cbt-seal__sub">Круг разрешает сохранённые действия…</p>
             </div>
           </section>
 
           <section
             :if={@combat_state.awaiting? and not @combat_state.resolving?}
             id="combat-awaiting"
-            class="rounded-[1.75rem] border border-emerald-300/20 bg-emerald-950/25 p-6 shadow-lg"
+            class="cbt-seal cbt-seal--state"
           >
-            <div class="flex items-start gap-4">
-              <span class="mt-0.5 inline-flex size-10 shrink-0 items-center justify-center rounded-full border border-emerald-200/25 bg-emerald-200/10 text-emerald-100">
-                <.icon name="hero-check" class="size-5" />
-              </span>
-              <div>
-                <h2 class="font-serif text-2xl text-emerald-50">Ваше действие запечатано</h2>
-                <p class="mt-2 text-sm leading-6 text-emerald-100/75">
-                  Ожидаем остальные стороны или окончание отсчёта. Для отсутствующих участников
-                  система запишет ожидание, затем разрешит этот же ход.
-                </p>
-              </div>
+            <span class="cbt-seal__wax" aria-hidden="true">
+              <span class="cbt-seal__rune">ᛟ</span>
+            </span>
+            <div class="cbt-seal__copy">
+              <h2 class="cbt-seal__title">Ваше действие запечатано</h2>
+              <p class="cbt-seal__sub">Ожидаем остальные стороны или окончание отсчёта.</p>
             </div>
           </section>
 
           <section
             :if={@combat_state.action_open? and is_nil(@combat_state.own_action)}
-            class="rounded-[1.75rem] border border-amber-300/25 bg-[#ece0bd] p-5 text-stone-950 shadow-xl sm:p-7"
+            class="cbt-action-ledger"
           >
-            <div class="mb-6 border-b border-amber-950/15 pb-5">
-              <p class="text-xs font-semibold uppercase tracking-[0.2em] text-amber-900/70">
-                Ваше решение
-              </p>
-              <h2 class="mt-2 font-serif text-2xl font-semibold">Выберите и запечатайте действие</h2>
-              <p class="mt-2 max-w-3xl text-sm leading-6 text-stone-700">
-                Заклинание должно быть в активном гримуаре, предмет — в вашем инвентаре. Цели и
-                цена сверяются ещё раз в момент печати.
-              </p>
-              <p
-                :if={channeling?(@combat_state.participant)}
-                id="combat-channeling-hint"
-                class="mt-3 rounded-xl border border-violet-900/20 bg-violet-950/8 px-4 py-3 text-sm leading-6 text-violet-950"
-              >
-                Вы поддерживаете эффект. Выберите «Прервать канал», чтобы закончить его
-                добровольно; полученный урон прервёт канал автоматически.
-              </p>
+            <div class="cbt-action-ledger__head">
+              <span class="cbt-action-ledger__rune">❧</span>
+              <div>
+                <p>Ваше решение</p>
+                <h2>Начертите действие и наложите печать</h2>
+              </div>
             </div>
+
+            <p
+              :if={channeling?(@combat_state.participant)}
+              id="combat-channeling-hint"
+              class="cbt-env"
+            >
+              Вы поддерживаете эффект. «Прервать канал» закончит его добровольно; полученный
+              урон оборвёт канал автоматически.
+            </p>
 
             <.form
               for={@action_form}
               id="combat-action-form"
+              phx-change="change_action"
               phx-submit="submit_action"
-              class="space-y-1"
+              class="cbt-action-form"
             >
-              <.input
-                field={@action_form[:action_type]}
-                id="combat-action-kind"
-                type="select"
-                label="Тип действия"
-                options={action_type_options(@combat_state.participant)}
-                required
-              />
+              <div
+                id="combat-incantation-slots"
+                class="cbt-slots"
+                aria-label="Строение формулы"
+              >
+                <span
+                  :for={{{mark, title}, index} <- Enum.with_index(incantation_slots())}
+                  class={["cbt-slot", index < @incantation_word_count && "cbt-slot--lit"]}
+                  title={title}
+                >
+                  {mark}
+                </span>
+                <span class="cbt-slots__count">{@incantation_word_count}/6</span>
+              </div>
 
-              <div class="grid gap-x-5 md:grid-cols-2">
-                <div>
+              <fieldset class="cbt-action-case">
+                <legend>I · Намерение</legend>
+                <.input
+                  field={@action_form[:action_type]}
+                  id="combat-action-kind"
+                  type="select"
+                  label="Тип действия"
+                  options={action_type_options(@combat_state.participant)}
+                  required
+                />
+              </fieldset>
+
+              <div class="cbt-action-grid">
+                <fieldset class="cbt-action-case">
+                  <legend>II · Гримуар</legend>
                   <.input
                     field={@action_form[:spell_id]}
                     id="combat-cast-spell"
                     type="select"
-                    label="Заклинание"
+                    label="Основа"
                     options={spell_options(@combat_state.prepared_spells)}
-                    prompt="Выберите запись гримуара"
+                    prompt="Выберите запись"
                   />
                   <.input
                     field={@action_form[:incantation]}
@@ -355,8 +356,10 @@ defmodule MMGOWeb.CombatLive do
                     label="Формула"
                     autocomplete="off"
                   />
-                </div>
-                <div>
+                </fieldset>
+
+                <fieldset class="cbt-action-case">
+                  <legend>III · Инструмент</legend>
                   <.input
                     field={@action_form[:inventory_item_id]}
                     id="combat-tool-item"
@@ -369,35 +372,34 @@ defmodule MMGOWeb.CombatLive do
                     field={@action_form[:tool_action]}
                     id="combat-tool-action"
                     type="select"
-                    label="Приём предмета"
+                    label="Приём"
                     options={item_action_options(@combat_state.items)}
                     prompt="Выберите приём"
                   />
+                </fieldset>
+              </div>
+
+              <fieldset class="cbt-action-case">
+                <legend>IV · Цель</legend>
+                <div class="cbt-action-grid">
+                  <.input
+                    field={@action_form[:target_side]}
+                    id="combat-target-side"
+                    type="select"
+                    label="Сторона"
+                    options={target_side_options(@combat_state)}
+                  />
+                  <.input
+                    field={@action_form[:target_participant_id]}
+                    id="combat-target-selector"
+                    type="select"
+                    label="Участник"
+                    options={target_options(@combat_state)}
+                  />
                 </div>
-              </div>
+              </fieldset>
 
-              <div class="grid gap-x-5 md:grid-cols-2">
-                <.input
-                  field={@action_form[:target_side]}
-                  id="combat-target-side"
-                  type="select"
-                  label="Сторона цели"
-                  options={target_side_options(@combat_state)}
-                />
-                <.input
-                  field={@action_form[:target_participant_id]}
-                  id="combat-target-selector"
-                  type="select"
-                  label="Участник цели"
-                  options={target_options(@combat_state)}
-                />
-              </div>
-
-              <p
-                :if={@action_error}
-                id="combat-action-error"
-                class="rounded-xl border border-rose-500/30 bg-rose-950/10 px-4 py-3 text-sm leading-6 text-rose-800"
-              >
+              <p :if={@action_error} id="combat-action-error" class="cbt-action-error">
                 {@action_error}
               </p>
 
@@ -405,9 +407,10 @@ defmodule MMGOWeb.CombatLive do
                 id="combat-seal"
                 type="submit"
                 phx-disable-with="Печать накладывается…"
-                class="mt-4 inline-flex min-h-12 w-full items-center justify-center rounded-xl bg-amber-800 px-5 py-3 text-sm font-semibold text-amber-50 shadow-sm transition hover:-translate-y-0.5 hover:bg-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-800 focus:ring-offset-2 focus:ring-offset-[#ece0bd]"
+                class="cbt-action-submit"
               >
-                <.icon name="hero-lock-closed" class="mr-2 size-5" /> Запечатать действие
+                <span class="cbt-action-submit__wax">ᛟ</span>
+                <span>Запечатать действие</span>
               </button>
 
               <button
@@ -415,50 +418,110 @@ defmodule MMGOWeb.CombatLive do
                 id="combat-flee"
                 type="button"
                 phx-click="flee"
-                class="mt-3 inline-flex min-h-11 w-full items-center justify-center rounded-xl border border-rose-900/35 px-5 py-3 text-sm font-semibold text-rose-900 transition hover:border-rose-900 hover:bg-rose-950/10"
+                class="cbt-action-flee"
               >
-                <.icon name="hero-arrow-uturn-left" class="mr-2 size-5" />
-                Отступить и отдать этот круг
+                <.icon name="hero-arrow-uturn-left" class="size-4" /> Отступить и отдать этот круг
               </button>
             </.form>
           </section>
 
           <section
-            id="combat-events"
-            class="rounded-[1.75rem] border border-stone-700/80 bg-stone-900/80 p-5 shadow-lg sm:p-6"
+            :if={@flee_confirm?}
+            id="combat-flee-confirmation"
+            class="cbt-flee-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="combat-flee-title"
           >
-            <div class="flex items-end justify-between gap-4">
-              <div>
-                <p class="text-xs font-semibold uppercase tracking-[0.2em] text-stone-500">Хроника</p>
-                <h2 class="mt-1 font-serif text-2xl text-stone-100">Последние события</h2>
-              </div>
-              <span class="text-sm text-stone-500">
+            <h2 id="combat-flee-title" class="cbt-flee-modal__title">Отдать круг противнику?</h2>
+            <p class="cbt-flee-modal__body">
+              Отступление немедленно запечатает поражение вашей стороны. Отменить его после
+              подтверждения нельзя.
+            </p>
+            <div class="cbt-flee-modal__row">
+              <button type="button" phx-click="cancel_flee" class="cbt-flee-modal__stay">
+                Остаться в бою
+              </button>
+              <button
+                id="combat-flee-confirm"
+                type="button"
+                phx-click="confirm_flee"
+                class="cbt-flee-modal__go"
+              >
+                Подтвердить отступление
+              </button>
+            </div>
+          </section>
+
+          <section id="combat-events" class="cbt-chronicle">
+            <div class="cbt-turn__sep">
+              <span class="cbt-turn__label">Хроника</span>
+              <span class="cbt-turn__spoken">
                 {@combat_state.submitted_action_count} печатей в ходе
               </span>
             </div>
-
             <p
               :if={@combat_state.events == []}
               id="combat-events-empty"
-              class="mt-4 text-sm text-stone-500"
+              class="cbt-chronicle__empty"
             >
-              Хроника появится после первого разрешённого хода.
+              Пергамент ещё чист. Первая запись появится после разрешённого хода.
             </p>
-            <ol :if={@combat_state.events != []} class="mt-4 space-y-2">
+            <ol :if={@combat_state.events != []} class="cbt-chronicle__list">
               <li
                 :for={event <- @combat_state.events}
                 id={"combat-event-#{event.id}"}
-                class="flex flex-wrap items-center gap-x-3 gap-y-1 rounded-xl bg-stone-950/70 px-4 py-3 text-sm"
+                class="cbt-chronicle__entry"
               >
-                <span class="font-mono text-amber-300">Ход {event.turn_number}</span>
-                <span class="text-stone-600">·</span>
-                <span class="text-stone-300">{event_label(event.event_type)}</span>
+                <span>Ход {event.turn_number}</span>
+                <strong>{event_label(event.event_type)}</strong>
               </li>
             </ol>
           </section>
-        </div>
+        </section>
       </main>
     </Layouts.app>
+    """
+  end
+
+  attr :side, :map, required: true
+  attr :state, :map, required: true
+  attr :align, :string, required: true
+
+  defp combat_side_panel(assigns) do
+    ~H"""
+    <section id={"combat-side-#{@side.id}"} class={["cbt-side", "cbt-side--#{@align}"]}>
+      <div class="cbt-side__head">
+        <span class="cbt-side__name">{side_display_label(@side.label)}</span>
+        <span class="cbt-side__hpnum">{@side.shared_hp} / {@side.max_shared_hp}</span>
+      </div>
+      <div class="cbt-hp">
+        <div
+          class={[
+            "cbt-hp__fill",
+            combat_hp_class(@side.shared_hp, @side.max_shared_hp)
+          ]}
+          style={"width: #{hp_percent(@side.shared_hp, @side.max_shared_hp)}%"}
+        >
+        </div>
+      </div>
+      <div class="cbt-chips">
+        <div
+          :for={participant <- participants_on_side(@state, @side.id)}
+          id={"combat-target-#{participant.id}"}
+          class="cbt-chip"
+        >
+          <span class="cbt-chip__token">{participant_initial(participant.display_name)}</span>
+          <span class="cbt-chip__name">{participant.display_name}</span>
+          <span class={[
+            "cbt-participant-state",
+            "cbt-participant-state--#{participant.status}"
+          ]}>
+            {participant_status_label(participant.status)}
+          </span>
+        </div>
+      </div>
+    </section>
     """
   end
 
@@ -581,7 +644,7 @@ defmodule MMGOWeb.CombatLive do
     |> Enum.find(&(&1.id == side_id))
     |> case do
       nil -> side_id
-      side -> side.label
+      side -> side_display_label(side.label)
     end
   end
 
@@ -596,6 +659,61 @@ defmodule MMGOWeb.CombatLive do
     |> round()
   end
 
+  defp combat_hp_class(hp, max_hp) when max_hp > 0 do
+    cond do
+      hp / max_hp <= 0.2 -> "cbt-hp__fill--critical"
+      hp / max_hp <= 0.45 -> "cbt-hp__fill--low"
+      true -> nil
+    end
+  end
+
+  defp combat_hp_class(_hp, _max_hp), do: nil
+
+  defp arena_sides(%{spectator?: true, sides: sides}) do
+    {List.first(sides), Enum.at(sides, 1)}
+  end
+
+  defp arena_sides(%{participant: participant, sides: sides}) do
+    ally_side = participant && Enum.find(sides, &(&1.id == participant.side))
+
+    enemy_side =
+      Enum.find(sides, fn side -> is_nil(ally_side) or side.id != ally_side.id end)
+
+    {enemy_side || List.first(sides), ally_side || Enum.at(sides, 1)}
+  end
+
+  defp participant_initial(name) do
+    name
+    |> to_string()
+    |> String.trim()
+    |> String.first()
+    |> case do
+      nil -> "?"
+      initial -> initial
+    end
+  end
+
+  defp combat_opening(:duel),
+    do:
+      "Круг замкнут. Противники читают друг друга в свете печатей; каждое решение войдёт в мир одновременно."
+
+  defp combat_opening(:dungeon_encounter),
+    do:
+      "Тьма сомкнулась вокруг отряда. Здесь одна чаша здоровья на всех, а отступление может стоить всей добычи."
+
+  defp combat_opening(:overworld_encounter),
+    do:
+      "Дорога стала полем боя. Железо, припасы и выдержка решат то, что магия вдали от Башни решить не может."
+
+  defp combat_opening(_kind),
+    do: "Круг решения открыт. Стороны накладывают печати, и мир ждёт их общего исхода."
+
+  defp outcome_class(%{spectator?: true}), do: :victory
+
+  defp outcome_class(%{participant: participant, combat: combat}) do
+    if participant && participant.side == combat.winner_side, do: :victory, else: :defeat
+  end
+
   defp deadline_label(_deadline_at, true), do: "ход разрешается"
   defp deadline_label(nil, _resolving?), do: "время уточняется"
 
@@ -605,7 +723,7 @@ defmodule MMGOWeb.CombatLive do
   defp combat_kind_label(:duel), do: "Дуэль"
   defp combat_kind_label(:dungeon_encounter), do: "Схватка в подземелье"
   defp combat_kind_label(:overworld_encounter), do: "Столкновение в пути"
-  defp combat_kind_label(kind), do: kind |> to_string() |> String.capitalize()
+  defp combat_kind_label(_kind), do: "Бой"
 
   defp dungeon_combat?(%{kind: :dungeon_encounter}), do: true
   defp dungeon_combat?(_combat), do: false
@@ -614,22 +732,17 @@ defmodule MMGOWeb.CombatLive do
   defp combat_status_label(:locked), do: "печати собраны"
   defp combat_status_label(:resolving), do: "разрешение"
   defp combat_status_label(:finished), do: "завершён"
-  defp combat_status_label(status), do: status |> to_string() |> String.capitalize()
+  defp combat_status_label(_status), do: "состояние уточняется"
 
   defp participant_status_label(:ready), do: "готов"
   defp participant_status_label(:defeated), do: "повержен"
   defp participant_status_label(:fled), do: "отступил"
-  defp participant_status_label(status), do: status |> to_string() |> String.capitalize()
-
-  defp participant_status_class(:ready), do: "text-xs font-semibold text-emerald-300"
-  defp participant_status_class(:defeated), do: "text-xs font-semibold text-rose-300"
-  defp participant_status_class(:fled), do: "text-xs font-semibold text-stone-500"
-  defp participant_status_class(_status), do: "text-xs font-semibold text-stone-400"
+  defp participant_status_label(_status), do: "состояние неизвестно"
 
   defp winner_label(state) do
     case Enum.find(state.sides, &(&1.id == state.combat.winner_side)) do
       nil -> "не определена"
-      side -> side.label
+      side -> side_display_label(side.label)
     end
   end
 
@@ -639,7 +752,7 @@ defmodule MMGOWeb.CombatLive do
   defp item_action_label(:throw), do: "бросок"
   defp item_action_label(:deploy), do: "развернуть"
   defp item_action_label(:repair), do: "починка"
-  defp item_action_label(kind), do: kind |> to_string() |> String.capitalize()
+  defp item_action_label(_kind), do: "особый приём"
 
   defp event_label("spell_cast"), do: "заклинание сработало"
   defp event_label("tool_action"), do: "предмет применён"
@@ -649,7 +762,41 @@ defmodule MMGOWeb.CombatLive do
   defp event_label("channeling_stopped"), do: "канал добровольно прерван"
   defp event_label("wait"), do: "сторона выжидает"
   defp event_label("fled"), do: "участник отступил"
-  defp event_label(event_type), do: event_type |> to_string() |> String.replace("_", " ")
+  defp event_label(_event_type), do: "неизвестное событие"
+
+  defp incantation_slots do
+    [
+      {"A", "Actio · действие"},
+      {"F", "Forma · форма"},
+      {"V", "Vis · сила"},
+      {"T", "Tempus · время"},
+      {"M", "Mutatio · изменение"},
+      {"P", "Pretium · цена"}
+    ]
+  end
+
+  defp incantation_word_count(form) do
+    form[:incantation].value
+    |> to_string()
+    |> String.split(~r/\s+/, trim: true)
+    |> length()
+    |> min(6)
+  end
+
+  defp side_display_label(label) when is_binary(label) do
+    case String.downcase(String.trim(label)) do
+      "party" -> "Отряд"
+      "allies" -> "Союзники"
+      "encounter" -> "Противники"
+      "enemies" -> "Противники"
+      "challengers" -> "Вызывающие"
+      "defenders" -> "Защитники"
+      "attackers" -> "Нападающие"
+      _other -> label
+    end
+  end
+
+  defp side_display_label(_label), do: "Сторона"
 
   defp combat_error_message(:no_active_combat), do: "У вас нет активного боя."
   defp combat_error_message(:combat_not_found), do: "Этот бой вам недоступен."

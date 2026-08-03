@@ -53,44 +53,43 @@ defmodule MMGOWeb.ThesisDefenseLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="thesis-defense-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-5xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
+      <main id="thesis-defense-screen" class="acd-defense">
+        <div class="acd-defense__hall">
+          <div class="acd-defense__tools">
             <.link
               id="thesis-defense-back"
               navigate={~p"/academy"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+              class="acd-defense__exit"
             >
-              ← В Академию
+              ← покинуть зал Совета
             </.link>
             <button
               id="thesis-defense-refresh"
               type="button"
               phx-click="refresh"
-              class="rounded border border-stone-600 px-3 py-2 text-sm text-stone-200 transition hover:border-stone-400"
+              class="acd-defense__refresh"
             >
-              Обновить протокол
+              сверить протокол
             </button>
           </div>
 
-          <header class="overflow-hidden rounded-2xl border border-violet-400/30 bg-gradient-to-br from-violet-950/45 via-stone-950 to-sky-950/30 p-7 shadow-2xl">
-            <div class="flex flex-wrap items-start justify-between gap-4">
-              <div class="max-w-3xl">
-                <p class="text-xs font-semibold uppercase tracking-[0.25em] text-violet-200/75">
+          <header class="acd-protocol-cover">
+            <span class="acd-protocol-cover__hinge" aria-hidden="true"></span>
+            <span class="acd-protocol-cover__crest" aria-hidden="true">A</span>
+            <div class="acd-protocol-cover__head">
+              <div>
+                <p class="acd-protocol-cover__kicker">
                   Академия наук · открытая защита
                 </p>
-                <h1 class="mt-2 font-serif text-3xl text-violet-50">{@state.project.title}</h1>
-                <p class="mt-3 text-sm leading-6 text-stone-300">
-                  Кандидат: <span class="font-semibold text-stone-100">{@state.candidate.name}</span>. Любой
+                <h1>{@state.project.title}</h1>
+                <p class="acd-protocol-cover__copy">
+                  Кандидат: <strong>{@state.candidate.name}</strong>. Любой
                   горожанин может наблюдать за протоколом; право голоса остаётся только у назначенной комиссии.
                 </p>
               </div>
               <span
                 id="thesis-defense-phase"
-                class={[
-                  "rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.14em]",
-                  phase_class(@state)
-                ]}
+                class={["acd-phase-seal", phase_class(@state)]}
               >
                 {phase_label(@state)}
               </span>
@@ -100,59 +99,60 @@ defmodule MMGOWeb.ThesisDefenseLive do
           <div
             :if={@error}
             id="thesis-defense-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+            class="acd-red-ink"
           >
             {@error}
           </div>
 
-          <section class="grid gap-4 lg:grid-cols-[1.45fr_1fr]">
-            <article class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg">
-              <p class="text-xs uppercase tracking-[0.2em] text-stone-500">дело Академии</p>
-              <dl class="mt-4 grid gap-4 text-sm sm:grid-cols-2">
+          <section class="acd-dossier-grid">
+            <article class="acd-dossier">
+              <p class="acd-dossier__kicker">дело Академии</p>
+              <dl class="acd-dossier__facts">
                 <div>
-                  <dt class="text-stone-500">Открытие слушания</dt>
-                  <dd id="thesis-defense-opens-at" class="mt-1 text-stone-100">
+                  <dt>Открытие слушания</dt>
+                  <dd id="thesis-defense-opens-at">
                     {format_time(@state.opens_at)}
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-stone-500">Закрытие протокола</dt>
-                  <dd id="thesis-defense-closes-at" class="mt-1 text-stone-100">
+                  <dt>Закрытие протокола</dt>
+                  <dd id="thesis-defense-closes-at">
                     {format_time(@state.closes_at)}
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-stone-500">Подано голосов</dt>
-                  <dd id="thesis-defense-vote-count" class="mt-1 text-stone-100">
+                  <dt>Подано голосов</dt>
+                  <dd id="thesis-defense-vote-count">
                     {@state.votes_cast} / 3
                   </dd>
                 </div>
                 <div>
-                  <dt class="text-stone-500">Номер дела</dt>
-                  <dd id="thesis-project-id" class="mt-1 break-all font-mono text-xs text-stone-400">
+                  <dt>Номер дела</dt>
+                  <dd id="thesis-project-id" class="acd-dossier__id">
                     {@state.project.id}
                   </dd>
                 </div>
               </dl>
-              <p class="mt-5 border-t border-stone-700 pt-4 text-sm leading-6 text-stone-300">
+              <p class="acd-dossier__note">
                 {phase_copy(@state)}
               </p>
             </article>
 
-            <article class="rounded-2xl border border-sky-400/20 bg-sky-950/15 p-6 shadow-lg">
-              <p class="text-xs uppercase tracking-[0.2em] text-sky-200/70">вердикт</p>
+            <article class="acd-verdict-card">
+              <span class="acd-verdict-card__wax" aria-hidden="true">✦</span>
+              <p class="acd-verdict-card__kicker">вердикт</p>
               <%= if terminal?(@state.project.defense_state) do %>
-                <h2 id="thesis-defense-outcome" class="mt-2 font-serif text-2xl text-sky-100">
+                <h2 id="thesis-defense-outcome">
                   {outcome_label(@state.project.defense_state)}
                 </h2>
-                <p class="mt-3 text-sm leading-6 text-stone-300">
+                <p>
                   Решение зафиксировано Академией. Принятый тезис получает публикацию и открывает путь к профессорству.
                 </p>
               <% else %>
-                <h2 id="thesis-defense-pending" class="mt-2 font-serif text-2xl text-sky-100">
+                <h2 id="thesis-defense-pending">
                   Решение ожидается
                 </h2>
-                <p class="mt-3 text-sm leading-6 text-stone-300">
+                <p>
                   Итог появляется только после полной комиссии и закрытия окна слушания. Неполный протокол продлевается,
                   а не превращается в автоматическое одобрение.
                 </p>
@@ -160,34 +160,37 @@ defmodule MMGOWeb.ThesisDefenseLive do
             </article>
           </section>
 
-          <section class="rounded-2xl border border-violet-400/20 bg-stone-900/80 p-6 shadow-lg">
-            <div class="flex flex-wrap items-end justify-between gap-3">
+          <section class="acd-panel-table">
+            <div class="acd-panel-table__head">
               <div>
-                <p class="text-xs uppercase tracking-[0.2em] text-violet-200/70">комиссия</p>
-                <h2 class="mt-1 font-serif text-2xl text-violet-50">Назначенные профессора</h2>
+                <p>комиссия</p>
+                <h2>Назначенные профессора</h2>
               </div>
-              <span class="text-sm text-stone-400">{@state.votes_cast} зарегистрировано</span>
+              <span>{@state.votes_cast} зарегистрировано</span>
             </div>
 
             <p
               :if={not @state.commission_ready?}
               id="thesis-commission-unavailable"
-              class="mt-4 rounded-lg border border-amber-400/30 bg-amber-950/20 px-4 py-3 text-sm text-amber-100"
+              class="acd-panel-table__warning"
             >
               Комиссия ещё не укомплектована тремя активными профессорами. Защита остаётся открытой, но решение не будет принято без полного состава.
             </p>
 
-            <ul id="thesis-defense-panel" class="mt-5 grid gap-3 md:grid-cols-3">
+            <ul id="thesis-defense-panel" class="acd-panel">
               <li
                 :for={panelist <- @state.panel}
                 id={"thesis-panel-#{panelist.character.id}"}
-                class="rounded-xl border border-stone-700 bg-stone-950/65 p-4"
+                class="acd-panelist"
               >
-                <p class="font-medium text-stone-100">{panelist.character.name}</p>
-                <p class="mt-1 text-xs uppercase tracking-[0.14em] text-stone-500">
+                <span class="acd-panelist__portrait" aria-hidden="true">
+                  {String.first(panelist.character.name)}
+                </span>
+                <p class="acd-panelist__name">{panelist.character.name}</p>
+                <p class="acd-panelist__role">
                   {role_label(panelist.role)}
                 </p>
-                <p class="mt-4 text-sm text-stone-300">{vote_label(panelist.vote)}</p>
+                <p class="acd-panelist__vote">{vote_label(panelist.vote)}</p>
               </li>
             </ul>
           </section>
@@ -195,20 +198,21 @@ defmodule MMGOWeb.ThesisDefenseLive do
           <section
             :if={@state.can_vote?}
             id="thesis-vote-controls"
-            class="rounded-2xl border border-emerald-400/25 bg-emerald-950/15 p-6 shadow-lg"
+            class="acd-ballot"
           >
-            <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/75">ваш голос комиссии</p>
-            <h2 class="mt-1 font-serif text-2xl text-emerald-50">Занесите решение в протокол</h2>
-            <p class="mt-2 text-sm leading-6 text-stone-300">
+            <span class="acd-ballot__clip" aria-hidden="true"></span>
+            <p class="acd-ballot__kicker">ваш голос комиссии</p>
+            <h2>Занесите решение в протокол</h2>
+            <p class="acd-ballot__copy">
               Голос необратим. Сервер сверит ваш профессорский статус, состав комиссии и окно слушания перед сохранением.
             </p>
-            <div class="mt-5 grid gap-3 sm:grid-cols-3">
+            <div class="acd-ballot__choices">
               <button
                 id="thesis-vote-accept"
                 type="button"
                 phx-click="vote"
                 phx-value-vote="accept"
-                class="rounded-lg bg-emerald-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-emerald-200"
+                class="acd-vote-button acd-vote-button--accept"
               >
                 Принять
               </button>
@@ -217,7 +221,7 @@ defmodule MMGOWeb.ThesisDefenseLive do
                 type="button"
                 phx-click="vote"
                 phx-value-vote="accept_with_revisions"
-                class="rounded-lg border border-amber-300/50 bg-amber-950/25 px-4 py-3 text-sm font-semibold text-amber-100 transition hover:bg-amber-950/50"
+                class="acd-vote-button acd-vote-button--revise"
               >
                 Принять с правками
               </button>
@@ -226,7 +230,7 @@ defmodule MMGOWeb.ThesisDefenseLive do
                 type="button"
                 phx-click="vote"
                 phx-value-vote="reject"
-                class="rounded-lg border border-rose-300/50 bg-rose-950/25 px-4 py-3 text-sm font-semibold text-rose-100 transition hover:bg-rose-950/50"
+                class="acd-vote-button acd-vote-button--reject"
               >
                 Отклонить
               </button>
@@ -236,16 +240,13 @@ defmodule MMGOWeb.ThesisDefenseLive do
           <section
             :if={@state.attempt_history != []}
             id="thesis-defense-history"
-            class="rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+            class="acd-history-ledger"
           >
-            <p class="text-xs uppercase tracking-[0.2em] text-stone-500">предыдущие слушания</p>
-            <ul class="mt-4 space-y-2 text-sm text-stone-300">
-              <li
-                :for={attempt <- @state.attempt_history}
-                class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-stone-700/80 bg-stone-950/50 px-4 py-3"
-              >
+            <p class="acd-history-ledger__title">предыдущие слушания</p>
+            <ul>
+              <li :for={attempt <- @state.attempt_history}>
                 <span>{history_outcome_label(attempt)}</span>
-                <span class="text-xs text-stone-500">{Map.get(attempt, "resolved_at", "—")}</span>
+                <time>{Map.get(attempt, "resolved_at", "—")}</time>
               </li>
             </ul>
           </section>
@@ -279,12 +280,12 @@ defmodule MMGOWeb.ThesisDefenseLive do
 
   defp phase_class(%{project: %{defense_state: state}})
        when state in [:accepted, :accepted_with_revisions],
-       do: "border-emerald-300/45 bg-emerald-950/35 text-emerald-100"
+       do: "is-accepted"
 
   defp phase_class(%{project: %{defense_state: :rejected}}),
-    do: "border-rose-300/45 bg-rose-950/35 text-rose-100"
+    do: "is-rejected"
 
-  defp phase_class(_defense), do: "border-violet-300/40 bg-violet-950/35 text-violet-100"
+  defp phase_class(_defense), do: "is-pending"
 
   defp phase_copy(%{project: %{defense_state: state}})
        when state in [:accepted, :accepted_with_revisions],

@@ -83,11 +83,15 @@ defmodule MMGOWeb.ExamLive do
       {:ok, _state} ->
         {:noreply,
          socket
-         |> put_flash(:info, "Мидтерм пропущен: финал открыт с потолком 80 баллов.")
+         |> put_flash(
+           :info,
+           "Промежуточный экзамен пропущен: итоговый открыт с потолком 80 баллов."
+         )
          |> push_navigate(to: ~p"/academy/exam/#{socket.assigns.term.id}")}
 
       {:error, _reason} ->
-        {:noreply, assign(socket, :error, "Мидтерм уже нельзя пропустить для этого термина.")}
+        {:noreply,
+         assign(socket, :error, "Промежуточный экзамен уже нельзя пропустить в этом термине.")}
     end
   end
 
@@ -95,33 +99,36 @@ defmodule MMGOWeb.ExamLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <main id="academy-exam-screen" class="min-h-full bg-stone-950 px-4 py-8 text-stone-100">
-        <div class="mx-auto w-full max-w-3xl space-y-5">
-          <div class="flex flex-wrap items-center justify-between gap-3">
+      <main id="academy-exam-screen" class="acd-assessment acd-assessment--exam">
+        <div class="acd-assessment__desk">
+          <div class="acd-assessment__tools">
             <.link
               id="academy-exam-back"
               navigate={~p"/academy"}
-              class="text-sm text-sky-200 underline decoration-sky-500/40 underline-offset-4"
+              class="acd-assessment__exit"
             >
-              ← В Академию
+              ← покинуть аудиторию
             </.link>
             <span
               id="academy-exam-timer"
-              class="rounded border border-amber-300/40 bg-amber-950/25 px-3 py-2 text-sm text-amber-100"
+              class="acd-clock-seal"
             >
-              Осталось: {@seconds_remaining} с
+              <span>до сбора листов</span>
+              <strong>{@seconds_remaining} с</strong>
             </span>
           </div>
 
-          <header class="rounded-2xl border border-amber-400/25 bg-gradient-to-br from-amber-950/35 via-stone-950 to-stone-900 p-7 shadow-2xl">
-            <p class="text-xs uppercase tracking-[0.25em] text-amber-200/75">
+          <header class="acd-exam-cover">
+            <span class="acd-exam-cover__cord" aria-hidden="true"></span>
+            <span class="acd-exam-cover__seal" aria-hidden="true">A</span>
+            <p class="acd-assessment__kicker">
               термин {@term.term_number}
             </p>
-            <h1 class="mt-2 font-serif text-3xl text-amber-100">{phase_label(@phase)}</h1>
-            <p class="mt-3 text-sm leading-6 text-stone-300">
-              Ответы оцениваются на сервере. Мидтерм открывает финал, а итоговый балл завершает термин и выставляет оценку записанным курсам.
+            <h1>{phase_label(@phase)}</h1>
+            <p class="acd-exam-cover__copy">
+              Ответы оцениваются на сервере. Промежуточный экзамен открывает итоговый, а итоговый балл завершает термин и выставляет оценку записанным курсам.
             </p>
-            <p id="academy-exam-lecture-ceiling" class="mt-3 text-sm text-amber-100">
+            <p id="academy-exam-lecture-ceiling" class="acd-exam-cover__note">
               Потолок финальной оценки от лекций: {@lecture_final_ceiling}.
             </p>
           </header>
@@ -129,7 +136,7 @@ defmodule MMGOWeb.ExamLive do
           <div
             :if={@error}
             id="academy-exam-error"
-            class="rounded-xl border border-rose-500/45 bg-rose-950/30 px-4 py-3 text-sm text-rose-100"
+            class="acd-red-ink"
           >
             {@error}
           </div>
@@ -137,21 +144,22 @@ defmodule MMGOWeb.ExamLive do
           <%= if @submitted do %>
             <section
               id="academy-exam-result"
-              class="rounded-2xl border border-emerald-400/25 bg-emerald-950/15 p-6 shadow-lg"
+              class="acd-result-sheet"
             >
-              <p class="text-xs uppercase tracking-[0.2em] text-emerald-200/75">
+              <span class="acd-result-sheet__stamp" aria-hidden="true">✓</span>
+              <p class="acd-result-sheet__kicker">
                 ведомость сохранена
               </p>
-              <h2 class="mt-2 font-serif text-3xl text-emerald-100">{@score} / 100</h2>
-              <p class="mt-3 text-sm leading-6 text-stone-300">
+              <h2>{@score} / 100</h2>
+              <p class="acd-result-sheet__copy">
                 {result_copy(@phase)}
               </p>
               <.link
                 id="academy-exam-return"
                 navigate={~p"/academy"}
-                class="mt-5 inline-flex rounded-lg bg-emerald-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-emerald-200"
+                class="acd-result-sheet__return"
               >
-                Вернуться к ведомости
+                Закрыть ведомость
               </.link>
             </section>
           <% else %>
@@ -159,21 +167,26 @@ defmodule MMGOWeb.ExamLive do
               for={@exam_form}
               id="academy-exam-form"
               phx-submit="submit"
-              class="space-y-4 rounded-2xl border border-stone-700 bg-stone-900/80 p-6 shadow-lg"
+              class="acd-exam-folio"
             >
+              <div class="acd-exam-folio__heading">
+                <span>Экзаменационный лист</span>
+                <small>отметьте по одному ответу в каждой строке</small>
+              </div>
               <.input
                 :for={question <- @questions}
                 field={@exam_form[question.key]}
                 type="select"
                 label={question.label}
                 options={question.options}
+                class="acd-paper-control"
               />
               <button
                 id="academy-exam-submit"
                 type="submit"
-                class="w-full rounded-lg bg-amber-300 px-4 py-3 text-sm font-semibold text-stone-950 transition hover:bg-amber-200"
+                class="acd-quill-button"
               >
-                Сдать {String.downcase(phase_label(@phase))}
+                Поставить подпись и сдать {String.downcase(phase_label(@phase))}
               </button>
             </.form>
             <button
@@ -181,9 +194,9 @@ defmodule MMGOWeb.ExamLive do
               id="academy-skip-midterm"
               type="button"
               phx-click="skip_midterm"
-              class="w-full rounded-lg border border-stone-600 px-4 py-3 text-sm text-stone-200 transition hover:border-amber-300/50"
+              class="acd-margin-note-button"
             >
-              Пропустить мидтерм (потолок финала: 80)
+              Пропустить промежуточный экзамен (потолок итогового: 80)
             </button>
           <% end %>
         </div>
@@ -238,10 +251,15 @@ defmodule MMGOWeb.ExamLive do
     do: max(DateTime.diff(expires_at, DateTime.utc_now(), :second), 0)
 
   defp empty_answers(questions), do: Map.new(questions, &{&1.key, ""})
-  defp phase_label(:midterm), do: "Мидтерм"
-  defp phase_label(:final), do: "Финал"
+  defp phase_label(:midterm), do: "Промежуточный экзамен"
+  defp phase_label(:final), do: "Итоговый экзамен"
   defp phase_label(_phase), do: "Экзамен"
-  defp result_copy(:midterm), do: "Мидтерм завершён: теперь в ведомости открыт финал."
-  defp result_copy(:final), do: "Финал завершён: итоговый балл термина и оценки курсов сохранены."
+
+  defp result_copy(:midterm),
+    do: "Промежуточный экзамен завершён: теперь в ведомости открыт итоговый."
+
+  defp result_copy(:final),
+    do: "Итоговый экзамен завершён: балл термина и оценки курсов сохранены."
+
   defp result_copy(_phase), do: "Результат сохранён в ведомости."
 end

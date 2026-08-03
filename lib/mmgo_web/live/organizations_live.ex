@@ -601,19 +601,19 @@ defmodule MMGOWeb.OrganizationsLive do
   def render(%{live_action: :show} = assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="org-app">
-        <.link navigate={~p"/map"} class="org-btn org-btn--ghost">&larr; к карте</.link>
-        <.link navigate={~p"/orgs"} class="org-btn org-btn--ghost">Все организации</.link>
+      <div class="org-wrap">
+        <.link navigate={~p"/map"} class="org-exit">&larr; к карте</.link>
+        <.link navigate={~p"/orgs"} class="org-hall-nav">реестр организаций</.link>
 
         <h1 class="org-card-name">{@organization.name}</h1>
-        <p class="org-card-creed">Organizations · {kind_label(@organization.kind)}</p>
+        <p class="org-card-creed">Устав · {kind_label(@organization.kind)}</p>
 
         <%= if @error do %>
           <p class="org-app-note" role="alert">{@error}</p>
         <% end %>
 
         <section id="org-roles" class="org-card">
-          <h2 class="org-card-top">Роли (Roles)</h2>
+          <h2 class="org-card-top">Роли</h2>
           <ul class="org-card-list">
             <li
               :for={role <- @organization.roles}
@@ -660,7 +660,7 @@ defmodule MMGOWeb.OrganizationsLive do
         </section>
 
         <section id="org-members" class="org-card">
-          <h2 class="org-card-top">Участники (Members)</h2>
+          <h2 class="org-card-top">Участники</h2>
           <ul class="org-card-members">
             <li :for={m <- @organization.memberships}>
               {member_name(m)} — {role_title(m)}
@@ -921,7 +921,7 @@ defmodule MMGOWeb.OrganizationsLive do
             <.input
               field={@diplomacy_form[:target_organization_id]}
               type="select"
-              label="Организация реалма"
+              label="Организация мира"
               options={diplomacy_target_options(@diplomacy.available_targets)}
             />
             <.input
@@ -983,7 +983,7 @@ defmodule MMGOWeb.OrganizationsLive do
             {@treasury_balance} ◈
           </p>
           <p class="org-app-note">
-            Средства хранятся в общем реестре реалма; каждое движение оставляет проводку.
+            Средства хранятся в общем реестре мира; каждое движение оставляет проводку.
           </p>
           <p :if={@treasury_recent_entry} id="org-treasury-last-entry" class="org-app-note">
             {treasury_entry_label(@treasury_recent_entry)}
@@ -1162,7 +1162,7 @@ defmodule MMGOWeb.OrganizationsLive do
         >
           <h2 class="org-card-top">Тарифы быстрых путей</h2>
           <p class="org-app-note">
-            Тариф списывается до перехода: {format_tax_rate(@fast_travel_tolls.tax_rate_bps)} автоматически уходит в казну realm.
+            Тариф списывается до перехода: {format_tax_rate(@fast_travel_tolls.tax_rate_bps)} автоматически уходит в казну мира.
           </p>
           <.form
             for={@fast_travel_toll_form}
@@ -1204,7 +1204,7 @@ defmodule MMGOWeb.OrganizationsLive do
         </section>
 
         <section :if={@can_invite?} id="org-invite-form" class="org-card">
-          <h2 class="org-card-top">Пригласить (Invite)</h2>
+          <h2 class="org-card-top">Пригласить участника</h2>
           <.form
             for={@invite_form}
             id="org-invite-form-body"
@@ -1234,10 +1234,10 @@ defmodule MMGOWeb.OrganizationsLive do
   def render(assigns) do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope}>
-      <div class="org-app">
-        <.link navigate={~p"/map"} class="org-btn org-btn--ghost">&larr; к карте</.link>
+      <div class="org-wrap">
+        <.link navigate={~p"/map"} class="org-exit">&larr; к карте</.link>
 
-        <h1 class="org-card-name">Organizations</h1>
+        <h1 class="org-card-name">Организации</h1>
         <p class="org-card-creed">Гильдии, компании, советы и культы твоего мира</p>
 
         <%= if @error do %>
@@ -1245,7 +1245,7 @@ defmodule MMGOWeb.OrganizationsLive do
         <% end %>
 
         <section id="org-invitations" class="org-card">
-          <h2 class="org-card-top">Приглашения (Invitations)</h2>
+          <h2 class="org-card-top">Приглашения</h2>
           <%= if @invitations == [] do %>
             <p class="org-app-note">Новых приглашений нет.</p>
           <% else %>
@@ -1282,16 +1282,16 @@ defmodule MMGOWeb.OrganizationsLive do
             <ul class="org-card-list">
               <li :for={org <- @organizations} class="org-card-body">
                 <.link navigate={~p"/orgs/#{org.id}"} class="org-card-name">{org.name}</.link>
-                <span class="org-card-creed">{to_string(org.kind)}</span>
+                <span class="org-card-creed">{kind_label(org.kind)}</span>
               </li>
             </ul>
           <% end %>
         </section>
 
         <section id="org-public-list" class="org-card">
-          <h2 class="org-card-top">Организации реалма</h2>
+          <h2 class="org-card-top">Организации мира</h2>
           <%= if @public_organizations == [] do %>
-            <p class="org-app-note">В реалме ещё не основано ни одной организации.</p>
+            <p class="org-app-note">В этом мире ещё не основано ни одной организации.</p>
           <% else %>
             <ul class="org-card-list">
               <li
@@ -1446,14 +1446,14 @@ defmodule MMGOWeb.OrganizationsLive do
   defp role_permission_label("manage_roles"), do: "роли"
   defp role_permission_label("manage_treasury"), do: "казна"
   defp role_permission_label("grant_fast_travel"), do: "быстрый путь"
-  defp role_permission_label(permission), do: to_string(permission)
+  defp role_permission_label(_permission), do: "иное полномочие"
 
   defp kind_label("guild"), do: "Гильдия"
   defp kind_label("company"), do: "Компания"
   defp kind_label("council"), do: "Совет"
   defp kind_label("cult"), do: "Культ"
   defp kind_label(kind) when is_atom(kind), do: kind |> Atom.to_string() |> kind_label()
-  defp kind_label(kind), do: to_string(kind)
+  defp kind_label(_kind), do: "Организация"
 
   defp invite_form(organization) do
     role_id =

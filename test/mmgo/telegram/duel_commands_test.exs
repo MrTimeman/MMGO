@@ -39,14 +39,14 @@ defmodule MMGO.Telegram.DuelCommandsTest do
     assert {:ok, challenge_text} =
              Commands.process_message(challenger, %{"text" => "/duel challenge opponent 25"})
 
-    assert challenge_text =~ "Duel challenge sent"
+    assert challenge_text =~ "Вызов на дуэль отправлен"
 
     [duel] = PVP.pending_duels_for_character(opponent.id)
 
     assert {:ok, accept_text} =
              Commands.process_message(opponent, %{"text" => "/duel accept #{duel.id}"})
 
-    assert accept_text =~ "Duel accepted"
+    assert accept_text =~ "Дуэль принята"
 
     active_duel = PVP.active_duel_for_character(challenger.id)
     assert active_duel.combat_id
