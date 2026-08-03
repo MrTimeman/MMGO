@@ -18,8 +18,6 @@ export const TelegramAuthHook = {
 
       if (!initData) return
 
-      webApp.ready?.()
-
       const input = this.el.querySelector("#telegram-auth-init-data")
       const loading = this.el.querySelector("#telegram-auth-loading")
       const browserState = this.el.querySelector("#telegram-auth-normal-browser")

@@ -25,6 +25,12 @@ import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/mmgo"
 import topbar from "../vendor/topbar"
 import {Hooks} from "./hooks"
+import {loadTelegramWebApp} from "./telegram-web-app"
+
+// Prepare Telegram chrome on every entry point, including authenticated page
+// reloads that never mount the TelegramAuth hook. Normal browsers resolve to
+// `undefined` without loading the bridge.
+loadTelegramWebApp().catch(() => {})
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
@@ -81,4 +87,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-
