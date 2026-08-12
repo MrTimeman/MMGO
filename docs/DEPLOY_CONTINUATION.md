@@ -12,11 +12,10 @@ the public IP. The laptop must remain Docker-free.
 
 - Repository: `/Users/albert/Documents/coding/mmgo`
 - Branch: `main`
-- Pushed release HEAD: `b279457`
+- Pushed release HEAD: `78e7695`
 - New host: `root@138.249.117.21`
 - Old host, reachable from the new host: `root@100.64.0.2`
 - Public domain: `https://mmgo.mrtimeman.ru`
-- Clean deploy worktree: `/private/tmp/mmgo-deploy-9e97a02`
 - Release: `mmgo:0.1.0-alpha.9`
 
 Never add the user's untracked `.gitea/ISSUE_TEMPLATE/` files to a commit.
@@ -36,49 +35,47 @@ Never add the user's untracked `.gitea/ISSUE_TEMPLATE/` files to a commit.
 - All three alpha.9 migrations completed successfully.
 - Image built successfully on the new host.
 - Isolated smoke app passed `/healthz`, home/play markers, and resolved the
-  DeepSeek provider/model. A first live DeepSeek call had a transient network
-  error; credential-free host and container checks later both reached DeepSeek
-  with HTTP 401, proving TLS/network recovery.
-- Public nginx still points to the old healthy host. No production app cutover
-  has happened yet.
+  DeepSeek provider/model. The live DeepSeek structured-completion probe passed.
+- `mmgo-app` is live, healthy, has zero restarts, and reports alpha.9 through
+  the private listener, domain TLS vhost, and dedicated HTTP IP vhost.
+- Public nginx now uses `http://127.0.0.1:4000`; its pre-cutover backup is
+  `/opt/mmgo/backups/mmgo-nginx-pre-alpha9.conf`.
+- Direct IP access is installed at `http://138.249.117.21`. Phoenix and
+  PostgreSQL remain unexposed on raw public ports.
 
-## Current state and immediate recovery
+## Current state
 
-The isolated `mmgo-deploy-smoke` container is still running healthy on
-`127.0.0.1:4100`. A cleanup attempt used an unsupported long Docker option and
-did nothing. Remove it with the Docker 26-compatible short option:
+Deployment is complete. Expected verification state:
 
 ```bash
-ssh -o BatchMode=yes root@138.249.117.21 \
-  'docker stop -t 15 mmgo-deploy-smoke >/dev/null; ! docker inspect mmgo-deploy-smoke >/dev/null 2>&1'
+ssh root@138.249.117.21 \
+  'docker inspect mmgo-app --format="image={{.Config.Image}} status={{.State.Status}} health={{.State.Health.Status}} restarts={{.RestartCount}}"'
 ```
 
-Then rerun the committed, cached pipeline:
+Expected: image `mmgo:0.1.0-alpha.9`, running, healthy, zero restarts. The
+database retains 12 beta accounts and 13 characters; its latest migrations are
+`20260812201850`, `20260812191140`, and `20260812190955`.
+
+## Future deploys
+
+Use a clean detached worktree because the main worktree contains user-owned
+untracked `.gitea` files:
 
 ```bash
-cd /private/tmp/mmgo-deploy-9e97a02
+deploy_dir="$(mktemp -d /private/tmp/mmgo-deploy.XXXXXX)"
+git worktree add --detach "$deploy_dir" HEAD
+cd "$deploy_dir"
+mix deps.get
 MMGO_DB_USER=albert MMGO_DB_PASSWORD='' \
 MMGO_JUMP_HOST='' MMGO_APP_HOST='root@138.249.117.21' \
 MMGO_PUBLIC_URL='https://mmgo.mrtimeman.ru' \
-MMGO_RELEASE_NOTES='Добавили отдельную Арену: ранги, дружеские командные бои, события окружения и заклинания призыва.' \
+MMGO_RELEASE_NOTES='Краткое описание выпуска.' \
 just deploy
 ```
 
-The build and migrations are cached/idempotent. Do not bypass the DeepSeek
-probe. If it fails again, inspect the failure and retain the old live service.
-
-## Cutover after private alpha.9 is healthy
-
-The existing nginx file is
-`/etc/nginx/sites-enabled/mmgo.mrtimeman.ru.conf`. It currently contains two
-exact upstreams `http://100.64.0.2:4000`. Back it up, replace only those exact
-upstreams with `http://127.0.0.1:4000`, run `nginx -t`, and reload. Do not dump
-the whole production nginx configuration or alter other sites.
-
-Create a dedicated HTTP IP vhost so the university-blocked domain is not
-required. Use exact `server_name 138.249.117.21`, proxy to
-`http://127.0.0.1:4000`, preserve WebSocket headers, test nginx, then reload.
-Do not publish Phoenix port 4000 directly.
+Do not bypass the DeepSeek probe. The first cold start on this 1 GB host can
+take longer than one minute; inspect private health before treating a timeout
+as a failed application. Keep `ERL_AFLAGS=+Q 65536` in the remote env.
 
 Verify:
 
@@ -94,7 +91,5 @@ The health JSON must report version `0.1.0-alpha.9`. Also check the latest
 three schema migrations and that account/character counts remain 12/13 or
 increase only through legitimate new activity.
 
-After success, remove the explicit old-host transfer temp file
-`/tmp/mmgo-alpha9-transfer.dump` on `100.64.0.2`; retain the protected backup on
-the new host. Remove the detached worktree with `git worktree remove` only when
-deployment and verification are complete.
+Retain the protected alpha.8 import dump and pre-alpha.9 database backups on
+the new host until the observation window closes.
