@@ -78,8 +78,8 @@ bootstrap-host:
     git archive --format=tar HEAD deploy/production | gzip -9 > "$archive"
     checksum="$(shasum -a 256 "$archive" | awk '{print $1}')"
 
-    scp_options=(-q)
-    ssh_options=()
+    scp_options=(-q -o BatchMode=yes)
+    ssh_options=(-o BatchMode=yes)
     if [[ -n "$jump_host" ]]; then
       scp_options+=(-J "$jump_host")
       ssh_options+=(-J "$jump_host")
@@ -124,7 +124,7 @@ prod-init:
     set -Eeuo pipefail
 
     jump_host='{{jump_host}}'
-    ssh_options=()
+    ssh_options=(-o BatchMode=yes)
     if [[ -n "$jump_host" ]]; then
       ssh_options+=(-J "$jump_host")
     fi
@@ -281,8 +281,8 @@ deploy: release-check
     git archive --format=tar --prefix="${app}-${version}/" HEAD | gzip -9 > "$archive"
     checksum="$(shasum -a 256 "$archive" | awk '{print $1}')"
 
-    scp_options=(-q)
-    ssh_options=()
+    scp_options=(-q -o BatchMode=yes)
+    ssh_options=(-o BatchMode=yes)
     if [[ -n "$jump_host" ]]; then
       scp_options+=(-J "$jump_host")
       ssh_options+=(-J "$jump_host")
@@ -544,7 +544,7 @@ prod-status:
     #!/usr/bin/env bash
     set -Eeuo pipefail
     jump_host='{{jump_host}}'
-    ssh_options=()
+    ssh_options=(-o BatchMode=yes)
     if [[ -n "$jump_host" ]]; then
       ssh_options+=(-J "$jump_host")
     fi
@@ -600,7 +600,7 @@ prod-logs lines="200":
       exit 1
     }
     jump_host='{{jump_host}}'
-    ssh_options=()
+    ssh_options=(-o BatchMode=yes)
     if [[ -n "$jump_host" ]]; then
       ssh_options+=(-J "$jump_host")
     fi
