@@ -65,7 +65,12 @@ defmodule MMGOWeb.CombatLiveTest do
     assert {:ok, %{combat: combat}} =
              Combat.create_duel(realm, %{
                participants: [
-                 %{character_id: challenger.id, side: "attackers", position: 0},
+                 %{
+                   character_id: challenger.id,
+                   side: "attackers",
+                   position: 0,
+                   grimoire_id: grimoire.id
+                 },
                  %{character_id: defender.id, side: "defenders", position: 0}
                ],
                metadata: %{location_id: tower.id, location_kind: "tower"}
@@ -179,8 +184,6 @@ defmodule MMGOWeb.CombatLiveTest do
         "action_type" => "cast_spell",
         "spell_id" => spell.id,
         "incantation" => spell.formula,
-        "inventory_item_id" => "",
-        "tool_action" => "",
         "target_side" => "defenders",
         "target_participant_id" => defender_participant.id
       }

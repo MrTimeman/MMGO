@@ -58,10 +58,6 @@ config :mmgo, MMGO.Accounts.SpecialProfiles, telegram_user_id: 1_265_881_543
 
 config :mmgo, MMGO.PVP, duel_tax_rate_bps: 500
 
-# Temporary school/combat sandbox. Tests disable it so the permanent progression
-# rules remain covered; deployments can turn it off with PLAYTEST_UNRESTRICTED_COMBAT=false.
-config :mmgo, MMGO.CombatPlaytest, unrestricted?: true
-
 config :mmgo, MMGO.BlackMarket,
   detection_enabled: true,
   delivery_game_days: 7,

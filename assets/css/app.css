@@ -22,6 +22,7 @@
 @import "./screens/records.css";
 @import "./screens/entry.css";
 @import "./screens/characters.css";
+@import "./screens/arena.css";
 
 @source "../css";
 @source "../js";

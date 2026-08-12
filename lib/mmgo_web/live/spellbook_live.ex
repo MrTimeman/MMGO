@@ -99,7 +99,8 @@ defmodule MMGOWeb.SpellbookLive do
          |> assign(:spell_creation_attempt, attempt)
          |> assign(:compose_error, nil)
          |> assign(:last_spell, nil)
-         |> assign(:action_feedback, nil)}
+         |> assign(:action_feedback, nil)
+         |> maybe_apply_immediate_spell_creation(attempt)}
 
       {:error, :spell_creation_in_progress} ->
         {:noreply, socket |> reload_spellbook() |> push_spell_circle()}
@@ -235,6 +236,29 @@ defmodule MMGOWeb.SpellbookLive do
      |> push_shelf()}
   end
 
+  def handle_event("create_arena_grimoire", _params, socket) do
+    case Play.create_arena_draft_grimoire(socket.assigns.current_scope.character) do
+      {:ok, _grimoire} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{
+           kind: :success,
+           message: "Новый свободный гримуар на 45 формул открыт для записи."
+         })
+         |> push_shelf()}
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })
+         |> maybe_push_shelf()}
+    end
+  end
+
   def handle_event("grimoire_reorder", %{"id" => id} = params, socket) do
     current_order =
       socket.assigns.grimoire_order || Enum.map(socket.assigns.grimoires, & &1.id)
@@ -252,30 +276,37 @@ defmodule MMGOWeb.SpellbookLive do
 
   @impl true
   def handle_info({:spell_creation_revealed, attempt_id}, socket) do
+    {:noreply, apply_revealed_spell_creation(socket, attempt_id)}
+  end
+
+  defp apply_revealed_spell_creation(socket, attempt_id) do
     case Play.spell_creation_result(socket.assigns.current_scope.character, attempt_id) do
       {:ok, spell} ->
-        {:noreply,
-         socket
-         |> reload_spellbook()
-         |> assign(:last_spell, spell)
-         |> assign(:compose_error, nil)
-         |> assign(:action_feedback, nil)
-         |> push_spell_circle()
-         |> push_event("spell_result", %{ok: true})}
+        socket
+        |> reload_spellbook()
+        |> assign(:last_spell, spell)
+        |> assign(:compose_error, nil)
+        |> assign(:action_feedback, nil)
+        |> push_spell_circle()
+        |> push_event("spell_result", %{ok: true})
 
       {:error, {:spell_creation_failure, outcome}} ->
-        {:noreply,
-         socket
-         |> reload_spellbook()
-         |> assign(:compose_error, spell_creation_failure_message(outcome))
-         |> assign(:last_spell, nil)
-         |> push_spell_circle()
-         |> push_event("spell_result", %{ok: false})}
+        socket
+        |> reload_spellbook()
+        |> assign(:compose_error, spell_creation_failure_message(outcome))
+        |> assign(:last_spell, nil)
+        |> push_spell_circle()
+        |> push_event("spell_result", %{ok: false})
 
       {:error, _reason} ->
-        {:noreply, reload_spellbook(socket)}
+        reload_spellbook(socket)
     end
   end
+
+  defp maybe_apply_immediate_spell_creation(socket, %{status: :revealed, id: attempt_id}),
+    do: apply_revealed_spell_creation(socket, attempt_id)
+
+  defp maybe_apply_immediate_spell_creation(socket, _attempt), do: socket
 
   @impl true
   def render(%{view: _view} = assigns) do
@@ -318,7 +349,11 @@ defmodule MMGOWeb.SpellbookLive do
               </button>
             </nav>
 
-            <.link id="spellbook-back-to-map" navigate={~p"/map"} class="book__back">
+            <.link
+              id="spellbook-back-to-map"
+              navigate={spellbook_exit_path(@arena_mode?)}
+              class="book__back"
+            >
               ← покинуть гримуар
             </.link>
 
@@ -330,7 +365,11 @@ defmodule MMGOWeb.SpellbookLive do
                   <p class="book__subtitle">
                     <%= if @composition_available? do %>
                       <span id="spellbook-location">
-                        {@composition_location.name} · начертите печать
+                        <%= if @arena_mode? do %>
+                          Арена · полный круг отвечает мгновенно
+                        <% else %>
+                          {@composition_location.name} · начертите печать
+                        <% end %>
                       </span>
                     <% else %>
                       круг откликается только в Башне или у вашего рабочего стола
@@ -381,6 +420,23 @@ defmodule MMGOWeb.SpellbookLive do
                     <div class="sc-result__meta">
                       <span>{school_label(@last_spell.school)}</span>
                     </div>
+                    <div
+                      :if={@last_spell.manifestation}
+                      id={"spell-compose-manifestation-#{@last_spell.id}"}
+                      class="spellbook-note"
+                    >
+                      <p class="spellbook-note__kicker">
+                        {manifestation_kind_label(@last_spell.manifestation.kind)}
+                      </p>
+                      <p>
+                        {@last_spell.manifestation.display_name} · {manifestation_stats(
+                          @last_spell.manifestation
+                        )}
+                      </p>
+                      <p class="spellbook-note__aside">
+                        Призыв существует только в бою и не становится предметом инвентаря.
+                      </p>
+                    </div>
                   </article>
                 </div>
               <% :grimoires -> %>
@@ -389,6 +445,21 @@ defmodule MMGOWeb.SpellbookLive do
                   <h1 class="book__title">Полка гримуаров</h1>
                   <p class="book__subtitle">
                     {length(@grimoires)} томов · выберите корешок, чтобы раскрыть книгу
+                  </p>
+
+                  <button
+                    :if={@arena_mode?}
+                    id="create-arena-grimoire"
+                    type="button"
+                    phx-click="create_arena_grimoire"
+                    class="grim__panel-btn"
+                  >
+                    + Новый свободный гримуар · 45 формул
+                  </button>
+
+                  <p :if={@arena_mode?} id="arena-grimoire-policy" class="spellbook-note__aside">
+                    Переплёты бесплатны и не ограничены по количеству. В бой всё равно берётся
+                    только один активный гримуар с конечным числом формул.
                   </p>
 
                   <div
@@ -531,6 +602,20 @@ defmodule MMGOWeb.SpellbookLive do
                         >
                           Особенность школы: {school_quirk_label(spell.school_quirk)}
                         </p>
+                        <div
+                          :if={spell.manifestation}
+                          id={"spell-manifestation-#{spell.id}"}
+                          class="spellbook-note"
+                        >
+                          <p class="spellbook-note__kicker">
+                            {manifestation_kind_label(spell.manifestation.kind)}
+                          </p>
+                          <p>
+                            {spell.manifestation.display_name} · {manifestation_stats(
+                              spell.manifestation
+                            )}
+                          </p>
+                        </div>
                         <div class="splist__stat-grid">
                           <div class="splist__stat">
                             <span class="splist__stat-label">Уровень</span>
@@ -644,6 +729,7 @@ defmodule MMGOWeb.SpellbookLive do
     |> assign(:spells, state.spells)
     |> assign(:grimoires, state.grimoires)
     |> assign(:active_grimoire, state.active_grimoire)
+    |> assign(:arena_mode?, Map.get(state, :arena_mode?, false))
     |> assign(:permitted_schools, state.permitted_schools)
     |> assign(:spell_circle_tier, state.spell_circle_tier)
     |> assign(:spell_creation_attempt, Map.get(state, :spell_creation_attempt))
@@ -683,12 +769,18 @@ defmodule MMGOWeb.SpellbookLive do
     do: "Создание новых формул сейчас недоступно."
 
   defp redirect_for_spellbook_error(socket, _reason) do
+    destination =
+      case socket.assigns[:current_scope] do
+        %{game_mode: :arena} -> ~p"/arena"
+        _world_or_missing -> ~p"/play"
+      end
+
     socket
     |> put_flash(
       :error,
       "Не удалось открыть гримуар. Вернитесь к игровому входу и попробуйте снова."
     )
-    |> push_navigate(to: ~p"/play")
+    |> push_navigate(to: destination)
   end
 
   defp push_spell_circle(socket) do
@@ -702,7 +794,7 @@ defmodule MMGOWeb.SpellbookLive do
           socket.assigns.spell_circle_tier
         ),
       current: spell_creation_circle(attempt),
-      ritual_duration_ms: ritual_duration_ms(),
+      ritual_duration_ms: ritual_duration_ms(socket.assigns.arena_mode?),
       ritual: spell_creation_ritual(attempt)
     })
   end
@@ -719,7 +811,9 @@ defmodule MMGOWeb.SpellbookLive do
     }
   end
 
-  defp ritual_duration_ms do
+  defp ritual_duration_ms(true), do: 0
+
+  defp ritual_duration_ms(false) do
     Clock.game_hours_to_real_seconds(@ritual_game_hours) * 1_000
   end
 
@@ -802,6 +896,30 @@ defmodule MMGOWeb.SpellbookLive do
     "hsl(#{hue}, 60%, 42%)"
   end
 
+  defp spellbook_exit_path(true), do: ~p"/arena"
+  defp spellbook_exit_path(false), do: ~p"/map"
+
+  defp manifestation_kind_label(:held_shield), do: "Удерживаемый щит"
+  defp manifestation_kind_label(:summoned_weapon), do: "Призванное оружие"
+  defp manifestation_kind_label(:creature_ally), do: "Существо-союзник"
+  defp manifestation_kind_label(_kind), do: "Боевое проявление"
+
+  defp manifestation_stats(%{kind: :held_shield, hp: hp, duration_turns: duration}),
+    do: "прочность #{hp}, #{duration} х."
+
+  defp manifestation_stats(%{kind: :summoned_weapon, power: power, duration_turns: duration}),
+    do: "сила #{power}, #{duration} х."
+
+  defp manifestation_stats(%{
+         kind: :creature_ally,
+         hp: hp,
+         power: power,
+         duration_turns: duration
+       }),
+       do: "здоровье #{hp}, сила #{power}, #{duration} х."
+
+  defp manifestation_stats(_manifestation), do: "ограничено длительностью дуэли"
+
   defp delivery_form_label(:single_target), do: "одна цель"
   defp delivery_form_label(:beam), do: "луч"
   defp delivery_form_label(:cone), do: "конус"
@@ -876,6 +994,9 @@ defmodule MMGOWeb.SpellbookLive do
 
   defp spellbook_error_message(:spell_creation_in_progress),
     do: "Предыдущий ритуал ещё не завершён на мировых часах Башни."
+
+  defp spellbook_error_message(:arena_profile_required),
+    do: "Свободные переплёты выдаются только профилю Арены."
 
   defp spellbook_error_message(:location_changed),
     do: "Круг потерял опору: место ритуала изменилось прежде, чем легла первая печать."

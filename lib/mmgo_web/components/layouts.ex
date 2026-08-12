@@ -74,28 +74,13 @@ defmodule MMGOWeb.Layouts do
       id="game-shell"
       class="game-shell"
     >
-      <nav
-        :if={MMGO.CombatPlaytest.unrestricted?()}
-        id="beta-combat-shortcuts"
-        aria-label="Инструменты бета-теста"
-        class="fixed bottom-4 left-1/2 z-[90] flex -translate-x-1/2 items-center gap-1 rounded-full border border-amber-300/30 bg-slate-950/90 p-1.5 text-xs text-amber-50 shadow-2xl shadow-black/40 backdrop-blur"
-      >
-        <span class="px-2 text-[0.65rem] font-semibold uppercase tracking-[0.18em] text-amber-300/80">
-          beta
-        </span>
+      <nav id="game-mode-switcher" aria-label="Режим игры">
         <.link
-          id="beta-open-spellbook"
-          navigate={~p"/spellbook"}
-          class="flex min-h-9 items-center gap-1.5 rounded-full px-3 transition hover:bg-white/10"
+          id="open-game-mode-picker"
+          navigate={~p"/mode"}
+          class="fixed right-3 top-3 z-[90] flex min-h-9 items-center gap-1.5 rounded-full border border-amber-200/25 bg-stone-950/75 px-3 font-sans text-xs font-semibold text-amber-50/90 shadow-lg shadow-black/25 backdrop-blur transition hover:-translate-y-0.5 hover:border-amber-200/50 hover:bg-stone-900/90"
         >
-          <.icon name="hero-book-open" class="size-4" /> Гримуар
-        </.link>
-        <.link
-          id="beta-open-duels"
-          navigate={~p"/pvp"}
-          class="flex min-h-9 items-center gap-1.5 rounded-full px-3 transition hover:bg-white/10"
-        >
-          <.icon name="hero-bolt" class="size-4" /> Дуэли
+          <.icon name="hero-arrows-right-left" class="size-4 text-amber-300" /> Сменить режим
         </.link>
       </nav>
 

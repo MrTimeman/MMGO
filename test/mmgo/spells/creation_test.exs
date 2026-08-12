@@ -61,6 +61,34 @@ defmodule MMGO.Spells.CreationTest do
     assert Repo.aggregate(CreationAttempt, :count, :id) == 1
   end
 
+  test "the server-only immediate policy keeps a durable attempt but removes the reveal wait", %{
+    character: character,
+    tower: tower
+  } do
+    now = ~U[2026-08-03 15:00:00.000000Z]
+
+    assert {:ok, %{attempt: attempt, resolve_job: resolve_job, reveal_job: reveal_job}} =
+             Creation.begin(character, tower.id, %{"school" => "life", "actio" => "Vocatio"},
+               now: now,
+               immediate?: true
+             )
+
+    assert attempt.status == :queued
+    assert attempt.started_at == now
+    assert attempt.completes_at == now
+    assert resolve_job.args == %{"attempt_id" => attempt.id}
+    assert reveal_job.args == %{"attempt_id" => attempt.id}
+
+    assert {:ok, %{action: :resolve}} = Creation.claim_resolution(attempt.id)
+
+    assert {:ok, revealed} =
+             Creation.finalize_failure(attempt.id, :invalid_spell_circle, now: now)
+
+    assert revealed.status == :revealed
+    assert revealed.revealed_at == now
+    assert Creation.active_attempt(character.id) == nil
+  end
+
   test "invalid transport data is recorded as a failed payload rather than trusted", %{
     realm: realm,
     tower: tower

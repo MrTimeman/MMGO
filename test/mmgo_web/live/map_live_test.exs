@@ -59,7 +59,13 @@ defmodule MMGOWeb.MapLiveTest do
     nearby = character_fixture(scoped_realm, scoped_city, "nearby-player", "Nearby Player")
     outsider = character_fixture(default_realm, default_city, "outsider", "Outsider")
 
-    %{character: character, destination: scoped_tower, nearby: nearby, outsider: outsider}
+    %{
+      character: character,
+      destination: scoped_tower,
+      nearby: nearby,
+      outsider: outsider,
+      sibling_realm: default_realm
+    }
   end
 
   test "uses the current scope realm and real world overlay data", %{
@@ -115,10 +121,11 @@ defmodule MMGOWeb.MapLiveTest do
 
   test "an already-open socket cannot act after its profile is frozen", %{
     conn: conn,
-    character: character
+    character: character,
+    sibling_realm: sibling_realm
   } do
     sibling =
-      %Character{account_id: character.account_id, realm_id: character.realm_id}
+      %Character{account_id: character.account_id, realm_id: sibling_realm.id}
       |> Character.changeset(%{name: "Frozen Sibling", status: :frozen})
       |> Repo.insert!()
 

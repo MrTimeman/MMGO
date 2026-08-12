@@ -707,6 +707,139 @@ defmodule MMGO.Combat.EngineTest do
     refute Enum.any?(resolution.events, &(&1.event_type == "environment_hazard_tick"))
   end
 
+  test "arena events apply symmetrically and rotate their visible interaction tags" do
+    schedule = %{
+      "policy" => "fixed",
+      "codes" => ["emberfall", "healing_rain"],
+      "seed" => 77
+    }
+
+    combat = %{
+      combat_fixture()
+      | kind: :arena_match,
+        environment_tags: ["fire", "embers", "burning"],
+        metadata: %{
+          "arena_events" => schedule,
+          "arena_active_event_code" => "emberfall",
+          "arena_active_event_tags" => ["fire", "embers", "burning"]
+        }
+    }
+
+    [attacker, defender] = participants_fixture()
+
+    first =
+      Engine.resolve_turn(combat, %Turn{number: 1, status: :locked}, [attacker, defender], [])
+
+    assert first.combat_attrs.sides["attackers"]["shared_hp"] == 96
+    assert first.combat_attrs.sides["defenders"]["shared_hp"] == 96
+    assert first.combat_attrs.environment_tags == ["fire", "embers", "burning"]
+
+    arena_event = Enum.find(first.events, &(&1.event_type == "arena_event"))
+    assert arena_event.payload["code"] == "emberfall"
+    assert arena_event.payload["applied_symmetrically"]
+    refute Map.has_key?(arena_event.payload, "effect")
+
+    second_combat = %{
+      combat
+      | turn_number: 2,
+        sides: first.combat_attrs.sides,
+        environment_tags: first.combat_attrs.environment_tags,
+        metadata: first.combat_attrs.metadata
+    }
+
+    second =
+      Engine.resolve_turn(
+        second_combat,
+        %Turn{number: 2, status: :locked},
+        [attacker, defender],
+        []
+      )
+
+    assert second.combat_attrs.sides["attackers"]["shared_hp"] == 92
+    assert second.combat_attrs.sides["defenders"]["shared_hp"] == 92
+    assert second.combat_attrs.environment_tags == ["water", "rain", "wet"]
+    assert second.combat_attrs.metadata["arena_active_event_code"] == "healing_rain"
+  end
+
+  test "arena event tags are available to spell interaction rules" do
+    combat = %{
+      combat_fixture()
+      | kind: :arena_match,
+        metadata: %{
+          "arena_events" => %{
+            "policy" => "fixed",
+            "codes" => ["emberfall"],
+            "seed" => 91
+          }
+        }
+    }
+
+    spell = %{
+      spell_fixture()
+      | interaction_rules: [
+          %InteractionRule{
+            trigger_type: :environment_tag,
+            trigger: "fire",
+            outcome: :negate
+          }
+        ]
+    }
+
+    [attacker, defender] = participants_fixture()
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 1, status: :locked}, [attacker, defender], [
+        %Action{
+          participant_id: attacker.id,
+          action_type: :cast_spell,
+          spell: spell,
+          spell_id: spell.id,
+          target_side: "defenders"
+        }
+      ])
+
+    negated = Enum.find(resolution.events, &(&1.event_type == "spell_negated"))
+    assert "fire" in negated.payload["environment_tags"]
+    assert resolution.combat_attrs.sides["attackers"]["shared_hp"] == 96
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] == 96
+  end
+
+  test "a symmetric arena knockout finishes as a draw instead of opening an endless turn" do
+    combat = %{
+      combat_fixture()
+      | kind: :arena_match,
+        sides: %{
+          "attackers" => %{"label" => "Attackers", "shared_hp" => 4, "max_shared_hp" => 100},
+          "defenders" => %{"label" => "Defenders", "shared_hp" => 4, "max_shared_hp" => 100}
+        },
+        metadata: %{
+          "arena_events" => %{
+            "policy" => "fixed",
+            "codes" => ["emberfall"],
+            "seed" => 92
+          }
+        }
+    }
+
+    resolution =
+      Engine.resolve_turn(
+        combat,
+        %Turn{number: 1, status: :locked},
+        participants_fixture(),
+        []
+      )
+
+    assert resolution.combat_attrs.status == :finished
+    assert resolution.combat_attrs.winner_side == "draw"
+    refute resolution.create_next_turn?
+    assert resolution.combat_attrs.sides["attackers"]["shared_hp"] == 0
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] == 0
+
+    assert Enum.all?(resolution.participant_updates, fn {_id, attrs} ->
+             attrs.status == :defeated
+           end)
+  end
+
   test "a fleeing last member forfeits their side without changing shared mechanics client-side" do
     combat = combat_fixture()
     turn = %Turn{number: 1, status: :locked}
@@ -721,6 +854,210 @@ defmodule MMGO.Combat.EngineTest do
     assert resolution.combat_attrs.winner_side == "defenders"
     assert Map.fetch!(resolution.participant_updates, attacker.id).status == :fled
     assert Enum.any?(resolution.events, &(&1.event_type == "fled"))
+  end
+
+  test "a held manifestation shield keeps its remaining hp across multiple hits" do
+    combat = combat_fixture()
+    [attacker, defender] = participants_fixture()
+
+    attacker = %{
+      attacker
+      | active_states: [
+          %{
+            "state" => "summoned_shield",
+            "source_spell_id" => "shield-spell",
+            "display_name" => "Каменный щит",
+            "hp" => 12,
+            "remaining_turns" => 3,
+            "applied_on_turn" => 1
+          }
+        ]
+    }
+
+    attack_spell = guaranteed_impact_spell("enemy-spell", "c2", 7)
+
+    first =
+      Engine.resolve_turn(
+        %{combat | turn_number: 2},
+        %Turn{number: 2, status: :locked},
+        [attacker, defender],
+        [
+          %Action{
+            participant_id: defender.id,
+            action_type: :cast_spell,
+            spell: attack_spell,
+            spell_id: attack_spell.id,
+            target_side: "attackers"
+          }
+        ]
+      )
+
+    assert first.combat_attrs.sides["attackers"]["shared_hp"] == 100
+
+    assert %{"hp" => 5} =
+             Enum.find(first.participant_updates[attacker.id].active_states, fn state ->
+               state["state"] == "summoned_shield"
+             end)
+
+    second_attacker = %{
+      attacker
+      | active_states: first.participant_updates[attacker.id].active_states,
+        fatigue: first.participant_updates[attacker.id].fatigue,
+        cooldowns: first.participant_updates[attacker.id].cooldowns
+    }
+
+    second_combat = %{
+      combat
+      | turn_number: 3,
+        sides: first.combat_attrs.sides,
+        metadata: first.combat_attrs.metadata
+    }
+
+    second =
+      Engine.resolve_turn(
+        second_combat,
+        %Turn{number: 3, status: :locked},
+        [second_attacker, defender],
+        [
+          %Action{
+            participant_id: defender.id,
+            action_type: :cast_spell,
+            spell: attack_spell,
+            spell_id: attack_spell.id,
+            target_side: "attackers"
+          }
+        ]
+      )
+
+    assert second.combat_attrs.sides["attackers"]["shared_hp"] == 98
+
+    refute Enum.any?(
+             second.participant_updates[attacker.id].active_states,
+             &(&1["state"] == "summoned_shield")
+           )
+
+    assert Enum.any?(second.events, &(&1.event_type == "summon_destroyed"))
+  end
+
+  test "a creature intercepts for its summoner and autoattacks only on a later turn" do
+    combat = %{combat_fixture() | turn_number: 2}
+    [attacker, defender] = participants_fixture()
+
+    attacker = %{
+      attacker
+      | active_states: [
+          %{
+            "state" => "summoned_creature",
+            "source_spell_id" => "creature-spell",
+            "display_name" => "Огненный волк",
+            "hp" => 20,
+            "power" => 8,
+            "remaining_turns" => 3,
+            "applied_on_turn" => 1
+          }
+        ]
+    }
+
+    attack_spell = guaranteed_impact_spell("enemy-spell", "c2", 25)
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 2, status: :locked}, [attacker, defender], [
+        %Action{
+          participant_id: defender.id,
+          action_type: :cast_spell,
+          spell: attack_spell,
+          spell_id: attack_spell.id,
+          target_side: "attackers"
+        }
+      ])
+
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] == 92
+    assert resolution.combat_attrs.sides["attackers"]["shared_hp"] == 95
+    assert Enum.any?(resolution.events, &(&1.event_type == "summon_action"))
+    assert Enum.any?(resolution.events, &(&1.event_type == "summon_destroyed"))
+
+    refute Enum.any?(
+             resolution.participant_updates[attacker.id].active_states,
+             &(&1["state"] == "summoned_creature")
+           )
+  end
+
+  test "a summoned weapon authorizes a bounded manifestation strike" do
+    combat = %{combat_fixture() | turn_number: 2}
+    [attacker, defender] = participants_fixture()
+
+    weapon = %{
+      "state" => "summoned_weapon",
+      "source_spell_id" => "weapon-spell",
+      "display_name" => "Огненный клинок",
+      "power" => 12,
+      "remaining_turns" => 3,
+      "applied_on_turn" => 1
+    }
+
+    attacker = %{attacker | active_states: [weapon]}
+
+    action = %Action{
+      participant_id: attacker.id,
+      action_type: :manifestation_strike,
+      target_side: "attackers",
+      payload: %{
+        "snapshot" => %{
+          "kind" => "manifestation_strike",
+          "manifestation" => weapon,
+          "target_side" => "defenders",
+          "target_participant_id" => defender.id
+        }
+      }
+    }
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 2, status: :locked}, [attacker, defender], [
+        action
+      ])
+
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] == 88
+
+    strike_event = Enum.find(resolution.events, &(&1.event_type == "manifestation_strike"))
+    assert strike_event.payload["power"] == 12
+    assert strike_event.payload["target_side"] == "defenders"
+  end
+
+  test "a manifestation strike fails closed when its active weapon is gone" do
+    combat = %{combat_fixture() | turn_number: 2}
+    [attacker, defender] = participants_fixture()
+
+    action = %Action{
+      participant_id: attacker.id,
+      action_type: :manifestation_strike,
+      payload: %{
+        "snapshot" => %{
+          "kind" => "manifestation_strike",
+          "manifestation" => %{
+            "state" => "summoned_weapon",
+            "source_spell_id" => "weapon-spell",
+            "display_name" => "Огненный клинок",
+            "power" => 12,
+            "remaining_turns" => 3,
+            "applied_on_turn" => 1
+          },
+          "target_side" => "defenders",
+          "target_participant_id" => defender.id
+        }
+      }
+    }
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 2, status: :locked}, [attacker, defender], [
+        action
+      ])
+
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] == 100
+
+    assert Enum.any?(resolution.events, fn event ->
+             event.event_type == "invalid_action" and
+               event.payload["reason"] == "manifestation_unavailable"
+           end)
   end
 
   defp combat_fixture do
@@ -794,6 +1131,30 @@ defmodule MMGO.Combat.EngineTest do
         partial_success_rate: 5,
         backlash_damage: 0
       }
+    }
+  end
+
+  defp guaranteed_impact_spell(id, creator_character_id, intensity) do
+    %{
+      spell_fixture()
+      | id: id,
+        creator_character_id: creator_character_id,
+        effects: [
+          %SpellEffect{
+            applies_to: :target,
+            state: "impact",
+            intensity: intensity,
+            variance: 0,
+            duration: 0
+          }
+        ],
+        manifestation: nil,
+        failure_profile: %FailureProfile{
+          difficulty: 1,
+          base_success_rate: 100,
+          partial_success_rate: 0,
+          backlash_damage: 0
+        }
     }
   end
 

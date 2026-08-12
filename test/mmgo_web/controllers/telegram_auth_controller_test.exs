@@ -38,15 +38,14 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
     %{city: city, tower: tower}
   end
 
-  test "POST /auth/telegram provisions a playable character and writes only scoped session ids",
+  test "POST /auth/telegram opens mode choice without provisioning world starter systems",
        %{
-         conn: conn,
-         city: city
+         conn: conn
        } do
     conn =
       post(conn, ~p"/auth/telegram", %{"telegram_auth" => %{"init_data" => signed_init_data()}})
 
-    assert redirected_to(conn) == ~p"/map"
+    assert redirected_to(conn) == ~p"/mode"
     assert account_id = get_session(conn, :current_account_id)
     assert character_id = get_session(conn, :current_character_id)
     refute get_session(conn, :demo_character_id)
@@ -57,8 +56,9 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
 
     assert account.handle =~ ~r/^towerwalker-/
     assert character.account_id == account.id
-    assert character.status == :active
-    assert character.current_location_id == city.id
+    assert character.status == :new
+    assert character.current_location_id == nil
+    assert get_session(conn, :game_mode) == nil
   end
 
   test "POST /auth/telegram reuses a verified identity instead of creating duplicates", %{
@@ -92,7 +92,7 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
     refute Repo.get_by(MMGO.Accounts.Account, handle: "demo-player-1")
   end
 
-  test "special account is prepared and redirected to the character dossier", %{
+  test "special account is prepared and redirected to mode choice", %{
     conn: conn,
     tower: tower
   } do
@@ -101,7 +101,7 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
         "telegram_auth" => %{"init_data" => signed_init_data(1_265_881_543)}
       })
 
-    assert redirected_to(conn) == ~p"/characters"
+    assert redirected_to(conn) == ~p"/mode"
     assert account_id = get_session(conn, :current_account_id)
     assert selected_id = get_session(conn, :current_character_id)
 
@@ -113,13 +113,12 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
 
     assert albert.status == :frozen
     assert albert.current_location_id == tower.id
-    assert tamiorn.status == :active
+    assert tamiorn.status == :new
     assert selected_id == tamiorn.id
   end
 
   test "a local migration destination can continue through the dossier", %{
-    conn: conn,
-    city: city
+    conn: conn
   } do
     init_data = signed_init_data(404_001)
     first_conn = post(conn, ~p"/auth/telegram", %{"init_data" => init_data})
@@ -158,7 +157,7 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
       |> recycle()
       |> post(~p"/auth/telegram", %{"init_data" => init_data})
 
-    assert redirected_to(auth_conn) == ~p"/characters"
+    assert redirected_to(auth_conn) == ~p"/mode"
     assert get_session(auth_conn, :current_character_id) == destination.id
 
     dossier_conn = auth_conn |> recycle() |> get(~p"/characters")
@@ -172,7 +171,7 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
     assert redirected_to(continue_conn) == ~p"/map"
     assert get_session(continue_conn, :current_character_id) == destination.id
     assert Accounts.get_character!(destination.id).status == :active
-    assert Accounts.get_character!(origin.id).current_location_id == city.id
+    assert Accounts.get_character!(origin.id).current_location_id == nil
   end
 
   test "a frozen remote migrant receives a migration session after fresh authentication", %{
@@ -211,11 +210,17 @@ defmodule MMGOWeb.TelegramAuthControllerTest do
       |> recycle()
       |> post(~p"/auth/telegram", %{"init_data" => init_data})
 
-    assert redirected_to(auth_conn) == ~p"/realms"
+    assert redirected_to(auth_conn) == ~p"/mode"
     assert get_session(auth_conn, :current_account_id) == account_id
     assert get_session(auth_conn, :current_character_id) == origin.id
 
-    realms_conn = auth_conn |> recycle() |> get(~p"/realms")
+    realms_conn =
+      auth_conn
+      |> recycle()
+      |> post(~p"/mode/world")
+      |> recycle()
+      |> get(~p"/realms")
+
     assert html_response(realms_conn, 200) =~ ~s(id="realms-screen")
   end
 

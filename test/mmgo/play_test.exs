@@ -4,6 +4,7 @@ defmodule MMGO.PlayTest do
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.AI.Request
   alias MMGO.Bases
+  alias MMGO.Arena
   alias MMGO.Dungeons
   alias MMGO.Economy
   alias MMGO.Economy.EconomyAccount
@@ -514,6 +515,71 @@ defmodule MMGO.PlayTest do
     assert spell.school == :water
     assert spell.source_spell_id == nil
     assert Repo.aggregate(Request, :count, :id) == 1
+  end
+
+  test "an Arena profile composes immediately from exactly its three schools and creates free drafts",
+       %{tower: tower} do
+    account =
+      %Account{}
+      |> Account.registration_changeset(%{
+        display_name: "Arena Spellwright",
+        handle: "arena-spellwright"
+      })
+      |> Repo.insert!()
+
+    assert {:ok, profile} =
+             Arena.create_profile(account, %{
+               name: "Arena Spellwright",
+               schools: [:fire, :life, :order]
+             })
+
+    assert profile.character.current_location_id == tower.id
+    assert {:ok, state} = Play.spellbook_state(profile.character)
+    assert state.arena_mode?
+    assert state.spell_circle_tier == :trained
+    assert state.permitted_schools == ["fire", "life", "order"]
+    assert state.composition_available?
+
+    assert {:error, :school_not_permitted} =
+             Play.compile_structured_spell(profile.character, %{
+               "school" => "water",
+               "actio" => "Aqua"
+             })
+
+    assert {:ok, %{attempt: attempt}} =
+             Play.begin_spell_creation(profile.character, %{
+               "school" => "life",
+               "actio" => "Vocatio",
+               "tempus" => "Sustineo"
+             })
+
+    assert attempt.status == :revealed
+    assert attempt.completes_at == attempt.started_at
+    assert attempt.outcome["kind"] == "success"
+    assert Creation.active_attempt(profile.character_id) == nil
+
+    assert {:ok, summoned_spell} =
+             Play.spell_creation_result(profile.character, attempt.id)
+
+    assert summoned_spell.school == :life
+    assert summoned_spell.manifestation.kind == :creature_ally
+
+    assert {:ok, draft} = Play.create_arena_draft_grimoire(profile.character)
+    assert draft.status == :draft
+    assert draft.capacity == Arena.grimoire_capacity()
+    assert draft.weight == 0
+    assert draft.metadata["free"] == true
+
+    assert {:ok, entry} =
+             Play.inscribe_spell(profile.character, draft.id, summoned_spell.id)
+
+    assert entry.spell_id == summoned_spell.id
+
+    assert {:ok, %{activate_grimoire: active}} =
+             Play.activate_grimoire(profile.character, draft.id)
+
+    assert active.id == draft.id
+    assert Grimoires.active_grimoire_for_character(profile.character_id).id == draft.id
   end
 
   test "a known same-school spell is not silently attached to the novice circle", %{

@@ -11,8 +11,8 @@
             <p class="character-folio__eyebrow">Реестр закрытой альфы · личные дела</p>
             <h1 id="character-registry-title">Кем вы войдёте в мир?</h1>
             <p class="character-folio__copy">
-              Один профиль бодрствует. Остальные лежат под печатью и не оставляют следа в
-              мире, пока вы их не выберете.
+              Выбранный обычный профиль становится основным: им откроется эта сессия и его
+              будут использовать дальнейшие команды Telegram-бота.
             </p>
           </div>
 
@@ -52,6 +52,7 @@
                   ),
                   (character.id == @current_character_id and character.status == :active) &&
                     "character-file--current",
+                  character.id == @default_world_character_id && "character-file--default",
                   not playable?(character, @blocked_character_ids) && "character-file--locked"
                 ]}
               >
@@ -107,6 +108,16 @@
                   Действующее дело
                 </div>
 
+                <div
+                  :if={
+                    character.id == @default_world_character_id and not sealed_spirit?(character)
+                  }
+                  id={"default-world-character-#{character.id}"}
+                  class="character-file__default-stamp"
+                >
+                  <.icon name="hero-star" /> Основной · используется ботом
+                </div>
+
                 <footer class="character-file__footer">
                   <.link
                     :if={playable?(character, @blocked_character_ids)}
@@ -116,9 +127,16 @@
                     class="character-file__choose"
                   >
                     <.icon name="hero-key" class="character-file__choose-icon" />
-                    {if character.id == @current_character_id and character.status == :active,
-                      do: "Продолжить",
-                      else: "Открыть это дело"}
+                    <%= cond do %>
+                      <% sealed_spirit?(character) -> %>
+                        {if character.id == @current_character_id and character.status == :active,
+                          do: "Продолжить духом",
+                          else: "Открыть это дело"}
+                      <% character.id == @current_character_id and character.status == :active -> %>
+                        Продолжить основным
+                      <% true -> %>
+                        Выбрать основным
+                    <% end %>
                   </.link>
 
                   <p
@@ -134,8 +152,8 @@
 
           <footer class="character-folio__registry-note">
             <span>Правило реестра</span>
-            В одном мире может действовать только одно ваше личное дело. Переход между мирами
-            временно запечатывает остальные профили.
+            В каждом мире хранится один обычный персонаж. Основной профиль не может быть
+            бойцом Арены или запечатанным духом и используется командами Telegram-бота.
           </footer>
         </div>
       </section>

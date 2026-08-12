@@ -16,6 +16,7 @@ defmodule MMGO.Accounts.Account do
 
     has_one :telegram_identity, TelegramIdentity
     has_many :characters, Character
+    belongs_to :default_character, Character
 
     timestamps(type: :utc_datetime_usec)
   end

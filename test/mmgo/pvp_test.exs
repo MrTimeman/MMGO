@@ -68,6 +68,34 @@ defmodule MMGO.PVPTest do
     assert "duels cannot start in a safe zone" in errors_on(changeset).status
   end
 
+  test "challenge_duel/4 rejects zero-stake and geographically remote world challenges", %{
+    realm: realm,
+    challenger: challenger,
+    opponent: opponent
+  } do
+    assert {:error, zero_stake_changeset} = PVP.challenge_duel(challenger, opponent, 0)
+    assert "stake amount must be greater than zero" in errors_on(zero_stake_changeset).status
+
+    {:ok, remote_location} =
+      Worlds.create_location(realm, %{
+        slug: "remote-duel-tower",
+        name: "Remote Duel Tower",
+        kind: :tower,
+        x: 30,
+        y: 30,
+        safe_zone: false
+      })
+
+    remote_opponent =
+      opponent
+      |> Character.travel_changeset(%{current_location_id: remote_location.id})
+      |> Repo.update!()
+
+    assert {:error, remote_changeset} = PVP.challenge_duel(challenger, remote_opponent, 25)
+
+    assert "duel participants must be at the same location" in errors_on(remote_changeset).status
+  end
+
   test "accept_duel/2 creates escrow and combat", %{
     realm: realm,
     challenger: challenger,

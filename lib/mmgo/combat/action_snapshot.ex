@@ -21,6 +21,7 @@ defmodule MMGO.Combat.ActionSnapshot do
     FailureProfile,
     Incantation,
     InteractionRule,
+    Manifestation,
     SchoolQuirk,
     Spell,
     SpellEffect
@@ -31,6 +32,7 @@ defmodule MMGO.Combat.ActionSnapshot do
   @action_types %{
     "wait" => :wait,
     "cast_spell" => :cast_spell,
+    "manifestation_strike" => :manifestation_strike,
     "use_item" => :use_item,
     "flee" => :flee
   }
@@ -128,6 +130,28 @@ defmodule MMGO.Combat.ActionSnapshot do
   def cast_for_resolution(_action), do: {:error, :invalid_snapshot}
 
   @doc """
+  Rehydrates a server-approved summoned weapon and target.
+
+  The snapshot contains only bounded combat state copied from the participant;
+  no weapon stats from the browser are accepted.
+  """
+  def manifestation_strike_for_resolution(
+        %Action{action_type: :manifestation_strike, payload: payload} = action
+      ) do
+    with %{"snapshot" => snapshot} when is_map(snapshot) <- payload,
+         "manifestation_strike" <- Map.get(snapshot, "kind"),
+         {:ok, weapon} <- weapon_from_snapshot(Map.get(snapshot, "manifestation")),
+         {:ok, target_side, target_participant_id} <- target_from_snapshot(snapshot) do
+      {:ok, %{action | target_side: target_side, target_participant_id: target_participant_id},
+       weapon}
+    else
+      _other -> {:error, :invalid_snapshot}
+    end
+  end
+
+  def manifestation_strike_for_resolution(_action), do: {:error, :invalid_snapshot}
+
+  @doc """
   Rehydrates a frozen item-action definition and target from a server-created
   action snapshot. Current inventory records are still used only to consume the
   resource that was reserved when the turn was sealed.
@@ -165,6 +189,16 @@ defmodule MMGO.Combat.ActionSnapshot do
        target_side: nil,
        target_participant_id: nil,
        payload: %{"snapshot" => %{"kind" => "wait"}}
+     }}
+  end
+
+  defp normalize_action(:flee, %Combat{kind: :arena_match}, _participant, _attrs) do
+    {:ok,
+     %{
+       action_type: :flee,
+       target_side: nil,
+       target_participant_id: nil,
+       payload: %{"snapshot" => %{"kind" => "flee"}}
      }}
   end
 
@@ -207,6 +241,30 @@ defmodule MMGO.Combat.ActionSnapshot do
        }}
     end
   end
+
+  defp normalize_action(:manifestation_strike, combat, participant, attrs) do
+    with {:ok, weapon} <- active_summoned_weapon(participant),
+         {:ok, target_side, target_participant_id} <-
+           normalize_target(combat, participant, :enemy, attrs) do
+      {:ok,
+       %{
+         action_type: :manifestation_strike,
+         target_side: target_side,
+         target_participant_id: target_participant_id,
+         payload: %{
+           "snapshot" => %{
+             "kind" => "manifestation_strike",
+             "manifestation" => weapon,
+             "target_side" => target_side,
+             "target_participant_id" => target_participant_id
+           }
+         }
+       }}
+    end
+  end
+
+  defp normalize_action(:use_item, %Combat{kind: :arena_match}, _participant, _attrs),
+    do: {:error, :items_disabled}
 
   defp normalize_action(:use_item, combat, participant, attrs) do
     with {:ok, inventory_item} <- owned_inventory_item(participant, attrs["inventory_item_id"]),
@@ -277,6 +335,13 @@ defmodule MMGO.Combat.ActionSnapshot do
   end
 
   defp prepared_spell?(_participant, _spell_id), do: false
+
+  defp active_summoned_weapon(%Participant{} = participant) do
+    participant.active_states
+    |> List.wrap()
+    |> Enum.find(&(is_map(&1) and Map.get(&1, "state") == "summoned_weapon"))
+    |> weapon_from_snapshot()
+  end
 
   defp normalize_incantation(attrs, %Spell{} = spell) do
     payload = map_value(attrs, "payload")
@@ -428,8 +493,21 @@ defmodule MMGO.Combat.ActionSnapshot do
       "environment_tags" => spell.environment_tags,
       "environment_mode" => to_string(spell.environment_mode),
       "effects" => Enum.map(spell.effects, &effect_snapshot/1),
+      "manifestation" => manifestation_snapshot(spell.manifestation),
       "interaction_rules" => Enum.map(spell.interaction_rules, &interaction_rule_snapshot/1),
       "failure_profile" => failure_profile_snapshot(spell.failure_profile)
+    }
+  end
+
+  defp manifestation_snapshot(nil), do: nil
+
+  defp manifestation_snapshot(%Manifestation{} = manifestation) do
+    %{
+      "kind" => to_string(manifestation.kind),
+      "display_name" => manifestation.display_name,
+      "hp" => manifestation.hp,
+      "power" => manifestation.power,
+      "duration_turns" => manifestation.duration_turns
     }
   end
 
@@ -496,6 +574,8 @@ defmodule MMGO.Combat.ActionSnapshot do
          cooldown_turns when is_integer(cooldown_turns) and cooldown_turns >= 0 <-
            Map.get(snapshot, "cooldown_turns"),
          {:ok, effects} <- effects_from_snapshot(Map.get(snapshot, "effects")),
+         {:ok, manifestation} <-
+           manifestation_from_snapshot(Map.get(snapshot, "manifestation")),
          {:ok, interaction_rules} <-
            interaction_rules_from_snapshot(Map.get(snapshot, "interaction_rules")),
          {:ok, failure_profile} <-
@@ -516,6 +596,7 @@ defmodule MMGO.Combat.ActionSnapshot do
          environment_tags: Map.get(snapshot, "environment_tags", []),
          environment_mode: environment_mode,
          effects: effects,
+         manifestation: manifestation,
          interaction_rules: interaction_rules,
          failure_profile: failure_profile
        }}
@@ -525,6 +606,52 @@ defmodule MMGO.Combat.ActionSnapshot do
   end
 
   defp spell_from_snapshot(_snapshot), do: {:error, :invalid_snapshot}
+
+  defp manifestation_from_snapshot(nil), do: {:ok, nil}
+
+  defp manifestation_from_snapshot(snapshot) when is_map(snapshot) do
+    %Manifestation{}
+    |> Manifestation.changeset(snapshot)
+    |> Ecto.Changeset.apply_action(:insert)
+    |> case do
+      {:ok, manifestation} -> {:ok, manifestation}
+      {:error, _changeset} -> {:error, :invalid_snapshot}
+    end
+  end
+
+  defp manifestation_from_snapshot(_snapshot), do: {:error, :invalid_snapshot}
+
+  defp weapon_from_snapshot(snapshot) when is_map(snapshot) do
+    with "summoned_weapon" <- Map.get(snapshot, "state"),
+         source_spell_id when is_binary(source_spell_id) and source_spell_id != "" <-
+           Map.get(snapshot, "source_spell_id"),
+         display_name when is_binary(display_name) <- Map.get(snapshot, "display_name"),
+         power when is_integer(power) <- Map.get(snapshot, "power"),
+         remaining_turns when is_integer(remaining_turns) <- Map.get(snapshot, "remaining_turns"),
+         applied_on_turn when is_integer(applied_on_turn) and applied_on_turn >= 0 <-
+           Map.get(snapshot, "applied_on_turn"),
+         {:ok, _manifestation} <-
+           manifestation_from_snapshot(%{
+             "kind" => "summoned_weapon",
+             "display_name" => display_name,
+             "power" => power,
+             "duration_turns" => remaining_turns
+           }) do
+      {:ok,
+       %{
+         "state" => "summoned_weapon",
+         "source_spell_id" => source_spell_id,
+         "display_name" => display_name,
+         "power" => power,
+         "remaining_turns" => remaining_turns,
+         "applied_on_turn" => applied_on_turn
+       }}
+    else
+      _other -> {:error, :invalid_snapshot}
+    end
+  end
+
+  defp weapon_from_snapshot(_snapshot), do: {:error, :manifestation_unavailable}
 
   defp optional_enum_value(nil, _values), do: {:ok, nil}
   defp optional_enum_value(value, values), do: enum_value(value, values)

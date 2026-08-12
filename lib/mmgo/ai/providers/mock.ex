@@ -136,7 +136,51 @@ defmodule MMGO.AI.Providers.Mock do
         "volatility" => 8
       }
     }
+    |> maybe_put_mock_manifestation(formula)
   end
+
+  defp maybe_put_mock_manifestation(compiled_spell, formula) when is_binary(formula) do
+    normalized_formula = String.downcase(formula)
+
+    manifestation =
+      cond do
+        Regex.match?(~r/(?:^|\s)(?:vocatio|evocatio)(?:\s|$)/u, normalized_formula) ->
+          %{
+            "kind" => "creature_ally",
+            "display_name" => "Призванный страж",
+            "hp" => 18,
+            "power" => 7,
+            "duration_turns" => 3
+          }
+
+        Regex.match?(~r/(?:^|\s)scutum(?:\s|$)/u, normalized_formula) ->
+          %{
+            "kind" => "held_shield",
+            "display_name" => "Призванный щит",
+            "hp" => 24,
+            "duration_turns" => 3
+          }
+
+        Regex.match?(~r/(?:^|\s)(?:gladius|arma)(?:\s|$)/u, normalized_formula) ->
+          %{
+            "kind" => "summoned_weapon",
+            "display_name" => "Призванный клинок",
+            "power" => 12,
+            "duration_turns" => 3
+          }
+
+        true ->
+          nil
+      end
+
+    if manifestation do
+      Map.put(compiled_spell, "manifestation", manifestation)
+    else
+      compiled_spell
+    end
+  end
+
+  defp maybe_put_mock_manifestation(compiled_spell, _formula), do: compiled_spell
 
   defp mock_school_quirk("fire"), do: "escalation"
   defp mock_school_quirk("water"), do: "environment_shift"

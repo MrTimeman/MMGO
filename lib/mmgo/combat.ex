@@ -104,10 +104,23 @@ defmodule MMGO.Combat do
     create_combat_instance(realm, :club_match, attrs)
   end
 
+  @doc "Creates an Arena combat using the shared, server-authoritative engine."
+  def create_arena_match(%Realm{} = realm, attrs) when is_map(attrs) do
+    create_combat_instance(realm, :arena_match, attrs)
+  end
+
   defp create_combat_instance(%Realm{} = realm, kind, attrs) when is_map(attrs) do
     participant_attrs = Map.get(attrs, :participants) || Map.get(attrs, "participants") || []
     sides = build_sides(attrs, participant_attrs)
     opened_at = Map.get(attrs, :opened_at) || Map.get(attrs, "opened_at") || DateTime.utc_now()
+
+    turn_seconds =
+      normalize_turn_seconds(Map.get(attrs, :turn_seconds) || Map.get(attrs, "turn_seconds"))
+
+    metadata =
+      attrs
+      |> Map.get(:metadata, Map.get(attrs, "metadata", %{}))
+      |> maybe_put_turn_seconds(turn_seconds)
 
     seed =
       Map.get(attrs, :seed) || Map.get(attrs, "seed") ||
@@ -125,7 +138,7 @@ defmodule MMGO.Combat do
         sides: sides,
         environment_tags:
           Map.get(attrs, :environment_tags) || Map.get(attrs, "environment_tags") || [],
-        metadata: Map.get(attrs, :metadata) || Map.get(attrs, "metadata") || %{}
+        metadata: metadata
       })
     )
     |> Multi.run(:participants, fn repo, %{combat: combat} ->
@@ -134,7 +147,7 @@ defmodule MMGO.Combat do
     |> Multi.insert(:turn, fn %{combat: combat, participants: participants} ->
       Turn.changeset(
         %Turn{},
-        new_turn_attrs(combat.id, 1, length(participants), opened_at)
+        new_turn_attrs(combat.id, 1, length(participants), opened_at, turn_seconds)
       )
     end)
     |> Multi.run(:deadline_worker, fn _repo, %{combat: combat, turn: turn} ->
@@ -249,7 +262,8 @@ defmodule MMGO.Combat do
                 combat.id,
                 updated_combat.turn_number,
                 ready_participant_count(runtime_combat.participants),
-                now
+                now,
+                combat_turn_seconds(updated_combat)
               )
             )
             |> Repo.insert!()
@@ -622,9 +636,9 @@ defmodule MMGO.Combat do
     |> Repo.update!()
   end
 
-  defp new_turn_attrs(combat_id, number, participant_count, opened_at) do
+  defp new_turn_attrs(combat_id, number, participant_count, opened_at, turn_seconds) do
     opened_at = normalize_turn_time(opened_at)
-    duration_seconds = turn_duration_seconds(participant_count)
+    duration_seconds = turn_duration_seconds(participant_count, turn_seconds)
 
     %{
       combat_id: combat_id,
@@ -646,7 +660,10 @@ defmodule MMGO.Combat do
   defp normalize_turn_time(%DateTime{} = opened_at), do: opened_at
   defp normalize_turn_time(_opened_at), do: DateTime.utc_now()
 
-  defp turn_duration_seconds(participant_count) do
+  defp turn_duration_seconds(_participant_count, turn_seconds) when is_integer(turn_seconds),
+    do: turn_seconds
+
+  defp turn_duration_seconds(participant_count, _turn_seconds) do
     participant_count
     |> Kernel.-(2)
     |> max(0)
@@ -654,6 +671,30 @@ defmodule MMGO.Combat do
     |> Kernel.+(@base_turn_seconds)
     |> min(@max_turn_seconds)
   end
+
+  defp normalize_turn_seconds(seconds) when is_integer(seconds) and seconds in 30..120,
+    do: seconds
+
+  defp normalize_turn_seconds(seconds) when is_binary(seconds) do
+    case Integer.parse(seconds) do
+      {parsed, ""} -> normalize_turn_seconds(parsed)
+      _invalid -> nil
+    end
+  end
+
+  defp normalize_turn_seconds(_seconds), do: nil
+
+  defp maybe_put_turn_seconds(metadata, nil), do: metadata || %{}
+
+  defp maybe_put_turn_seconds(metadata, turn_seconds) when is_map(metadata),
+    do: Map.put(metadata, "turn_seconds", turn_seconds)
+
+  defp maybe_put_turn_seconds(_metadata, turn_seconds), do: %{"turn_seconds" => turn_seconds}
+
+  defp combat_turn_seconds(%Combat{metadata: metadata}) when is_map(metadata),
+    do: normalize_turn_seconds(metadata["turn_seconds"] || metadata[:turn_seconds])
+
+  defp combat_turn_seconds(_combat), do: nil
 
   defp turn_deadline_at(%Turn{} = turn) do
     case Map.get(turn_lifecycle(turn), "deadline_at") do

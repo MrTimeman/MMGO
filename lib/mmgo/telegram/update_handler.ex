@@ -1,13 +1,13 @@
 defmodule MMGO.Telegram.UpdateHandler do
   alias MMGO.Accounts
+  alias MMGO.Accounts.CharacterProfiles
   alias MMGO.Play
   alias MMGO.Telegram
   alias MMGO.Telegram.{Client, Commands, ReleaseAnnouncements}
 
   def handle(%{"message" => %{"from" => from} = message, "update_id" => update_id}) do
-    with {:ok, %{account: account, character: character}} <-
-           Accounts.provision_from_telegram(from),
-         {:ok, character} <- Play.ensure_character_usable(character),
+    with {:ok, %{account: account}} <- Accounts.provision_from_telegram(from),
+         character <- Accounts.get_default_world_character_for_account(account.id),
          {:ok, _response} <- maybe_reply(character, message) do
       {:ok,
        %{
@@ -21,10 +21,16 @@ defmodule MMGO.Telegram.UpdateHandler do
   end
 
   def handle(%{"callback_query" => %{"from" => from} = callback_query, "update_id" => update_id}) do
-    with {:ok, %{account: account, character: character}} <-
-           Accounts.provision_from_telegram(from),
-         {:ok, character} <- Play.ensure_character_usable(character) do
-      callback_result = process_callback(character, callback_query)
+    with {:ok, %{account: account}} <- Accounts.provision_from_telegram(from) do
+      character = Accounts.get_default_world_character_for_account(account.id)
+
+      callback_result =
+        if world_character_ready?(character) do
+          process_callback(character, callback_query)
+        else
+          choose_mode_callback()
+        end
+
       _ = answer_callback_query(callback_query, callback_result)
 
       {:ok,
@@ -62,9 +68,65 @@ defmodule MMGO.Telegram.UpdateHandler do
 
   defp command_response(character, message) do
     case ReleaseAnnouncements.process_message(message) do
-      {:ok, nil} -> Commands.process_message(character, message)
+      {:ok, nil} -> maybe_process_game_command(character, message)
       response -> response
     end
+  end
+
+  defp maybe_process_game_command(character, message) do
+    if world_character_ready?(character) do
+      Commands.process_message(character, message)
+    else
+      pre_mode_response(message)
+    end
+  end
+
+  defp pre_mode_response(%{"text" => text}) when is_binary(text) do
+    case command_name(text) do
+      "start" ->
+        {:ok,
+         "Добро пожаловать в MMGO. Откройте Mini App и выберите путь: общий мир или Арену. До выбора мы не создаём инвентарь и не запускаем прогресс мира."}
+
+      "play" ->
+        {:ok, "Открываю выбор режима MMGO. Продолжите кнопкой ниже."}
+
+      "help" ->
+        {:ok,
+         "Сначала выберите режим в Mini App: общий мир MMGO или боевую Арену. После выбора команды мира станут доступны вашему мировому персонажу."}
+
+      nil ->
+        {:ok, nil}
+
+      _command ->
+        {:ok, "Сначала откройте Mini App и выберите общий мир или Арену."}
+    end
+  end
+
+  defp pre_mode_response(_message), do: {:ok, nil}
+
+  defp command_name(text) do
+    text = String.trim(text)
+
+    if String.starts_with?(text, "/") do
+      text
+      |> String.split(~r/\s+/, parts: 2)
+      |> List.first()
+      |> String.trim_leading("/")
+      |> String.split("@")
+      |> List.first()
+      |> String.downcase()
+    end
+  end
+
+  defp world_character_ready?(nil), do: false
+
+  defp world_character_ready?(character) do
+    character.status == :active and not CharacterProfiles.arena?(character) and
+      not CharacterProfiles.sealed_spirit?(character)
+  end
+
+  defp choose_mode_callback do
+    %{ok?: false, message: "Сначала откройте Mini App и выберите режим игры."}
   end
 
   defp process_callback(character, %{"data" => "road:accept:" <> encounter_id}) do

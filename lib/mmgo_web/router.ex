@@ -29,8 +29,15 @@ defmodule MMGOWeb.Router do
     post "/auth/telegram", TelegramAuthController, :create
     get "/characters", CharacterController, :index
     post "/characters/:id/select", CharacterController, :select
+    post "/mode/:mode", GameModeController, :select
+    post "/arena/profiles", ArenaProfileController, :create
 
-    live_session :game, on_mount: [{MMGOWeb.GameAuth, :require_character}] do
+    live_session :game_entry, on_mount: [{MMGOWeb.GameAuth, :require_account}] do
+      live "/mode", GameModeLive
+      live "/arena/new", ArenaCharacterLive
+    end
+
+    live_session :game, on_mount: [{MMGOWeb.GameAuth, :require_world_character}] do
       live "/map", MapLive
       live "/notifications", NotificationsLive
       live "/spellbook", SpellbookLive
@@ -74,6 +81,16 @@ defmodule MMGOWeb.Router do
       live "/academy/clubs/:id/manage", ClubsLive, :manage
       live "/academy/research", AcademiaLive
       live "/academy/thesis/:id", ThesisDefenseLive
+    end
+
+    live_session :arena, on_mount: [{MMGOWeb.GameAuth, :require_arena_character}] do
+      live "/arena", ArenaLive, :home
+      live "/arena/queue", ArenaLive, :queue
+      live "/arena/rooms/new", ArenaLive, :new_room
+      live "/arena/rooms/:code", ArenaLive, :room
+      live "/arena/rankings", ArenaLive, :rankings
+      live "/arena/spellbook", SpellbookLive, :index
+      live "/arena/combat/:id", CombatLive, :show
     end
 
     live_session :realm_migration,

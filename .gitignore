@@ -37,6 +37,7 @@ npm-debug.log
 
 # Local environment overrides
 .env
+*.env
 
 # macOS files
 .DS_Store

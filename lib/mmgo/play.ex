@@ -14,6 +14,7 @@ defmodule MMGO.Play do
   alias MMGO.Academy
   alias MMGO.Academia
   alias MMGO.Alchemy
+  alias MMGO.Arena
   alias MMGO.Atmosphere
   alias MMGO.Bases
   alias MMGO.Bases.{Base, StorageItem}
@@ -24,7 +25,18 @@ defmodule MMGO.Play do
   alias MMGO.Clubs.Invitation, as: ClubInvitation
   alias MMGO.Clubs.Membership, as: ClubMembership
   alias MMGO.Combat, as: CombatContext
-  alias MMGO.Combat.{Action, Combat, Event, Participant, Resolution, Turn, TurnArtifacts}
+
+  alias MMGO.Combat.{
+    Action,
+    ArenaEvents,
+    Combat,
+    Event,
+    Participant,
+    Resolution,
+    Turn,
+    TurnArtifacts
+  }
+
   alias MMGO.Dungeons
   alias MMGO.Dungeons.{Dungeon, Encounter, LootDrop, Run}
   alias MMGO.Dungeons.ResourceCache, as: DungeonResourceCache
@@ -49,7 +61,6 @@ defmodule MMGO.Play do
   alias MMGO.Parties.{Expedition, Party}
   alias MMGO.PVP
   alias MMGO.PVP.Duel
-  alias MMGO.CombatPlaytest
   alias MMGO.Repo
   alias MMGO.Scavenging
   alias MMGO.Scavenging.{Attempt, ResourceCache}
@@ -393,9 +404,9 @@ defmodule MMGO.Play do
   end
 
   @doc """
-  Loads the scoped duel lobby. Permanent play uses nearby stationary players;
-  the temporary beta sandbox exposes every active player profile. Candidate
-  IDs remain display hints and are revalidated before reaching `MMGO.PVP`.
+  Loads the world-scoped duel lobby. Challenges are always limited to nearby,
+  stationary players and remain subject to the realm's location and wager
+  rules. Fast, zero-stake combat belongs to `MMGO.Arena` instead.
   """
   def duel_lobby_state(character_or_id) do
     with {:ok, character} <- normalize_character(character_or_id) do
@@ -403,9 +414,6 @@ defmodule MMGO.Play do
       character = state.character
 
       cond do
-        CombatPlaytest.unrestricted?() ->
-          duel_lobby_payload(character, state)
-
         not is_nil(state.active_journey) ->
           {:error, :travelling}
 
@@ -429,9 +437,8 @@ defmodule MMGO.Play do
     {:ok,
      %{
        character: character,
-       location: state.current_location || %{name: "Весь мир", safe_zone: false},
+       location: state.current_location,
        balance: account.current_balance,
-       unrestricted_playtest?: CombatPlaytest.unrestricted?(),
        active_duel: state.duel.active_duel,
        opponents: duel_opponents(character, state.current_location),
        incoming: Enum.filter(pending_duels, &(&1.opponent_character_id == character.id)),
@@ -451,8 +458,7 @@ defmodule MMGO.Play do
          :ok <- ensure_duel_lobby_available(state),
          %Character{} = opponent <-
            find_duel_opponent(state.character, state.current_location, opponent_id),
-         duel_stake = if(CombatPlaytest.unrestricted?(), do: 0, else: stake_amount),
-         {:ok, duel} <- PVP.challenge_duel(state.character, opponent, duel_stake) do
+         {:ok, duel} <- PVP.challenge_duel(state.character, opponent, stake_amount) do
       {:ok, %{duel: preload_duel(duel)}}
     else
       nil -> {:error, :opponent_not_found}
@@ -518,6 +524,7 @@ defmodule MMGO.Play do
   """
   def spellbook_state(character_or_id) do
     with {:ok, character} <- reload_spellbook_character(character_or_id) do
+      arena_profile = arena_profile(character)
       spells = Spells.list_spells_for_character(character.id)
       grimoires = Grimoires.list_grimoires_for_character(character.id)
       circle_tier = spellbook_circle_tier(character)
@@ -543,6 +550,8 @@ defmodule MMGO.Play do
          grimoires: grimoires,
          active_grimoire: Enum.find(grimoires, &(&1.status == :active)),
          writable_grimoires: Enum.filter(grimoires, &(&1.status == :draft)),
+         arena_mode?: not is_nil(arena_profile),
+         arena_profile: arena_profile,
          permitted_schools: permitted_spellbook_schools(character, spells),
          spell_circle_tier: circle_tier,
          spell_creation_attempt: spell_creation_attempt,
@@ -585,7 +594,7 @@ defmodule MMGO.Play do
     end
   end
 
-  @doc "Starts a durable spell ritual on the continuously running world clock."
+  @doc "Starts a durable spell ritual under the character's world or Arena reveal policy."
   def begin_spell_creation(character_or_id, raw_circle) do
     case spellbook_character_id(character_or_id) do
       character_id when is_binary(character_id) ->
@@ -613,13 +622,32 @@ defmodule MMGO.Play do
                {:error, reason} -> Repo.rollback(reason)
              end
 
-           case Creation.begin(character, location.id, raw_circle) do
-             {:ok, result} -> result
+           arena_mode? = CharacterProfiles.arena?(character)
+
+           case Creation.begin(character, location.id, raw_circle, immediate?: arena_mode?) do
+             {:ok, result} -> %{creation: result, immediate?: arena_mode?}
              {:error, reason} -> Repo.rollback(reason)
            end
          end) do
-      {:ok, result} -> {:ok, result}
+      {:ok, %{creation: result, immediate?: true}} ->
+        resolve_immediate_spell_creation(result)
+
+      {:ok, %{creation: result, immediate?: false}} ->
+        {:ok, result}
+
+      {:error, reason} ->
+        {:error, reason}
+    end
+  end
+
+  defp resolve_immediate_spell_creation(%{attempt: attempt} = result) do
+    with :ok <- resolve_spell_creation_attempt(attempt.id),
+         %{status: :revealed} = revealed_attempt <- Creation.get_attempt(attempt.id) do
+      {:ok, %{result | attempt: revealed_attempt}}
+    else
+      nil -> {:error, :not_found}
       {:error, reason} -> {:error, reason}
+      _not_revealed -> {:error, :spell_creation_in_progress}
     end
   end
 
@@ -718,8 +746,7 @@ defmodule MMGO.Play do
   end
 
   defp ensure_spell_creation_location(%Character{} = character, attempt) do
-    with true <-
-           CombatPlaytest.unrestricted?() or character.current_location_id == attempt.location_id,
+    with true <- character.current_location_id == attempt.location_id,
          {:ok, _location} <- spellbook_location(character) do
       :ok
     else
@@ -749,6 +776,22 @@ defmodule MMGO.Play do
   end
 
   def activate_grimoire(_character_or_id, _grimoire_id), do: {:error, :grimoire_not_found}
+
+  @doc "Creates a free, maximum-capacity draft for an Arena character."
+  def create_arena_draft_grimoire(character_or_id, attrs \\ %{})
+
+  def create_arena_draft_grimoire(character_or_id, attrs) when is_map(attrs) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         profile when not is_nil(profile) <- arena_profile(character) do
+      Arena.create_draft_grimoire(profile, attrs)
+    else
+      nil -> {:error, :arena_profile_required}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def create_arena_draft_grimoire(_character_or_id, _attrs),
+    do: {:error, :arena_profile_required}
 
   @doc """
   Inscribes the explicitly selected owned spell into an owned writable
@@ -1858,7 +1901,7 @@ defmodule MMGO.Play do
     current_location = character.current_location
 
     cond do
-      CombatPlaytest.unrestricted?() and character.status == :active and
+      CharacterProfiles.arena?(character) and character.status == :active and
           not is_nil(current_location) ->
         {:ok, spellbook_location_summary(current_location)}
 
@@ -1883,9 +1926,23 @@ defmodule MMGO.Play do
     %{id: location.id, name: location.name, kind: location.kind}
   end
 
+  defp arena_profile(%Character{} = character) do
+    if CharacterProfiles.arena?(character),
+      do: Arena.get_profile_by_character(character.id),
+      else: nil
+  end
+
   defp permitted_spellbook_schools(%Character{} = character, spells) do
-    if CombatPlaytest.unrestricted?() do
-      @spellbook_schools
+    if CharacterProfiles.arena?(character) do
+      case arena_profile(character) do
+        %{schools: schools} when length(schools) == 3 ->
+          schools
+          |> Enum.map(&to_string/1)
+          |> Enum.filter(&(&1 in @spellbook_schools))
+
+        _missing_or_malformed_profile ->
+          []
+      end
     else
       specialization_schools =
         case Academy.active_specialization(character.id) do
@@ -1936,7 +1993,7 @@ defmodule MMGO.Play do
 
   defp spellbook_circle_tier(%Character{} = character) do
     cond do
-      CombatPlaytest.unrestricted?() ->
+      CharacterProfiles.arena?(character) ->
         :trained
 
       CharacterProfiles.legendary_progression?(character) ->
@@ -4935,13 +4992,8 @@ defmodule MMGO.Play do
     )
   end
 
-  defp duel_opponents(%Character{} = character, location) do
-    if CombatPlaytest.unrestricted?() do
-      Accounts.list_active_playtest_characters(exclude_character_id: character.id)
-    else
-      nearby_stationary_characters(character, location)
-    end
-  end
+  defp duel_opponents(%Character{} = character, location),
+    do: nearby_stationary_characters(character, location)
 
   defp find_duel_opponent(character, location, target_character_id) do
     character
@@ -5226,9 +5278,7 @@ defmodule MMGO.Play do
   defp ensure_overworld_available(%{current_location: nil}), do: {:error, :location_not_found}
   defp ensure_overworld_available(_state), do: :ok
 
-  defp ensure_duel_lobby_available(state) do
-    if CombatPlaytest.unrestricted?(), do: :ok, else: restricted_duel_lobby_availability(state)
-  end
+  defp ensure_duel_lobby_available(state), do: restricted_duel_lobby_availability(state)
 
   defp restricted_duel_lobby_availability(%{active_journey: %Journey{}}),
     do: {:error, :travelling}
@@ -5670,7 +5720,16 @@ defmodule MMGO.Play do
       end
 
     character =
-      case Repo.get_by(Character, account_id: account.id, realm_id: realm.id) do
+      case Repo.one(
+             from character in Character,
+               where:
+                 character.account_id == ^account.id and character.realm_id == ^realm.id and
+                   fragment(
+                     "COALESCE(?->>'profile_kind', '') NOT IN ('sealed_spirit', 'arena')",
+                     character.metadata
+                   ),
+               limit: 1
+           ) do
         %Character{} = existing ->
           if existing.name == name do
             existing
@@ -6045,8 +6104,11 @@ defmodule MMGO.Play do
         lifecycle = if turn, do: CombatContext.turn_lifecycle(turn), else: %{}
         deadline_at = lifecycle_deadline(lifecycle)
         own_action = Enum.find(actions, &(&1.participant_id == participant.id))
-        survival = Survival.summary(character)
+        arena? = combat.kind == :arena_match
+        survival = if arena?, do: %{flee_available?: true}, else: Survival.summary(character)
         action_open? = action_open?(combat, turn, participant, deadline_at)
+        prepared_spells = prepared_spells_for(character, participant)
+        environment_tags = List.wrap(combat.environment_tags)
 
         {:ok,
          %{
@@ -6057,11 +6119,16 @@ defmodule MMGO.Play do
            turn: turn,
            lifecycle: lifecycle,
            deadline_at: deadline_at,
-           prepared_spells: prepared_spells_for(character, participant),
-           items: combat_item_summaries(character),
+           prepared_spells: prepared_spells,
+           items: if(arena?, do: [], else: combat_item_summaries(character)),
            sides: combat_side_summaries(combat),
            atmosphere: combat_atmosphere(combat),
            events: combat_events(combat.id),
+           arena?: arena?,
+           arena_event: active_arena_event(combat),
+           arena_event_deck: arena_event_deck(combat),
+           environment_tags: environment_tags,
+           interaction_hints: arena_interaction_hints(prepared_spells, environment_tags),
            own_action: own_action,
            submitted_action_count: length(actions),
            ready_participant_count: Enum.count(combat.participants, &(&1.status == :ready)),
@@ -6097,6 +6164,11 @@ defmodule MMGO.Play do
       sides: combat_side_summaries(combat),
       atmosphere: combat_atmosphere(combat),
       events: combat_events(combat.id),
+      arena?: combat.kind == :arena_match,
+      arena_event: active_arena_event(combat),
+      arena_event_deck: arena_event_deck(combat),
+      environment_tags: List.wrap(combat.environment_tags),
+      interaction_hints: [],
       own_action: nil,
       submitted_action_count: length(actions),
       ready_participant_count: Enum.count(combat.participants, &(&1.status == :ready)),
@@ -6181,6 +6253,56 @@ defmodule MMGO.Play do
     character.id
     |> Spells.list_spells_for_character()
     |> Enum.filter(&MapSet.member?(prepared_spell_ids, &1.id))
+  end
+
+  defp active_arena_event(%Combat{kind: :arena_match} = combat) do
+    combat
+    |> arena_event_schedule()
+    |> ArenaEvents.event_for_turn(combat.turn_number)
+    |> case do
+      nil -> nil
+      event -> Map.drop(event, ["effect"])
+    end
+  end
+
+  defp active_arena_event(_combat), do: nil
+
+  defp arena_event_deck(%Combat{kind: :arena_match} = combat) do
+    schedule = arena_event_schedule(combat)
+    codes = Map.get(schedule, "codes") || Map.get(schedule, :codes) || []
+    catalog = Map.new(ArenaEvents.catalog(), &{&1["code"], &1})
+
+    Enum.flat_map(codes, fn code ->
+      case Map.fetch(catalog, to_string(code)) do
+        {:ok, event} -> [event]
+        :error -> []
+      end
+    end)
+  end
+
+  defp arena_event_deck(_combat), do: []
+
+  defp arena_event_schedule(%Combat{} = combat) do
+    Map.get(combat.metadata || %{}, "arena_events") ||
+      Map.get(combat.metadata || %{}, :arena_events) || %{}
+  end
+
+  defp arena_interaction_hints(spells, environment_tags) do
+    active_tags = MapSet.new(List.wrap(environment_tags))
+
+    for %Spell{} = spell <- spells,
+        rule <- List.wrap(spell.interaction_rules),
+        rule.trigger_type == :environment_tag,
+        MapSet.member?(active_tags, rule.trigger) do
+      %{
+        spell_id: spell.id,
+        spell_name: spell.name,
+        trigger: rule.trigger,
+        outcome: rule.outcome,
+        modifier: rule.modifier,
+        state: rule.state
+      }
+    end
   end
 
   defp combat_item_summaries(%Character{} = character) do

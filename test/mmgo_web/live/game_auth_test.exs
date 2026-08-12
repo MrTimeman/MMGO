@@ -35,6 +35,7 @@ defmodule MMGOWeb.GameAuthTest do
     assert {:ok, scope} = GameAuth.current_scope(session)
     assert scope.account.id == owner.id
     assert scope.character.id == character.id
+    assert scope.game_mode == :world
   end
 
   test "rejects missing, cross-account, and inactive session state", %{
@@ -70,6 +71,30 @@ defmodule MMGOWeb.GameAuthTest do
     assert socket.assigns.current_scope.character.id == character.id
   end
 
+  test "on_mount sends unsigned visitors to login and signed accounts to mode choice", %{
+    owner: owner
+  } do
+    socket = %Phoenix.LiveView.Socket{
+      assigns: %{__changed__: %{}, flash: %{}},
+      private: %{live_temp: %{}, lifecycle: %Phoenix.LiveView.Lifecycle{}}
+    }
+
+    assert {:halt, unsigned_socket} =
+             GameAuth.on_mount(:require_world_character, %{}, %{}, socket)
+
+    assert unsigned_socket.redirected == {:live, :redirect, %{kind: :push, to: "/play"}}
+
+    assert {:halt, account_socket} =
+             GameAuth.on_mount(
+               :require_world_character,
+               %{},
+               %{"current_account_id" => owner.id},
+               socket
+             )
+
+    assert account_socket.redirected == {:live, :redirect, %{kind: :push, to: "/mode"}}
+  end
+
   test "the migration-only scope admits a frozen owned character without broadening game scope",
        %{
          owner: owner,
@@ -85,6 +110,35 @@ defmodule MMGOWeb.GameAuthTest do
     assert {:error, :inactive} = GameAuth.current_scope(session)
     assert {:ok, scope} = GameAuth.migration_scope(session)
     assert scope.character.status == :frozen
+  end
+
+  test "arena and world scopes reject a character from the other selected mode", %{
+    owner: owner,
+    character: character
+  } do
+    world_session = %{
+      "current_account_id" => owner.id,
+      "current_character_id" => character.id,
+      "game_mode" => "world"
+    }
+
+    assert {:ok, _scope} = GameAuth.world_scope(world_session)
+    assert {:error, :not_found} = GameAuth.arena_scope(world_session)
+
+    arena_character =
+      character
+      |> Character.changeset(%{metadata: %{"profile_kind" => "arena"}})
+      |> Repo.update!()
+
+    arena_session = %{
+      world_session
+      | "current_character_id" => arena_character.id,
+        "game_mode" => "arena"
+    }
+
+    assert {:ok, scope} = GameAuth.arena_scope(arena_session)
+    assert scope.game_mode == :arena
+    assert {:error, :not_found} = GameAuth.world_scope(arena_session)
   end
 
   defp account_fixture(handle) do

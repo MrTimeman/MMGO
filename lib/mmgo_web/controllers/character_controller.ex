@@ -2,6 +2,7 @@ defmodule MMGOWeb.CharacterController do
   use MMGOWeb, :controller
 
   alias MMGO.Accounts
+  alias MMGO.Accounts.CharacterProfiles
   alias MMGO.Play
   alias MMGOWeb.GameAuth
 
@@ -9,6 +10,7 @@ defmodule MMGOWeb.CharacterController do
     with account_id when is_binary(account_id) <- get_session(conn, :current_account_id),
          account <- Accounts.get_account!(account_id) do
       characters = Accounts.list_characters_for_account(account.id)
+      default_world_character = Accounts.get_default_world_character_for_account(account.id)
       active_migration_character_ids = Accounts.list_active_migration_character_ids(account.id)
 
       current_scope =
@@ -22,6 +24,7 @@ defmodule MMGOWeb.CharacterController do
         account: account,
         current_scope: current_scope,
         current_character_id: get_session(conn, :current_character_id),
+        default_world_character_id: default_world_character && default_world_character.id,
         blocked_character_ids: blocked_character_ids(characters, active_migration_character_ids),
         realm_groups: group_by_realm(characters)
       )
@@ -46,7 +49,8 @@ defmodule MMGOWeb.CharacterController do
       |> configure_session(renew: true)
       |> put_session(:current_account_id, account_id)
       |> put_session(:current_character_id, character.id)
-      |> put_flash(:info, "Теперь вы играете за #{character.name}.")
+      |> put_session(:game_mode, "world")
+      |> put_flash(:info, selection_message(character))
       |> redirect(to: ~p"/map")
     else
       {:error, :migration_in_progress} ->
@@ -57,6 +61,11 @@ defmodule MMGOWeb.CharacterController do
       {:error, :not_playable} ->
         conn
         |> put_flash(:error, "Этот профиль пока нельзя открыть.")
+        |> redirect(to: ~p"/characters")
+
+      {:error, :not_world_character} ->
+        conn
+        |> put_flash(:error, "Этот профиль нельзя назначить основным персонажем мира.")
         |> redirect(to: ~p"/characters")
 
       _other ->
@@ -89,5 +98,13 @@ defmodule MMGOWeb.CharacterController do
     |> Enum.reject(&(&1.status == :active))
     |> Enum.map(& &1.id)
     |> MapSet.new()
+  end
+
+  defp selection_message(character) do
+    if CharacterProfiles.sealed_spirit?(character) do
+      "Теперь вы играете за #{character.name}. Основной персонаж Telegram не изменён."
+    else
+      "Теперь вы играете за #{character.name}. Бот тоже будет использовать этот профиль."
+    end
   end
 end

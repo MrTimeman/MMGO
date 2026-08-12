@@ -1,0 +1,259 @@
+defmodule MMGO.ArenaTest do
+  use MMGO.DataCase, async: false
+
+  alias MMGO.Accounts
+  alias MMGO.Accounts.{Account, Character, CharacterProfiles}
+  alias MMGO.Arena
+  alias MMGO.Combat.Combat
+  alias MMGO.Grimoires
+  alias MMGO.Repo
+  alias MMGO.Spells
+  alias MMGO.Worlds
+
+  setup do
+    {:ok, realm} =
+      Worlds.create_realm(%{
+        slug: "arena-test",
+        name: "Arena Test Realm",
+        is_default: true
+      })
+
+    {:ok, tower} =
+      Worlds.create_location(realm, %{
+        slug: "the-tower",
+        name: "The Tower",
+        kind: :tower,
+        x: 0,
+        y: 0,
+        safe_zone: true
+      })
+
+    %{realm: realm, tower: tower}
+  end
+
+  test "profile requires three distinct allowlisted schools and permits opposed schools",
+       context do
+    account = account_fixture("school-picker")
+
+    assert {:error, changeset} =
+             Arena.create_profile(account, %{name: "Picker", schools: [:fire, :water]})
+
+    assert %{schools: ["should have 3 item(s)"]} = errors_on(changeset)
+
+    assert {:error, duplicate_changeset} =
+             Arena.create_profile(account, %{
+               name: "Picker",
+               schools: [:fire, :fire, :air]
+             })
+
+    assert "must be distinct" in errors_on(duplicate_changeset).schools
+
+    assert {:ok, profile} =
+             Arena.create_profile(account, %{
+               name: "Opposed Mage",
+               schools: [:fire, :water, :death]
+             })
+
+    assert profile.schools == [:fire, :water, :death]
+    assert profile.rating == 1_000
+    assert profile.character.status == :active
+    assert profile.character.level == 100
+    assert profile.character.current_location_id == context.tower.id
+    assert CharacterProfiles.arena?(profile.character)
+    assert CharacterProfiles.hidden_presence?(profile.character)
+  end
+
+  test "arena and active world profiles coexist without entering world selection or presence", %{
+    realm: realm,
+    tower: tower
+  } do
+    account = account_fixture("dual-profile")
+    world = world_character_fixture(account, realm, "World Mage", tower.id)
+
+    assert {:ok, arena} =
+             Arena.create_profile(account, %{
+               name: "Arena Mage",
+               schools: [:earth, :air, :life]
+             })
+
+    assert Accounts.get_character!(world.id).status == :active
+    assert arena.character.status == :active
+    assert Enum.map(Accounts.list_characters_for_account(account.id), & &1.id) == [world.id]
+
+    assert Enum.map(Accounts.list_arena_characters_for_account(account.id), & &1.id) == [
+             arena.character_id
+           ]
+
+    visible_ids =
+      Enum.map(Accounts.list_active_characters_at_location(realm.id, tower.id), & &1.id)
+
+    assert world.id in visible_ids
+    refute arena.character_id in visible_ids
+
+    assert {:ok, selected_world} = Accounts.switch_character(account.id, world.id)
+    assert selected_world.status == :active
+    assert Accounts.get_character!(arena.character_id).status == :active
+  end
+
+  test "profile receives three starter spells and unlimited free top-tier grimoire drafts",
+       context do
+    profile = arena_profile_fixture(context, "books", [:fire, :earth, :order])
+    spells = Spells.list_spells_for_character(profile.character_id)
+    grimoires = Grimoires.list_grimoires_for_character(profile.character_id)
+
+    assert Enum.sort(Enum.map(spells, & &1.school)) == [:earth, :fire, :order]
+    assert length(spells) == 3
+    assert [%{status: :active, capacity: 45, weight: 0} = active] = grimoires
+    assert active.metadata["arena"] == true
+    assert length(active.entries) == 3
+
+    assert {:ok, first_draft} = Arena.create_draft_grimoire(profile)
+    assert {:ok, second_draft} = Arena.create_draft_grimoire(profile, %{name: "Counterbook"})
+    assert first_draft.capacity == 45
+    assert first_draft.weight == 0
+    assert first_draft.metadata["free"] == true
+    assert second_draft.name == "Counterbook"
+    assert length(Grimoires.list_grimoires_for_character(profile.character_id)) == 3
+  end
+
+  test "custom 2v2 room cannot start until both full teams are ready", context do
+    [host, ally, enemy_one, enemy_two] =
+      Enum.map(
+        [
+          {"host", [:fire, :earth, :life]},
+          {"ally", [:water, :air, :order]},
+          {"enemy-one", [:death, :chaos, :fire]},
+          {"enemy-two", [:earth, :life, :order]}
+        ],
+        fn {handle, schools} -> arena_profile_fixture(context, handle, schools) end
+      )
+
+    assert {:ok, room} =
+             Arena.create_custom_room(host, %{
+               team_size: 2,
+               settings: %{turn_seconds: 90}
+             })
+
+    assert room.event_policy == :random
+    assert room.event_codes != []
+    assert room.settings["turn_seconds"] == 90
+    assert {:ok, _room} = Arena.join_custom_room(room.code, ally, %{team: :a})
+    assert {:ok, _room} = Arena.join_custom_room(room.code, enemy_one, %{team: :b})
+
+    assert {:error, :teams_not_full} = Arena.start_custom_room(room, host)
+
+    assert {:ok, _room} = Arena.join_custom_room(room.code, enemy_two, %{team: :b})
+    assert {:error, :members_not_ready} = Arena.start_custom_room(room, host)
+
+    Enum.each([host, ally, enemy_one, enemy_two], fn profile ->
+      assert {:ok, _room} = Arena.toggle_ready(room, profile)
+    end)
+
+    assert {:ok, started} = Arena.start_custom_room(room, host)
+    assert started.status == :active
+    assert started.combat.kind == :arena_match
+    assert length(started.combat.participants) == 4
+    assert started.combat.environment_tags != []
+    assert started.combat.metadata["arena_active_event_code"] in started.event_codes
+    assert started.combat.metadata["arena_hp_per_member"] == 100
+    assert started.combat.sides["a"]["shared_hp"] == 200
+    assert started.combat.sides["b"]["shared_hp"] == 200
+    assert started.combat.metadata["turn_seconds"] == 90
+
+    turn = Repo.get_by!(MMGO.Combat.Turn, combat_id: started.combat.id, number: 1)
+    assert MMGO.Combat.turn_lifecycle(turn)["deadline_seconds"] == 90
+  end
+
+  test "members can leave forming rooms and the host closes the room", context do
+    host = arena_profile_fixture(context, "leaving-host", [:fire, :earth, :life])
+    guest = arena_profile_fixture(context, "leaving-guest", [:water, :air, :order])
+
+    assert {:ok, room} = Arena.create_custom_room(host, %{team_size: 1})
+    assert {:ok, room} = Arena.join_custom_room(room.code, guest, %{team: :b})
+    assert {:ok, room} = Arena.toggle_ready(room, host)
+    assert {:ok, room} = Arena.toggle_ready(room, guest)
+    assert Enum.all?(room.members, & &1.ready)
+
+    assert {:ok, room} = Arena.leave_custom_room(room, guest)
+    assert room.status == :forming
+    assert Enum.map(room.members, & &1.profile_id) == [host.id]
+    refute hd(room.members).ready
+    assert Arena.active_match_for_profile(guest) == nil
+
+    assert {:ok, closed} = Arena.leave_custom_room(room, host)
+    assert closed.status == :cancelled
+    assert Arena.active_match_for_profile(host) == nil
+  end
+
+  test "ranked queue pairs 1v1 and settlement is idempotent", context do
+    first = arena_profile_fixture(context, "ranked-one", [:fire, :water, :air])
+    second = arena_profile_fixture(context, "ranked-two", [:earth, :life, :death])
+
+    assert {:ok, queued} = Arena.queue_ranked(first)
+    assert queued.status == :queued
+
+    assert {:ok, paired} = Arena.queue_ranked(second)
+    assert paired.status == :active
+    assert paired.mode == :ranked
+    assert length(paired.members) == 2
+
+    combat =
+      paired.combat
+      |> Combat.changeset(%{
+        status: :finished,
+        winner_side: "a",
+        finished_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    assert {:ok, settled} = Arena.settle_match(combat)
+    assert settled.status == :finished
+    assert settled.winner_team == :a
+
+    winner = Arena.get_profile!(first.id)
+    loser = Arena.get_profile!(second.id)
+    assert winner.rating > 1_000
+    assert loser.rating < 1_000
+    assert winner.wins == 1
+    assert loser.losses == 1
+    assert winner.matches_played == 1
+    assert loser.matches_played == 1
+
+    assert {:ok, same_settlement} = Arena.settle_match(combat)
+    assert same_settlement.id == settled.id
+    assert Arena.get_profile!(first.id).matches_played == 1
+    assert Arena.get_profile!(second.id).matches_played == 1
+  end
+
+  defp arena_profile_fixture(context, handle, schools) do
+    account = account_fixture("arena-#{handle}")
+
+    {:ok, profile} =
+      Arena.create_profile(account, %{
+        name: "Mage #{handle}",
+        schools: schools
+      })
+
+    assert profile.character.realm_id == context.realm.id
+    profile
+  end
+
+  defp account_fixture(handle) do
+    %Account{}
+    |> Account.registration_changeset(%{
+      display_name: "Mage #{handle}",
+      handle: handle
+    })
+    |> Repo.insert!()
+  end
+
+  defp world_character_fixture(account, realm, name, location_id) do
+    %Character{
+      account_id: account.id,
+      realm_id: realm.id,
+      current_location_id: location_id
+    }
+    |> Character.changeset(%{name: name, status: :active})
+    |> Repo.insert!()
+  end
+end

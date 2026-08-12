@@ -19,6 +19,7 @@ defmodule MMGO.Combat.Resolution do
   """
 
   alias MMGO.Combat.Combat, as: CombatSchema
+  alias MMGO.Arena
   alias MMGO.Clubs
   alias MMGO.Dungeons
   alias MMGO.Overworld
@@ -75,6 +76,13 @@ defmodule MMGO.Combat.Resolution do
     end
   end
 
+  def finalize(%CombatSchema{status: :finished, kind: :arena_match} = combat) do
+    case arena_match_id(combat) do
+      arena_match_id when is_binary(arena_match_id) -> Arena.settle_match(combat)
+      _other -> {:ok, :no_op}
+    end
+  end
+
   def finalize(%CombatSchema{} = _combat), do: {:ok, :no_op}
 
   defp duel_id(%CombatSchema{metadata: metadata}) do
@@ -87,5 +95,9 @@ defmodule MMGO.Combat.Resolution do
 
   defp club_event_id(%CombatSchema{metadata: metadata}) do
     metadata["club_event_id"] || metadata[:club_event_id]
+  end
+
+  defp arena_match_id(%CombatSchema{metadata: metadata}) do
+    metadata["arena_match_id"] || metadata[:arena_match_id]
   end
 end

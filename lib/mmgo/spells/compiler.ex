@@ -464,6 +464,7 @@ defmodule MMGO.Spells.Compiler do
       formula: spell.formula,
       school: spell.school,
       school_quirk: spell.school_quirk,
+      manifestation: manifestation_summary(spell.manifestation),
       incantation_slots: spell.incantation_slots,
       source_spell_id: spell.source_spell_id
     }
@@ -480,7 +481,20 @@ defmodule MMGO.Spells.Compiler do
       school_quirk: spell.school_quirk,
       incantation_slots: spell.incantation_slots,
       description: bounded_prompt_text(spell.description, @max_spell_description_bytes),
+      manifestation: manifestation_summary(spell.manifestation),
       effects: Enum.map(spell.effects, &effect_summary/1)
+    }
+  end
+
+  defp manifestation_summary(nil), do: nil
+
+  defp manifestation_summary(manifestation) do
+    %{
+      kind: manifestation.kind,
+      display_name: manifestation.display_name,
+      hp: manifestation.hp,
+      power: manifestation.power,
+      duration_turns: manifestation.duration_turns
     }
   end
 

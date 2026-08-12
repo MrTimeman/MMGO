@@ -3,7 +3,7 @@ defmodule MMGO.Combat.ActionSnapshotTest do
 
   alias MMGO.Accounts.{Account, Character}
   alias MMGO.Combat
-  alias MMGO.Combat.{Action, Event}
+  alias MMGO.Combat.{Action, ActionSnapshot, Event, Participant}
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Repo
@@ -202,6 +202,75 @@ defmodule MMGO.Combat.ActionSnapshotTest do
              })
 
     assert Repo.aggregate(Action, :count, :id) == 0
+  end
+
+  test "arena snapshots disable inventory and treat flee as surrender", %{
+    combat: combat,
+    attacker: attacker,
+    phial: phial
+  } do
+    combat = Combat.get_combat!(combat.id)
+    arena_combat = %{combat | kind: :arena_match}
+    participant = Enum.find(arena_combat.participants, &(&1.character_id == attacker.id))
+
+    assert {:error, :items_disabled} =
+             ActionSnapshot.normalize(arena_combat, participant, %{
+               action_type: :use_item,
+               inventory_item_id: phial.id,
+               target_side: "defenders",
+               payload: %{"tool_action" => "throw"}
+             })
+
+    assert {:ok, %{action_type: :flee, payload: %{"snapshot" => %{"kind" => "flee"}}}} =
+             ActionSnapshot.normalize(arena_combat, participant, %{action_type: :flee})
+  end
+
+  test "manifestation strikes freeze only the bounded server-owned weapon and target", %{
+    combat: combat,
+    attacker: attacker
+  } do
+    combat = Combat.get_combat!(combat.id)
+    participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    server_weapon = %{
+      "state" => "summoned_weapon",
+      "source_spell_id" => "sealed-weapon-spell",
+      "display_name" => "Призванный клинок",
+      "power" => 12,
+      "remaining_turns" => 3,
+      "applied_on_turn" => 1
+    }
+
+    participant =
+      participant
+      |> Participant.changeset(%{active_states: [server_weapon]})
+      |> Repo.update!()
+
+    assert {:ok, snapshot} =
+             ActionSnapshot.normalize(combat, participant, %{
+               action_type: :manifestation_strike,
+               target_side: "defenders",
+               payload: %{
+                 "manifestation" => %{"power" => 999_999, "display_name" => "Forged"}
+               }
+             })
+
+    assert snapshot.payload["snapshot"]["manifestation"] == server_weapon
+    assert snapshot.target_side == "defenders"
+    refute Map.has_key?(snapshot.payload, "manifestation")
+
+    action = %Action{
+      action_type: :manifestation_strike,
+      payload:
+        put_in(
+          snapshot.payload,
+          ["snapshot", "manifestation", "power"],
+          999_999
+        )
+    }
+
+    assert {:error, :invalid_snapshot} =
+             ActionSnapshot.manifestation_strike_for_resolution(action)
   end
 
   test "a locked turn cannot replace its already approved action", %{

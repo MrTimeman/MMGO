@@ -1,0 +1,60 @@
+name: mmgo
+
+services:
+  postgres:
+    image: postgres:16-bookworm
+    container_name: mmgo-postgres
+    restart: unless-stopped
+    # Compose receives these through `--env-file /opt/mmgo/mmgo.env`; the
+    # database container does not receive unrelated Telegram/AI secrets.
+    environment:
+      POSTGRES_USER: "${POSTGRES_USER:?POSTGRES_USER is required}"
+      POSTGRES_PASSWORD: "${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}"
+      POSTGRES_DB: "${POSTGRES_DB:?POSTGRES_DB is required}"
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "pg_isready --username=\"$${POSTGRES_USER}\" --dbname=\"$${POSTGRES_DB}\"",
+        ]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+      start_period: 10s
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+  app:
+    # `just deploy` replaces this bootstrap tag with the immutable release tag.
+    image: mmgo:bootstrap
+    container_name: mmgo-app
+    restart: unless-stopped
+    init: true
+    env_file:
+      - ./mmgo.env
+    depends_on:
+      postgres:
+        condition: service_healthy
+    ports:
+      # nginx is the only public ingress; Phoenix is never exposed directly.
+      - "127.0.0.1:4000:4000"
+    healthcheck:
+      test: ["CMD-SHELL", "curl --fail --silent http://127.0.0.1:4000/livez >/dev/null"]
+      interval: 30s
+      timeout: 3s
+      retries: 3
+      start_period: 20s
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+
+volumes:
+  postgres_data:

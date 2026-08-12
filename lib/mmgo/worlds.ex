@@ -38,6 +38,8 @@ defmodule MMGO.Worlds do
   def realm_ruleset(realm_id) when is_binary(realm_id),
     do: realm_id |> get_realm!() |> realm_ruleset()
 
+  def magic_allowed_for_combat?(%{kind: :arena_match}), do: true
+
   def magic_allowed_for_combat?(combat) do
     location_kind = combat.metadata["location_kind"] || combat.metadata[:location_kind]
 

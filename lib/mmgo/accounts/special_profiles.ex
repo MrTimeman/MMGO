@@ -74,14 +74,16 @@ defmodule MMGO.Accounts.SpecialProfiles do
         |> lock("FOR UPDATE")
         |> Repo.all()
 
-      realm_characters = Enum.filter(characters, &(&1.realm_id == realm.id))
+      realm_characters =
+        Enum.filter(characters, &(&1.realm_id == realm.id and non_arena_profile?(&1)))
+
       albert = Enum.find(realm_characters, &albert_name?/1)
       tamiorn = Enum.find(realm_characters, &(&1.name == @tamiorn_name))
       legacy = legacy_character(realm_characters, tamiorn)
 
       previous_playable_id =
         characters
-        |> Enum.find(&(&1.status in [:active, :new]))
+        |> Enum.find(&(ordinary_world_profile?(&1) and &1.status in [:active, :new]))
         |> then(&(&1 && &1.id))
 
       active_migration = active_migration_for_account(account.id)
@@ -131,7 +133,7 @@ defmodule MMGO.Accounts.SpecialProfiles do
         |> Repo.all()
 
       selected =
-        Enum.find(characters, &(&1.status == :active)) ||
+        Enum.find(characters, &(ordinary_world_profile?(&1) and &1.status == :active)) ||
           Enum.find(characters, &(&1.id == tamiorn.id and &1.status == :new)) ||
           Enum.find(characters, &(&1.id == tamiorn.id)) ||
           Enum.find(characters, &(&1.id == albert.id))
@@ -232,7 +234,8 @@ defmodule MMGO.Accounts.SpecialProfiles do
   end
 
   defp ensure_playable_profile!(characters, previous_playable_id, tamiorn_id, albert_id) do
-    playable = Enum.find(characters, &(&1.status in [:active, :new]))
+    playable =
+      Enum.find(characters, &(ordinary_world_profile?(&1) and &1.status in [:active, :new]))
 
     target =
       Enum.find(characters, &(&1.id == previous_playable_id)) ||
@@ -287,7 +290,7 @@ defmodule MMGO.Accounts.SpecialProfiles do
   defp freeze_playable_profiles_except!(characters, allowed_ids) do
     Enum.map(characters, fn
       %Character{status: status} = character when status in [:active, :new] ->
-        if MapSet.member?(allowed_ids, character.id) do
+        if not ordinary_world_profile?(character) or MapSet.member?(allowed_ids, character.id) do
           character
         else
           character
@@ -545,4 +548,14 @@ defmodule MMGO.Accounts.SpecialProfiles do
             candidate.name == ^@albert_name and realm.is_default == true
     )
   end
+
+  defp non_arena_profile?(%Character{metadata: metadata}) when is_map(metadata),
+    do: Map.get(metadata, "profile_kind") != "arena"
+
+  defp non_arena_profile?(_character), do: true
+
+  defp ordinary_world_profile?(%Character{metadata: metadata}) when is_map(metadata),
+    do: Map.get(metadata, "profile_kind") not in ["arena", "sealed_spirit"]
+
+  defp ordinary_world_profile?(_character), do: true
 end

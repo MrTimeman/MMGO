@@ -448,6 +448,10 @@
   border-color: rgba(239,68,68,0.35);
   background: radial-gradient(ellipse at 50% 0%, rgba(239,68,68,0.12), rgba(0,0,0,0.3) 70%);
 }
+.cbt-outcome--draw {
+  border-color: rgba(126,203,255,0.34);
+  background: radial-gradient(ellipse at 50% 0%, rgba(126,203,255,0.12), rgba(0,0,0,0.28) 70%);
+}
 .cbt-outcome__seal {
   display: inline-block;
   font-size: 2rem;
@@ -455,6 +459,7 @@
   animation: cbt-seal-press 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .cbt-outcome--defeat .cbt-outcome__seal { color: var(--cbt-blood); }
+.cbt-outcome--draw .cbt-outcome__seal { color: var(--arc-blue-bright); }
 .cbt-outcome__title {
   font-family: var(--font-serif);
   font-size: 1.5rem;
@@ -463,6 +468,7 @@
   margin-top: 0.2rem;
 }
 .cbt-outcome--defeat .cbt-outcome__title { color: #f0a9a9; }
+.cbt-outcome--draw .cbt-outcome__title { color: #b9ddf3; }
 .cbt-outcome__sub {
   font-size: 0.82rem;
   color: var(--color-text-muted);
@@ -871,6 +877,192 @@
   color: #fff0ee;
 }
 .cbt-flee-modal__go:hover { filter: brightness(1.1); }
+
+/* ── Arena events, interactions, and spell manifestations ───────────── */
+.cbt-arena--arena_match {
+  background:
+    radial-gradient(ellipse 90% 42% at 50% -4%, rgba(99,102,241,0.18), transparent 66%),
+    radial-gradient(ellipse 120% 60% at 50% 118%, rgba(217,84,31,0.18), transparent 60%),
+    radial-gradient(ellipse at 50% -20%, #241a13 0%, #130d09 55%, #0a0705 100%);
+}
+
+.cbt-arena-event,
+.cbt-arena-deck,
+.cbt-interactions {
+  position: relative;
+  z-index: 2;
+  width: calc(100% - 1.7rem);
+  max-width: 28.3rem;
+  margin-inline: auto;
+}
+
+.cbt-arena-event {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(126,203,255,0.3);
+  border-radius: 0.7rem;
+  background:
+    linear-gradient(105deg, rgba(19,31,50,0.96), rgba(24,16,35,0.92)),
+    rgba(0,0,0,0.7);
+  box-shadow: 0 12px 32px rgba(0,0,0,0.28), inset 0 0 24px rgba(126,203,255,0.04);
+  animation: cbt-turn-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.cbt-arena-event--amber { border-color: rgba(251,191,36,0.42); }
+.cbt-arena-event--cyan { border-color: rgba(34,211,238,0.42); }
+.cbt-arena-event--emerald { border-color: rgba(52,211,153,0.42); }
+.cbt-arena-event--violet { border-color: rgba(167,139,250,0.42); }
+.cbt-arena-event--sky { border-color: rgba(125,211,252,0.42); }
+.cbt-arena-event--fuchsia { border-color: rgba(232,121,249,0.42); }
+.cbt-arena-event--indigo { border-color: rgba(129,140,248,0.42); }
+
+.cbt-arena-event__sigil {
+  display: grid;
+  width: 2.15rem;
+  height: 2.15rem;
+  place-items: center;
+  border: 1px solid currentColor;
+  border-radius: 50%;
+  color: var(--arc-blue-bright);
+  text-shadow: 0 0 12px currentColor;
+}
+
+.cbt-arena-event__copy { min-width: 0; }
+.cbt-arena-event__copy p {
+  color: #9cb9d2;
+  font-family: var(--font-sans);
+  font-size: 0.55rem;
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+.cbt-arena-event__copy h2 {
+  color: #f3e4c7;
+  font-size: 1rem;
+  font-weight: 700;
+  line-height: 1.1;
+}
+.cbt-arena-event__copy > span {
+  display: block;
+  margin-top: 0.12rem;
+  color: #b9ada0;
+  font-size: 0.71rem;
+  line-height: 1.3;
+}
+
+.cbt-arena-event__tags {
+  display: flex;
+  max-width: 8rem;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 0.22rem;
+}
+.cbt-arena-event__tags span,
+.cbt-arena-deck__chip {
+  border: 1px solid rgba(126,203,255,0.22);
+  border-radius: 999px;
+  color: #badbf3;
+  font-family: var(--font-sans);
+  font-size: 0.54rem;
+  letter-spacing: 0.04em;
+  padding: 0.18rem 0.38rem;
+  white-space: nowrap;
+}
+
+.cbt-arena-deck {
+  display: flex;
+  align-items: center;
+  gap: 0.28rem;
+  margin-top: 0.35rem;
+  overflow-x: auto;
+  padding: 0.1rem 0 0.25rem;
+  scrollbar-width: none;
+}
+.cbt-arena-deck::-webkit-scrollbar { display: none; }
+.cbt-arena-deck__label {
+  color: #71675a;
+  flex: 0 0 auto;
+  font-family: var(--font-sans);
+  font-size: 0.52rem;
+  letter-spacing: 0.1em;
+  margin-right: 0.12rem;
+  text-transform: uppercase;
+}
+.cbt-arena-deck__chip { color: #827d79; border-color: rgba(255,255,255,0.08); }
+.cbt-arena-deck__chip--active {
+  background: rgba(126,203,255,0.1);
+  border-color: rgba(126,203,255,0.42);
+  color: #d5efff;
+}
+
+.cbt-interactions {
+  display: flex;
+  gap: 0.65rem;
+  margin-top: 0.25rem;
+  padding: 0.42rem 0.65rem;
+  border-left: 2px solid #6ee7b7;
+  background: linear-gradient(90deg, rgba(16,185,129,0.1), transparent);
+  color: #b6e9d7;
+}
+.cbt-interactions__title {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 0.3rem;
+  font-family: var(--font-sans);
+  font-size: 0.61rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.cbt-interactions__list {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+  font-size: 0.66rem;
+  line-height: 1.35;
+}
+
+.cbt-chip { flex-wrap: wrap; }
+.cbt-manifestations {
+  display: flex;
+  flex-basis: 100%;
+  flex-wrap: wrap;
+  gap: 0.22rem;
+  padding: 0.05rem 0.12rem 0.12rem 1.48rem;
+}
+.cbt-manifestation {
+  display: inline-grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 0 0.25rem;
+  align-items: center;
+  padding: 0.15rem 0.35rem;
+  border: 1px solid rgba(217,169,54,0.26);
+  border-radius: 0.38rem;
+  background: rgba(217,169,54,0.06);
+  color: #f2d7a0;
+  font-size: 0.61rem;
+}
+.cbt-manifestation strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cbt-manifestation small {
+  grid-column: 2;
+  color: #9f9484;
+  font-family: var(--font-sans);
+  font-size: 0.49rem;
+  white-space: nowrap;
+}
+.cbt-manifestation--summoned_shield { border-color: rgba(217,169,54,0.4); }
+.cbt-manifestation--summoned_weapon { border-color: rgba(239,68,68,0.4); color: #f5b0a6; }
+.cbt-manifestation--summoned_creature { border-color: rgba(167,139,250,0.4); color: #d7c8ff; }
+.cbt-env--summon { border-color: #a78bfa; background: linear-gradient(90deg, rgba(139,92,246,0.12), transparent); }
+
+@media (max-width: 420px) {
+  .cbt-arena-event { grid-template-columns: auto minmax(0, 1fr); }
+  .cbt-arena-event__tags { grid-column: 1 / -1; max-width: none; justify-content: flex-start; }
+  .cbt-interactions { flex-direction: column; gap: 0.2rem; }
+}
 
 /* ============================================================
    Persisted combat — the old arena vocabulary, wired to live state

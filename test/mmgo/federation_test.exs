@@ -230,8 +230,16 @@ defmodule MMGO.FederationTest do
     character: character,
     destination_realm: destination_realm
   } do
+    {:ok, sibling_realm} =
+      Worlds.create_realm(%{
+        slug: "stationary-realm",
+        name: "Stationary Realm",
+        currency_code: "STN",
+        allow_migration: true
+      })
+
     sibling =
-      %Character{account_id: character.account_id, realm_id: character.realm_id}
+      %Character{account_id: character.account_id, realm_id: sibling_realm.id}
       |> Character.changeset(%{name: "Stationary Sibling", status: :frozen})
       |> Repo.insert!()
 

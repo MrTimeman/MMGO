@@ -4,7 +4,9 @@ defmodule MMGO.Spells.Creation do
 
   An attempt exists before any seal validation or AI work. Its result remains
   sealed until the shared world clock reaches `completes_at`, so closing or
-  reloading a client cannot shorten the ritual.
+  reloading a client cannot shorten the ritual. Arena callers may select the
+  server-only `:immediate?` policy; the same durable pipeline is retained, but
+  its reveal deadline is the start instant instead of one world hour later.
   """
 
   import Ecto.Query, warn: false
@@ -59,11 +61,15 @@ defmodule MMGO.Spells.Creation do
         started_at = Keyword.get(opts, :now) || DateTime.utc_now()
 
         completes_at =
-          DateTime.add(
-            started_at,
-            Clock.game_hours_to_real_seconds(@ritual_game_hours),
-            :second
-          )
+          if Keyword.get(opts, :immediate?, false) do
+            started_at
+          else
+            DateTime.add(
+              started_at,
+              Clock.game_hours_to_real_seconds(@ritual_game_hours),
+              :second
+            )
+          end
 
         attempt =
           %CreationAttempt{

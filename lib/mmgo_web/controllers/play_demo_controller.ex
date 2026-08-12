@@ -59,5 +59,6 @@ defmodule MMGOWeb.PlayDemoController do
     |> put_session(:demo_opponent_id, opponent.id)
     |> put_session(:current_account_id, challenger.account_id)
     |> put_session(:current_character_id, challenger.id)
+    |> put_session(:game_mode, "world")
   end
 end

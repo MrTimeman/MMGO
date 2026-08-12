@@ -68,6 +68,79 @@ defmodule MMGO.SpellsTest do
     assert Keyword.has_key?(invalid_changeset.errors, :break_conditions)
   end
 
+  test "manifestations are kind-specific, Russian-named, bounded, and share the effect budget",
+       %{character: character} do
+    base_attrs = %{
+      name: "Scutum",
+      formula: "Scutum Sustineo",
+      school: :earth,
+      description: "A duel-local summoned shield.",
+      targeting: :enemy,
+      delivery_form: :self,
+      effects: [
+        %{applies_to: :target, state: "impact", intensity: 10, variance: 0, duration: 0}
+      ],
+      failure_profile: %{difficulty: 5, base_success_rate: 90, partial_success_rate: 5}
+    }
+
+    assert {:ok, spell} =
+             Spells.create_spell(
+               character,
+               Map.put(base_attrs, :manifestation, %{
+                 kind: :held_shield,
+                 display_name: "Каменный щит",
+                 hp: 30,
+                 duration_turns: 3
+               })
+             )
+
+    assert spell.manifestation.kind == :held_shield
+    assert spell.manifestation.hp == 30
+
+    assert {:error, malformed_changeset} =
+             Spells.create_spell(
+               character,
+               Map.put(base_attrs, :manifestation, %{
+                 kind: :held_shield,
+                 display_name: "Stone Shield",
+                 hp: 30,
+                 power: 5,
+                 duration_turns: 99
+               })
+             )
+
+    assert %{manifestation: manifestation_errors} = errors_on(malformed_changeset)
+    assert "must be a bounded Russian display name" in manifestation_errors.display_name
+    assert "is not used by this manifestation kind" in manifestation_errors.power
+    assert "must be less than or equal to 8" in manifestation_errors.duration_turns
+
+    assert {:error, budget_changeset} =
+             Spells.create_spell(
+               character,
+               base_attrs
+               |> Map.put(:effects, [
+                 %{
+                   applies_to: :target,
+                   state: "impact",
+                   intensity: 180,
+                   variance: 0,
+                   duration: 0
+                 }
+               ])
+               |> Map.put(:manifestation, %{
+                 kind: :creature_ally,
+                 display_name: "Огненный волк",
+                 hp: 40,
+                 power: 15,
+                 duration_turns: 3
+               })
+             )
+
+    assert "total spell effect and manifestation intensity exceeds the current engine budget" in errors_on(
+             budget_changeset
+           ).effects
+  end
+
   defp account_fixture(handle) do
     %Account{}
     |> Account.registration_changeset(%{display_name: handle, handle: handle})

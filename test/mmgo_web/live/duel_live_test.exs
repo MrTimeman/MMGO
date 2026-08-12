@@ -138,8 +138,6 @@ defmodule MMGOWeb.DuelLiveTest do
         "action_type" => "cast_spell",
         "spell_id" => killing_blow.id,
         "incantation" => killing_blow.formula,
-        "inventory_item_id" => "",
-        "tool_action" => "",
         "target_side" => "defenders",
         "target_participant_id" => defender_participant.id
       }

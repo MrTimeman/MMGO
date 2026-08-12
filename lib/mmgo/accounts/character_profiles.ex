@@ -5,13 +5,20 @@ defmodule MMGO.Accounts.CharacterProfiles do
 
   alias MMGO.Accounts.Character
 
+  def arena?(%Character{} = character),
+    do: metadata_value(character, "profile_kind") == "arena"
+
+  def arena?(_character), do: false
+
   def sealed_spirit?(%Character{} = character),
     do: metadata_value(character, "profile_kind") == "sealed_spirit"
 
   def sealed_spirit?(_character), do: false
 
   def hidden_presence?(%Character{} = character),
-    do: sealed_spirit?(character) or metadata_value(character, "hidden_presence") == true
+    do:
+      arena?(character) or sealed_spirit?(character) or
+        metadata_value(character, "hidden_presence") == true
 
   def hidden_presence?(_character), do: false
 

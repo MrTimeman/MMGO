@@ -58,6 +58,8 @@ defmodule MMGO.AccountsTest do
     assert identity.telegram_user_id == 1001
     assert character.realm_id == realm.id
     assert character.level == 1
+    assert is_nil(account.default_character_id)
+    assert is_nil(Accounts.get_default_world_character_for_account(account.id))
     assert Repo.aggregate(Account, :count, :id) == 1
     assert Repo.aggregate(TelegramIdentity, :count, :id) == 1
     assert Repo.aggregate(Character, :count, :id) == 1
@@ -111,6 +113,7 @@ defmodule MMGO.AccountsTest do
 
     assert selected.name == "Тамиорн Найло"
     assert selected.status == :new
+    assert is_nil(Accounts.get_default_world_character_for_account(account.id))
 
     characters = Accounts.list_characters_for_account(account.id)
     assert Enum.map(characters, & &1.name) |> Enum.sort() == ["Альберт Латыпов", "Тамиорн Найло"]
@@ -330,7 +333,7 @@ defmodule MMGO.AccountsTest do
     refute SpecialProfiles.operator_profile_allowed?(profiles.tamiorn)
   end
 
-  test "switch_character/2 freezes siblings globally and hidden Albert is never public", %{
+  test "sealed profiles neither freeze nor replace the ordinary world default", %{
     realm: realm,
     tower: tower
   } do
@@ -349,17 +352,31 @@ defmodule MMGO.AccountsTest do
     tamiorn = tamiorn |> Character.changeset(%{status: :active}) |> Repo.update!()
 
     assert Accounts.get_character_by_handle(realm.id, account.handle).id == tamiorn.id
+    assert {:ok, selected_tamiorn} = Accounts.switch_character(account.id, tamiorn.id)
+    assert selected_tamiorn.id == tamiorn.id
+    assert Accounts.get_default_world_character_for_account(account.id).id == tamiorn.id
 
     assert {:ok, active_albert} = Accounts.switch_character(account.id, albert.id)
     assert active_albert.status == :active
-    assert Accounts.get_character!(tamiorn.id).status == :frozen
+    assert Accounts.get_character!(tamiorn.id).status == :active
+    assert Accounts.get_default_world_character_for_account(account.id).id == tamiorn.id
 
     assert [] == Accounts.list_active_characters_at_location(realm.id, tower.id)
-    assert is_nil(Accounts.get_character_by_handle(realm.id, account.handle))
+    assert Accounts.get_character_by_handle(realm.id, account.handle).id == tamiorn.id
 
     assert {:ok, active_tamiorn} = Accounts.switch_character(account.id, tamiorn.id)
     assert active_tamiorn.status == :active
-    assert Accounts.get_character!(albert.id).status == :frozen
+    assert Accounts.get_character!(albert.id).status == :active
+
+    assert {:ok, %{character: refreshed_character}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 1_265_881_543,
+               "username" => "albert",
+               "first_name" => "Albert"
+             })
+
+    assert refreshed_character.id == tamiorn.id
+    assert Accounts.get_default_world_character_for_account(account.id).id == tamiorn.id
   end
 
   test "refresh keeps the globally playable profile selected ahead of a frozen default-realm profile",
@@ -381,6 +398,115 @@ defmodule MMGO.AccountsTest do
     assert {:ok, %{character: selected}} = Accounts.provision_from_telegram(telegram_user)
     assert selected.id == remote_character.id
     assert selected.realm_id != default_realm.id
+  end
+
+  test "ordinary MMO identity is unique per account and realm while technical profiles coexist",
+       %{
+         realm: realm
+       } do
+    account = account_fixture("realm-identity")
+    _ordinary = character_fixture(account, realm, "Realm Identity", :active)
+
+    assert {:error, changeset} =
+             %Character{account_id: account.id, realm_id: realm.id}
+             |> Character.changeset(%{name: "Duplicate Identity", status: :frozen})
+             |> Repo.insert()
+
+    assert "has already been taken" in errors_on(changeset).account_id
+
+    sealed =
+      %Character{account_id: account.id, realm_id: realm.id}
+      |> Character.changeset(%{
+        name: "Sealed Anchor",
+        status: :frozen,
+        metadata: %{"profile_kind" => "sealed_spirit", "hidden_presence" => true}
+      })
+      |> Repo.insert!()
+
+    arena =
+      %Character{account_id: account.id, realm_id: realm.id}
+      |> Character.changeset(%{
+        name: "Arena Identity",
+        status: :active,
+        metadata: %{"profile_kind" => "arena", "hidden_presence" => true}
+      })
+      |> Repo.insert!()
+
+    assert sealed.realm_id == realm.id
+    assert arena.realm_id == realm.id
+  end
+
+  test "persistent default accepts only owned playable ordinary characters", %{realm: realm} do
+    owner = account_fixture("default-owner")
+    stranger = account_fixture("default-stranger")
+    ordinary = character_fixture(owner, realm, "Default Wanderer", :active)
+    foreign = character_fixture(stranger, realm, "Foreign Wanderer", :active)
+
+    sealed =
+      %Character{account_id: owner.id, realm_id: realm.id}
+      |> Character.changeset(%{
+        name: "Default Seal",
+        status: :frozen,
+        metadata: %{"profile_kind" => "sealed_spirit"}
+      })
+      |> Repo.insert!()
+
+    arena =
+      %Character{account_id: owner.id, realm_id: realm.id}
+      |> Character.changeset(%{
+        name: "Default Arena",
+        status: :active,
+        metadata: %{"profile_kind" => "arena"}
+      })
+      |> Repo.insert!()
+
+    refute Accounts.get_default_world_character_for_account(owner.id)
+    assert {:error, :not_found} = Accounts.set_default_world_character(owner.id, foreign.id)
+
+    assert {:error, :not_world_character} =
+             Accounts.set_default_world_character(owner.id, sealed.id)
+
+    assert {:error, :not_world_character} =
+             Accounts.set_default_world_character(owner.id, arena.id)
+
+    assert {:ok, selected} = Accounts.set_default_world_character(owner.id, ordinary.id)
+    assert selected.id == ordinary.id
+    assert Accounts.get_default_world_character_for_account(owner).id == ordinary.id
+
+    owner
+    |> Ecto.Changeset.change(default_character_id: sealed.id)
+    |> Repo.update!()
+
+    refute Accounts.get_default_world_character_for_account(owner.id)
+
+    assert {:ok, selected} = Accounts.set_default_world_character(owner.id, ordinary.id)
+    assert selected.id == ordinary.id
+
+    ordinary
+    |> Character.changeset(%{status: :retired})
+    |> Repo.update!()
+
+    refute Accounts.get_default_world_character_for_account(owner.id)
+    assert {:error, :not_playable} = Accounts.set_default_world_character(owner.id, ordinary.id)
+  end
+
+  test "switching realms persists the ordinary command default", %{realm: realm} do
+    account = account_fixture("default-switch")
+    first = character_fixture(account, realm, "First Realm Self", :active)
+
+    {:ok, second_realm} =
+      Worlds.create_realm(%{slug: "default-switch-second", name: "Second Default Realm"})
+
+    second = character_fixture(account, second_realm, "Second Realm Self", :frozen)
+
+    assert {:ok, selected_first} = Accounts.switch_character(account.id, first.id)
+    assert selected_first.id == first.id
+    assert Accounts.get_default_world_character_for_account(account.id).id == first.id
+
+    assert {:ok, selected_second} = Accounts.switch_character(account.id, second.id)
+    assert selected_second.id == second.id
+    assert Accounts.get_character!(first.id).status == :frozen
+    assert Accounts.get_default_world_character_for_account(account.id).id == second.id
   end
 
   test "reconcile repairs an existing Tamiorn-only account to one playable profile", %{

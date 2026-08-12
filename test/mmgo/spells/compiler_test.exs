@@ -241,8 +241,38 @@ defmodule MMGO.Spells.CompilerTest do
     prompt = Jason.decode!(persisted_request.request_payload["user_prompt"])
     assert prompt["base_spell"]["id"] == base_spell.id
     assert prompt["base_spell"]["effects"] != []
+
+    assert prompt["engine_constraints"]["manifestation"]["kinds"] == [
+             "held_shield",
+             "summoned_weapon",
+             "creature_ally"
+           ]
+
+    assert persisted_request.request_payload["schema"]["properties"]["manifestation"]
     assert [%{"id" => base_id} | _rest] = prompt["library"]
     assert base_id == base_spell.id
+  end
+
+  test "mock compiler deterministically recognizes shield, weapon, and creature formulas" do
+    for {formula, kind} <- [
+          {"Scutum Sustineo", "held_shield"},
+          {"Gladius Magnus", "summoned_weapon"},
+          {"Vocatio Sustineo", "creature_ally"},
+          {"Evocatio Minima", "creature_ally"}
+        ] do
+      assert {:ok, compiled_spell} =
+               MMGO.AI.Providers.Mock.structured_completion(
+                 %{
+                   "task" => "compile_spell",
+                   "character" => %{"level" => 10},
+                   "request" => %{"formula" => formula, "school" => "life"}
+                 },
+                 %{},
+                 []
+               )
+
+      assert compiled_spell["manifestation"]["kind"] == kind
+    end
   end
 
   test "compile_and_store/3 canonicalizes unambiguous provider vocabulary", %{

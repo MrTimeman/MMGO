@@ -1583,6 +1583,7 @@ defmodule MMGO.Clubs do
   end
 
   defp duel_result(_participant_side, nil), do: :draw
+  defp duel_result(_participant_side, "draw"), do: :draw
   defp duel_result(participant_side, winner_side) when participant_side == winner_side, do: :win
   defp duel_result(_participant_side, _winner_side), do: :loss
   defp nonnegative_integer(value) when is_integer(value) and value >= 0, do: value

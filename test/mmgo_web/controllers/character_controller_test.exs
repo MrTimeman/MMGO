@@ -3,6 +3,7 @@ defmodule MMGOWeb.CharacterControllerTest do
 
   alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Economy
   alias MMGO.Federation.Migration
   alias MMGO.Repo
   alias MMGO.Worlds
@@ -17,6 +18,7 @@ defmodule MMGOWeb.CharacterControllerTest do
       |> Repo.insert!()
 
     active = character_fixture(account, realm, "Тамиорн Найло", :active, %{})
+    assert {:ok, _default} = Accounts.set_default_world_character(account.id, active.id)
 
     sealed =
       character_fixture(account, realm, "Альберт Латыпов", :frozen, %{
@@ -44,9 +46,11 @@ defmodule MMGOWeb.CharacterControllerTest do
     assert html =~ "Кем вы войдёте в мир?"
     assert html =~ "Запечатанный дух"
     assert html =~ "Княжество Зари"
+    assert html =~ ~s(id="default-world-character-#{active.id}")
+    assert html =~ "используется ботом"
   end
 
-  test "POST selection activates the owned profile and freezes its sibling", %{
+  test "a sealed profile can open in the session without becoming the default", %{
     conn: conn,
     account: account,
     active: active,
@@ -57,7 +61,37 @@ defmodule MMGOWeb.CharacterControllerTest do
     assert redirected_to(conn) == ~p"/map"
     assert get_session(conn, :current_character_id) == sealed.id
     assert Accounts.get_character!(sealed.id).status == :active
-    assert Accounts.get_character!(active.id).status == :frozen
+    assert Accounts.get_default_world_character_for_account(account.id).id == active.id
+  end
+
+  test "POST selection persists the ordinary default and updates the browser session", %{
+    conn: conn,
+    account: account,
+    active: active
+  } do
+    {:ok, second_realm} =
+      Worlds.create_realm(%{slug: "chooser-second-realm", name: "Второе княжество"})
+
+    {:ok, _treasury} = Economy.ensure_treasury_account(second_realm, 100_000)
+
+    {:ok, _city} =
+      Worlds.create_location(second_realm, %{
+        slug: "capital-city",
+        name: "Столица второго мира",
+        kind: :city,
+        x: 20,
+        y: 20,
+        safe_zone: true
+      })
+
+    second = character_fixture(account, second_realm, "Странник второго мира", :new, %{})
+
+    conn = post(session_conn(conn, account, active), ~p"/characters/#{second.id}/select")
+
+    assert redirected_to(conn) == ~p"/map"
+    assert get_session(conn, :current_character_id) == second.id
+    assert get_session(conn, :game_mode) == "world"
+    assert Accounts.get_default_world_character_for_account(account.id).id == second.id
   end
 
   test "POST selection rejects a profile owned by another account", %{

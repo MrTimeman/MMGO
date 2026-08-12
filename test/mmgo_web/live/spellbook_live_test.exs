@@ -4,6 +4,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
   import Phoenix.LiveViewTest
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Arena
   alias MMGO.Bases.Base
   alias MMGO.Grimoires
   alias MMGO.Play
@@ -79,6 +80,82 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert has_element?(view, "#spellbook-read-only-note")
     refute has_element?(view, "#spell-circle-root")
     refute has_element?(view, "#spell-compose-form")
+  end
+
+  test "an Arena spellbook is immediate, restricted to three schools, and issues free drafts", %{
+    conn: conn
+  } do
+    account =
+      %Account{}
+      |> Account.registration_changeset(%{
+        display_name: "Arena Scribe",
+        handle: "arena-scribe-live"
+      })
+      |> Repo.insert!()
+
+    assert {:ok, profile} =
+             Arena.create_profile(account, %{
+               name: "Arena Scribe",
+               schools: [:fire, :life, :order]
+             })
+
+    {:ok, view, _html} =
+      live(arena_session_conn(conn, account, profile.character), ~p"/arena/spellbook")
+
+    assert has_element?(view, "#spellbook-screen")
+    assert has_element?(view, "#spellbook-back-to-map[href='/arena']")
+    assert has_element?(view, "#spell-circle-root[data-circle-tier='trained']")
+
+    render_hook(view, "hook_mounted", %{"hook" => "SpellCircle"})
+
+    assert_push_event(view, "spell_circle_init", %{
+      slots: slots,
+      current: %{},
+      ritual_duration_ms: 0,
+      ritual: %{active: false, remaining_ms: 0}
+    })
+
+    school_slot = Enum.find(slots, &(&1.key == "school"))
+    assert Enum.map(school_slot.options, & &1.value) == ["fire", "life", "order"]
+
+    render_hook(view, "spell_compile", %{
+      "school" => "life",
+      "actio" => "Vocatio",
+      "tempus" => "Sustineo"
+    })
+
+    summoned_spell =
+      profile.character_id
+      |> Spells.list_spells_for_character()
+      |> Enum.find(&(&1.formula == "Vocatio Sustineo"))
+
+    assert summoned_spell
+    assert summoned_spell.manifestation.kind == :creature_ally
+    assert Creation.active_attempt(profile.character_id) == nil
+    assert has_element?(view, "#spell-compose-result-#{summoned_spell.id}")
+    assert has_element?(view, "#spell-compose-manifestation-#{summoned_spell.id}")
+
+    view
+    |> element("#spellbook-tab-spells")
+    |> render_click()
+
+    assert has_element?(view, "#spell-manifestation-#{summoned_spell.id}")
+
+    view
+    |> element("#spellbook-tab-grimoires")
+    |> render_click()
+
+    assert has_element?(view, "#create-arena-grimoire")
+    assert has_element?(view, "#arena-grimoire-policy")
+    initial_count = length(Grimoires.list_grimoires_for_character(profile.character_id))
+
+    view
+    |> element("#create-arena-grimoire")
+    |> render_click()
+
+    grimoires = Grimoires.list_grimoires_for_character(profile.character_id)
+    assert length(grimoires) == initial_count + 1
+    assert Enum.any?(grimoires, &(&1.status == :draft and &1.capacity == 45 and &1.weight == 0))
   end
 
   test "the novice circle has exactly three seals and compiles at the Tower", %{
@@ -637,6 +714,14 @@ defmodule MMGOWeb.SpellbookLiveTest do
     |> Plug.Test.init_test_session(%{})
     |> Plug.Conn.put_session(:current_account_id, character.account_id)
     |> Plug.Conn.put_session(:current_character_id, character.id)
+  end
+
+  defp arena_session_conn(conn, account, character) do
+    conn
+    |> Plug.Test.init_test_session(%{})
+    |> Plug.Conn.put_session(:current_account_id, account.id)
+    |> Plug.Conn.put_session(:current_character_id, character.id)
+    |> Plug.Conn.put_session(:game_mode, "arena")
   end
 
   defp resolve_and_reveal_ritual(view, character) do

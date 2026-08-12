@@ -7,7 +7,6 @@ defmodule MMGO.PVP do
   alias MMGO.Combat.Combat, as: CombatSchema
   alias MMGO.Economy
   alias MMGO.PVP.Duel
-  alias MMGO.CombatPlaytest
   alias MMGO.Repo
   alias MMGO.Worlds.{Location, Realm}
 
@@ -279,18 +278,16 @@ defmodule MMGO.PVP do
       challenger.id == opponent.id ->
         Repo.rollback(duel_changeset("character cannot duel themselves"))
 
-      not CombatPlaytest.unrestricted?() and challenger.realm_id != opponent.realm_id ->
+      challenger.realm_id != opponent.realm_id ->
         Repo.rollback(duel_changeset("duel participants must belong to the same realm"))
 
-      not CombatPlaytest.unrestricted?() and
-          challenger.current_location_id != opponent.current_location_id ->
+      challenger.current_location_id != opponent.current_location_id ->
         Repo.rollback(duel_changeset("duel participants must be at the same location"))
 
-      not CombatPlaytest.unrestricted?() and
-          duel_location_unavailable?(challenger.current_location_id) ->
+      duel_location_unavailable?(challenger.current_location_id) ->
         Repo.rollback(duel_changeset("duels cannot start in a safe zone"))
 
-      stake_amount < 0 or (stake_amount == 0 and not CombatPlaytest.unrestricted?()) ->
+      stake_amount <= 0 ->
         Repo.rollback(duel_changeset("stake amount must be greater than zero"))
 
       active_open_duel?(challenger.id) ->
@@ -327,12 +324,10 @@ defmodule MMGO.PVP do
       Combat.active_combat_for_character(opponent.id) ->
         Repo.rollback(duel_changeset("opponent already has an active combat"))
 
-      not CombatPlaytest.unrestricted?() and
-          challenger.current_location_id != opponent.current_location_id ->
+      challenger.current_location_id != opponent.current_location_id ->
         Repo.rollback(duel_changeset("duel participants must be at the same location"))
 
-      not CombatPlaytest.unrestricted?() and
-          duel_location_unavailable?(challenger.current_location_id) ->
+      duel_location_unavailable?(challenger.current_location_id) ->
         Repo.rollback(duel_changeset("duels cannot start in a safe zone"))
 
       insufficient_funds?(challenger, duel.stake_amount) ->

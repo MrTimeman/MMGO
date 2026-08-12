@@ -9,14 +9,15 @@
 #   - https://hub.docker.com/r/hexpm/elixir/tags - for the build image
 #   - https://hub.docker.com/_/debian/tags?name=trixie-20260713-slim - for the release image
 #   - https://pkgs.org/ - resource for finding needed packages
-#   - Ex: docker.io/hexpm/elixir:1.20.2-erlang-29.0.3-debian-trixie-20260713-slim
+#   - Ex: docker.io/hexpm/elixir:1.20.2-erlang-29.0.4-debian-trixie-20260713
 #
 ARG ELIXIR_VERSION=1.20.2
-ARG OTP_VERSION=29.0.3
-ARG DEBIAN_VERSION=trixie-20260713-slim
+ARG OTP_VERSION=29.0.4
+ARG BUILDER_DEBIAN_VERSION=trixie-20260713
+ARG RUNNER_DEBIAN_VERSION=trixie-20260713-slim
 
-ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${DEBIAN_VERSION}"
-ARG RUNNER_IMAGE="docker.io/debian:${DEBIAN_VERSION}"
+ARG BUILDER_IMAGE="docker.io/hexpm/elixir:${ELIXIR_VERSION}-erlang-${OTP_VERSION}-debian-${BUILDER_DEBIAN_VERSION}"
+ARG RUNNER_IMAGE="docker.io/debian:${RUNNER_DEBIAN_VERSION}"
 
 FROM ${BUILDER_IMAGE} AS builder
 

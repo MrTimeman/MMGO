@@ -4,6 +4,7 @@ defmodule MMGOWeb.PlayDemoLoopTest do
   import Phoenix.LiveViewTest
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Arena
   alias MMGO.Economy
   alias MMGO.Economy.EconomyAccount
   alias MMGO.Grimoires
@@ -99,6 +100,28 @@ defmodule MMGOWeb.PlayDemoLoopTest do
     assert response["character"]["current_location"]["slug"] == "capital-city"
     assert [%{"destination" => %{"slug" => "the-tower"}}] = response["routes"]
     assert response["active_journey"] == nil
+  end
+
+  test "local MMO session ignores the account's parallel arena character", %{conn: conn} do
+    first_conn = get(conn, ~p"/play/new")
+    world_character_id = get_session(first_conn, :current_character_id)
+    account = Repo.get_by!(Account, handle: "demo-player-1")
+
+    assert {:ok, arena_profile} =
+             Arena.create_profile(account, %{
+               name: "Учебный дуэлянт",
+               schools: [:fire, :water, :earth]
+             })
+
+    refute arena_profile.character_id == world_character_id
+
+    reset_conn =
+      first_conn
+      |> recycle()
+      |> get(~p"/play/new")
+
+    assert redirected_to(reset_conn) == ~p"/map"
+    assert get_session(reset_conn, :current_character_id) == world_character_id
   end
 
   test "play API rejects a demo-only session and ignores client character ids", %{conn: conn} do

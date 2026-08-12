@@ -135,8 +135,6 @@ defmodule MMGO.FederationRemoteTest do
 
   test "an active remote migration blocks another profile on the same account", %{
     character: character,
-    origin_realm: origin_realm,
-    origin_city: origin_city,
     bypass: bypass
   } do
     {:ok, remote_realm} =
@@ -145,14 +143,34 @@ defmodule MMGO.FederationRemoteTest do
     assert {:ok, %{migration: first_migration}} =
              Federation.start_migration(character, remote_realm, 100)
 
+    {:ok, sibling_realm} =
+      Worlds.create_realm(%{
+        slug: "second-local-realm",
+        name: "Second Local Realm",
+        currency_code: "SND",
+        allow_migration: true
+      })
+
+    {:ok, sibling_city} =
+      Worlds.create_location(sibling_realm, %{
+        slug: "second-local-city",
+        name: "Second Local City",
+        kind: :city,
+        x: 20,
+        y: 20,
+        safe_zone: true
+      })
+
+    {:ok, _sibling_treasury} = Economy.ensure_treasury_account(sibling_realm, 1_000)
+
     sibling =
-      %Character{account_id: character.account_id, realm_id: origin_realm.id}
+      %Character{account_id: character.account_id, realm_id: sibling_realm.id}
       |> Character.changeset(%{name: "Second Migrant", status: :active, level: 5, xp: 0})
       |> Repo.insert!()
-      |> Character.travel_changeset(%{current_location_id: origin_city.id})
+      |> Character.travel_changeset(%{current_location_id: sibling_city.id})
       |> Repo.update!()
 
-    assert {:ok, _funding} = Economy.grant_from_treasury(origin_realm, sibling, 100)
+    assert {:ok, _funding} = Economy.grant_from_treasury(sibling_realm, sibling, 100)
 
     assert {:error, changeset} = Federation.start_migration(sibling, remote_realm, 50)
     assert %{status: ["account already has an active migration"]} = errors_on(changeset)

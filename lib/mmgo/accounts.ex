@@ -2,7 +2,7 @@ defmodule MMGO.Accounts do
   import Ecto.Query, warn: false
 
   alias Ecto.Multi
-  alias MMGO.Accounts.{Account, Character, SpecialProfiles, TelegramIdentity}
+  alias MMGO.Accounts.{Account, Character, CharacterProfiles, SpecialProfiles, TelegramIdentity}
   alias MMGO.Federation.Migration
   alias MMGO.Repo
   alias MMGO.Travel.Journey
@@ -12,16 +12,83 @@ defmodule MMGO.Accounts do
   def get_account!(id), do: Repo.get!(Account, id)
   def get_character!(id), do: Repo.get!(Character, id)
 
+  @doc "Returns the account's persistent ordinary-world command character."
+  def get_default_world_character_for_account(account_id) when is_binary(account_id) do
+    from(character in Character,
+      join: account in Account,
+      on:
+        account.id == ^account_id and account.default_character_id == character.id and
+          character.account_id == account.id,
+      where:
+        account.status == :active and character.status in [:new, :active, :frozen] and
+          fragment(
+            "COALESCE(?->>'profile_kind', '') NOT IN ('arena', 'sealed_spirit')",
+            character.metadata
+          ),
+      preload: [:account, :realm, :current_location]
+    )
+    |> Repo.one()
+  end
+
+  def get_default_world_character_for_account(%Account{id: account_id}),
+    do: get_default_world_character_for_account(account_id)
+
+  def get_default_world_character_for_account(_account_id), do: nil
+
+  @doc "Persists an owned, playable, ordinary-world character as the account default."
+  def set_default_world_character(account_id, character_id)
+      when is_binary(account_id) and is_binary(character_id) do
+    Repo.transaction(fn ->
+      account = lock_account(account_id) || Repo.rollback(:not_found)
+
+      if account.status != :active do
+        Repo.rollback(:account_inactive)
+      end
+
+      character = lock_owned_character(account_id, character_id) || Repo.rollback(:not_found)
+
+      cond do
+        not ordinary_world_character?(character) ->
+          Repo.rollback(:not_world_character)
+
+        character.status not in [:new, :active, :frozen] ->
+          Repo.rollback(:not_playable)
+
+        true ->
+          persist_default_world_character!(account, character)
+          Repo.preload(character, [:account, :realm, :current_location])
+      end
+    end)
+  end
+
+  def set_default_world_character(_account_id, _character_id), do: {:error, :not_found}
+
   def list_characters_for_account(account_id) when is_binary(account_id) do
     Repo.all(
       from character in Character,
-        where: character.account_id == ^account_id,
+        where:
+          character.account_id == ^account_id and
+            fragment("COALESCE(?->>'profile_kind', '') <> 'arena'", character.metadata),
         order_by: [asc: character.realm_id, asc: character.inserted_at, asc: character.name],
         preload: [:realm, :current_location]
     )
   end
 
   def list_characters_for_account(_account_id), do: []
+
+  @doc "Lists account-owned arena characters without mixing them into the world profile picker."
+  def list_arena_characters_for_account(account_id) when is_binary(account_id) do
+    Repo.all(
+      from character in Character,
+        where:
+          character.account_id == ^account_id and
+            fragment("COALESCE(?->>'profile_kind', '') = 'arena'", character.metadata),
+        order_by: [asc: character.inserted_at, asc: character.name],
+        preload: [:realm, :current_location]
+    )
+  end
+
+  def list_arena_characters_for_account(_account_id), do: []
 
   def get_character_for_account(account_id, character_id)
       when is_binary(account_id) and is_binary(character_id) do
@@ -75,11 +142,11 @@ defmodule MMGO.Accounts do
 
   def get_active_migration_character_for_account(_account_id), do: {:error, :not_found}
 
-  @doc "Activates one owned profile and freezes every playable sibling across all realms."
+  @doc "Activates one owned profile and freezes playable siblings in the same game mode."
   def switch_character(account_id, character_id)
       when is_binary(account_id) and is_binary(character_id) do
     Repo.transaction(fn ->
-      account = Repo.get(Account, account_id)
+      account = lock_account(account_id)
 
       if is_nil(account) or account.status != :active do
         Repo.rollback(:account_inactive)
@@ -99,9 +166,11 @@ defmodule MMGO.Accounts do
           Repo.rollback(:not_found)
 
         target.status == :active ->
-          # Selecting the profile that already owns the session is a safe
-          # no-op. Keep this available while a local migration is active so
-          # the destination profile can leave the dossier and enter the map.
+          # Keep the current profile selectable while a local migration is
+          # active so its destination can leave the dossier and enter the map.
+          # Also repair any stale same-mode active sibling before returning.
+          freeze_mode_siblings!(siblings, target)
+          maybe_persist_default_world_character!(account, target)
           Repo.preload(target, [:account, :realm, :current_location])
 
         active_migration_for_account?(account_id) ->
@@ -111,13 +180,7 @@ defmodule MMGO.Accounts do
           Repo.rollback(:not_playable)
 
         true ->
-          Enum.each(siblings, fn sibling ->
-            if sibling.id != target.id and sibling.status in [:new, :active] do
-              sibling
-              |> Character.changeset(%{status: :frozen})
-              |> Repo.update!()
-            end
-          end)
+          freeze_mode_siblings!(siblings, target)
 
           target =
             if target.status == :new do
@@ -128,6 +191,7 @@ defmodule MMGO.Accounts do
               |> Repo.update!()
             end
 
+          maybe_persist_default_world_character!(account, target)
           Repo.preload(target, [:account, :realm, :current_location])
       end
     end)
@@ -224,7 +288,10 @@ defmodule MMGO.Accounts do
             character.status == :active and account.status == :active and is_nil(journey.id) and
             fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings) and
             fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
-            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
+            fragment(
+              "COALESCE(?->>'profile_kind', '') NOT IN ('sealed_spirit', 'arena')",
+              character.metadata
+            ),
         order_by: [asc: character.name],
         preload: [:account, :current_location]
       )
@@ -241,7 +308,7 @@ defmodule MMGO.Accounts do
 
   def list_active_characters_at_location(_realm_id, _location_id, _opts), do: []
 
-  @doc "Returns visible active player characters in a realm for consensual playtest duels."
+  @doc "Returns visible active world characters in a realm for consensual wagered duels."
   def list_active_characters_in_realm(realm_id, opts \\ [])
 
   def list_active_characters_in_realm(realm_id, opts)
@@ -259,7 +326,10 @@ defmodule MMGO.Accounts do
             account.status == :active and is_nil(journey.id) and
             fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings) and
             fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
-            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
+            fragment(
+              "COALESCE(?->>'profile_kind', '') NOT IN ('sealed_spirit', 'arena')",
+              character.metadata
+            ),
         order_by: [asc: character.name],
         preload: [:account, :current_location]
       )
@@ -276,33 +346,6 @@ defmodule MMGO.Accounts do
 
   def list_active_characters_in_realm(_realm_id, _opts), do: []
 
-  @doc "Returns every visible active player profile for the unrestricted beta duel lobby."
-  def list_active_playtest_characters(opts \\ []) when is_list(opts) do
-    exclude_character_id = Keyword.get(opts, :exclude_character_id)
-
-    query =
-      from(character in Character,
-        join: account in Account,
-        on: account.id == character.account_id,
-        where:
-          character.status == :active and account.status == :active and
-            fragment("COALESCE(?->>'npc', 'false') <> 'true'", account.settings) and
-            fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
-            fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
-        order_by: [asc: character.name],
-        preload: [:account, :current_location]
-      )
-
-    query =
-      if is_binary(exclude_character_id) do
-        from character in query, where: character.id != ^exclude_character_id
-      else
-        query
-      end
-
-    Repo.all(query)
-  end
-
   def get_character_by_handle(realm_id, handle) when is_binary(realm_id) and is_binary(handle) do
     from(character in Character,
       join: account in Account,
@@ -311,7 +354,10 @@ defmodule MMGO.Accounts do
         character.realm_id == ^realm_id and account.handle == ^handle and
           character.status == :active and account.status == :active and
           fragment("COALESCE(?->>'hidden_presence', 'false') <> 'true'", character.metadata) and
-          fragment("COALESCE(?->>'profile_kind', '') <> 'sealed_spirit'", character.metadata),
+          fragment(
+            "COALESCE(?->>'profile_kind', '') NOT IN ('sealed_spirit', 'arena')",
+            character.metadata
+          ),
       select: character
     )
     |> Repo.one()
@@ -408,7 +454,12 @@ defmodule MMGO.Accounts do
        ) do
     playable_character =
       from(character in Character,
-        where: character.account_id == ^account_id and character.status in [:active, :new],
+        where:
+          character.account_id == ^account_id and character.status in [:active, :new] and
+            fragment(
+              "COALESCE(?->>'profile_kind', '') NOT IN ('arena', 'sealed_spirit')",
+              character.metadata
+            ),
         order_by: [
           asc:
             fragment(
@@ -423,7 +474,13 @@ defmodule MMGO.Accounts do
 
     default_realm_character =
       from(character in Character,
-        where: character.account_id == ^account_id and character.realm_id == ^realm_id,
+        where:
+          character.account_id == ^account_id and character.realm_id == ^realm_id and
+            character.status in [:active, :new, :frozen] and
+            fragment(
+              "COALESCE(?->>'profile_kind', '') NOT IN ('arena', 'sealed_spirit')",
+              character.metadata
+            ),
         order_by: [
           asc:
             fragment(
@@ -457,8 +514,22 @@ defmodule MMGO.Accounts do
         %Realm{} = realm ->
           case SpecialProfiles.reconcile(account, realm) do
             {:ok, profiles} ->
+              # Preserve a legacy persisted choice when its old character was
+              # converted into the sealed anchor. Fresh accounts deliberately
+              # remain unset until the player chooses World mode.
+              account =
+                if is_binary(account.default_character_id) do
+                  case set_default_world_character(account.id, profiles.character.id) do
+                    {:ok, _character} -> Repo.get!(Account, account.id)
+                    {:error, _reason} -> account
+                  end
+                else
+                  account
+                end
+
               {:ok,
                result
+               |> Map.put(:account, account)
                |> Map.put(:character, profiles.character)
                |> Map.put(:characters, profiles.characters)}
 
@@ -481,6 +552,65 @@ defmodule MMGO.Accounts do
       from migration in Migration,
         where: migration.account_id == ^account_id and migration.status == :active
     )
+  end
+
+  defp lock_account(account_id) do
+    Account
+    |> where([account], account.id == ^account_id)
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+  end
+
+  defp lock_owned_character(account_id, character_id) do
+    Character
+    |> where(
+      [character],
+      character.id == ^character_id and character.account_id == ^account_id
+    )
+    |> lock("FOR UPDATE")
+    |> Repo.one()
+  end
+
+  defp ordinary_world_character?(%Character{} = character) do
+    not CharacterProfiles.arena?(character) and
+      not CharacterProfiles.sealed_spirit?(character)
+  end
+
+  defp maybe_persist_default_world_character!(account, character) do
+    if ordinary_world_character?(character) and character.status in [:new, :active, :frozen] do
+      persist_default_world_character!(account, character)
+    end
+  end
+
+  defp freeze_mode_siblings!(siblings, target) do
+    target_mode = character_mode(target)
+
+    Enum.each(siblings, fn sibling ->
+      if sibling.id != target.id and sibling.status in [:new, :active] and
+           character_mode(sibling) == target_mode do
+        sibling
+        |> Character.changeset(%{status: :frozen})
+        |> Repo.update!()
+      end
+    end)
+  end
+
+  defp persist_default_world_character!(%Account{} = account, %Character{} = character) do
+    if account.default_character_id == character.id do
+      account
+    else
+      account
+      |> Ecto.Changeset.change(default_character_id: character.id)
+      |> Repo.update!()
+    end
+  end
+
+  defp character_mode(%Character{} = character) do
+    cond do
+      CharacterProfiles.arena?(character) -> :arena
+      CharacterProfiles.sealed_spirit?(character) -> :sealed_spirit
+      true -> :world
+    end
   end
 
   defp account_attrs(display_name, telegram_attrs) do

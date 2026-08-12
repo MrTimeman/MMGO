@@ -34,7 +34,7 @@ defmodule MMGOWeb.CombatLive do
         {:ok,
          socket
          |> put_flash(:error, combat_error_message(reason))
-         |> push_navigate(to: ~p"/map")}
+         |> push_navigate(to: combat_exit_path(socket.assigns.current_scope))}
     end
   end
 
@@ -111,7 +111,7 @@ defmodule MMGOWeb.CombatLive do
         {:noreply,
          socket
          |> put_flash(:error, combat_error_message(reason))
-         |> push_navigate(to: ~p"/map")}
+         |> push_navigate(to: combat_exit_path(socket.assigns.current_scope))}
     end
   end
 
@@ -146,8 +146,12 @@ defmodule MMGOWeb.CombatLive do
 
         <header class="cbt-top">
           <div class="cbt-topbar">
-            <.link id="combat-back-to-map" navigate={~p"/map"} class="cbt-flee-btn">
-              <span aria-hidden="true">‹</span> Карта мира
+            <.link
+              id={if(@combat_state.arena?, do: "combat-back-to-arena", else: "combat-back-to-map")}
+              navigate={combat_exit_path(@current_scope)}
+              class="cbt-flee-btn"
+            >
+              <span aria-hidden="true">‹</span> {combat_exit_label(@combat_state)}
             </.link>
             <span id="combat-status" class="cbt-status">
               {combat_kind_label(@combat_state.combat.kind)} · {combat_status_label(
@@ -203,6 +207,68 @@ defmodule MMGOWeb.CombatLive do
           />
         </header>
 
+        <section
+          :if={@combat_state.arena? and @combat_state.arena_event}
+          id="arena-active-event"
+          data-event-code={@combat_state.arena_event["code"]}
+          class={[
+            "cbt-arena-event",
+            "cbt-arena-event--#{@combat_state.arena_event["accent"]}"
+          ]}
+        >
+          <span class="cbt-arena-event__sigil" aria-hidden="true">✦</span>
+          <div class="cbt-arena-event__copy">
+            <p>
+              Событие поля · {turns_remaining_label(@combat_state.arena_event["remaining_turns"])}
+            </p>
+            <h2>{@combat_state.arena_event["name"]}</h2>
+            <span>{@combat_state.arena_event["description"]}</span>
+          </div>
+          <div id="arena-environment-tags" class="cbt-arena-event__tags">
+            <span :for={tag <- @combat_state.environment_tags}>{environment_tag_label(tag)}</span>
+          </div>
+        </section>
+
+        <section
+          :if={@combat_state.arena?}
+          id="arena-event-deck"
+          class="cbt-arena-deck"
+          aria-label="Возможные события этой арены"
+        >
+          <span class="cbt-arena-deck__label">Колода событий</span>
+          <span
+            :for={event <- @combat_state.arena_event_deck}
+            id={"arena-deck-event-#{event["code"]}"}
+            class={[
+              "cbt-arena-deck__chip",
+              @combat_state.arena_event &&
+                event["code"] == @combat_state.arena_event["code"] &&
+                "cbt-arena-deck__chip--active"
+            ]}
+          >
+            {event["name"]}
+          </span>
+        </section>
+
+        <section
+          :if={@combat_state.interaction_hints != []}
+          id="arena-interaction-hints"
+          class="cbt-interactions"
+        >
+          <div class="cbt-interactions__title">
+            <.icon name="hero-sparkles" class="size-5" /> Поле отвечает на ваши формулы
+          </div>
+          <div class="cbt-interactions__list">
+            <span
+              :for={hint <- @combat_state.interaction_hints}
+              id={"arena-interaction-#{hint.spell_id}-#{hint.trigger}"}
+            >
+              <strong>{hint.spell_name}</strong>
+              · {interaction_outcome_label(hint)} при теге «{environment_tag_label(hint.trigger)}»
+            </span>
+          </div>
+        </section>
+
         <section class="cbt-log" role="log" aria-live="polite">
           <article class="cbt-turn cbt-turn--prologue">
             <p class="cbt-turn__prologue">
@@ -234,14 +300,15 @@ defmodule MMGOWeb.CombatLive do
             id="combat-outcome"
             class={[
               "cbt-outcome",
-              outcome_class(@combat_state) == :defeat && "cbt-outcome--defeat"
+              outcome_class(@combat_state) == :defeat && "cbt-outcome--defeat",
+              outcome_class(@combat_state) == :draw && "cbt-outcome--draw"
             ]}
           >
             <span class="cbt-outcome__seal">
-              {if outcome_class(@combat_state) == :defeat, do: "☒", else: "✦"}
+              {outcome_seal(@combat_state)}
             </span>
-            <h2 class="cbt-outcome__title">Победа стороны {winner_label(@combat_state)}</h2>
-            <p class="cbt-outcome__sub">Исход вписан в хронику мира.</p>
+            <h2 class="cbt-outcome__title">{outcome_title(@combat_state)}</h2>
+            <p class="cbt-outcome__sub">{outcome_subtitle(@combat_state)}</p>
             <.link
               :if={dungeon_combat?(@combat_state.combat)}
               id="combat-outcome-dungeon"
@@ -251,7 +318,15 @@ defmodule MMGOWeb.CombatLive do
               Вернуться в экспедицию
             </.link>
             <.link
-              :if={not dungeon_combat?(@combat_state.combat)}
+              :if={@combat_state.arena?}
+              id="combat-outcome-arena"
+              navigate={~p"/arena"}
+              class="cbt-outcome__btn"
+            >
+              Вернуться на Арену
+            </.link>
+            <.link
+              :if={not @combat_state.arena? and not dungeon_combat?(@combat_state.combat)}
               id="combat-outcome-map"
               navigate={~p"/map"}
               class="cbt-outcome__btn"
@@ -309,6 +384,15 @@ defmodule MMGOWeb.CombatLive do
               урон оборвёт канал автоматически.
             </p>
 
+            <p
+              :if={summoned_weapon?(@combat_state.participant)}
+              id="combat-summoned-weapon-hint"
+              class="cbt-env cbt-env--summon"
+            >
+              Призванное оружие готово: выберите «Удар призванным оружием» и цель. Это отдельное
+              действие — предметы инвентаря не используются.
+            </p>
+
             <.form
               for={@action_form}
               id="combat-action-form"
@@ -341,7 +425,7 @@ defmodule MMGOWeb.CombatLive do
                   id="combat-action-kind"
                   type="select"
                   label="Тип действия"
-                  options={action_type_options(@combat_state.participant)}
+                  options={action_type_options(@combat_state)}
                   required
                 />
               </fieldset>
@@ -366,7 +450,7 @@ defmodule MMGOWeb.CombatLive do
                   />
                 </fieldset>
 
-                <fieldset class="cbt-action-case">
+                <fieldset :if={@combat_state.items != []} class="cbt-action-case">
                   <legend>III · Инструмент</legend>
                   <.input
                     field={@action_form[:inventory_item_id]}
@@ -428,7 +512,9 @@ defmodule MMGOWeb.CombatLive do
                 phx-click="flee"
                 class="cbt-action-flee"
               >
-                <.icon name="hero-arrow-uturn-left" class="size-4" /> Отступить и отдать этот круг
+                <.icon name="hero-arrow-uturn-left" class="size-4" /> {flee_action_label(
+                  @combat_state
+                )}
               </button>
             </.form>
           </section>
@@ -441,11 +527,10 @@ defmodule MMGOWeb.CombatLive do
             aria-modal="true"
             aria-labelledby="combat-flee-title"
           >
-            <h2 id="combat-flee-title" class="cbt-flee-modal__title">Отдать круг противнику?</h2>
-            <p class="cbt-flee-modal__body">
-              Отступление немедленно запечатает поражение вашей стороны. Отменить его после
-              подтверждения нельзя.
-            </p>
+            <h2 id="combat-flee-title" class="cbt-flee-modal__title">
+              {flee_confirmation_title(@combat_state)}
+            </h2>
+            <p class="cbt-flee-modal__body">{flee_confirmation_body(@combat_state)}</p>
             <div class="cbt-flee-modal__row">
               <button type="button" phx-click="cancel_flee" class="cbt-flee-modal__stay">
                 Остаться в бою
@@ -456,7 +541,7 @@ defmodule MMGOWeb.CombatLive do
                 phx-click="confirm_flee"
                 class="cbt-flee-modal__go"
               >
-                Подтвердить отступление
+                {flee_confirmation_action(@combat_state)}
               </button>
             </div>
           </section>
@@ -527,6 +612,25 @@ defmodule MMGOWeb.CombatLive do
           ]}>
             {participant_status_label(participant.status)}
           </span>
+          <div
+            :if={manifestation_states(participant) != []}
+            class="cbt-manifestations"
+            aria-label="Призванные сущности"
+          >
+            <span
+              :for={{manifestation, index} <- Enum.with_index(manifestation_states(participant))}
+              id={"combat-manifestation-#{participant.id}-#{index}"}
+              class={[
+                "cbt-manifestation",
+                "cbt-manifestation--#{manifestation["state"]}"
+              ]}
+              title={manifestation_title(manifestation)}
+            >
+              <span aria-hidden="true">{manifestation_glyph(manifestation["state"])}</span>
+              <strong>{manifestation["display_name"] || manifestation_label(manifestation)}</strong>
+              <small>{manifestation_stats(manifestation)}</small>
+            </span>
+          </div>
         </div>
       </div>
     </section>
@@ -605,12 +709,20 @@ defmodule MMGOWeb.CombatLive do
     |> Enum.sort_by(& &1.position)
   end
 
-  defp action_type_options(participant) do
-    [
-      {"Заклинание", "cast_spell"},
-      {"Предмет", "use_item"},
-      {if(channeling?(participant), do: "Прервать канал", else: "Выждать"), "wait"}
-    ]
+  defp action_type_options(state) do
+    spell_options = if state.prepared_spells == [], do: [], else: [{"Заклинание", "cast_spell"}]
+
+    manifestation_options =
+      if summoned_weapon?(state.participant),
+        do: [{"Удар призванным оружием", "manifestation_strike"}],
+        else: []
+
+    item_options = if state.items == [], do: [], else: [{"Предмет", "use_item"}]
+
+    spell_options ++
+      manifestation_options ++
+      item_options ++
+      [{if(channeling?(state.participant), do: "Прервать канал", else: "Выждать"), "wait"}]
   end
 
   defp channeling?(%{active_states: active_states}) do
@@ -618,6 +730,20 @@ defmodule MMGOWeb.CombatLive do
   end
 
   defp channeling?(_participant), do: false
+
+  defp summoned_weapon?(%{active_states: active_states}) do
+    Enum.any?(List.wrap(active_states), &(Map.get(&1, "state") == "summoned_weapon"))
+  end
+
+  defp summoned_weapon?(_participant), do: false
+
+  defp manifestation_states(%{active_states: active_states}) do
+    Enum.filter(List.wrap(active_states), fn state ->
+      Map.get(state, "state") in ["summoned_shield", "summoned_weapon", "summoned_creature"]
+    end)
+  end
+
+  defp manifestation_states(_participant), do: []
 
   defp spell_options(spells),
     do: Enum.map(spells, &{"#{&1.name} · усталость #{&1.fatigue_cost}", &1.id})
@@ -701,6 +827,83 @@ defmodule MMGOWeb.CombatLive do
     end
   end
 
+  defp combat_exit_path(%{game_mode: :arena}), do: ~p"/arena"
+  defp combat_exit_path(_scope), do: ~p"/map"
+
+  defp combat_exit_label(%{arena?: true}), do: "Арена"
+  defp combat_exit_label(_state), do: "Карта мира"
+
+  defp turns_remaining_label(1), do: "последний ход"
+  defp turns_remaining_label(turns) when is_integer(turns), do: "ещё #{turns} хода"
+  defp turns_remaining_label(_turns), do: "длительность уточняется"
+
+  defp environment_tag_label("fire"), do: "огонь"
+  defp environment_tag_label("embers"), do: "искры"
+  defp environment_tag_label("burning"), do: "пламя"
+  defp environment_tag_label("water"), do: "вода"
+  defp environment_tag_label("rain"), do: "ливень"
+  defp environment_tag_label("wet"), do: "промокшее поле"
+  defp environment_tag_label("earth"), do: "земля"
+  defp environment_tag_label("life"), do: "жизнь"
+  defp environment_tag_label("overgrown"), do: "заросли"
+  defp environment_tag_label("death"), do: "смерть"
+  defp environment_tag_label("eclipse"), do: "затмение"
+  defp environment_tag_label("necrotic"), do: "некроз"
+  defp environment_tag_label("air"), do: "воздух"
+  defp environment_tag_label("storm"), do: "буря"
+  defp environment_tag_label("gale"), do: "шквал"
+  defp environment_tag_label("chaos"), do: "хаос"
+  defp environment_tag_label("unstable"), do: "нестабильность"
+  defp environment_tag_label("wild-magic"), do: "дикая магия"
+  defp environment_tag_label("order"), do: "порядок"
+  defp environment_tag_label("crystal"), do: "кристалл"
+  defp environment_tag_label("warded"), do: "оберег"
+  defp environment_tag_label(tag), do: to_string(tag)
+
+  defp interaction_outcome_label(%{outcome: :negate}), do: "гасит эффект"
+
+  defp interaction_outcome_label(%{outcome: :amplify, modifier: modifier})
+       when is_integer(modifier),
+       do: "усиливается на #{modifier}"
+
+  defp interaction_outcome_label(%{outcome: :replace_environment}),
+    do: "преобразует окружение"
+
+  defp interaction_outcome_label(%{outcome: :apply_bonus_state, state: state}),
+    do: "создаёт дополнительное состояние «#{state}»"
+
+  defp interaction_outcome_label(_hint), do: "взаимодействует с окружением"
+
+  defp manifestation_glyph("summoned_shield"), do: "◈"
+  defp manifestation_glyph("summoned_weapon"), do: "⚔"
+  defp manifestation_glyph("summoned_creature"), do: "♞"
+  defp manifestation_glyph(_state), do: "✦"
+
+  defp manifestation_label(%{"state" => "summoned_shield"}), do: "Призванный щит"
+  defp manifestation_label(%{"state" => "summoned_weapon"}), do: "Призванное оружие"
+  defp manifestation_label(%{"state" => "summoned_creature"}), do: "Призванный союзник"
+  defp manifestation_label(_state), do: "Призыв"
+
+  defp manifestation_stats(manifestation) do
+    [
+      if(is_integer(manifestation["hp"]), do: "прочность #{manifestation["hp"]}"),
+      if(is_integer(manifestation["power"]), do: "сила #{manifestation["power"]}"),
+      if(is_integer(manifestation["remaining_turns"]),
+        do: "ходов #{manifestation["remaining_turns"]}"
+      )
+    ]
+    |> Enum.reject(&is_nil/1)
+    |> Enum.join(" · ")
+  end
+
+  defp manifestation_title(manifestation) do
+    "#{manifestation_label(manifestation)} · #{manifestation_stats(manifestation)}"
+  end
+
+  defp combat_opening(:arena_match),
+    do:
+      "Чистый круг открыт. Только выбранные школы, конечный гримуар и то, что вы сумеете сотворить; поле будет меняться само."
+
   defp combat_opening(:duel),
     do:
       "Круг замкнут. Противники читают друг друга в свете печатей; каждое решение войдёт в мир одновременно."
@@ -716,11 +919,48 @@ defmodule MMGOWeb.CombatLive do
   defp combat_opening(_kind),
     do: "Круг решения открыт. Стороны накладывают печати, и мир ждёт их общего исхода."
 
+  defp outcome_class(%{combat: %{winner_side: "draw"}}), do: :draw
   defp outcome_class(%{spectator?: true}), do: :victory
 
   defp outcome_class(%{participant: participant, combat: combat}) do
     if participant && participant.side == combat.winner_side, do: :victory, else: :defeat
   end
+
+  defp outcome_seal(state) do
+    case outcome_class(state) do
+      :defeat -> "☒"
+      :draw -> "◇"
+      :victory -> "✦"
+    end
+  end
+
+  defp outcome_title(%{combat: %{winner_side: "draw"}}), do: "Ничья"
+  defp outcome_title(state), do: "Победа стороны #{winner_label(state)}"
+
+  defp outcome_subtitle(%{combat: %{winner_side: "draw"}, arena?: true}),
+    do: "Обе стороны выбыли одновременно; ничья записана в отдельную историю Арены."
+
+  defp outcome_subtitle(%{arena?: true}),
+    do: "Результат записан в отдельную историю Арены; мир и его ресурсы не затронуты."
+
+  defp outcome_subtitle(_state), do: "Исход вписан в хронику мира."
+
+  defp flee_action_label(%{arena?: true}), do: "Сдаться в этом матче"
+  defp flee_action_label(_state), do: "Отступить и отдать этот круг"
+
+  defp flee_confirmation_title(%{arena?: true}), do: "Отдать матч соперникам?"
+  defp flee_confirmation_title(_state), do: "Отдать круг противнику?"
+
+  defp flee_confirmation_body(%{arena?: true}),
+    do:
+      "Сдача немедленно завершит матч поражением вашей команды. Инвентарь мира не пострадает, но результат рейтингового боя будет учтён."
+
+  defp flee_confirmation_body(_state),
+    do:
+      "Отступление немедленно запечатает поражение вашей стороны. Отменить его после подтверждения нельзя."
+
+  defp flee_confirmation_action(%{arena?: true}), do: "Подтвердить сдачу"
+  defp flee_confirmation_action(_state), do: "Подтвердить отступление"
 
   defp deadline_label(_deadline_at, true), do: "ход разрешается"
   defp deadline_label(nil, _resolving?), do: "время уточняется"
@@ -729,6 +969,7 @@ defmodule MMGOWeb.CombatLive do
     do: Calendar.strftime(deadline_at, "%H:%M:%S UTC")
 
   defp combat_kind_label(:duel), do: "Дуэль"
+  defp combat_kind_label(:arena_match), do: "Арена"
   defp combat_kind_label(:dungeon_encounter), do: "Схватка в подземелье"
   defp combat_kind_label(:overworld_encounter), do: "Столкновение в пути"
   defp combat_kind_label(_kind), do: "Бой"
@@ -763,6 +1004,10 @@ defmodule MMGOWeb.CombatLive do
   defp item_action_label(_kind), do: "особый приём"
 
   defp event_label("spell_cast"), do: "заклинание сработало"
+  defp event_label("arena_event"), do: "поле Арены изменилось"
+  defp event_label("manifestation_strike"), do: "призванное оружие нанесло удар"
+  defp event_label("summon_action"), do: "призванный союзник атаковал"
+  defp event_label("summon_destroyed"), do: "призванная сущность рассеялась"
   defp event_label("tool_action"), do: "предмет применён"
   defp event_label("action_blocked"), do: "действие сорвалось"
   defp event_label("state_tick"), do: "состояние изменило поле боя"
@@ -837,6 +1082,8 @@ defmodule MMGOWeb.CombatLive do
       "challengers" -> "Вызывающие"
       "defenders" -> "Защитники"
       "attackers" -> "Нападающие"
+      "team a" -> "Команда A"
+      "team b" -> "Команда B"
       _other -> label
     end
   end
@@ -858,6 +1105,11 @@ defmodule MMGOWeb.CombatLive do
   defp combat_error_message(:invalid_target), do: "Выберите допустимую цель."
   defp combat_error_message(:item_not_owned), do: "Этот предмет вам не принадлежит."
   defp combat_error_message(:item_unavailable), do: "Предмет уже недоступен для этого хода."
+  defp combat_error_message(:items_disabled), do: "На Арене предметы и зелья отключены."
+
+  defp combat_error_message(:manifestation_unavailable),
+    do: "Призванное оружие уже рассеялось или недоступно."
+
   defp combat_error_message(:invalid_item_action), do: "Этот приём недоступен предмету."
 
   defp combat_error_message(:invalid_incantation),

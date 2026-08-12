@@ -10,6 +10,7 @@ defmodule MMGO.Spells.Spell do
     FailureProfile,
     Incantation,
     InteractionRule,
+    Manifestation,
     SchoolQuirk,
     SpellEffect
   }
@@ -56,6 +57,7 @@ defmodule MMGO.Spells.Spell do
     embeds_many :effects, SpellEffect, on_replace: :delete
     embeds_many :interaction_rules, InteractionRule, on_replace: :delete
     embeds_one :failure_profile, FailureProfile, on_replace: :update
+    embeds_one :manifestation, Manifestation, on_replace: :update
 
     belongs_to :creator_character, Character
     belongs_to :realm, Realm
@@ -103,6 +105,7 @@ defmodule MMGO.Spells.Spell do
     |> cast_embed(:effects, required: true, with: &SpellEffect.changeset/2)
     |> cast_embed(:interaction_rules, with: &InteractionRule.changeset/2)
     |> cast_embed(:failure_profile, required: true, with: &FailureProfile.changeset/2)
+    |> cast_embed(:manifestation, with: &Manifestation.changeset/2)
     |> validate_length(:tags, max: 12)
     |> validate_length(:narrative_tags, max: 12)
     |> validate_length(:environment_tags, max: 8)
@@ -171,10 +174,19 @@ defmodule MMGO.Spells.Spell do
 
   defp validate_effect_budget(changeset) do
     effects = get_field(changeset, :effects, [])
-    total_intensity = Enum.reduce(effects, 0, fn effect, acc -> acc + effect.intensity end)
+    manifestation = get_field(changeset, :manifestation)
+
+    total_intensity =
+      Enum.reduce(effects, Manifestation.effect_budget(manifestation), fn effect, acc ->
+        acc + effect.intensity
+      end)
 
     if total_intensity > 240 do
-      add_error(changeset, :effects, "total spell intensity exceeds the current engine budget")
+      add_error(
+        changeset,
+        :effects,
+        "total spell effect and manifestation intensity exceeds the current engine budget"
+      )
     else
       changeset
     end
