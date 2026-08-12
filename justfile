@@ -325,7 +325,7 @@ deploy: release-check
     smoke_url="http://127.0.0.1:4100"
 
     cleanup_remote() {
-      docker stop --timeout 15 "$smoke_name" >/dev/null 2>&1 || true
+      docker stop -t 15 "$smoke_name" >/dev/null 2>&1 || true
       rm -f -- "$remote_archive"
     }
     trap cleanup_remote EXIT
@@ -478,7 +478,7 @@ deploy: release-check
     )"
     printf '%s\n' "$deepseek_probe"
     grep -Fqx 'ai_deepseek_probe=ok' <<<"$deepseek_probe"
-    docker stop --timeout 15 "$smoke_name" >/dev/null
+    docker stop -t 15 "$smoke_name" >/dev/null
 
     compose_backup="${backup_dir}/docker-compose.prod.yml.pre-${version}-${timestamp}"
     cp --preserve=mode,ownership,timestamps "$compose_file" "$compose_backup"
