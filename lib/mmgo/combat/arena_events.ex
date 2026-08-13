@@ -45,7 +45,7 @@ defmodule MMGO.Combat.ArenaEvents do
       "description" => "Холодная тень утяжеляет каждое заклинание и истощает всех магов.",
       "accent" => "violet",
       "tags" => ["death", "eclipse", "necrotic"],
-      "effect" => %{"kind" => "fatigue_delta", "amount" => 3}
+      "effect" => %{"kind" => "mana_delta", "amount" => -12}
     },
     %{
       "code" => "wind_shear",

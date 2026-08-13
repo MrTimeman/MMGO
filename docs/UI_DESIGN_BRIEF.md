@@ -50,6 +50,31 @@ Existing polished reference screens — study these before building:
    diplomas); `--font-hand` (Caveat) for handwriting (margin notes,
    signatures, prices chalked on a board).
 
+## The Arena exception (agreed, August 2026)
+
+The Arena (`/arena` and everything under it) is **deliberately exempt from
+rules 2 and, in part, 1** above. It is not a place in the world reached from
+the map; it is a competitive mode players enter to queue, fight, and climb, and
+it is judged against other competitive games rather than against the world
+shell. Read the exemption narrowly — it is a considered exception, not licence
+to drift.
+
+What the Arena may do that world screens may not:
+
+- **Persistent in-mode navigation.** A bar linking the Arena's own places —
+  home, queue, rooms, rankings, seats, book — may stay on screen. It never
+  links out of the Arena; the single diegetic exit back to `/mode` still
+  applies.
+- **An always-reachable primary action.** The queue button must be reachable
+  without scrolling on a 375 px screen. Competitive players open this mode to
+  fight, not to read; lore belongs below the fold, or behind a link.
+- **Visible progression.** Rating, division, seat, streak and season progress
+  may be displayed as standing chrome rather than being discovered inside a
+  screen. Progression that cannot be seen is progression that does not motivate.
+
+Everything else in this brief still binds the Arena: Russian copy, tokens, the
+dark shell aesthetic, typography, touch targets, motion budget, and art slots.
+
 ## Artwork placeholders
 
 Human artists will draw all art later. **Do not** draw illustrations,

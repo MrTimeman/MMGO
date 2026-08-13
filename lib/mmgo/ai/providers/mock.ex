@@ -106,9 +106,18 @@ defmodule MMGO.AI.Providers.Mock do
     request = decoded_payload["request"] || %{}
     character = decoded_payload["character"] || %{}
     school = request["school"] || request[:school] || "fire"
-    formula = request["formula"] || request[:formula] || "Incantatio"
+
+    formula =
+      case request["formula"] || request[:formula] do
+        value when is_binary(value) -> value
+        _absent_or_invalid -> "Incantatio"
+      end
+
     name = request["name"] || request[:name] || "Безымянное заклинание"
     caster_level = character["level"] || character[:level] || 1
+    # Power follows the craft, exactly as a real provider is asked to judge it:
+    # more seals, more spell. The server clamps it to the craft ceiling anyway.
+    seals = formula |> String.split(~r/\s+/, trim: true) |> length()
 
     %{
       "outcome" => "created",
@@ -117,7 +126,7 @@ defmodule MMGO.AI.Providers.Mock do
       "school" => school,
       "school_quirk" => mock_school_quirk(school),
       "description" => "Пробное заклинание для локальной разработки и испытаний.",
-      "level_requirement" => max(div(caster_level, 2), 1),
+      "power" => max(seals * 5, 1),
       "fatigue_cost" => 6,
       "cooldown_turns" => 1,
       "targeting" => request["targeting"] || request[:targeting] || "enemy",
@@ -139,7 +148,7 @@ defmodule MMGO.AI.Providers.Mock do
     |> maybe_put_mock_manifestation(formula)
   end
 
-  defp maybe_put_mock_manifestation(compiled_spell, formula) when is_binary(formula) do
+  defp maybe_put_mock_manifestation(compiled_spell, formula) do
     normalized_formula = String.downcase(formula)
 
     manifestation =
@@ -179,8 +188,6 @@ defmodule MMGO.AI.Providers.Mock do
       compiled_spell
     end
   end
-
-  defp maybe_put_mock_manifestation(compiled_spell, _formula), do: compiled_spell
 
   defp mock_school_quirk("fire"), do: "escalation"
   defp mock_school_quirk("water"), do: "environment_shift"

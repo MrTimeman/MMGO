@@ -1,9 +1,19 @@
 defmodule MMGO.Spells.Runtime do
   alias MMGO.Spells.{InteractionRule, Spell, SpellEffect}
 
-  def success_rate(%Spell{failure_profile: failure_profile}, caster_level, fatigue_penalty \\ 0) do
+  @doc """
+  How likely this spell is to land.
+
+  `exhaustion_penalty` is the tax an emptying mana pool exacts: a caster running
+  on fumes is a worse caster.
+  """
+  def success_rate(
+        %Spell{failure_profile: failure_profile},
+        caster_level,
+        exhaustion_penalty \\ 0
+      ) do
     (failure_profile.base_success_rate + (caster_level - failure_profile.difficulty) * 3 -
-       fatigue_penalty)
+       exhaustion_penalty)
     |> clamp(5, 100)
   end
 

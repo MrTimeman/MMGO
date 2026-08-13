@@ -116,7 +116,7 @@ defmodule MMGO.Spells.CompilerTest do
          "formula" => "Provider Formula",
          "school" => "chaos",
          "description" => "Намеренно чрезмерный результат толкователя.",
-         "level_requirement" => 80,
+         "power" => 80,
          "fatigue_cost" => 90,
          "cooldown_turns" => 30,
          "targeting" => "zone",
@@ -542,7 +542,7 @@ defmodule MMGO.Spells.CompilerTest do
                circle_tier: :novice
              )
 
-    assert spell.level_requirement == 1
+    assert spell.power == 1
     assert spell.fatigue_cost == 12
     assert spell.cooldown_turns == 3
     assert spell.source_spell_id == nil
@@ -556,7 +556,7 @@ defmodule MMGO.Spells.CompilerTest do
     assert effect.variance == 2
     assert effect.duration == 3
 
-    assert compiled_spell["level_requirement"] == 1
+    assert compiled_spell["power"] == 1
     assert compiled_spell["environment_mode"] == "none"
     assert compiled_spell["environment_tags"] == []
     assert compiled_spell["interaction_rules"] == []
@@ -585,7 +585,7 @@ defmodule MMGO.Spells.CompilerTest do
              )
 
     assert novice_spell.source_spell_id == base_spell.id
-    assert novice_spell.level_requirement == 1
+    assert novice_spell.power == 1
     assert novice_spell.fatigue_cost == 12
     assert novice_spell.cooldown_turns == 3
     assert novice_spell.environment_mode == :none
@@ -598,7 +598,7 @@ defmodule MMGO.Spells.CompilerTest do
     assert novice_effect.variance == 2
     assert novice_effect.duration == 3
 
-    assert novice_output["level_requirement"] == 1
+    assert novice_output["power"] == 1
     assert novice_output["fatigue_cost"] == 12
     assert novice_output["cooldown_turns"] == 3
     assert novice_output["environment_mode"] == "none"
@@ -617,13 +617,68 @@ defmodule MMGO.Spells.CompilerTest do
                common_opts ++ [allow_root_spell: true, circle_tier: :trained]
              )
 
-    assert trained_root.level_requirement == 80
-    assert trained_root.fatigue_cost == 90
-    assert trained_root.cooldown_turns == 30
+    # A trained root keeps the compiler budget rather than collapsing to the
+    # novice caps, but craft still bounds it: "Aqua Lente" fills two seals, so
+    # the provider's claim of power 80 is earned down to that ceiling and every
+    # magnitude rescales to it.
+    assert trained_root.power == 4
+    assert trained_root.fatigue_cost == 18
+    assert trained_root.cooldown_turns == 3
     assert trained_root.environment_mode == :replace
     assert trained_root.environment_tags == ["world-fire", "collapsed-reality"]
     assert length(trained_root.effects) == 2
     assert length(trained_root.interaction_rules) == 1
+  end
+
+  test "craft, not the caster, sets the power a spell can earn", %{character: character} do
+    common_opts = [provider: OverpoweredRootProvider, model: "craft-ceiling-test-model"]
+
+    # Same greedy provider, same caster: only the number of filled seals differs.
+    assert {:ok, %{spell: terse}} =
+             Compiler.compile_and_store(
+               character,
+               %{name: "Terse", formula: "Ignis Ictus Levis", school: "fire"},
+               common_opts ++ [allow_root_spell: true, circle_tier: :trained]
+             )
+
+    assert {:ok, %{spell: wrought}} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Wrought",
+                 formula: "Ignis Ictus Magnus Radius Momentum Focus",
+                 school: "fire"
+               },
+               common_opts ++ [allow_root_spell: true, circle_tier: :trained]
+             )
+
+    assert terse.power == 5
+    assert wrought.power == 50
+
+    # Power is the whole budget, so the fuller formula is mechanically stronger.
+    assert wrought.fatigue_cost > terse.fatigue_cost
+
+    assert Enum.max_by(wrought.effects, & &1.intensity).intensity >
+             Enum.max_by(terse.effects, & &1.intensity).intensity
+  end
+
+  test "a refinement pass reaches past the lineage it evolves", %{character: character} do
+    assert {:ok, %{spell: refined}} =
+             Compiler.compile_and_store(
+               character,
+               %{
+                 name: "Refined",
+                 formula: "Ignis Ictus Levis",
+                 school: "fire",
+                 base_spell_id: spell_fixture(character, "Ancestor", power: 30).id
+               },
+               provider: OverpoweredRootProvider,
+               model: "lineage-ceiling-test-model",
+               circle_tier: :trained
+             )
+
+    # Three seals alone would cap this at 5; the power-30 ancestor lifts it.
+    assert refined.power == 35
   end
 
   test "compiler limits the owned library context", %{
@@ -659,7 +714,7 @@ defmodule MMGO.Spells.CompilerTest do
     |> Repo.insert!()
   end
 
-  defp spell_fixture(character, name) do
+  defp spell_fixture(character, name, opts \\ []) do
     {:ok, spell} =
       Spells.create_spell(character, %{
         name: name,
@@ -668,6 +723,7 @@ defmodule MMGO.Spells.CompilerTest do
         description: "A durable spell fixture for compiler ownership tests.",
         targeting: :enemy,
         delivery_form: :sphere,
+        power: Keyword.get(opts, :power, 1),
         effects: [
           %{applies_to: :target, state: "impact", intensity: 8, variance: 0, duration: 0}
         ],

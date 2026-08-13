@@ -7,7 +7,10 @@ defmodule MMGO.Combat.Action do
   alias MMGO.Inventory.InventoryItem
   alias MMGO.Spells.Spell
 
-  @action_types [:wait, :cast_spell, :manifestation_strike, :use_item, :flee]
+  # `parry` and `block` are the active defence: a choice spent instead of an
+  # attack. They are not the same thing as a magical shield, which absorbs
+  # passively whether or not the caster chose to defend.
+  @action_types [:wait, :cast_spell, :manifestation_strike, :parry, :block, :use_item, :flee]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

@@ -12,6 +12,7 @@ defmodule MMGO.Combat.ActionSnapshot do
   import Ecto.Query, warn: false
 
   alias MMGO.Accounts.Character
+  alias MMGO.Arena.{Ladder, RoomRules}
   alias MMGO.Combat.{Action, Combat, Participant}
   alias MMGO.Inventory
   alias MMGO.Inventory.{InventoryItem, ItemAction}
@@ -33,9 +34,25 @@ defmodule MMGO.Combat.ActionSnapshot do
     "wait" => :wait,
     "cast_spell" => :cast_spell,
     "manifestation_strike" => :manifestation_strike,
+    "parry" => :parry,
+    "block" => :block,
     "use_item" => :use_item,
     "flee" => :flee
   }
+
+  # You may block with whatever you are holding, and what you hold decides how
+  # much good it does. A shield is made for this; a blade turned flat is not;
+  # bare arms and will are better than nothing and not much more.
+  @guard_sources %{
+    "summoned_shield" => %{block: 70, parry: 0},
+    "summoned_creature" => %{block: 55, parry: 0},
+    "summoned_weapon" => %{block: 40, parry: 70},
+    "item" => %{block: 50, parry: 45},
+    "bare" => %{block: 20, parry: 0}
+  }
+
+  @guard_manifestations ~w(summoned_shield summoned_creature summoned_weapon)
+  @physical_guard_kinds [:raise_shield, :strike, :sweep, :deploy]
 
   @schools %{
     "fire" => :fire,
@@ -152,6 +169,29 @@ defmodule MMGO.Combat.ActionSnapshot do
   def manifestation_strike_for_resolution(_action), do: {:error, :invalid_snapshot}
 
   @doc """
+  Rehydrates the defence the server approved at submission time.
+
+  Only the source and its efficiency are carried, both of them server-chosen, so
+  a browser cannot claim to be blocking with something it never held.
+  """
+  def guard_for_resolution(%Action{action_type: mode, payload: payload})
+      when mode in [:parry, :block] do
+    expected_kind = to_string(mode)
+
+    with %{"snapshot" => snapshot} when is_map(snapshot) <- payload,
+         ^expected_kind <- Map.get(snapshot, "kind"),
+         source when is_binary(source) <- Map.get(snapshot, "guard_source"),
+         efficiency when is_integer(efficiency) and efficiency > 0 <-
+           guard_efficiency(mode, source) do
+      {:ok, %{"mode" => to_string(mode), "source" => source, "efficiency" => efficiency}}
+    else
+      _other -> {:error, :invalid_snapshot}
+    end
+  end
+
+  def guard_for_resolution(_action), do: {:error, :invalid_snapshot}
+
+  @doc """
   Rehydrates a frozen item-action definition and target from a server-created
   action snapshot. Current inventory records are still used only to consume the
   resource that was reserved when the turn was sealed.
@@ -263,6 +303,24 @@ defmodule MMGO.Combat.ActionSnapshot do
     end
   end
 
+  defp normalize_action(mode, _combat, participant, attrs) when mode in [:parry, :block] do
+    with {:ok, source} <- guard_source(mode, participant, attrs["guard_source"]) do
+      {:ok,
+       %{
+         action_type: mode,
+         target_side: nil,
+         target_participant_id: nil,
+         payload: %{
+           "snapshot" => %{
+             "kind" => to_string(mode),
+             "guard_source" => source,
+             "efficiency" => guard_efficiency(mode, source)
+           }
+         }
+       }}
+    end
+  end
+
   defp normalize_action(:use_item, %Combat{kind: :arena_match}, _participant, _attrs),
     do: {:error, :items_disabled}
 
@@ -319,8 +377,14 @@ defmodule MMGO.Combat.ActionSnapshot do
       spell.realm_id != combat.realm_id ->
         {:error, :spell_not_owned}
 
-      not prepared_spell?(participant, spell.id) ->
+      not RoomRules.free_grimoire?(combat) and not prepared_spell?(participant, spell.id) ->
         {:error, :spell_not_prepared}
+
+      not ranked_into_spell?(combat, participant, spell) ->
+        {:error, :spell_rank_too_high}
+
+      not affordable?(combat, participant, spell) ->
+        {:error, :insufficient_mana}
 
       true ->
         {:ok, spell}
@@ -328,6 +392,113 @@ defmodule MMGO.Combat.ActionSnapshot do
   end
 
   defp owned_prepared_spell(_combat, _participant, _spell_id), do: {:error, :spell_not_found}
+
+  @doc """
+  Whether the caster can pay for this spell out of the pool they have now.
+
+  The engine checks again when the turn resolves — the pool can drain in
+  between — but refusing here is what lets the interface say so before the
+  caster has spent their turn on it.
+  """
+  def affordable?(combat, %Participant{} = participant, %Spell{} = spell) do
+    RoomRules.unlimited_mana?(combat) or participant.mana >= spell.fatigue_cost
+  end
+
+  @doc """
+  Whether the caster's rank admits this spell.
+
+  Craft decides how strong a spell is; rank decides who may wield it. Ranked
+  play and the world hold a caster to the division the spell earned — and the
+  spell becomes legal there the moment they rank into it. A custom room is where
+  you play without restraint: anything the caster owns is legal in one, unless
+  its host set a rank cap, which then binds everyone in the room equally.
+  """
+  def ranked_into_spell?(combat, participant, spell) do
+    case rank_ceiling(combat, participant) do
+      :any -> true
+      ceiling -> Ladder.at_least?(ceiling, Spell.rank_requirement(spell))
+    end
+  end
+
+  # The ceiling is the lower of what the caster has earned and what the room
+  # allows. A room that frees rank drops the first half; a cap adds the second.
+  defp rank_ceiling(combat, participant) do
+    own = if RoomRules.free_rank?(combat), do: :any, else: caster_rank(participant)
+
+    case {own, RoomRules.rank_cap(combat)} do
+      {own, nil} -> own
+      {:any, cap} -> cap
+      {own, cap} -> if Ladder.at_least?(own, cap), do: cap, else: own
+    end
+  end
+
+  # Participants without a rank of their own (actor templates) sit at the foot
+  # of the ladder; they never cast player spells.
+  defp caster_rank(%Participant{rank: rank}) when not is_nil(rank), do: rank
+  defp caster_rank(_participant), do: hd(Ladder.keys())
+
+  @doc """
+  Everything the participant could raise against a blow right now, strongest
+  first.
+
+  Manifestations are read straight off the participant. A held item is not — the
+  caller says whether there is one, because whoever is asking usually knows
+  already and the alternative is a query on every render.
+  """
+  def guard_sources(mode, participant, opts \\ [])
+
+  def guard_sources(mode, %Participant{} = participant, opts) when mode in [:parry, :block] do
+    held =
+      participant.active_states
+      |> List.wrap()
+      |> Enum.map(&Map.get(&1, "state"))
+      |> Enum.filter(&(&1 in @guard_manifestations))
+      |> Enum.uniq()
+
+    held = if Keyword.get(opts, :holding_item?, false), do: ["item" | held], else: held
+
+    ["bare" | held]
+    |> Enum.filter(&(guard_efficiency(mode, &1) > 0))
+    |> Enum.sort_by(&(-guard_efficiency(mode, &1)))
+  end
+
+  @doc "How much good this source does against a blow, as a percentage."
+  def guard_efficiency(mode, source) when mode in [:parry, :block] do
+    @guard_sources
+    |> Map.get(source, %{block: 0, parry: 0})
+    |> Map.fetch!(mode)
+  end
+
+  # Anything with a physical action on it can be interposed: a shield raised, a
+  # tool held up, a blade turned. What it does not need is ammunition — nothing
+  # is consumed by holding it in the way.
+  defp holding_physical_item?(%Participant{character_id: character_id})
+       when is_binary(character_id) do
+    character_id
+    |> Inventory.list_inventory_for_character()
+    |> Enum.any?(fn item ->
+      Enum.any?(item.item_template.actions || [], &(&1.action_kind in @physical_guard_kinds))
+    end)
+  end
+
+  defp holding_physical_item?(_participant), do: false
+
+  # A requested source must actually be in the participant's hands, and must be
+  # good for the kind of defence they asked for: you cannot parry with a shield.
+  # Only a claim to be holding an item is worth a query.
+  defp guard_source(mode, participant, requested) do
+    available =
+      guard_sources(mode, participant,
+        holding_item?: requested == "item" and holding_physical_item?(participant)
+      )
+
+    cond do
+      is_binary(requested) and requested in available -> {:ok, requested}
+      is_binary(requested) -> {:error, :guard_source_unavailable}
+      available == [] -> {:error, :guard_source_unavailable}
+      true -> {:ok, hd(available)}
+    end
+  end
 
   defp prepared_spell?(%Participant{grimoire: %{entries: entries}}, spell_id)
        when is_list(entries) do

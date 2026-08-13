@@ -25,7 +25,7 @@
   width: min(100%, 48rem);
   min-height: 100%;
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 3.5rem);
+  padding: calc(var(--safe-top) + 1rem) 1rem calc(var(--safe-bottom) + 3.5rem);
 }
 
 .acd-assessment__tools {
@@ -431,7 +431,7 @@
   width: min(100%, 66rem);
   min-height: 100%;
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top, 0px) + 1rem) 1rem calc(env(safe-area-inset-bottom, 0px) + 4rem);
+  padding: calc(var(--safe-top) + 1rem) 1rem calc(var(--safe-bottom) + 4rem);
 }
 
 .acd-defense__tools,

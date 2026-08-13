@@ -2,12 +2,14 @@ defmodule MMGO.Combat.ActionSnapshotTest do
   use MMGO.DataCase, async: true
 
   alias MMGO.Accounts.{Account, Character}
+  alias MMGO.Arena.RoomRules
   alias MMGO.Combat
   alias MMGO.Combat.{Action, ActionSnapshot, Event, Participant}
   alias MMGO.Grimoires
   alias MMGO.Inventory
   alias MMGO.Repo
   alias MMGO.Spells
+  alias MMGO.Spells.Spell
   alias MMGO.Worlds
 
   setup do
@@ -19,8 +21,10 @@ defmodule MMGO.Combat.ActionSnapshotTest do
     foreign = character_fixture(realm, "snapshot-foreign", "Snapshot Foreign")
 
     spell = spell_fixture(attacker, "Ignis Prima")
+    # Forged well above the caster's rank: legal to carry, not yet legal to cast.
+    towering_spell = spell_fixture(attacker, "Ignis Enormis", %{power: 30})
     foreign_spell = spell_fixture(foreign, "Aqua Aliena", %{school: :water})
-    activate_grimoire(attacker, spell)
+    activate_grimoire(attacker, [spell, towering_spell])
 
     {:ok, phial_template} =
       Inventory.create_item_template(%{
@@ -59,6 +63,7 @@ defmodule MMGO.Combat.ActionSnapshotTest do
       defender: defender,
       foreign: foreign,
       spell: spell,
+      towering_spell: towering_spell,
       foreign_spell: foreign_spell,
       phial: phial,
       combat: combat
@@ -450,11 +455,68 @@ defmodule MMGO.Combat.ActionSnapshotTest do
              Repo.get_by!(Event, combat_id: combat.id, event_type: "invalid_action").payload
   end
 
-  defp activate_grimoire(character, spell) do
+  test "a spell above the caster's rank is refused until they rank into it", %{
+    combat: combat,
+    attacker: attacker,
+    towering_spell: towering
+  } do
+    assert Spell.rank_requirement(towering) == :diamond
+
+    combat = Combat.get_combat!(combat.id)
+    participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+    assert participant.rank == :initiate
+
+    assert {:error, :spell_rank_too_high} =
+             Combat.submit_action(combat, participant.id, %{
+               "action_type" => "cast_spell",
+               "spell_id" => towering.id,
+               "target_side" => "defenders"
+             })
+
+    participant |> Ecto.Changeset.change(rank: :diamond) |> Repo.update!()
+    combat = Combat.get_combat!(combat.id)
+
+    assert {:ok, %Action{}} =
+             Combat.submit_action(combat, participant.id, %{
+               "action_type" => "cast_spell",
+               "spell_id" => towering.id,
+               "target_side" => "defenders"
+             })
+  end
+
+  test "a room that frees rank is played without restraint", %{
+    combat: combat,
+    towering_spell: towering
+  } do
+    participant = %Participant{rank: :initiate}
+
+    ordinary = arena_combat(combat, %{})
+    unrestrained = arena_combat(combat, %{"rank" => "free"})
+    capped = arena_combat(combat, %{"rank" => "free", "rank_cap" => "silver"})
+
+    refute ActionSnapshot.ranked_into_spell?(ordinary, participant, towering)
+    assert ActionSnapshot.ranked_into_spell?(unrestrained, participant, towering)
+
+    # A cap the host chose binds everyone in the room equally.
+    refute ActionSnapshot.ranked_into_spell?(capped, participant, towering)
+  end
+
+  defp arena_combat(combat, rules) do
+    %{
+      combat
+      | kind: :arena_match,
+        metadata: %{"arena_mode" => "custom", RoomRules.metadata_key() => rules}
+    }
+  end
+
+  defp activate_grimoire(character, spells) do
     {:ok, grimoire} =
       Grimoires.create_grimoire(character, %{name: "Snapshot Grimoire", capacity: 4, weight: 1})
 
-    {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+    Enum.each(List.wrap(spells), fn spell ->
+      {:ok, _entry} = Grimoires.inscribe_spell(grimoire, spell)
+    end)
+
     {:ok, %{activate_grimoire: _grimoire}} = Grimoires.activate_grimoire(character, grimoire)
   end
 

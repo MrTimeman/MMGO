@@ -47,7 +47,7 @@
 
 .acd-exit {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 0.9rem);
+  top: calc(var(--safe-top) + 0.9rem);
   left: 0.9rem;
   z-index: 20;
   display: inline-flex;

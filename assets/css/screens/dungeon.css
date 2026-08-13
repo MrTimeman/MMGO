@@ -627,7 +627,7 @@
   z-index: 9;
   width: min(28rem, 100vw);
   transform: translateX(-50%);
-  padding: 1.1rem 1.25rem calc(1.3rem + env(safe-area-inset-bottom, 0));
+  padding: 1.1rem 1.25rem calc(1.3rem + var(--safe-bottom));
   background:
     radial-gradient(ellipse at 30% 0%, #201811 0%, #16100a 100%);
   border-top: 1px solid rgba(240,178,74,0.35);
@@ -767,7 +767,7 @@
    Persisted expedition — restored torch-lit field instruments
    ============================================================ */
 .dng-screen--live {
-  padding-bottom: env(safe-area-inset-bottom);
+  padding-bottom: var(--safe-bottom);
 }
 
 .dng-live-shell {
@@ -1433,7 +1433,7 @@
    ============================================================ */
 
 .dng-screen--graph {
-  padding-bottom: calc(1rem + env(safe-area-inset-bottom));
+  padding-bottom: calc(1rem + var(--safe-bottom));
 }
 
 .dng-level-error {

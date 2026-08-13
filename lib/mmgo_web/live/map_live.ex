@@ -136,7 +136,8 @@ defmodule MMGOWeb.MapLive do
           class="absolute inset-0"
         />
 
-        <header class="map-overlay-header pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pb-14 pt-3">
+        <%!-- pt clears the Telegram fullscreen status bar and its floating controls. --%>
+        <header class="map-overlay-header pointer-events-none absolute inset-x-0 top-0 z-20 px-3 pb-14 pt-[calc(var(--safe-top)+0.75rem)]">
           <div class="pointer-events-auto mx-auto flex max-w-5xl items-start justify-between gap-3">
             <button
               id="map-world-clock"

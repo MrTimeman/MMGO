@@ -13,7 +13,12 @@
 .character-registry__desk {
   width: min(100%, 68rem);
   margin-inline: auto;
-  padding: clamp(1rem, 3.5vw, 3rem) clamp(0.65rem, 2.5vw, 1.5rem);
+  /* The folio is the first thing on screen, so it clears the Telegram
+     fullscreen status bar and its floating controls. */
+  padding:
+    calc(clamp(1rem, 3.5vw, 3rem) + var(--safe-top))
+    clamp(0.65rem, 2.5vw, 1.5rem)
+    clamp(1rem, 3.5vw, 3rem);
 }
 
 .character-folio {

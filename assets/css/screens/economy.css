@@ -1579,9 +1579,9 @@
   isolation: isolate;
   max-width: 31rem;
   padding:
-    calc(env(safe-area-inset-top, 0px) + 3.2rem)
+    calc(var(--safe-top) + 3.2rem)
     0.65rem
-    calc(env(safe-area-inset-bottom, 0px) + 3rem);
+    calc(var(--safe-bottom) + 3rem);
   color: var(--parch-paper);
 }
 
@@ -1606,7 +1606,7 @@
 }
 
 .inv-exit {
-  top: calc(env(safe-area-inset-top, 0px) + 0.72rem);
+  top: calc(var(--safe-top) + 0.72rem);
   left: 0.7rem;
   min-height: 2.65rem;
   padding: 0.48rem 0.72rem;

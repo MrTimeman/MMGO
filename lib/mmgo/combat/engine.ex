@@ -1,8 +1,46 @@
 defmodule MMGO.Combat.Engine do
+  alias MMGO.Arena.{Ladder, RoomRules}
   alias MMGO.Combat.{Action, ActionSnapshot, ArenaEvents, Combat, Participant, RNG, Turn}
   alias MMGO.Inventory.{InventoryItem, ItemAction}
   alias MMGO.Spells.{Manifestation, Runtime, Spell, SpellEffect}
   alias MMGO.Worlds
+
+  # A blade is reliable, not free and not certain. Terrain is read off the same
+  # environment tags the spell system already maintains: footing decides how
+  # much of that reliability survives.
+  @melee_base_accuracy 85
+  @melee_terrain_modifiers %{
+    # Slick or shifting ground.
+    "wet" => -10,
+    "rain" => -8,
+    "flooded" => -12,
+    "ice" => -12,
+    "icy" => -12,
+    "frozen" => -10,
+    "mud" => -8,
+    # Broken ground you have to pick your way across.
+    "rubble" => -10,
+    "collapsed" => -10,
+    "overgrown" => -8,
+    # Fighting inside weather or fire.
+    "gale" => -8,
+    "storm" => -6,
+    "burning" => -6,
+    "embers" => -4,
+    # Level, deliberate footing.
+    "clear" => 5,
+    "crystal" => 4,
+    "warded" => 3
+  }
+  @max_melee_terrain_bonus 8
+  @max_melee_terrain_penalty -30
+  # What a swing costs the caster sustaining the weapon.
+  @min_strike_cost 4
+  # The least a standing manifestation can cost to keep in the world each turn.
+  @min_manifestation_upkeep 2
+  # Standing ready costs will too, and a parry costs more than a block: it is an
+  # attempt at something, not simply holding a thing in the way.
+  @guard_costs %{block: 4, parry: 6}
 
   @elemental_break_conditions %{fire: "fire_spell", water: "water_spell"}
   @physical_action_kinds [:strike, :sweep]
@@ -40,6 +78,7 @@ defmodule MMGO.Combat.Engine do
         active_participants,
         participants_by_id,
         sides,
+        environment,
         starting_seq,
         events
       )
@@ -72,7 +111,10 @@ defmodule MMGO.Combat.Engine do
         end
       )
 
-    participants_by_id = expire_non_periodic_states(participants_by_id, combat.turn_number)
+    participants_by_id =
+      participants_by_id
+      |> expire_non_periodic_states(combat.turn_number)
+      |> sync_locked_mana()
 
     winner_side = determine_winner(sides)
     participants_by_id = finalize_participants(participants_by_id, sides, winner_side)
@@ -104,7 +146,8 @@ defmodule MMGO.Combat.Engine do
           {participant_id,
            %{
              status: participant.status,
-             fatigue: participant.fatigue,
+             mana: participant.mana,
+             locked_mana: participant.locked_mana,
              cooldowns: participant.cooldowns,
              active_states: participant.active_states
            }}
@@ -195,7 +238,7 @@ defmodule MMGO.Combat.Engine do
   end
 
   defp apply_arena_event_effect(
-         %{"kind" => "fatigue_delta", "amount" => amount},
+         %{"kind" => "mana_delta", "amount" => amount},
          participants,
          sides,
          _combat
@@ -203,7 +246,7 @@ defmodule MMGO.Combat.Engine do
        when is_integer(amount) do
     participants =
       Map.new(participants, fn {participant_id, participant} ->
-        {participant_id, %{participant | fatigue: max(participant.fatigue + amount, 0)}}
+        {participant_id, adjust_mana(participant, amount)}
       end)
 
     {participants, sides}
@@ -296,16 +339,32 @@ defmodule MMGO.Combat.Engine do
        ),
        do: environment_tags
 
-  defp apply_start_of_turn(combat, active_participants, participants_by_id, sides, seq, events) do
+  defp apply_start_of_turn(
+         combat,
+         active_participants,
+         participants_by_id,
+         sides,
+         environment,
+         seq,
+         events
+       ) do
     Enum.reduce(active_participants, {participants_by_id, sides, seq, events}, fn participant,
                                                                                   {participants_acc,
                                                                                    sides_acc,
                                                                                    seq_acc,
                                                                                    events_acc} ->
-      participant = decrement_cooldowns(participants_acc[participant.id])
+      participant =
+        participants_acc[participant.id]
+        |> decrement_cooldowns()
+        |> regenerate_mana(combat)
+
+      {participant, upkeep_events, seq_acc} =
+        pay_manifestation_upkeep(combat, participant, seq_acc)
 
       {participant, sides_acc, state_events, next_seq} =
         tick_states(combat, participant, sides_acc, seq_acc)
+
+      state_events = upkeep_events ++ state_events
 
       participants_acc = Map.put(participants_acc, participant.id, participant)
 
@@ -315,6 +374,7 @@ defmodule MMGO.Combat.Engine do
           participant.id,
           participants_acc,
           sides_acc,
+          environment,
           next_seq
         )
 
@@ -336,6 +396,124 @@ defmodule MMGO.Combat.Engine do
       end)
 
     %{participant | cooldowns: cooldowns}
+  end
+
+  # Sustaining a manifestation is a standing drain, paid before the caster gets
+  # to act. What they cannot pay for, they cannot keep: the weapon, shield or
+  # creature dissolves rather than lingering for free. Earth's manifestations
+  # never appear here — their cost was locked away when they were made.
+  defp pay_manifestation_upkeep(combat, %Participant{} = participant, seq) do
+    if unlimited_mana?(combat) do
+      {participant, [], seq}
+    else
+      {states, total_paid, collapsed} =
+        Enum.reduce(participant.active_states || [], {[], 0, []}, fn state,
+                                                                     {kept, paid, collapsed} ->
+          upkeep = Map.get(state, "upkeep", 0)
+
+          cond do
+            not is_integer(upkeep) or upkeep <= 0 ->
+              {[state | kept], paid, collapsed}
+
+            participant.mana - paid >= upkeep ->
+              {[state | kept], paid + upkeep, collapsed}
+
+            true ->
+              {kept, paid, [state | collapsed]}
+          end
+        end)
+
+      participant =
+        %{participant | active_states: Enum.reverse(states)}
+        |> adjust_mana(-total_paid)
+
+      {seq, events} =
+        collapsed
+        |> Enum.reverse()
+        |> Enum.reduce({seq, []}, fn state, {seq_acc, events_acc} ->
+          payload = %{
+            "participant_id" => participant.id,
+            "state" => Map.get(state, "state"),
+            "source_spell_id" => Map.get(state, "source_spell_id"),
+            "display_name" => Map.get(state, "display_name"),
+            "upkeep" => Map.get(state, "upkeep"),
+            "reason" => "mana_exhausted"
+          }
+
+          {seq_acc + 1,
+           [event(seq_acc, combat.turn_number, "summon_destroyed", payload) | events_acc]}
+        end)
+
+      events =
+        if total_paid > 0 do
+          [
+            event(seq, combat.turn_number, "manifestation_upkeep", %{
+              "participant_id" => participant.id,
+              "paid" => total_paid,
+              "mana" => participant.mana
+            })
+            | events
+          ]
+        else
+          events
+        end
+
+      seq = if total_paid > 0, do: seq + 1, else: seq
+
+      {participant, Enum.reverse(events), seq}
+    end
+  end
+
+  # Locked mana is read off the manifestations that are actually standing, so a
+  # weapon that expires, shatters or is dispelled releases its hold on the pool
+  # without anyone having to remember to release it.
+  defp sync_locked_mana(participants) do
+    Map.new(participants, fn {participant_id, participant} ->
+      locked =
+        participant.active_states
+        |> List.wrap()
+        |> Enum.map(&Map.get(&1, "locked_mana", 0))
+        |> Enum.filter(&is_integer/1)
+        |> Enum.sum()
+
+      ceiling = max(participant.max_mana - locked, 0)
+
+      {participant_id, %{participant | locked_mana: locked, mana: min(participant.mana, ceiling)}}
+    end)
+  end
+
+  # Mana is the whole economy of a fight: a pool that returns a share of itself
+  # each turn, so a caster paces their spells rather than emptying the book on
+  # turn one. A room played under the unlimited rule never depletes at all.
+  defp regenerate_mana(%Participant{} = participant, combat) do
+    if unlimited_mana?(combat) do
+      %{participant | mana: participant.max_mana}
+    else
+      adjust_mana(participant, Ladder.regen_for(participant.max_mana))
+    end
+  end
+
+  # Mana locked into a standing earth manifestation is neither spent nor
+  # available, so the ceiling a caster can regenerate to falls while it stands.
+  defp adjust_mana(%Participant{} = participant, delta) do
+    ceiling = max(participant.max_mana - (participant.locked_mana || 0), 0)
+    %{participant | mana: participant.mana |> Kernel.+(delta) |> max(0) |> min(ceiling)}
+  end
+
+  defp affordable?(participant, cost, combat) do
+    unlimited_mana?(combat) or participant.mana >= cost
+  end
+
+  defp spend_mana(participant, cost, combat) do
+    if unlimited_mana?(combat), do: participant, else: adjust_mana(participant, -cost)
+  end
+
+  defp unlimited_mana?(combat), do: RoomRules.unlimited_mana?(combat)
+
+  # The accuracy tax an emptying pool exacts. A caster running on fumes is a
+  # worse caster, which is what makes spending the last of a pool a decision.
+  defp exhaustion_penalty(%Participant{} = participant) do
+    div(max(participant.max_mana - participant.mana, 0), 5)
   end
 
   defp tick_states(combat, %Participant{} = participant, sides, seq) do
@@ -406,7 +584,7 @@ defmodule MMGO.Combat.Engine do
      next_seq}
   end
 
-  defp apply_creature_autoattack(combat, participant_id, participants, sides, seq) do
+  defp apply_creature_autoattack(combat, participant_id, participants, sides, environment, seq) do
     participant = Map.fetch!(participants, participant_id)
 
     creature =
@@ -420,35 +598,55 @@ defmodule MMGO.Combat.Engine do
 
     if valid_active_creature?(creature) and is_binary(target_side) and
          is_binary(target_participant_id) do
-      {participants, sides, damage_payload} =
-        apply_damage(
-          target_side,
-          target_participant_id,
-          Map.fetch!(creature, "power"),
-          participants,
-          sides
-        )
+      # A creature swings on the same ground everyone else stands on, but it is
+      # not the caster: their blindness and their empty pool are not its problem.
+      # Its own cost is the upkeep its summoner pays each turn to keep it here.
+      accuracy = clamp(@melee_base_accuracy + terrain_melee_modifier(environment), 5, 100)
 
-      action_event =
-        event(seq, combat.turn_number, "summon_action", %{
-          "participant_id" => participant.id,
-          "source_spell_id" => Map.get(creature, "source_spell_id"),
-          "display_name" => Map.get(creature, "display_name"),
-          "target_side" => target_side,
-          "target_participant_id" => target_participant_id,
-          "power" => Map.get(creature, "power"),
-          "damage" => clean_damage_payload(damage_payload)
-        })
+      roll =
+        RNG.percent(combat.seed, [combat.turn_number, participant.id, :creature_autoattack])
 
-      {next_seq, manifestation_events} =
-        damage_manifestation_events(
-          combat,
-          damage_payload,
-          seq + 1,
-          [action_event]
-        )
+      base_payload = %{
+        "participant_id" => participant.id,
+        "source_spell_id" => Map.get(creature, "source_spell_id"),
+        "display_name" => Map.get(creature, "display_name"),
+        "target_side" => target_side,
+        "target_participant_id" => target_participant_id,
+        "power" => Map.get(creature, "power"),
+        "accuracy" => accuracy
+      }
 
-      {participants, sides, manifestation_events, next_seq}
+      if roll > accuracy do
+        {participants, sides,
+         [event(seq, combat.turn_number, "summon_action_missed", base_payload)], seq + 1}
+      else
+        {participants, sides, damage_payload} =
+          apply_damage(
+            target_side,
+            target_participant_id,
+            Map.fetch!(creature, "power"),
+            participants,
+            sides
+          )
+
+        action_event =
+          event(
+            seq,
+            combat.turn_number,
+            "summon_action",
+            Map.put(base_payload, "damage", clean_damage_payload(damage_payload))
+          )
+
+        {next_seq, manifestation_events} =
+          damage_manifestation_events(
+            combat,
+            damage_payload,
+            seq + 1,
+            [action_event]
+          )
+
+        {participants, sides, manifestation_events, next_seq}
+      end
     else
       {participants, sides, [], seq}
     end
@@ -648,6 +846,57 @@ defmodule MMGO.Combat.Engine do
 
   defp resolve_action(
          combat,
+         %Action{action_type: mode} = action,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       )
+       when mode in [:parry, :block] do
+    participant = Map.fetch!(participants, action.participant_id)
+
+    cond do
+      participant.status != :ready ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "skipped", %{"participant_id" => participant.id})
+           | events
+         ]}
+
+      blocked = blocked_action(participant, mode) ->
+        {updated_participant, blocked_state, consumed?} = blocked
+        participants = Map.put(participants, participant.id, updated_participant)
+
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "action_blocked", %{
+             "participant_id" => participant.id,
+             "state" => blocked_state,
+             "consumed" => consumed?
+           })
+           | events
+         ]}
+
+      true ->
+        resolve_guard(
+          combat,
+          action,
+          mode,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
+    end
+  end
+
+  defp resolve_action(
+         combat,
          %Action{action_type: :manifestation_strike} = action,
          participants,
          sides,
@@ -737,6 +986,21 @@ defmodule MMGO.Combat.Engine do
                event(seq, combat.turn_number, "spell_on_cooldown", %{
                  "participant_id" => participant.id,
                  "spell_id" => spell.id
+               })
+               | events
+             ]}
+
+          # The pool may have drained between submission and resolution — an
+          # arena event, an upkeep tick — so the cost is checked again here and
+          # the cast simply does not happen.
+          not affordable?(participant, spell.fatigue_cost, combat) ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "insufficient_mana", %{
+                 "participant_id" => participant.id,
+                 "spell_id" => spell.id,
+                 "cost" => spell.fatigue_cost,
+                 "mana" => participant.mana
                })
                | events
              ]}
@@ -869,58 +1133,167 @@ defmodule MMGO.Combat.Engine do
        ) do
     case ActionSnapshot.manifestation_strike_for_resolution(action) do
       {:ok, resolved_action, weapon} ->
-        if active_weapon_authorized?(participant, weapon) do
-          target_side =
-            resolve_legal_target_side(:enemy, resolved_action.target_side, participant, sides)
+        cost = strike_cost(weapon)
 
-          target_participant_id =
-            resolve_target_participant_id(resolved_action, participants, target_side)
+        cond do
+          not active_weapon_authorized?(participant, weapon) ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "invalid_action", %{
+                 "participant_id" => participant.id,
+                 "reason" => "manifestation_unavailable"
+               })
+               | events
+             ]}
 
-          {participants, state_breaks} =
-            break_states_for_conditions(
-              participants,
-              ["physical_hit"],
-              List.wrap(target_participant_id)
-            )
+          # A summoned weapon is held by will, and swinging it spends that will.
+          # Without this a manifestation was free, certain damage every turn.
+          not affordable?(participant, cost, combat) ->
+            {participants, sides, tags, inventory_updates, seq + 1,
+             [
+               event(seq, combat.turn_number, "insufficient_mana", %{
+                 "participant_id" => participant.id,
+                 "action" => "manifestation_strike",
+                 "cost" => cost,
+                 "mana" => participant.mana
+               })
+               | events
+             ]}
 
-          {participants, sides, damage_payload} =
-            apply_damage(
-              target_side,
-              target_participant_id,
-              Map.fetch!(weapon, "power"),
-              participants,
-              sides
-            )
+          true ->
+            participant = spend_mana(participant, cost, combat)
+            participants = Map.put(participants, participant.id, participant)
 
-          payload =
-            %{
+            target_side =
+              resolve_legal_target_side(:enemy, resolved_action.target_side, participant, sides)
+
+            target_participant_id =
+              resolve_target_participant_id(resolved_action, participants, target_side)
+
+            accuracy = melee_accuracy(participant, tags)
+
+            roll =
+              RNG.percent(combat.seed, [
+                combat.turn_number,
+                participant.id,
+                :manifestation_strike
+              ])
+
+            base_payload = %{
               "participant_id" => participant.id,
               "source_spell_id" => Map.get(weapon, "source_spell_id"),
               "display_name" => Map.get(weapon, "display_name"),
               "power" => Map.get(weapon, "power"),
               "target_side" => target_side,
               "target_participant_id" => target_participant_id,
-              "damage" => clean_damage_payload(damage_payload)
+              "accuracy" => accuracy,
+              "mana_cost" => cost
             }
-            |> maybe_put_state_breaks(state_breaks)
 
-          strike_event = event(seq, combat.turn_number, "manifestation_strike", payload)
+            if roll > accuracy do
+              {participants, sides, tags, inventory_updates, seq + 1,
+               [
+                 event(seq, combat.turn_number, "manifestation_strike_missed", base_payload)
+                 | events
+               ]}
+            else
+              {participants, state_breaks} =
+                break_states_for_conditions(
+                  participants,
+                  ["physical_hit"],
+                  List.wrap(target_participant_id)
+                )
 
-          {next_seq, manifestation_events} =
-            damage_manifestation_events(
-              combat,
-              damage_payload,
-              seq + 1,
-              [strike_event | events]
-            )
+              {participants, sides, damage_payload} =
+                apply_damage(
+                  target_side,
+                  target_participant_id,
+                  Map.fetch!(weapon, "power"),
+                  participants,
+                  sides
+                )
 
-          {participants, sides, tags, inventory_updates, next_seq, manifestation_events}
+              payload =
+                base_payload
+                |> Map.put("damage", clean_damage_payload(damage_payload))
+                |> maybe_put_state_breaks(state_breaks)
+
+              strike_event = event(seq, combat.turn_number, "manifestation_strike", payload)
+
+              {next_seq, manifestation_events} =
+                damage_manifestation_events(
+                  combat,
+                  damage_payload,
+                  seq + 1,
+                  [strike_event | events]
+                )
+
+              {participants, sides, tags, inventory_updates, next_seq, manifestation_events}
+            end
+        end
+
+      {:error, _reason} ->
+        invalid_snapshot_event(
+          combat,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
+    end
+  end
+
+  # Active defence: a turn spent standing ready rather than striking.
+  #
+  # A block interposes whatever the participant is holding and softens the next
+  # blow by what that thing is worth. A parry is all or nothing — it either
+  # turns the blow aside completely or does nothing at all, and it can only be
+  # attempted with something you could strike back with.
+  #
+  # Either way the guard is a declared choice that lasts until the next blow
+  # lands. Magical shields keep absorbing on their own, unasked; that passive
+  # absorption is a separate thing, and it applies to whatever the guard leaves.
+  defp resolve_guard(
+         combat,
+         action,
+         mode,
+         participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    case ActionSnapshot.guard_for_resolution(action) do
+      {:ok, guard} ->
+        cost = Map.fetch!(@guard_costs, mode)
+
+        if affordable?(participant, cost, combat) do
+          participant = spend_mana(participant, cost, combat)
+
+          {guard, event_type, payload} =
+            resolve_guard_attempt(combat, participant, mode, guard, cost)
+
+          participant =
+            case guard do
+              nil -> participant
+              guard -> %{participant | active_states: [guard | participant.active_states || []]}
+            end
+
+          {Map.put(participants, participant.id, participant), sides, tags, inventory_updates,
+           seq + 1, [event(seq, combat.turn_number, event_type, payload) | events]}
         else
           {participants, sides, tags, inventory_updates, seq + 1,
            [
-             event(seq, combat.turn_number, "invalid_action", %{
+             event(seq, combat.turn_number, "insufficient_mana", %{
                "participant_id" => participant.id,
-               "reason" => "manifestation_unavailable"
+               "action" => to_string(mode),
+               "cost" => cost,
+               "mana" => participant.mana
              })
              | events
            ]}
@@ -939,6 +1312,122 @@ defmodule MMGO.Combat.Engine do
         )
     end
   end
+
+  defp resolve_guard_attempt(combat, participant, :block, guard, cost) do
+    {guard_state(guard, Map.fetch!(guard, "efficiency"), combat.turn_number), "guard_raised",
+     %{
+       "participant_id" => participant.id,
+       "mode" => "block",
+       "source" => Map.fetch!(guard, "source"),
+       "efficiency" => Map.fetch!(guard, "efficiency"),
+       "mana_cost" => cost
+     }}
+  end
+
+  defp resolve_guard_attempt(combat, participant, :parry, guard, cost) do
+    chance =
+      clamp(Map.fetch!(guard, "efficiency") - blindness_accuracy_penalty(participant), 5, 100)
+
+    roll = RNG.percent(combat.seed, [combat.turn_number, participant.id, :parry])
+
+    payload = %{
+      "participant_id" => participant.id,
+      "mode" => "parry",
+      "source" => Map.fetch!(guard, "source"),
+      "chance" => chance,
+      "mana_cost" => cost
+    }
+
+    if roll <= chance do
+      {guard_state(guard, 100, combat.turn_number), "guard_raised",
+       Map.put(payload, "efficiency", 100)}
+    else
+      {nil, "parry_failed", payload}
+    end
+  end
+
+  defp guard_state(guard, efficiency, turn_number) do
+    %{
+      "state" => "guarding",
+      "mode" => Map.fetch!(guard, "mode"),
+      "source" => Map.fetch!(guard, "source"),
+      "efficiency" => efficiency,
+      "remaining_turns" => 1,
+      "applied_on_turn" => turn_number
+    }
+  end
+
+  # The guard meets the blow before anything else does, and one blow is all it
+  # is good for.
+  defp consume_guard(nil, damage, participants), do: {participants, damage, nil}
+
+  defp consume_guard(_participant_id, damage, participants) when damage <= 0,
+    do: {participants, damage, nil}
+
+  defp consume_guard(participant_id, damage, participants) do
+    case Map.get(participants, participant_id) do
+      %Participant{} = participant ->
+        case pop_first_state(participant.active_states || [], "guarding") do
+          {nil, _states} ->
+            {participants, damage, nil}
+
+          {guard, remaining_states} ->
+            efficiency = guard |> Map.get("efficiency", 0) |> clamp(0, 100)
+            absorbed = div(damage * efficiency, 100)
+
+            payload = %{
+              "mode" => Map.get(guard, "mode"),
+              "source" => Map.get(guard, "source"),
+              "efficiency" => efficiency,
+              "absorbed" => absorbed
+            }
+
+            {Map.put(participants, participant_id, %{
+               participant
+               | active_states: remaining_states
+             }), damage - absorbed, payload}
+        end
+
+      _other ->
+        {participants, damage, nil}
+    end
+  end
+
+  # A heavier weapon takes more will to swing than a light one.
+  defp strike_cost(weapon) do
+    weapon
+    |> Map.get("power", 0)
+    |> div(2)
+    |> max(@min_strike_cost)
+  end
+
+  @doc """
+  How likely a swing is to land.
+
+  Melee is reliable, not certain: it starts high and is worn down by the ground
+  underfoot, by blindness, and by an emptying pool — the same taxes a spell
+  pays. Clear ground favours a blade; rubble, flood and ice do not.
+  """
+  def melee_accuracy(participant, environment) do
+    (@melee_base_accuracy + terrain_melee_modifier(environment) -
+       blindness_accuracy_penalty(participant) - exhaustion_penalty(participant))
+    |> clamp(5, 100)
+  end
+
+  defp terrain_melee_modifier(environment) do
+    environment
+    |> melee_environment_tags()
+    |> Enum.reduce(0, fn tag, total ->
+      total + Map.get(@melee_terrain_modifiers, tag, 0)
+    end)
+    |> clamp(@max_melee_terrain_penalty, @max_melee_terrain_bonus)
+  end
+
+  defp melee_environment_tags(%{legacy_tags: _tags} = environment),
+    do: interaction_tags(environment)
+
+  defp melee_environment_tags(tags) when is_list(tags), do: tags
+  defp melee_environment_tags(_environment), do: []
 
   defp active_weapon_authorized?(participant, weapon) do
     Enum.any?(participant.active_states || [], fn state ->
@@ -969,7 +1458,7 @@ defmodule MMGO.Combat.Engine do
     environment_outcome = Runtime.environment_outcome(spell, interaction_tags)
 
     base_success_rate =
-      Runtime.success_rate(spell, participant_level(participant), div(participant.fatigue, 5))
+      Runtime.success_rate(spell, participant_level(participant), exhaustion_penalty(participant))
 
     blindness_penalty = blindness_accuracy_penalty(participant)
     success_rate = max(base_success_rate - blindness_penalty, 0)
@@ -982,7 +1471,7 @@ defmodule MMGO.Combat.Engine do
 
     participant =
       participant
-      |> Map.update!(:fatigue, &(&1 + spell.fatigue_cost))
+      |> spend_mana(spell.fatigue_cost, combat)
       |> Map.update!(:cooldowns, &Map.put(&1, spell.id, spell.cooldown_turns))
 
     {participant, empowerment} = consume_empowered(participant)
@@ -1245,7 +1734,7 @@ defmodule MMGO.Combat.Engine do
   defp materialize_manifestation(
          participants,
          participant_id,
-         %Spell{id: spell_id, manifestation: %Manifestation{} = manifestation},
+         %Spell{id: spell_id, manifestation: %Manifestation{} = manifestation} = spell,
          turn_number,
          multiplier
        ) do
@@ -1266,6 +1755,7 @@ defmodule MMGO.Combat.Engine do
       }
       |> maybe_put_manifestation_stat("hp", manifestation.hp, multiplier)
       |> maybe_put_manifestation_stat("power", manifestation.power, multiplier)
+      |> put_manifestation_burden(spell)
 
     participants =
       Map.update!(participants, participant_id, fn participant ->
@@ -1276,6 +1766,31 @@ defmodule MMGO.Combat.Engine do
       end)
 
     {participants, state}
+  end
+
+  # What it costs to keep a manifestation standing.
+  #
+  # Every school but earth sustains its work: the caster bleeds a little mana
+  # each turn for as long as the weapon, shield or creature is in the world.
+  # Earth does not sustain — it commits. The mana that made the thing is locked
+  # away for as long as it stands, so an earth caster fights on a smaller pool
+  # instead of a draining one. Solid rather than sustained.
+  defp put_manifestation_burden(state, %Spell{school: :earth, fatigue_cost: cost}) do
+    Map.put(state, "locked_mana", max(cost, 0))
+  end
+
+  defp put_manifestation_burden(state, %Spell{}) do
+    upkeep =
+      state
+      |> manifestation_weight()
+      |> div(4)
+      |> max(@min_manifestation_upkeep)
+
+    Map.put(state, "upkeep", upkeep)
+  end
+
+  defp manifestation_weight(state) do
+    Map.get(state, "power", 0) + Map.get(state, "hp", 0)
   end
 
   defp maybe_put_manifestation_stat(state, _field, nil, _multiplier), do: state
@@ -1571,6 +2086,10 @@ defmodule MMGO.Combat.Engine do
   end
 
   defp apply_damage(side, target_participant_id, damage, participants, sides) do
+    # The active choice resolves first: a raised guard is what the blow meets,
+    # and only what gets past it reaches the passive absorptions.
+    {participants, damage, guard} = consume_guard(target_participant_id, damage, participants)
+
     {participants, damage, manifestation_absorption} =
       consume_manifestations(side, target_participant_id, damage, participants)
 
@@ -1586,16 +2105,22 @@ defmodule MMGO.Combat.Engine do
 
     sides = apply_side_delta(sides, side, -total_damage)
 
-    {participants, sides,
-     %{
-       "damage" => total_damage,
-       "shield_absorbed" => absorbed,
-       "manifestation_absorption" => manifestation_absorption,
-       "exposed_bonus" => exposed_bonus,
-       "target_side" => side,
-       "channeling_broken" => channeling_broken?
-     }}
+    payload =
+      %{
+        "damage" => total_damage,
+        "shield_absorbed" => absorbed,
+        "manifestation_absorption" => manifestation_absorption,
+        "exposed_bonus" => exposed_bonus,
+        "target_side" => side,
+        "channeling_broken" => channeling_broken?
+      }
+      |> maybe_put_guard(guard)
+
+    {participants, sides, payload}
   end
+
+  defp maybe_put_guard(payload, nil), do: payload
+  defp maybe_put_guard(payload, guard), do: Map.put(payload, "guard", guard)
 
   defp consume_manifestations(_side, _target_participant_id, damage, participants)
        when damage <= 0,
@@ -2000,6 +2525,13 @@ defmodule MMGO.Combat.Engine do
 
   defp periodic_state?(state), do: state in ["burning", "regenerating"]
 
+  # Defence is declared, not reacted to: a guard raised this turn must be up
+  # before this turn's blows land, whichever order the strikes happen to resolve
+  # in. So the defensive actions sort ahead of everything, including tempo.
+  defp action_school_priority(%Action{action_type: action_type})
+       when action_type in [:parry, :block],
+       do: -1
+
   defp action_school_priority(%Action{spell: %Spell{school_quirk: :tempo}}), do: 0
 
   defp action_school_priority(%Action{payload: %{"snapshot" => %{"spell" => spell}}})
@@ -2083,14 +2615,16 @@ defmodule MMGO.Combat.Engine do
       value =
         Map.get(state, "intensity", 0) * max(Map.get(state, "remaining_turns", 1), 1)
 
-      recovered_fatigue = min(max(div(value, 2), 1), 10)
+      # Death's harvest converts what it consumes straight back into the pool,
+      # so a necromancer who reads the board can outlast a pool twice their size.
+      recovered_mana = min(max(div(value, 2), 1), 20)
       target = %{target | active_states: List.delete_at(states, index)}
-      caster = %{caster | fatigue: max(caster.fatigue - recovered_fatigue, 0)}
+      caster = adjust_mana(caster, recovered_mana)
 
       {participants |> Map.put(target.id, target) |> Map.put(caster.id, caster),
        %{
          "consumed_state" => Map.get(state, "state"),
-         "recovered_fatigue" => recovered_fatigue
+         "recovered_mana" => recovered_mana
        }}
     else
       _other -> {participants, %{}}

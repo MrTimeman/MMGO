@@ -38,6 +38,40 @@ defmodule MMGOWeb.ArenaProfileController do
     |> redirect(to: ~p"/arena/new")
   end
 
+  @doc """
+  Switches which of the account's arena profiles is being played.
+
+  A player may keep several profiles for different school combinations. The
+  profile is only ever chosen from the ones this account actually owns — the
+  posted id is checked against them rather than trusted.
+  """
+  def switch(conn, %{"profile_id" => profile_id}) when is_binary(profile_id) do
+    account_id = get_session(conn, :current_account_id)
+
+    account_id
+    |> Arena.list_profiles_for_account()
+    |> Enum.find(&(&1.id == profile_id))
+    |> case do
+      nil ->
+        conn
+        |> put_flash(:error, "Этот профиль Арены вам не принадлежит.")
+        |> redirect(to: ~p"/arena/profiles")
+
+      profile ->
+        conn
+        |> put_session(:current_character_id, profile.character_id)
+        |> put_session(:game_mode, "arena")
+        |> put_flash(:info, "Вы играете за «#{profile.character.name}».")
+        |> redirect(to: ~p"/arena")
+    end
+  end
+
+  def switch(conn, _params) do
+    conn
+    |> put_flash(:error, "Выберите профиль Арены.")
+    |> redirect(to: ~p"/arena/profiles")
+  end
+
   defp changeset_message(changeset) do
     if Keyword.has_key?(changeset.errors, :schools) do
       "Для Арены нужны ровно три разные школы магии."

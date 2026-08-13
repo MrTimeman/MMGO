@@ -19,6 +19,17 @@ defmodule MMGO.Spells.Compiler do
   @novice_root_max_fatigue_cost 12
   @novice_root_max_cooldown_turns 3
 
+  # Craft, not the caster, decides how strong a spell may become: a Champion
+  # writing a lazy three-seal formula still earns a weak spell. Without this the
+  # model chose the power freely, which produced a power-50 sword beside a
+  # power-1 undead army.
+  @craft_ceiling_by_seals %{1 => 3, 2 => 4, 3 => 5, 4 => 15, 5 => 30, 6 => 50}
+  @unsealed_craft_ceiling 5
+  # Each refinement pass may push a little past the ancestor it evolves, so the
+  # top of the range is reached by patient iteration rather than one lucky cast.
+  @lineage_step 5
+  @max_power 60
+
   def compile_and_store(%Character{} = character, attrs, opts \\ []) when is_map(attrs) do
     with {:ok, request} <- normalize_request(attrs),
          {:ok, base_spell} <- resolve_owned_base_spell(character, request, opts) do
@@ -55,6 +66,8 @@ defmodule MMGO.Spells.Compiler do
             with :ok <- validate_created_player_facing_output(request, compiled_spell),
                  compiled_spell <- normalize_engine_vocabulary(compiled_spell),
                  compiled_spell <- enforce_circle_limits(compiled_spell, base_spell, opts),
+                 compiled_spell <-
+                   enforce_power_budget(compiled_spell, request, base_spell, opts),
                  spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell, opts),
                  {:ok, spell} <-
                    Spells.create_spell(character, spell_attrs,
@@ -240,7 +253,7 @@ defmodule MMGO.Spells.Compiler do
   defp enforce_circle_limits(compiled_spell, _base_spell, opts) do
     if Keyword.get(opts, :circle_tier) == :novice do
       compiled_spell
-      |> Map.put("level_requirement", 1)
+      |> Map.put("power", 1)
       |> Map.put(
         "fatigue_cost",
         bounded_integer(
@@ -264,6 +277,119 @@ defmodule MMGO.Spells.Compiler do
       compiled_spell
     end
   end
+
+  @doc """
+  The strongest spell this formula could earn.
+
+  Seals set the band and lineage lets a refinement pass reach past the ancestor
+  it evolves. The caster is deliberately absent: rank governs where a spell may
+  be cast, never how strong it may be forged.
+  """
+  def craft_ceiling(seal_count, base_spell) do
+    seal_ceiling = Map.get(@craft_ceiling_by_seals, seal_count, @unsealed_craft_ceiling)
+
+    lineage_ceiling =
+      case base_spell do
+        %Spell{power: power} when is_integer(power) -> power + @lineage_step
+        _no_lineage -> 0
+      end
+
+    seal_ceiling
+    |> max(lineage_ceiling)
+    |> min(@max_power)
+    |> max(1)
+  end
+
+  @doc """
+  Every magnitude a spell of this power may carry.
+
+  Power is the spell's mechanical budget, not a decorative tag: intensity,
+  duration, variance, cost and cooldown are all derived from it. Power 1 lands
+  on the novice caps so the two tiers meet without a discontinuity.
+
+  `fatigue_cost` is what the caster pays out of their mana pool, and it is
+  deliberately steeper than the pools widen: the strongest spell a rank may
+  legally wield costs a rising share of that rank's pool, from roughly a sixth
+  at the foot of the ladder to better than a third at the Champion's seat. A
+  starter spell is repeatable; a Champion's spell is a commitment.
+  """
+  def power_budget(power) when is_integer(power) and power >= 1 do
+    %{
+      intensity: 10 + power * 2,
+      duration: min(3 + div(power, 4), 12),
+      variance: 4,
+      fatigue_cost: 10 + power * 2,
+      cooldown_turns: min(3 + div(power, 10), 8)
+    }
+  end
+
+  defp enforce_power_budget(compiled_spell, request, base_spell, opts) do
+    power =
+      compiled_spell
+      |> Map.get("power")
+      |> case do
+        value when is_integer(value) and value >= 1 -> value
+        _absent_or_invalid -> 1
+      end
+      |> min(craft_ceiling(seal_count(request, opts), base_spell))
+
+    budget = power_budget(power)
+
+    compiled_spell
+    |> Map.put("power", power)
+    |> Map.put(
+      "fatigue_cost",
+      bounded_integer(Map.get(compiled_spell, "fatigue_cost"), budget.fatigue_cost)
+    )
+    |> Map.put(
+      "cooldown_turns",
+      bounded_integer(Map.get(compiled_spell, "cooldown_turns"), budget.cooldown_turns)
+    )
+    |> Map.update("effects", [], &power_bounded_effects(&1, budget))
+  end
+
+  defp power_bounded_effects(effects, budget) when is_list(effects) do
+    Enum.map(effects, fn
+      effect when is_map(effect) ->
+        intensity = bounded_integer(Map.get(effect, "intensity"), budget.intensity)
+
+        effect
+        |> Map.put("intensity", intensity)
+        |> Map.put(
+          "variance",
+          bounded_integer(Map.get(effect, "variance"), min(budget.variance, intensity))
+        )
+        |> Map.put("duration", bounded_integer(Map.get(effect, "duration"), budget.duration))
+
+      effect ->
+        effect
+    end)
+  end
+
+  defp power_bounded_effects(effects, _budget), do: effects
+
+  # The keyed slots are authoritative when supplied; a bare formula is counted
+  # positionally. Blank seals never count toward craft.
+  defp seal_count(request, opts) do
+    case incantation_slots(opts) do
+      slots when map_size(slots) > 0 ->
+        Enum.count(slots, fn {_seal, word} -> present_seal?(word) end)
+
+      _no_slots ->
+        request
+        |> Map.get("formula")
+        |> case do
+          formula when is_binary(formula) ->
+            formula |> String.split(~r/\s+/, trim: true) |> length()
+
+          _absent ->
+            0
+        end
+    end
+  end
+
+  defp present_seal?(word) when is_binary(word), do: String.trim(word) != ""
+  defp present_seal?(_word), do: false
 
   defp novice_root_effects(compiled_spell) do
     case Map.get(compiled_spell, "effects") do

@@ -10,6 +10,7 @@ defmodule MMGOWeb.CombatLive do
   """
   use MMGOWeb, :live_view
 
+  alias MMGO.Combat.ActionSnapshot
   alias MMGO.Play
   alias MMGO.Spells.Incantation
 
@@ -317,13 +318,18 @@ defmodule MMGOWeb.CombatLive do
             >
               Вернуться в экспедицию
             </.link>
+            <%!--
+            An arena fight ends on its own result screen — rating, season xp,
+            any rank change, and the way straight back into the queue — not on
+            the hub with nothing said about what just happened.
+            --%>
             <.link
               :if={@combat_state.arena?}
               id="combat-outcome-arena"
-              navigate={~p"/arena"}
+              navigate={arena_outcome_path(@combat_state)}
               class="cbt-outcome__btn"
             >
-              Вернуться на Арену
+              {if arena_match_id(@combat_state), do: "Итог боя", else: "Вернуться на Арену"}
             </.link>
             <.link
               :if={not @combat_state.arena? and not dungeon_combat?(@combat_state.combat)}
@@ -373,6 +379,24 @@ defmodule MMGOWeb.CombatLive do
                 <p>Ваше решение</p>
                 <h2>Начертите действие и наложите печать</h2>
               </div>
+            </div>
+
+            <div :if={@combat_state.participant} id="combat-mana" class="cbt-mana">
+              <div class="cbt-mana__head">
+                <span class="cbt-mana__label">Мана</span>
+                <span class="cbt-mana__value">
+                  {@combat_state.participant.mana} / {@combat_state.participant.max_mana}
+                </span>
+              </div>
+              <div class="cbt-mana__track" aria-hidden="true">
+                <span
+                  class="cbt-mana__fill"
+                  style={"width: #{mana_percent(@combat_state.participant)}%"}
+                />
+              </div>
+              <p :if={locked_mana(@combat_state.participant) > 0} class="cbt-mana__locked">
+                Земля удерживает {locked_mana(@combat_state.participant)} маны, пока проявление стоит.
+              </p>
             </div>
 
             <p
@@ -438,7 +462,7 @@ defmodule MMGOWeb.CombatLive do
                     id="combat-cast-spell"
                     type="select"
                     label="Основа"
-                    options={spell_options(@combat_state.prepared_spells)}
+                    options={spell_options(@combat_state.prepared_spells, @combat_state.participant)}
                     prompt="Выберите запись"
                   />
                   <.input
@@ -450,8 +474,32 @@ defmodule MMGOWeb.CombatLive do
                   />
                 </fieldset>
 
+                <fieldset
+                  :if={@action_form[:action_type].value in ["block", "parry"]}
+                  id="combat-guard-case"
+                  class="cbt-action-case"
+                >
+                  <legend>III · Защита</legend>
+                  <.input
+                    field={@action_form[:guard_source]}
+                    id="combat-guard-source"
+                    type="select"
+                    label="Чем защищаетесь"
+                    options={
+                      guard_source_options(
+                        guard_mode(@action_form[:action_type].value),
+                        @combat_state
+                      )
+                    }
+                  />
+                  <p class="cbt-env">
+                    Блок смягчает следующий удар; парирование либо отводит его целиком, либо не
+                    срабатывает вовсе. Магический щит поглощает урон сам по себе — это другое.
+                  </p>
+                </fieldset>
+
                 <fieldset :if={@combat_state.items != []} class="cbt-action-case">
-                  <legend>III · Инструмент</legend>
+                  <legend>IV · Инструмент</legend>
                   <.input
                     field={@action_form[:inventory_item_id]}
                     id="combat-tool-item"
@@ -472,7 +520,7 @@ defmodule MMGOWeb.CombatLive do
               </div>
 
               <fieldset class="cbt-action-case">
-                <legend>IV · Цель</legend>
+                <legend>V · Цель</legend>
                 <div class="cbt-action-grid">
                   <.input
                     field={@action_form[:target_side]}
@@ -691,6 +739,7 @@ defmodule MMGOWeb.CombatLive do
       "incantation" => spell && spell.formula,
       "inventory_item_id" => item && item.id,
       "tool_action" => item_action && item_action.key,
+      "guard_source" => List.first(guard_sources(:block, state)),
       "target_side" => target && target.side,
       "target_participant_id" => target && target.id
     }
@@ -721,9 +770,44 @@ defmodule MMGOWeb.CombatLive do
 
     spell_options ++
       manifestation_options ++
+      defence_options(state) ++
       item_options ++
       [{if(channeling?(state.participant), do: "Прервать канал", else: "Выждать"), "wait"}]
   end
+
+  # Blocking is always possible — bare arms are a poor guard, not an impossible
+  # one. A parry needs something in hand you could strike back with.
+  defp defence_options(state) do
+    Enum.flat_map([{:block, "Блок"}, {:parry, "Парирование"}], fn {mode, label} ->
+      case guard_sources(mode, state) do
+        [] -> []
+        _available -> [{label, to_string(mode)}]
+      end
+    end)
+  end
+
+  defp guard_sources(mode, state) do
+    ActionSnapshot.guard_sources(mode, state.participant, holding_item?: state.items != [])
+  end
+
+  defp guard_mode("parry"), do: :parry
+  defp guard_mode(_value), do: :block
+
+  defp guard_source_options(mode, state) do
+    mode
+    |> guard_sources(state)
+    |> Enum.map(fn source ->
+      {"#{guard_source_label(source)} · #{ActionSnapshot.guard_efficiency(mode, source)}%",
+       source}
+    end)
+  end
+
+  defp guard_source_label("summoned_shield"), do: "Призванный щит"
+  defp guard_source_label("summoned_creature"), do: "Призванный союзник"
+  defp guard_source_label("summoned_weapon"), do: "Призванное оружие"
+  defp guard_source_label("item"), do: "Предмет в руках"
+  defp guard_source_label("bare"), do: "Руки и воля"
+  defp guard_source_label(source), do: source
 
   defp channeling?(%{active_states: active_states}) do
     Enum.any?(List.wrap(active_states), &(Map.get(&1, "state") == "channeling"))
@@ -745,8 +829,50 @@ defmodule MMGOWeb.CombatLive do
 
   defp manifestation_states(_participant), do: []
 
-  defp spell_options(spells),
-    do: Enum.map(spells, &{"#{&1.name} · усталость #{&1.fatigue_cost}", &1.id})
+  # Cost is load-bearing now, so a caster must be able to see, before choosing,
+  # which entries their pool can still pay for.
+  defp spell_options(spells, participant) do
+    Enum.map(spells, fn spell ->
+      label =
+        if affordable_spell?(spell, participant) do
+          "#{spell.name} · мана #{spell.fatigue_cost}"
+        else
+          "#{spell.name} · мана #{spell.fatigue_cost} · не хватает"
+        end
+
+      {label, spell.id}
+    end)
+  end
+
+  defp affordable_spell?(spell, %{mana: mana}) when is_integer(mana),
+    do: mana >= spell.fatigue_cost
+
+  defp affordable_spell?(_spell, _participant), do: true
+
+  defp arena_outcome_path(state) do
+    case arena_match_id(state) do
+      nil -> ~p"/arena"
+      match_id -> ~p"/arena/result/#{match_id}"
+    end
+  end
+
+  defp arena_match_id(%{combat: %{metadata: metadata}}) when is_map(metadata) do
+    case Map.get(metadata, "arena_match_id") do
+      match_id when is_binary(match_id) -> match_id
+      _absent -> nil
+    end
+  end
+
+  defp arena_match_id(_state), do: nil
+
+  defp mana_percent(%{mana: mana, max_mana: max_mana})
+       when is_integer(mana) and is_integer(max_mana) and max_mana > 0,
+       do: mana |> Kernel./(max_mana) |> Kernel.*(100) |> round() |> min(100) |> max(0)
+
+  defp mana_percent(_participant), do: 0
+
+  defp locked_mana(%{locked_mana: locked}) when is_integer(locked), do: locked
+  defp locked_mana(_participant), do: 0
 
   defp item_options(items),
     do: Enum.map(items, &{"#{&1.name} · доступно #{&1.available_quantity}", &1.id})
@@ -1006,7 +1132,13 @@ defmodule MMGOWeb.CombatLive do
   defp event_label("spell_cast"), do: "заклинание сработало"
   defp event_label("arena_event"), do: "поле Арены изменилось"
   defp event_label("manifestation_strike"), do: "призванное оружие нанесло удар"
+  defp event_label("manifestation_strike_missed"), do: "призванное оружие промахнулось"
   defp event_label("summon_action"), do: "призванный союзник атаковал"
+  defp event_label("summon_action_missed"), do: "призванный союзник промахнулся"
+  defp event_label("insufficient_mana"), do: "не хватило маны"
+  defp event_label("manifestation_upkeep"), do: "проявления требуют маны"
+  defp event_label("guard_raised"), do: "защита выставлена"
+  defp event_label("parry_failed"), do: "парирование не удалось"
   defp event_label("summon_destroyed"), do: "призванная сущность рассеялась"
   defp event_label("tool_action"), do: "предмет применён"
   defp event_label("action_blocked"), do: "действие сорвалось"
@@ -1114,6 +1246,14 @@ defmodule MMGOWeb.CombatLive do
 
   defp combat_error_message(:invalid_incantation),
     do: "Формула должна состоять из допустимых слов."
+
+  defp combat_error_message(:insufficient_mana), do: "Не хватает маны на это действие."
+
+  defp combat_error_message(:spell_rank_too_high),
+    do: "Ваш ранг ещё не позволяет владеть этим заклинанием."
+
+  defp combat_error_message(:guard_source_unavailable),
+    do: "Этим нельзя защититься: выберите другое."
 
   defp combat_error_message(:invalid_action), do: "Не удалось прочитать действие."
   defp combat_error_message(_reason), do: "Мир отклонил это действие. Попробуйте обновить бой."

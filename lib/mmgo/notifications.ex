@@ -201,6 +201,26 @@ defmodule MMGO.Notifications do
     )
   end
 
+  @doc """
+  Tells a player they have finished an arena quest.
+
+  Deduped on the quest and the period it belongs to, so a quest announces itself
+  exactly once however many times the match settles.
+  """
+  def notify_arena_quest_completed(%Character{} = character, quest, period_key \\ nil) do
+    notify(
+      character,
+      :arena_quest_completed,
+      %{
+        code: quest.code,
+        name: quest.name,
+        period: to_string(quest.period),
+        reward_xp: quest.reward_xp
+      },
+      dedupe_key: "arena-quest:#{quest.code}:#{period_key || Date.utc_today()}"
+    )
+  end
+
   def notify_brew_completed(%Character{} = character, brew_job) do
     notify(
       character,

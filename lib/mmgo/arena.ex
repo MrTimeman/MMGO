@@ -12,7 +12,18 @@ defmodule MMGO.Arena do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.{Account, Character, CharacterProfiles}
-  alias MMGO.Arena.{Match, MatchMember, Profile}
+
+  alias MMGO.Arena.{
+    Ladder,
+    Match,
+    MatchMember,
+    Profile,
+    Quests,
+    RoomRules,
+    TitleChallenge,
+    Titles
+  }
+
   alias MMGO.Combat
   alias MMGO.Combat.ArenaEvents
   alias MMGO.Combat.Combat, as: CombatSchema
@@ -24,9 +35,18 @@ defmodule MMGO.Arena do
   alias MMGO.Worlds.{Location, Realm}
 
   @combat_level 100
-  @grimoire_capacity 45
+  # Arena loadouts are deliberately tight: spell applications here are far less
+  # varied than in the world, so a wide book removes the choice rather than
+  # rewarding it.
+  @grimoire_capacity 8
+
+  # Ranked pairing starts inside this rating band and widens with every step of
+  # waiting, so a thin queue still resolves.
+  @rating_match_tolerance 120
+  @rating_tolerance_step_seconds 15
+  @rating_tolerance_step 40
+  @max_rating_tolerance 1_200
   @initial_rating 1_000
-  @elo_k_factor 32
   @season_xp %{win: 100, loss: 60, draw: 75}
 
   @starter_spells %{
@@ -106,13 +126,33 @@ defmodule MMGO.Arena do
     |> preload_profile()
   end
 
+  @doc """
+  The account's current arena profile.
+
+  A player may keep several profiles to experiment with school combinations;
+  the most recently created one stands in until a profile is explicitly chosen.
+  """
   def get_profile_by_account(account_id) when is_binary(account_id) do
     Profile
-    |> Repo.get_by(account_id: account_id)
+    |> where([profile], profile.account_id == ^account_id)
+    |> order_by([profile], desc: profile.inserted_at, desc: profile.id)
+    |> limit(1)
+    |> Repo.one()
     |> preload_profile()
   end
 
   def get_profile_by_account(_account_id), do: nil
+
+  @doc "Every arena profile the account owns, oldest first."
+  def list_profiles_for_account(account_id) when is_binary(account_id) do
+    Profile
+    |> where([profile], profile.account_id == ^account_id)
+    |> order_by([profile], asc: profile.inserted_at, asc: profile.id)
+    |> Repo.all()
+    |> Enum.map(&preload_profile/1)
+  end
+
+  def list_profiles_for_account(_account_id), do: []
 
   def get_profile_for_account(%Account{id: account_id}), do: get_profile_by_account(account_id)
   def get_profile_for_account(account_id), do: get_profile_by_account(account_id)
@@ -127,15 +167,16 @@ defmodule MMGO.Arena do
 
   def schools(%Profile{} = profile), do: profile.schools
 
-  @doc "Returns the server-owned competitive division for an arena rating."
+  @doc """
+  The competitive division a profile holds.
+
+  A profile reports the division it actually holds, which lags rating on the way
+  down by the ladder's demotion buffer. A bare rating reports what that rating
+  alone would earn.
+  """
+  def rank(%Profile{division: division}) when not is_nil(division), do: division
   def rank(%Profile{rating: rating}), do: rank(rating)
-  def rank(rating) when rating < 800, do: :initiate
-  def rank(rating) when rating < 1_000, do: :bronze
-  def rank(rating) when rating < 1_200, do: :silver
-  def rank(rating) when rating < 1_400, do: :gold
-  def rank(rating) when rating < 1_600, do: :platinum
-  def rank(rating) when rating < 1_800, do: :diamond
-  def rank(rating) when is_integer(rating), do: :archmage
+  def rank(rating) when is_integer(rating), do: Ladder.division_for_rating(rating)
 
   @doc "Creates one active level-100 arena character with exactly three chosen schools."
   def create_profile(%Account{} = account, attrs) when is_map(attrs) do
@@ -146,10 +187,6 @@ defmodule MMGO.Arena do
 
       if account.status != :active do
         Repo.rollback(profile_error(:account_id, "account is inactive"))
-      end
-
-      if Repo.get_by(Profile, account_id: account.id) do
-        Repo.rollback(profile_error(:account_id, "already has an arena profile"))
       end
 
       realm = Worlds.get_default_realm() || Repo.rollback(:default_realm_not_found)
@@ -516,7 +553,7 @@ defmodule MMGO.Arena do
           nil ->
             ensure_profile_available!(profile.id)
 
-            case oldest_ranked_candidate(profile.id) do
+            case oldest_ranked_candidate(profile.id, profile.rating) do
               %Match{} = candidate ->
                 candidate = lock_match!(candidate.id)
                 _members = lock_members(candidate.id)
@@ -530,6 +567,65 @@ defmodule MMGO.Arena do
       end)
 
     broadcast_match_result(result, :ranked_queue_changed)
+  end
+
+  @doc """
+  What the queue looks like right now.
+
+  A player waiting alone in a silent queue cannot tell whether the arena is
+  empty or broken. This is the difference: how many are waiting, how many are
+  already fighting, and how long the last pairings actually took.
+  """
+  def queue_snapshot(season \\ 1) do
+    waiting =
+      Match
+      |> where([match], match.mode == :ranked and match.status == :queued)
+      |> Repo.aggregate(:count)
+
+    fighting =
+      Match
+      |> where([match], match.status == :active)
+      |> Repo.aggregate(:count)
+
+    %{
+      season: season,
+      waiting: waiting,
+      fighting: fighting,
+      estimated_wait_seconds: estimated_wait_seconds()
+    }
+  end
+
+  # Measured, not guessed: the median of how long recent ranked entries actually
+  # sat in the queue before a match started. Nil when nothing has paired yet.
+  defp estimated_wait_seconds do
+    Match
+    |> where([match], match.mode == :ranked and not is_nil(match.started_at))
+    |> where([match], not is_nil(match.queued_at))
+    |> order_by([match], desc: match.started_at)
+    |> limit(20)
+    |> select([match], fragment("EXTRACT(EPOCH FROM (? - ?))", match.started_at, match.queued_at))
+    |> Repo.all()
+    |> case do
+      [] ->
+        nil
+
+      waits ->
+        waits
+        |> Enum.map(&(&1 |> Decimal.to_float() |> round() |> max(0)))
+        |> Enum.sort()
+        |> median()
+    end
+  end
+
+  defp median(sorted) do
+    count = length(sorted)
+    middle = div(count, 2)
+
+    if rem(count, 2) == 1 do
+      Enum.at(sorted, middle)
+    else
+      div(Enum.at(sorted, middle - 1) + Enum.at(sorted, middle), 2)
+    end
   end
 
   def cancel_ranked_queue(%Profile{} = profile) do
@@ -548,6 +644,67 @@ defmodule MMGO.Arena do
 
     broadcast_match_result(result, :ranked_queue_changed)
   end
+
+  @doc """
+  Opens the fight that settles a title challenge.
+
+  A title bout is played under ordinary arena rules — rank gates, grimoires and
+  mana all as in ranked play — but it moves no rating: the stake is the seat.
+  Neither side queues for it and neither side may decline it, so the match is
+  created already under way.
+  """
+  def start_title_bout(%TitleChallenge{status: :open} = challenge) do
+    result =
+      Repo.transaction(fn ->
+        challenge = Repo.preload(challenge, [:challenger_profile, :defender_profile])
+        challenger = lock_profile!(challenge.challenger_profile_id)
+        defender = lock_profile!(challenge.defender_profile_id)
+
+        ensure_profile_available!(challenger.id)
+        ensure_profile_available!(defender.id)
+
+        seed = new_seed()
+        schedule = event_schedule!(:random, [], seed)
+
+        match =
+          %Match{host_profile_id: challenger.id, realm_id: challenger.character.realm_id}
+          |> Match.changeset(%{
+            mode: :custom,
+            status: :forming,
+            team_size: 1,
+            event_policy: schedule["policy"],
+            event_codes: schedule["codes"],
+            code: new_room_code(),
+            settings: %{
+              "room_name" => "Бой за титул",
+              "description" => "Вызов на титул: отказаться нельзя.",
+              "turn_seconds" => 60,
+              "rules" => RoomRules.defaults() |> stringify_rank_cap()
+            },
+            metadata: %{
+              "friendly" => false,
+              "title_challenge_id" => challenge.id,
+              "title_seat" => to_string(challenge.seat)
+            },
+            seed: seed
+          })
+          |> insert_or_rollback()
+
+        insert_member!(match, challenger, :a, 1, true)
+        insert_member!(match, defender, :b, 1, true)
+
+        match = start_match!(match, lock_members(match.id))
+
+        case Titles.attach_match(challenge, match.id) do
+          {:ok, _challenge} -> match
+          {:error, reason} -> Repo.rollback(reason)
+        end
+      end)
+
+    broadcast_match_result(result, :title_bout_started)
+  end
+
+  def start_title_bout(%TitleChallenge{}), do: {:error, :challenge_not_open}
 
   @doc "Idempotently applies arena progression when its shared combat finishes."
   def settle_match(%CombatSchema{} = combat) do
@@ -609,7 +766,10 @@ defmodule MMGO.Arena do
         team_size: 1,
         event_policy: schedule["policy"],
         event_codes: schedule["codes"],
-        metadata: %{"rating_at_queue" => profile.rating},
+        metadata: %{
+          "rating_at_queue" => profile.rating,
+          "division_at_queue" => to_string(rank(profile))
+        },
         seed: seed,
         queued_at: DateTime.utc_now()
       })
@@ -636,6 +796,10 @@ defmodule MMGO.Arena do
           side: to_string(member.team),
           position: member.position - 1,
           combat_level: @combat_level,
+          # The arena profile fighting this match carries its own division,
+          # not the strongest one its owner holds elsewhere.
+          rank: rank(member.profile),
+          max_mana: Titles.mana_pool_for(member.profile),
           grimoire_id: grimoire.id,
           metadata: %{"arena_profile_id" => member.profile.id}
         }
@@ -659,6 +823,7 @@ defmodule MMGO.Arena do
       metadata: %{
         "arena_match_id" => match.id,
         "arena_mode" => to_string(match.mode),
+        RoomRules.metadata_key() => match_rules(match),
         "arena_events" => schedule,
         "arena_active_event_code" => initial_event && initial_event["code"],
         "arena_active_event_tags" => initial_event_tags,
@@ -685,6 +850,21 @@ defmodule MMGO.Arena do
     |> preload_match()
   end
 
+  # Only a friendly room may bend the rules. Ranked play is always the ordinary
+  # arena, whatever a host once wrote into its settings.
+  defp match_rules(%Match{mode: :custom, settings: settings}) when is_map(settings) do
+    settings |> Map.get("rules", %{}) |> RoomRules.normalize() |> stringify_rank_cap()
+  end
+
+  defp match_rules(%Match{}), do: RoomRules.defaults()
+
+  defp stringify_rank_cap(rules) do
+    Map.update!(rules, "rank_cap", fn
+      nil -> nil
+      cap -> to_string(cap)
+    end)
+  end
+
   defp settle_active_match!(match, combat) do
     members =
       match.id
@@ -697,11 +877,14 @@ defmodule MMGO.Arena do
     Enum.each(members, fn member ->
       outcome = outcome(member.team, winner_team)
       profile = member.profile
-      rating = settled_rating(match, member, members, ratings, outcome)
+      settled = settled_standing(match, member, members, ratings, outcome)
+      season_xp_gained = Map.fetch!(@season_xp, outcome)
 
       stats = %{
-        rating: rating,
-        season_xp: profile.season_xp + Map.fetch!(@season_xp, outcome),
+        rating: settled.rating,
+        division: settled.division,
+        placements_remaining: placements_after(match, profile),
+        season_xp: profile.season_xp + season_xp_gained,
         wins: profile.wins + if(outcome == :win, do: 1, else: 0),
         losses: profile.losses + if(outcome == :loss, do: 1, else: 0),
         draws: profile.draws + if(outcome == :draw, do: 1, else: 0),
@@ -709,7 +892,30 @@ defmodule MMGO.Arena do
       }
 
       profile |> Profile.changeset(stats) |> Repo.update!()
+
+      member
+      |> MatchMember.changeset(%{
+        outcome: outcome,
+        rating_before: profile.rating,
+        rating_after: settled.rating,
+        division_before: profile.division,
+        division_after: settled.division,
+        season_xp_gained: season_xp_gained
+      })
+      |> Repo.update!()
+
+      # Quests and the day streak read the same settled match; they never ask
+      # the player to claim anything. Only ranked play counts — a pair of
+      # friends taking turns losing to each other is not a day's work.
+      if match.mode == :ranked do
+        Quests.record_match(Repo.get!(Profile, profile.id), outcome)
+      end
+
+      # A seat holder who fights is not away, whatever the calendar says.
+      Titles.touch_activity(profile, profile.season)
     end)
+
+    settle_title_bout!(match, members, winner_team)
 
     match
     |> Match.changeset(%{
@@ -721,10 +927,29 @@ defmodule MMGO.Arena do
     |> preload_match()
   end
 
-  defp settled_rating(%Match{mode: :custom}, member, _members, _ratings, _outcome),
-    do: member.profile.rating
+  # A title bout settles a seat rather than a rating. A draw leaves the
+  # challenge open: the seat is only won by beating the holder.
+  defp settle_title_bout!(%Match{metadata: metadata}, members, winner_team)
+       when is_map(metadata) do
+    with challenge_id when is_binary(challenge_id) <- Map.get(metadata, "title_challenge_id"),
+         %TitleChallenge{status: :open} = challenge <- Repo.get(TitleChallenge, challenge_id),
+         %MatchMember{} = winner <- Enum.find(members, &(&1.team == winner_team)) do
+      case Titles.settle(challenge, winner.profile_id) do
+        {:ok, _settled} -> :ok
+        {:error, reason} -> Repo.rollback(reason)
+      end
+    else
+      _no_title_bout -> :ok
+    end
+  end
 
-  defp settled_rating(%Match{mode: :ranked}, member, members, ratings, outcome) do
+  defp settle_title_bout!(_match, _members, _winner_team), do: :ok
+
+  # Friendly rooms never move the ladder.
+  defp settled_standing(%Match{mode: :custom}, member, _members, _ratings, _outcome),
+    do: %{rating: member.profile.rating, division: member.profile.division}
+
+  defp settled_standing(%Match{mode: :ranked}, member, members, ratings, outcome) do
     opponents = Enum.reject(members, &(&1.team == member.team))
 
     opponent_average =
@@ -732,8 +957,24 @@ defmodule MMGO.Arena do
 
     expected = 1.0 / (1.0 + :math.pow(10.0, (opponent_average - member.profile.rating) / 400.0))
     score = %{win: 1.0, draw: 0.5, loss: 0.0} |> Map.fetch!(outcome)
-    max(member.profile.rating + round(@elo_k_factor * (score - expected)), 0)
+
+    Ladder.settle(member.profile.rating, member.profile.division, expected, score,
+      placement?: placement?(member.profile)
+    )
   end
+
+  defp placement?(%Profile{placements_remaining: remaining}) when is_integer(remaining),
+    do: remaining > 0
+
+  defp placement?(_profile), do: false
+
+  # Only ranked play counts toward placements: a friendly room tells the ladder
+  # nothing about where someone belongs.
+  defp placements_after(%Match{mode: :ranked}, %Profile{placements_remaining: remaining})
+       when is_integer(remaining),
+       do: max(remaining - 1, 0)
+
+  defp placements_after(_match, %Profile{placements_remaining: remaining}), do: remaining || 0
 
   defp outcome(_team, nil), do: :draw
   defp outcome(team, team), do: :win
@@ -782,7 +1023,10 @@ defmodule MMGO.Arena do
     )
   end
 
-  defp oldest_ranked_candidate(profile_id) do
+  # Rank is what a spell is gated on, and rating is what earns rank, so pairing
+  # on rating pairs like against like without a second dial. The band widens the
+  # longer a candidate has waited, so a thin queue still resolves.
+  defp oldest_ranked_candidate(profile_id, rating) do
     Repo.one(
       from match in Match,
         join: member in MatchMember,
@@ -790,6 +1034,18 @@ defmodule MMGO.Arena do
         where:
           match.mode == :ranked and match.status == :queued and
             member.profile_id != ^profile_id,
+        where:
+          fragment(
+            "ABS(COALESCE((? ->> 'rating_at_queue')::int, ?) - ?) <= LEAST(? + (EXTRACT(EPOCH FROM (NOW() - ?)) / ?)::int * ?, ?)",
+            match.metadata,
+            ^@initial_rating,
+            ^rating,
+            ^@rating_match_tolerance,
+            match.queued_at,
+            ^@rating_tolerance_step_seconds,
+            ^@rating_tolerance_step,
+            ^@max_rating_tolerance
+          ),
         order_by: [asc: match.queued_at, asc: match.id],
         limit: 1
     )
@@ -862,6 +1118,79 @@ defmodule MMGO.Arena do
   defp ensure_forming_custom!(%Match{mode: :custom}), do: Repo.rollback(:room_not_forming)
   defp ensure_forming_custom!(%Match{}), do: Repo.rollback(:not_a_custom_room)
 
+  @doc """
+  Re-stocks every arena profile whose book is empty.
+
+  The release that wipes spells cannot do this itself: a migration runs against
+  the schema as it stood at its own point in the sequence, while the structs it
+  would need are always at their newest. The seed runs after every migration has
+  landed, so it belongs here.
+
+  Only empty books are touched, which makes this safe to run on every deploy.
+  """
+  def restock_empty_arena_books do
+    Profile
+    |> Repo.all()
+    |> Enum.filter(&arena_book_empty?/1)
+    |> Enum.map(fn profile ->
+      {:ok, _grimoire} = reissue_starter_spells(profile)
+      profile.id
+    end)
+  end
+
+  defp arena_book_empty?(%Profile{character_id: character_id}) do
+    not Repo.exists?(
+      from entry in GrimoireEntry,
+        join: grimoire in Grimoire,
+        on: grimoire.id == entry.grimoire_id,
+        where: grimoire.owner_character_id == ^character_id
+    )
+  end
+
+  @doc """
+  Re-issues the three school starter spells to an existing profile.
+
+  Used by the release that wipes every spell: a player who logs in afterwards
+  finds a working book rather than an empty one. The spells are bound into the
+  profile's active grimoire directly — the ordinary writability rule protects a
+  book from its owner, not from the arena re-stocking it.
+  """
+  def reissue_starter_spells(%Profile{} = profile) do
+    Repo.transaction(fn ->
+      character = Repo.get!(Character, profile.character_id)
+      spells = Enum.map(profile.schools, &create_starter_spell!(character, &1))
+
+      case Repo.get_by(Grimoire, owner_character_id: character.id, status: :active) do
+        %Grimoire{} = grimoire -> bind_starter_spells!(grimoire, spells)
+        nil -> create_starter_grimoire!(character, spells)
+      end
+    end)
+  end
+
+  defp bind_starter_spells!(%Grimoire{} = grimoire, spells) do
+    occupied =
+      GrimoireEntry
+      |> where([entry], entry.grimoire_id == ^grimoire.id)
+      |> select([entry], entry.slot_index)
+      |> Repo.all()
+
+    next_slot = (Enum.max(occupied, fn -> 0 end) || 0) + 1
+
+    spells
+    |> Enum.with_index(next_slot)
+    |> Enum.each(fn {spell, slot_index} ->
+      %GrimoireEntry{}
+      |> GrimoireEntry.changeset(%{
+        grimoire_id: grimoire.id,
+        spell_id: spell.id,
+        slot_index: slot_index
+      })
+      |> insert_or_rollback()
+    end)
+
+    grimoire
+  end
+
   defp create_starter_spell!(character, school) do
     attrs =
       @starter_spells
@@ -871,7 +1200,7 @@ defmodule MMGO.Arena do
         school_quirk: SchoolQuirk.for_school(school),
         description:
           "Arena-issued #{school} spell. Replace it with your own formula whenever you like.",
-        level_requirement: 1,
+        power: 1,
         fatigue_cost: 4,
         cooldown_turns: 0,
         tags: ["arena", "starter"],
@@ -990,11 +1319,18 @@ defmodule MMGO.Arena do
     %{
       "turn_seconds" => normalize_turn_seconds(settings["turn_seconds"]),
       "room_name" => sanitize_room_copy(settings["room_name"], "Дружеский круг", 60),
-      "description" => sanitize_room_copy(settings["description"], "", 180)
+      "description" => sanitize_room_copy(settings["description"], "", 180),
+      "rules" => sanitize_rules(settings["rules"])
     }
   end
 
   defp sanitize_settings(_settings), do: %{}
+
+  # The host's special rules are normalised once, here, and the resolved set is
+  # what the combat is started with. Nothing downstream reads the raw map.
+  defp sanitize_rules(rules) do
+    rules |> RoomRules.normalize() |> stringify_rank_cap()
+  end
 
   defp normalize_turn_seconds(seconds) do
     seconds

@@ -26,9 +26,9 @@
   min-height: 100%;
   margin: 0 auto;
   padding:
-    calc(env(safe-area-inset-top, 0px) + 1rem)
+    calc(var(--safe-top) + 1rem)
     clamp(0.75rem, 2.8vw, 1.5rem)
-    calc(env(safe-area-inset-bottom, 0px) + 4rem);
+    calc(var(--safe-bottom) + 4rem);
 }
 
 .acd-research-tools {

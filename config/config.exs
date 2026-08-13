@@ -19,7 +19,14 @@ config :mmgo, local_demo_enabled: false
 config :mmgo, Oban,
   repo: MMGO.Repo,
   plugins: [
-    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24}
+    {Oban.Plugins.Pruner, max_age: 60 * 60 * 24},
+    {Oban.Plugins.Cron,
+     crontab: [
+       # Arena replays are kept as a recent memory, not an archive.
+       {"15 4 * * *", MMGO.Arena.PruneHistoryWorker},
+       # Just after midnight UTC: yesterday's streaks are settled either way.
+       {"5 0 * * *", MMGO.Arena.SweepQuestsWorker}
+     ]}
   ],
   queues: [default: 10, telegram: 5]
 

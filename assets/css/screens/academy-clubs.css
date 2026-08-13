@@ -36,8 +36,8 @@
   width: min(100%, 64rem);
   min-height: 100%;
   margin-inline: auto;
-  padding: calc(env(safe-area-inset-top, 0px) + 0.7rem) 0.7rem
-    calc(env(safe-area-inset-bottom, 0px) + 3.5rem);
+  padding: calc(var(--safe-top) + 0.7rem) 0.7rem
+    calc(var(--safe-bottom) + 3.5rem);
 }
 
 .acd-clubs-nav,
@@ -2437,7 +2437,7 @@
 @media (min-width: 48rem) {
   .acd-clubs-shell,
   .acd-event-shell {
-    padding-top: calc(env(safe-area-inset-top, 0px) + 1rem);
+    padding-top: calc(var(--safe-top) + 1rem);
     padding-inline: 1.5rem;
   }
 

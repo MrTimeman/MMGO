@@ -597,7 +597,7 @@ defmodule MMGO.PlayTest do
              })
 
     assert spell.source_spell_id == nil
-    assert spell.level_requirement == 1
+    assert spell.power == 1
     assert spell.fatigue_cost <= 12
     assert spell.cooldown_turns <= 3
     assert spell.environment_mode == :none

@@ -736,3 +736,12 @@ case SpecialProfiles.configured_telegram_user_id() do
   _other ->
     :ok
 end
+
+# The alpha.11 release wipes every spell forged under the old craft rules. The
+# migration cannot re-stock the emptied books itself, so it happens here, where
+# every migration has already landed. Only empty books are filled, so repeating
+# this on later deploys does nothing.
+case MMGO.Arena.restock_empty_arena_books() do
+  [] -> :ok
+  restocked -> IO.puts("Re-stocked #{length(restocked)} arena book(s) with starter spells.")
+end

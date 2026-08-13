@@ -386,7 +386,7 @@ defmodule MMGO.Academy.StarterOutcomes do
       formula: "Academia #{school_formula} #{formula_suffix}",
       school: school,
       description: description,
-      level_requirement: 1,
+      power: 1,
       fatigue_cost: if(kind == :ward, do: 2, else: 3),
       cooldown_turns: 1,
       targeting: targeting,

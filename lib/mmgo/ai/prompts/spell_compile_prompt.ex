@@ -36,7 +36,7 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
     - earth / `persistence`: non-periodic states persist until a break condition is met.
     - air / `tempo`: the cast resolves before ordinary actions in the same turn.
     - life / `vitality`: regeneration becomes stronger and lasts longer.
-    - death / `harvest`: consume one existing enemy state and convert its value into fatigue recovery.
+    - death / `harvest`: consume one existing enemy state and convert its value back into the caster's mana.
     - chaos / `volatility`: widen every effect's variance to its full safe range.
     - order / `precision`: remove variance from the cast.
 
@@ -47,15 +47,17 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
 
     ## Mechanics
     - Set `outcome` to `"created"` only when the incantation produces a coherent, castable spell.
-    - Set `outcome` to `"failed"` when the words are self-contradictory, the school cannot plausibly express the requested effect, the base spell lineage cannot support the change, or the result would be too unstable for the caster's level.
+    - Set `outcome` to `"failed"` when the words are self-contradictory, the school cannot plausibly express the requested effect, the base spell lineage cannot support the change, or the result would be too unstable to hold together at all.
     - Failed outcomes must include `rejection_reason` and may include `instability_markers`; they do not enter the caster's spell library.
+    - `power` is the spell's whole mechanical budget (1–60), and it is earned by the formula alone — never by who is casting it. Judge it on craft: how many seals are filled, how precisely the words fit together, and how far a `base_spell` lineage has already been refined. A terse three-seal formula is a weak spell even from a masterful caster; only a full, coherent, six-seal formula deserves the upper range. The server clamps the value to what the craft supports and then rescales every magnitude to the clamped power, so an inflated number buys no extra strength and a deflated one throws it away.
+    - The caster tells you nothing about how strong the spell should be. Power decides which competitive rank may later wield the finished spell; it is never raised or lowered to match whoever is writing it.
     - All damage is delivered through state primitives — there is no base_damage field.
     - `impact` (duration 0) = one-time hit. `burning` / `regenerating` = per-turn DoT/HoT. All others = status effects.
     - `empowered` is a one-use buff: its intensity is the multiplier for the caster's next spell cast. Use an integer multiplier of 2 or 3 and apply it to the caster.
     - Use `variance` (0–4) to control randomness. Chaos spells: high variance. Order spells: zero variance.
     - `failure_profile.difficulty` should scale with spell complexity (1-word: low, 6-word: high).
     - When `base_spell` is present, it is verified and owned: work in revamp mode, preserve its core action, and evolve it.
-    - When `base_spell` is null and `circle_tier` is `novice`, this is a three-seal root formula (school, action, duration). Create a modest level-1 foundation spell with conservative intensity and no advanced secondary mechanics.
+    - When `base_spell` is null and `circle_tier` is `novice`, this is a three-seal root formula (school, action, duration). Create a modest power-1 foundation spell with conservative intensity and no advanced secondary mechanics.
     - When `base_spell` is null and `circle_tier` is `trained`, this is an independent full-circle formula. Judge it on its own terms without inventing a lineage.
 
     ## Optional duel-local manifestations
@@ -132,7 +134,7 @@ defmodule MMGO.AI.Prompts.SpellCompilePrompt do
           enum: Enum.map(SchoolQuirk.values(), &to_string/1)
         },
         description: %{type: "string"},
-        level_requirement: %{type: "integer"},
+        power: %{type: "integer"},
         fatigue_cost: %{type: "integer"},
         cooldown_turns: %{type: "integer"},
         targeting: %{type: "string"},

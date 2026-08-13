@@ -6,6 +6,7 @@ defmodule MMGO.GrimoiresTest do
   alias MMGO.Grimoires
   alias MMGO.Repo
   alias MMGO.Spells
+  alias MMGO.Spells.Spell
   alias MMGO.Worlds
 
   setup do
@@ -58,17 +59,17 @@ defmodule MMGO.GrimoiresTest do
     character: character
   } do
     assert [
-             %{key: "pocket", capacity: 5, weight: 1, price: 40},
-             %{key: "traveler", capacity: 10, weight: 2, price: 120},
-             %{key: "scholar", capacity: 20, weight: 4, price: 350},
-             %{key: "archivist", capacity: 45, weight: 8, price: 900}
+             %{key: "pocket", capacity: 3, weight: 1, price: 40},
+             %{key: "traveler", capacity: 5, weight: 2, price: 120},
+             %{key: "scholar", capacity: 8, weight: 4, price: 350},
+             %{key: "archivist", capacity: 12, weight: 8, price: 900}
            ] = Grimoires.purchase_tiers()
 
     assert {:ok, %{grimoire: grimoire, tier: %{key: "scholar"}}} =
              Grimoires.purchase_grimoire(character, "scholar", %{name: "Том дальних формул"})
 
     assert grimoire.name == "Том дальних формул"
-    assert grimoire.capacity == 20
+    assert grimoire.capacity == 8
     assert grimoire.weight == 4
     assert grimoire.metadata["purchase_tier"] == "scholar"
     assert grimoire.metadata["purchase_price"] == 350
@@ -231,5 +232,32 @@ defmodule MMGO.GrimoiresTest do
   defp spell_fixture(character, attrs) do
     {:ok, spell} = Spells.create_spell(character, attrs)
     spell
+  end
+
+  # A book is a container, not a gate: a spell forged above the owner's rank may
+  # be carried and becomes castable the moment they rank into it.
+  test "a grimoire carries a spell stronger than its owner can yet cast", %{
+    character: character
+  } do
+    strong_spell =
+      spell_fixture(character, %{
+        name: "Ignis Enormis",
+        formula: "Ignis Sphaera Enormis",
+        school: :fire,
+        targeting: :enemy,
+        delivery_form: :sphere,
+        power: 30,
+        effects: [
+          %{applies_to: :target, state: "impact", intensity: 40, variance: 2, duration: 0}
+        ],
+        failure_profile: %{difficulty: 8, base_success_rate: 70, partial_success_rate: 10}
+      })
+
+    assert Spell.rank_requirement(strong_spell) == :diamond
+
+    {:ok, modest} =
+      Grimoires.create_grimoire(character, %{name: "Modest Book", capacity: 5, weight: 1})
+
+    assert {:ok, _entry} = Grimoires.inscribe_spell(modest, strong_spell)
   end
 end

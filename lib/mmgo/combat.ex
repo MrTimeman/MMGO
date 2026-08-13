@@ -15,6 +15,7 @@ defmodule MMGO.Combat do
     Turn
   }
 
+  alias MMGO.Arena.{Ladder, Ranks}
   alias MMGO.Bases
   alias MMGO.Grimoires
   alias MMGO.Inventory
@@ -816,6 +817,8 @@ defmodule MMGO.Combat do
     attrs
     |> Map.put_new(:display_name, character.name)
     |> Map.put_new(:combat_level, character.level)
+    |> Map.put_new_lazy(:rank, fn -> Ranks.for_character(character) end)
+    |> put_mana_pool()
     |> Map.update(:active_states, fortress_states, fn provided_states ->
       if is_list(provided_states), do: provided_states ++ fortress_states, else: fortress_states
     end)
@@ -828,9 +831,19 @@ defmodule MMGO.Combat do
     attrs
     |> Map.put_new(:display_name, actor_template.name)
     |> Map.put_new(:combat_level, actor_template.combat_level)
+    |> put_mana_pool()
   end
 
   defp participant_defaults(attrs, _combat, _character_id, _actor_template_id), do: attrs
+
+  # Everyone has mana. The pool widens with rank, which is what compensates for
+  # the stronger spells a higher rank may wield; a caller that already knows the
+  # pool (an arena seat holder) keeps the one it passed.
+  defp put_mana_pool(attrs) do
+    Map.put_new_lazy(attrs, :max_mana, fn ->
+      attrs |> Map.get(:rank, :initiate) |> Ladder.max_mana_for()
+    end)
+  end
 
   defp build_sides(attrs, participant_attrs) do
     provided_sides = Map.get(attrs, :sides) || Map.get(attrs, "sides") || %{}

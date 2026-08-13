@@ -1567,7 +1567,7 @@
 }
 
 .trv-shell {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 2.5rem);
+  padding-bottom: calc(var(--safe-bottom) + 2.5rem);
 }
 
 .trv-exit {
@@ -1847,7 +1847,7 @@
 }
 
 .pty-shell {
-  padding-bottom: calc(env(safe-area-inset-bottom, 0px) + 2rem);
+  padding-bottom: calc(var(--safe-bottom) + 2rem);
 }
 
 .pty-exit {

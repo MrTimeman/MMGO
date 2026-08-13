@@ -56,7 +56,9 @@
 .cbt-top {
   position: relative;
   z-index: 2;
-  padding: 0.55rem 0.85rem 0.35rem;
+  /* In a Telegram fullscreen Mini App this bar is the first thing on screen,
+     so it has to clear the status bar and Telegram's own floating controls. */
+  padding: calc(0.55rem + var(--safe-top)) 0.85rem 0.35rem;
   display: flex;
   flex-direction: column;
   gap: 0.4rem;
@@ -409,6 +411,48 @@
   100% { opacity: 0; }
 }
 
+/* Mana — the resource every choice is paid from, so it sits above the ledger */
+.cbt-mana {
+  margin-bottom: 0.9rem;
+}
+.cbt-mana__head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.6rem;
+}
+.cbt-mana__label {
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--cbt-ash);
+}
+.cbt-mana__value {
+  font-variant-numeric: tabular-nums;
+  color: var(--cbt-frost);
+}
+.cbt-mana__track {
+  display: block;
+  height: 5px;
+  margin-top: 0.35rem;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.07);
+  overflow: hidden;
+}
+.cbt-mana__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--cbt-frost), var(--cbt-trap));
+  transition: width 260ms ease;
+}
+.cbt-mana__locked {
+  margin-top: 0.35rem;
+  font-size: 0.78rem;
+  color: var(--cbt-ash);
+}
+
 /* Environment note — styled distinctly (an aside, not the narrative) */
 .cbt-env {
   display: block;
@@ -493,7 +537,7 @@
 .cbt-actbar {
   position: relative;
   z-index: 2;
-  padding: 0.7rem 0.85rem calc(0.8rem + env(safe-area-inset-bottom));
+  padding: 0.7rem 0.85rem calc(0.8rem + var(--safe-bottom));
   max-width: 30rem;
   width: 100%;
   margin: 0 auto;
@@ -713,7 +757,7 @@
   max-width: 30rem;
   max-height: 68vh;
   overflow-y: auto;
-  padding: 0.6rem 1rem calc(1.2rem + env(safe-area-inset-bottom));
+  padding: 0.6rem 1rem calc(1.2rem + var(--safe-bottom));
   background: radial-gradient(ellipse at 50% 0%, #241a12, #150e08 80%);
   border-top: 1px solid rgba(217,169,54,0.3);
   border-radius: 1rem 1rem 0 0;

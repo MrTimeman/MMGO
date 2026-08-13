@@ -140,8 +140,8 @@
 
 .ovl-portrait {
   position: absolute;
-  right: max(0.75rem, env(safe-area-inset-right));
-  bottom: max(0.8rem, env(safe-area-inset-bottom));
+  right: max(0.75rem, var(--safe-right));
+  bottom: max(0.8rem, var(--safe-bottom));
   z-index: 22;
   display: grid;
   width: 72px;
@@ -263,7 +263,7 @@
     linear-gradient(180deg, color-mix(in srgb, var(--color-surface-2) 82%, var(--color-bg)), var(--color-bg) 76%);
   color: var(--color-text);
   box-shadow: 0 -26px 52px rgba(0, 0, 0, 0.48);
-  padding: 0.72rem 0.85rem max(1rem, env(safe-area-inset-bottom));
+  padding: 0.72rem 0.85rem max(1rem, var(--safe-bottom));
   animation: ovl-sheet-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1) both;
 }
 
@@ -851,6 +851,9 @@
 
 .map-account-trigger {
   position: relative;
+  /* The global "Сменить режим" pill is fixed to this same corner, so the
+     account button sits beneath it rather than underneath it. */
+  margin-top: 2.75rem;
   border: 1px solid color-mix(in srgb, var(--parch-gold) 68%, var(--parch-leather-dark));
   border-radius: 9px 9px 5px 5px;
   outline: 1px dashed color-mix(in srgb, var(--parch-stitch) 42%, transparent);
@@ -1168,7 +1171,7 @@
 
 #world-map .hex-map__layers {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 4.75rem);
+  top: calc(var(--safe-top) + 4.75rem);
   left: 0.75rem;
   z-index: 25;
   width: 9.5rem;
@@ -1324,7 +1327,7 @@
 }
 
 #world-map .hex-map__legend {
-  top: calc(env(safe-area-inset-top, 0px) + 8.15rem);
+  top: calc(var(--safe-top) + 8.15rem);
   right: auto;
   bottom: auto;
   left: 0.75rem;
@@ -1708,7 +1711,7 @@
   }
 
   .map-journal {
-    bottom: max(0.55rem, env(safe-area-inset-bottom));
+    bottom: max(0.55rem, var(--safe-bottom));
     width: calc(100vw - 1rem);
     padding: 0.85rem;
   }
@@ -1729,7 +1732,7 @@
   }
 
   .map-journey-slip {
-    bottom: max(0.55rem, env(safe-area-inset-bottom));
+    bottom: max(0.55rem, var(--safe-bottom));
     width: calc(100vw - 1rem);
     padding: 0.78rem 0.9rem;
   }
@@ -1757,7 +1760,7 @@
 
   #world-map .hex-map__sheet {
     right: 0.5rem;
-    bottom: max(0.55rem, env(safe-area-inset-bottom));
+    bottom: max(0.55rem, var(--safe-bottom));
     left: 0.5rem;
     display: grid;
     grid-template-columns: minmax(0, 1fr);
@@ -1786,12 +1789,12 @@
   }
 
   #world-map .hex-map__layers {
-    top: calc(env(safe-area-inset-top, 0px) + 4.45rem);
+    top: calc(var(--safe-top) + 4.45rem);
     left: 0.65rem;
   }
 
   #world-map .hex-map__legend {
-    top: calc(env(safe-area-inset-top, 0px) + 7.9rem);
+    top: calc(var(--safe-top) + 7.9rem);
     left: 0.65rem;
     max-width: calc(100vw - 1.3rem);
   }

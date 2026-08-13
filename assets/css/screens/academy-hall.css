@@ -90,7 +90,7 @@
 .academy-hall__shell {
   position: relative;
   max-width: 74rem;
-  padding: calc(env(safe-area-inset-top, 0px) + 1rem) 0 4rem;
+  padding: calc(var(--safe-top) + 1rem) 0 4rem;
 }
 
 .academy-hall__topbar {

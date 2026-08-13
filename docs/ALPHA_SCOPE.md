@@ -1,6 +1,6 @@
 # MMGO Releasable Alpha Scope
 
-Version `0.1.0-alpha.10` is the current operator-deployable alpha. The GDD remains the long-term product contract; this document defines the release boundary and the evidence required to call one build releasable.
+Version `0.1.0-alpha.11` is the current operator-deployable alpha. The GDD remains the long-term product contract; this document defines the release boundary and the evidence required to call one build releasable.
 
 ## Included
 

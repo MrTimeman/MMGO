@@ -13,28 +13,28 @@ defmodule MMGO.Grimoires do
     %{
       key: "pocket",
       name: "Карманный гримуар",
-      capacity: 5,
+      capacity: 3,
       weight: 1,
       price: 40
     },
     %{
       key: "traveler",
       name: "Дорожный гримуар",
-      capacity: 10,
+      capacity: 5,
       weight: 2,
       price: 120
     },
     %{
       key: "scholar",
       name: "Учёный гримуар",
-      capacity: 20,
+      capacity: 8,
       weight: 4,
       price: 350
     },
     %{
       key: "archivist",
       name: "Архивный гримуар",
-      capacity: 45,
+      capacity: 12,
       weight: 8,
       price: 900
     }

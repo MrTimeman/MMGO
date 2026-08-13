@@ -121,14 +121,14 @@ defmodule MMGOWeb.TradeLiveTest do
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/trade")
 
     assert has_element?(view, "#trade-grimoire-catalog")
-    assert has_element?(view, "#trade-grimoire-tier-scholar", "20 формул")
+    assert has_element?(view, "#trade-grimoire-tier-scholar", "8 формул")
 
     view
     |> element("#trade-buy-grimoire-scholar")
     |> render_click()
 
     assert Enum.any?(Grimoires.list_grimoires_for_character(character.id), fn grimoire ->
-             grimoire.metadata["purchase_tier"] == "scholar" and grimoire.capacity == 20 and
+             grimoire.metadata["purchase_tier"] == "scholar" and grimoire.capacity == 8 and
                grimoire.weight == 4
            end)
 

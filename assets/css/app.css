@@ -210,7 +210,7 @@ code {
   position: fixed;
   z-index: 40;
   right: 0.8rem;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.8rem);
+  bottom: calc(var(--safe-bottom) + 0.8rem);
   max-width: calc(100vw - 1.6rem);
 }
 
@@ -903,7 +903,7 @@ code {
   left: 0.75rem;
   /* Clear the account portrait (72px, anchored bottom-right) so the Travel
      button on this sheet's right edge isn't hidden beneath it. */
-  right: calc(max(0.75rem, env(safe-area-inset-right)) + 72px + 0.5rem);
+  right: calc(max(0.75rem, var(--safe-right)) + 72px + 0.5rem);
   bottom: 0.75rem;
   z-index: 15;
   display: flex;
@@ -4368,7 +4368,7 @@ code {
 /* Map-filter toggle (рельеф → владения → сети) — same pill family as .ovl-chip */
 .hex-map__filter {
   position: absolute;
-  top: calc(env(safe-area-inset-top, 0px) + 4.5rem);
+  top: calc(var(--safe-top) + 4.5rem);
   right: 0.75rem;
   z-index: 25;
   min-height: 44px;
@@ -4396,7 +4396,7 @@ code {
   position: absolute;
   left: 0.75rem;
   right: 0.75rem;
-  bottom: calc(env(safe-area-inset-bottom, 0px) + 0.75rem);
+  bottom: calc(var(--safe-bottom) + 0.75rem);
   z-index: 24;
   display: flex;
   flex-wrap: wrap;

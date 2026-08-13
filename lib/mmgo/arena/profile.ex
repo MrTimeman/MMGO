@@ -4,7 +4,7 @@ defmodule MMGO.Arena.Profile do
   import Ecto.Changeset
 
   alias MMGO.Accounts.{Account, Character}
-  alias MMGO.Arena.{Match, MatchMember}
+  alias MMGO.Arena.{Ladder, Match, MatchMember}
 
   @schools [:fire, :water, :earth, :air, :life, :death, :chaos, :order]
 
@@ -14,7 +14,16 @@ defmodule MMGO.Arena.Profile do
   schema "arena_profiles" do
     field :schools, {:array, Ecto.Enum}, values: @schools
     field :rating, :integer, default: 1_000
+    # The division actually held. Stored rather than derived so a dip below a
+    # threshold does not flicker a player between divisions.
+    field :division, Ecto.Enum, values: Ladder.keys(), default: :initiate
     field :season_xp, :integer, default: 0
+    # Ranked matches still owed before the ladder settles down again. While
+    # these last, results move the rating twice as hard.
+    field :placements_remaining, :integer, default: 0
+    # Consecutive days with at least one settled match.
+    field :streak_days, :integer, default: 0
+    field :last_played_on, :date
     field :wins, :integer, default: 0
     field :losses, :integer, default: 0
     field :draws, :integer, default: 0
@@ -37,7 +46,11 @@ defmodule MMGO.Arena.Profile do
     |> cast(attrs, [
       :schools,
       :rating,
+      :division,
       :season_xp,
+      :placements_remaining,
+      :streak_days,
+      :last_played_on,
       :wins,
       :losses,
       :draws,

@@ -10,20 +10,10 @@ defmodule MMGOWeb.ArenaLive do
   use MMGOWeb, :live_view
 
   alias MMGO.Arena
-  alias MMGO.Arena.{Match, Profile}
+  alias MMGO.Arena.{History, Ladder, Match, Profile, Quests, RoomRules, Titles}
   alias MMGO.Combat.ArenaEvents
 
   @room_refresh_interval 2_000
-
-  @rank_labels %{
-    initiate: "Посвящённый",
-    bronze: "Бронза",
-    silver: "Серебро",
-    gold: "Золото",
-    platinum: "Платина",
-    diamond: "Алмаз",
-    archmage: "Архимаг"
-  }
 
   @school_labels %{
     fire: "Огонь",
@@ -74,6 +64,11 @@ defmodule MMGOWeb.ArenaLive do
     case socket.assigns.live_action do
       :home -> {:noreply, load_home(socket)}
       :queue -> {:noreply, load_queue(socket)}
+      :profiles -> {:noreply, load_profiles(socket)}
+      :seats -> {:noreply, load_seats(socket)}
+      :result -> {:noreply, load_result(socket, params["match_id"])}
+      :history -> {:noreply, load_history(socket)}
+      :replay -> {:noreply, load_replay(socket, params["combat_id"])}
       :new_room -> {:noreply, load_new_room(socket)}
       :room -> {:noreply, load_room(socket, params["code"])}
       :rankings -> {:noreply, load_rankings(socket)}
@@ -126,7 +121,9 @@ defmodule MMGOWeb.ArenaLive do
       |> Map.put("event_codes", normalize_event_codes(params["event_codes"]))
       |> Map.put(
         "settings",
-        Map.take(params, ["room_name", "description", "turn_seconds"])
+        params
+        |> Map.take(["room_name", "description", "turn_seconds"])
+        |> Map.put("rules", Map.take(params, ["grimoire", "mana", "rank", "rank_cap"]))
       )
 
     case Arena.create_custom_room(socket.assigns.profile, params) do
@@ -143,6 +140,21 @@ defmodule MMGOWeb.ArenaLive do
 
   def handle_event("create_room", _params, socket) do
     {:noreply, assign(socket, :arena_error, "Проверьте настройки комнаты.")}
+  end
+
+  def handle_event("replay_step", %{"to" => to}, socket) do
+    turn =
+      to
+      |> to_string()
+      |> Integer.parse()
+      |> case do
+        {parsed, ""} -> parsed
+        _unparsable -> 1
+      end
+      |> max(1)
+      |> min(length(socket.assigns.replay.turns))
+
+    {:noreply, assign(socket, :replay_turn, turn)}
   end
 
   def handle_event("join_room", %{"code" => code} = params, socket) do
@@ -302,9 +314,15 @@ defmodule MMGOWeb.ArenaLive do
 
         <%= case @live_action do %>
           <% :home -> %>
-            <.home profile={@profile} current_match={@current_match} streams={@streams} />
+            <.home
+              profile={@profile}
+              profile_count={@profile_count}
+              quests={@quests}
+              current_match={@current_match}
+              streams={@streams}
+            />
           <% :queue -> %>
-            <.queue profile={@profile} current_match={@current_match} />
+            <.queue profile={@profile} current_match={@current_match} queue={@queue_snapshot} />
           <% :new_room -> %>
             <.new_room
               form={@room_form}
@@ -315,6 +333,23 @@ defmodule MMGOWeb.ArenaLive do
             <.room room={@room} profile={@profile} streams={@streams} />
           <% :rankings -> %>
             <.rankings profile={@profile} streams={@streams} />
+          <% :profiles -> %>
+            <.profiles profile={@profile} profiles={@profiles} />
+          <% :result -> %>
+            <.result profile={@profile} settlement={@settlement} />
+          <% :history -> %>
+            <.history history={@history} />
+          <% :replay -> %>
+            <.replay replay={@replay} turn={@replay_turn} />
+          <% :seats -> %>
+            <.seats
+              profile={@profile}
+              champion={@champion}
+              deputy={@deputy}
+              champion_challenge={@champion_challenge}
+              deputy_challenge={@deputy_challenge}
+              own_seat={@own_seat}
+            />
         <% end %>
       </main>
     </Layouts.app>
@@ -322,47 +357,19 @@ defmodule MMGOWeb.ArenaLive do
   end
 
   attr :profile, Profile, required: true
+  attr :profile_count, :integer, required: true
+  attr :quests, :list, required: true
   attr :current_match, :any, required: true
   attr :streams, :map, required: true
 
   defp home(assigns) do
     ~H"""
     <div id="arena-home" class="arena-page">
-      <section class="arena-hero">
-        <div class="arena-hero__copy">
-          <p class="arena-kicker">Бой начинается сейчас</p>
-          <h1>Испытывайте заклинания.<br />Поднимайтесь в рейтинге.</h1>
-          <p>
-            Без похода за зельями и экипировкой: только три выбранные школы,
-            ограниченный гримуар и поле, которое отвечает на вашу магию.
-          </p>
-          <div class="arena-school-row" aria-label="Выбранные школы">
-            <span :for={school <- @profile.schools}>{school_label(school)}</span>
-          </div>
-        </div>
-
-        <aside id="arena-profile-card" class="arena-rank-card">
-          <span class="arena-rank-card__seal">{rank_glyph(@profile)}</span>
-          <p>{rank_label(@profile)}</p>
-          <strong>{@profile.rating}</strong>
-          <small>рейтинг сезона {@profile.season}</small>
-          <dl>
-            <div>
-              <dt>Победы</dt>
-              <dd>{@profile.wins}</dd>
-            </div>
-            <div>
-              <dt>Поражения</dt>
-              <dd>{@profile.losses}</dd>
-            </div>
-            <div>
-              <dt>Опыт</dt>
-              <dd>{@profile.season_xp}</dd>
-            </div>
-          </dl>
-        </aside>
-      </section>
-
+      <%!--
+      The Arena opens on the thing players came to do. Standing, then the queue
+      button, then everything else: at 375px the primary action must be reachable
+      without a scroll. See the Arena exception in docs/UI_DESIGN_BRIEF.md.
+      --%>
       <section :if={@current_match} id="arena-active-match" class="arena-active-match">
         <div>
           <p>Незавершённый круг</p>
@@ -377,26 +384,80 @@ defmodule MMGOWeb.ArenaLive do
         </.link>
       </section>
 
-      <section id="arena-play-modes" class="arena-mode-grid">
-        <article class="arena-play-card arena-play-card--ranked">
-          <span class="arena-play-card__icon"><.icon name="hero-trophy" /></span>
-          <p>Соревновательный · 1v1</p>
-          <h2>Ранговый поединок</h2>
-          <span>Равные уровни, ваш активный гримуар и случайное событие среды.</span>
-          <.link id="arena-ranked-queue" navigate={~p"/arena/queue"} class="arena-button">
-            Найти соперника <.icon name="hero-bolt" />
+      <section id="arena-launch" class="arena-launch">
+        <div id="arena-profile-card" class="arena-launch__standing">
+          <span class="arena-launch__seal">{rank_glyph(@profile)}</span>
+          <div class="arena-launch__figures">
+            <p>{rank_label(@profile)} · сезон {@profile.season}</p>
+            <strong>{@profile.rating}</strong>
+            <small>
+              {@profile.wins}–{@profile.losses} · опыт {@profile.season_xp}
+            </small>
+            <%!-- While placements last the ladder moves twice as hard: say so. --%>
+            <small :if={@profile.placements_remaining > 0} id="arena-placements">
+              Калибровка · осталось боёв: {@profile.placements_remaining}
+            </small>
+          </div>
+          <.link
+            :if={@profile_count > 1}
+            id="arena-profile-switch"
+            navigate={~p"/arena/profiles"}
+            class="arena-launch__switch"
+            title="Сменить профиль Арены"
+          >
+            <.icon name="hero-arrows-right-left" />
           </.link>
-        </article>
+        </div>
 
-        <article class="arena-play-card arena-play-card--custom">
-          <span class="arena-play-card__icon"><.icon name="hero-user-group" /></span>
-          <p>Дружеский · без рейтинга</p>
-          <h2>Свой боевой круг</h2>
-          <span>1v1, 2v2 или до 5v5. Выберите размер команд и колоду событий.</span>
-          <.link id="arena-create-room" navigate={~p"/arena/rooms/new"} class="arena-button">
-            Создать комнату <.icon name="hero-plus" />
-          </.link>
-        </article>
+        <.link id="arena-ranked-queue" navigate={~p"/arena/queue"} class="arena-launch__primary">
+          Найти соперника <.icon name="hero-bolt" />
+        </.link>
+
+        <nav class="arena-launch__shortcuts" aria-label="Быстрые действия">
+          <.link id="arena-create-room" navigate={~p"/arena/rooms/new"}>Свой круг</.link>
+          <.link id="arena-launch-spellbook" navigate={~p"/arena/spellbook"}>Гримуар</.link>
+          <.link id="arena-launch-seats" navigate={~p"/arena/seats"}>Титулы</.link>
+          <.link id="arena-launch-history" navigate={~p"/arena/history"}>История</.link>
+        </nav>
+
+        <div class="arena-school-row" aria-label="Выбранные школы">
+          <span :for={school <- @profile.schools}>{school_label(school)}</span>
+        </div>
+      </section>
+
+      <%!--
+      Standing reasons to come back, right under the button that takes you back
+      in. Nothing here is claimed: a reward that waits behind a button is a chore.
+      --%>
+      <section id="arena-quests" class="arena-section">
+        <div class="arena-section__head">
+          <div>
+            <p>Задачи</p>
+            <h2>Что засчитается сегодня</h2>
+          </div>
+          <span :if={@profile.streak_days > 0} id="arena-streak">
+            Дней подряд: {@profile.streak_days}
+          </span>
+        </div>
+
+        <div class="arena-quest-list">
+          <article
+            :for={quest <- @quests}
+            id={"arena-quest-#{quest.code}"}
+            class={["arena-quest", quest.completed? && "is-done"]}
+          >
+            <div class="arena-quest__copy">
+              <strong>{quest.name}</strong>
+              <span>{quest.description}</span>
+            </div>
+            <div class="arena-quest__meter" aria-hidden="true">
+              <span style={"width: #{quest_percent(quest)}%"} />
+            </div>
+            <span class="arena-quest__count">
+              {min(quest.progress, quest.goal)}/{quest.goal} · +{quest.reward_xp}
+            </span>
+          </article>
+        </div>
       </section>
 
       <section id="arena-open-rooms-section" class="arena-section">
@@ -413,6 +474,9 @@ defmodule MMGOWeb.ArenaLive do
           <article :for={{id, room} <- @streams.open_rooms} id={id} class="arena-room-row">
             <div>
               <strong>{room_name(room)}</strong><span>{room.team_size}v{room.team_size}</span>
+              <em :if={room_rules_summary(room)} class="arena-room-row__rules">
+                {room_rules_summary(room)}
+              </em>
             </div>
             <span>{length(room.members)} / {room.team_size * 2} бойцов</span>
             <.link id={"join-open-room-#{room.id}"} navigate={~p"/arena/rooms/#{room.code}"}>
@@ -457,12 +521,316 @@ defmodule MMGOWeb.ArenaLive do
           Открыть круг заклинаний <.icon name="hero-sparkles" />
         </.link>
       </section>
+
+      <%!-- The lore reads last: it is what the Arena is, not what to do now. --%>
+      <section id="arena-lore" class="arena-lore">
+        <p class="arena-kicker">Бой начинается сейчас</p>
+        <h2>Испытывайте заклинания. Поднимайтесь в рейтинге.</h2>
+        <p>
+          Без похода за зельями и экипировкой: только три выбранные школы,
+          ограниченный гримуар и поле, которое отвечает на вашу магию.
+        </p>
+      </section>
+    </div>
+    """
+  end
+
+  attr :profile, Profile, required: true
+  attr :profiles, :list, required: true
+
+  defp profiles(assigns) do
+    ~H"""
+    <div id="arena-profiles" class="arena-page arena-page--narrow">
+      <.link id="arena-profiles-back" navigate={~p"/arena"} class="arena-back">
+        <.icon name="hero-arrow-left" /> К боям
+      </.link>
+
+      <section class="arena-section">
+        <div class="arena-section__head">
+          <div>
+            <p>Профили Арены</p>
+            <h2>Кем вы выходите на круг</h2>
+          </div>
+        </div>
+        <p class="arena-room-form__hint">
+          Каждый профиль — свои три школы, свой гримуар и своё место в рейтинге.
+          Титул при этом один на игрока: два ваших профиля не займут оба места.
+        </p>
+
+        <div class="arena-room-list">
+          <article
+            :for={profile <- @profiles}
+            id={"arena-profile-#{profile.id}"}
+            class={["arena-room-row", profile.id == @profile.id && "is-current"]}
+          >
+            <div>
+              <strong>{profile.character.name}</strong>
+              <span>{rank_label(profile)} · {profile.rating}</span>
+              <em class="arena-room-row__rules">
+                {Enum.map_join(profile.schools, " · ", &school_label/1)}
+              </em>
+            </div>
+            <span>{profile.wins}–{profile.losses}</span>
+            <span :if={profile.id == @profile.id} class="arena-profile-current">Вы играете им</span>
+            <.form
+              :if={profile.id != @profile.id}
+              for={%{}}
+              action={~p"/arena/profiles/switch"}
+              method="post"
+              id={"arena-switch-profile-#{profile.id}"}
+            >
+              <input type="hidden" name="profile_id" value={profile.id} />
+              <button type="submit">Играть им <.icon name="hero-arrow-right" /></button>
+            </.form>
+          </article>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  attr :profile, Profile, required: true
+  attr :settlement, :map, required: true
+
+  defp result(assigns) do
+    ~H"""
+    <div id="arena-result" class={["arena-page", "arena-page--narrow"]}>
+      <section class={["arena-result", "arena-result--#{@settlement.outcome}"]}>
+        <p class="arena-kicker">{match_mode_label(@settlement.mode)} бой</p>
+        <h1>{outcome_label(@settlement.outcome)}</h1>
+        <p class="arena-result__against">{opponents_label(@settlement.opponents)}</p>
+
+        <%!-- The rank-up moment: the one thing on this screen that gets to glow. --%>
+        <div
+          :if={@settlement.promoted? or @settlement.demoted?}
+          id="arena-result-rank-change"
+          class={[
+            "arena-result__rank",
+            @settlement.promoted? && "arena-result__rank--up",
+            @settlement.demoted? && "arena-result__rank--down"
+          ]}
+        >
+          <span class="arena-result__rank-seal">{Ladder.glyph(@settlement.division_after)}</span>
+          <div>
+            <p>{if @settlement.promoted?, do: "Повышение", else: "Понижение"}</p>
+            <strong>{Ladder.label(@settlement.division_after)}</strong>
+            <small>было — {Ladder.label(@settlement.division_before)}</small>
+          </div>
+        </div>
+
+        <dl class="arena-result__ledger">
+          <div>
+            <dt>Рейтинг</dt>
+            <dd id="arena-result-rating">
+              {@settlement.rating_before} → {@settlement.rating_after}
+              <em>{rating_delta_label(@settlement.rating_delta)}</em>
+            </dd>
+          </div>
+          <div>
+            <dt>Опыт сезона</dt>
+            <dd>+{@settlement.season_xp_gained || 0}</dd>
+          </div>
+          <div>
+            <dt>Всего опыта</dt>
+            <dd>{@profile.season_xp}</dd>
+          </div>
+        </dl>
+
+        <%!-- Straight back into a fight: the queue is one tap from the result. --%>
+        <button
+          id="arena-result-requeue"
+          type="button"
+          phx-click="join_ranked"
+          class="arena-launch__primary"
+        >
+          Ещё бой <.icon name="hero-bolt" />
+        </button>
+
+        <div class="arena-launch__shortcuts">
+          <.link
+            :if={@settlement.replayable?}
+            id="arena-result-replay"
+            navigate={~p"/arena/history/#{@settlement.combat_id}"}
+          >
+            Запись боя
+          </.link>
+          <.link id="arena-result-home" navigate={~p"/arena"}>На Арену</.link>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  attr :history, :list, required: true
+
+  defp history(assigns) do
+    ~H"""
+    <div id="arena-history" class="arena-page arena-page--narrow">
+      <.link id="arena-history-back" navigate={~p"/arena"} class="arena-back">
+        <.icon name="hero-arrow-left" /> К боям
+      </.link>
+
+      <section class="arena-section">
+        <div class="arena-section__head">
+          <div>
+            <p>Прошедшие бои</p>
+            <h2>Чем всё закончилось</h2>
+          </div>
+          <span>хранится {History.retention_days()} дней</span>
+        </div>
+
+        <p :if={@history == []} id="arena-history-empty" class="arena-empty">
+          Вы ещё не провели ни одного боя.
+        </p>
+
+        <div class="arena-room-list">
+          <article
+            :for={entry <- @history}
+            id={"arena-history-#{entry.match_id}"}
+            class={["arena-room-row", "arena-history-row--#{entry.outcome}"]}
+          >
+            <div>
+              <strong>{outcome_label(entry.outcome)}</strong>
+              <span>{opponents_label(entry.opponents)}</span>
+              <em class="arena-room-row__rules">{match_mode_label(entry.mode)}</em>
+            </div>
+            <span class="arena-history-delta">{rating_delta_label(entry.rating_delta)}</span>
+            <.link
+              :if={entry.replayable?}
+              id={"arena-replay-#{entry.match_id}"}
+              navigate={~p"/arena/history/#{entry.combat_id}"}
+            >
+              Запись <.icon name="hero-arrow-right" />
+            </.link>
+          </article>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  attr :replay, :map, required: true
+  attr :turn, :integer, required: true
+
+  defp replay(assigns) do
+    ~H"""
+    <div id="arena-replay" class="arena-page arena-page--narrow">
+      <.link id="arena-replay-back" navigate={~p"/arena/history"} class="arena-back">
+        <.icon name="hero-arrow-left" /> К истории
+      </.link>
+
+      <section class="arena-section">
+        <div class="arena-section__head">
+          <div>
+            <p>Запись боя · зерно {@replay.seed}</p>
+            <h2>Ход {@turn} из {length(@replay.turns)}</h2>
+          </div>
+        </div>
+
+        <%= if current_turn(@replay, @turn) do %>
+          <article id="arena-replay-turn" class="arena-replay-turn">
+            <p class="arena-replay-turn__narration">
+              {current_turn(@replay, @turn).narration || "Хроника этого хода не сохранилась."}
+            </p>
+
+            <ol class="arena-replay-events">
+              <li :for={event <- current_turn(@replay, @turn).events} id={"replay-event-#{event.id}"}>
+                <span>{event.sequence}</span>
+                <strong>{replay_event_label(event.event_type)}</strong>
+              </li>
+            </ol>
+          </article>
+        <% end %>
+
+        <div class="arena-replay-controls">
+          <button
+            id="arena-replay-prev"
+            type="button"
+            phx-click="replay_step"
+            phx-value-to={@turn - 1}
+            disabled={@turn <= 1}
+          >
+            <.icon name="hero-arrow-left" /> Назад
+          </button>
+          <button
+            id="arena-replay-next"
+            type="button"
+            phx-click="replay_step"
+            phx-value-to={@turn + 1}
+            disabled={@turn >= length(@replay.turns)}
+          >
+            Вперёд <.icon name="hero-arrow-right" />
+          </button>
+        </div>
+      </section>
+    </div>
+    """
+  end
+
+  attr :profile, Profile, required: true
+  attr :champion, :any, required: true
+  attr :deputy, :any, required: true
+  attr :champion_challenge, :any, required: true
+  attr :deputy_challenge, :any, required: true
+  attr :own_seat, :any, required: true
+
+  defp seats(assigns) do
+    ~H"""
+    <div id="arena-seats" class="arena-page arena-page--narrow">
+      <.link id="arena-seats-back" navigate={~p"/arena"} class="arena-back">
+        <.icon name="hero-arrow-left" /> К боям
+      </.link>
+
+      <section class="arena-section">
+        <div class="arena-section__head">
+          <div>
+            <p>Вершина лестницы</p>
+            <h2>Чемпион и его наместник</h2>
+          </div>
+        </div>
+        <p class="arena-room-form__hint">
+          Наверху не разряд, а два места. Наместника вызывают первым: победа над ним
+          открывает право вызвать чемпиона, и это право сгорает через {Titles.gauntlet_right_days()} дня.
+          Вызов на титул нельзя отклонить — оставленный без ответа {Titles.unanswered_challenge_days()} дней,
+          он засчитывается вызывающему.
+        </p>
+
+        <div class="arena-seat-grid">
+          <article id="arena-seat-champion" class="arena-seat-card arena-seat-card--champion">
+            <span class="arena-seat-card__seal">{Ladder.glyph(:champion)}</span>
+            <p>Чемпион</p>
+            <strong>{seat_holder_name(@champion)}</strong>
+            <small>{seat_note(@champion, @champion_challenge)}</small>
+          </article>
+
+          <article id="arena-seat-deputy" class="arena-seat-card">
+            <span class="arena-seat-card__seal">{Ladder.glyph(:archmage)}</span>
+            <p>Наместник</p>
+            <strong>{seat_holder_name(@deputy)}</strong>
+            <small>{seat_note(@deputy, @deputy_challenge)}</small>
+          </article>
+        </div>
+
+        <p :if={@own_seat} id="arena-own-seat" class="arena-alert">
+          <.icon name="hero-sparkles" /> Вы держите место: {seat_label(@own_seat)}.
+        </p>
+
+        <p :if={is_nil(@own_seat)} id="arena-gauntlet-eligibility" class="arena-room-form__hint">
+          <%= if Titles.eligible_to_challenge?(@profile) do %>
+            Ваш разряд открывает путь к титулу: вызов начинается с наместника.
+          <% else %>
+            Путь к титулу открыт с разряда «{Ladder.label(Titles.eligible_division())}».
+            Сейчас ваш — «{rank_label(@profile)}».
+          <% end %>
+        </p>
+      </section>
     </div>
     """
   end
 
   attr :profile, Profile, required: true
   attr :current_match, :any, required: true
+  attr :queue, :map, required: true
 
   defp queue(assigns) do
     ~H"""
@@ -475,6 +843,15 @@ defmodule MMGOWeb.ArenaLive do
         <div class="arena-queue-stage__runes" aria-hidden="true"><span>ᛟ</span><span>ᚨ</span></div>
         <p>Ранговый поединок · сезон {@profile.season}</p>
         <h1>{rank_label(@profile)} · {@profile.rating}</h1>
+
+        <%!--
+        A silent queue looks broken. These are measured numbers, not comfort:
+        who is waiting, who is already fighting, and how long the last pairings
+        actually took.
+        --%>
+        <p id="arena-queue-population" class="arena-queue-population">
+          Ждут: {@queue.waiting} · В бою: {@queue.fighting} · {wait_estimate_label(@queue)}
+        </p>
 
         <%= if @current_match && @current_match.status == :queued do %>
           <div id="arena-searching" class="arena-searching">
@@ -585,7 +962,54 @@ defmodule MMGOWeb.ArenaLive do
         </section>
 
         <section class="arena-room-form__panel">
-          <h2>II · События поля</h2>
+          <h2>II · Особые правила</h2>
+          <p class="arena-room-form__hint">
+            Дружеская комната — единственное место, где ограничения Арены можно снять
+            намеренно. В ранговых боях они действуют всегда.
+          </p>
+          <div class="arena-form-grid">
+            <.input
+              field={@form[:grimoire]}
+              id="arena-rule-grimoire"
+              type="select"
+              label="Гримуар"
+              options={[
+                {"Как обычно · только подготовленное", "prepared"},
+                {"Без гримуара · любое своё заклинание", "free"}
+              ]}
+            />
+            <.input
+              field={@form[:mana]}
+              id="arena-rule-mana"
+              type="select"
+              label="Мана"
+              options={[
+                {"Как обычно · запас и восстановление", "standard"},
+                {"Без маны · ничего не тратится", "unlimited"}
+              ]}
+            />
+            <.input
+              field={@form[:rank]}
+              id="arena-rule-rank"
+              type="select"
+              label="Ранг"
+              options={[
+                {"Без ограничений · любое своё заклинание", "free"},
+                {"Как в ранговом бою · по своему рангу", "own"}
+              ]}
+            />
+            <.input
+              field={@form[:rank_cap]}
+              id="arena-rule-rank-cap"
+              type="select"
+              label="Потолок ранга заклинаний"
+              options={rank_cap_options()}
+            />
+          </div>
+        </section>
+
+        <section class="arena-room-form__panel">
+          <h2>III · События поля</h2>
           <.input
             field={@form[:event_policy]}
             id="arena-event-policy"
@@ -669,6 +1093,10 @@ defmodule MMGOWeb.ArenaLive do
             <div>
               <dt>Рейтинг</dt>
               <dd>Не меняется</dd>
+            </div>
+            <div :if={room_rules_summary(@room)} id="arena-room-rules">
+              <dt>Особые правила</dt>
+              <dd>{room_rules_summary(@room)}</dd>
             </div>
           </dl>
         </header>
@@ -860,8 +1288,79 @@ defmodule MMGOWeb.ArenaLive do
     socket
     |> assign(:page_title, "Арена")
     |> assign(:profile, profile)
+    |> assign(:profile_count, length(account_profiles(profile)))
+    |> assign(:quests, Quests.board_for(profile))
     |> assign(:current_match, Arena.active_match_for_profile(profile))
     |> stream(:open_rooms, Arena.list_open_rooms(), reset: true)
+  end
+
+  defp load_profiles(socket) do
+    socket
+    |> assign(:page_title, "Профили Арены")
+    |> assign(:profiles, account_profiles(socket.assigns.profile))
+  end
+
+  defp load_seats(socket) do
+    season = socket.assigns.profile.season
+
+    socket
+    |> assign(:page_title, "Титулы Арены")
+    |> assign(:champion, Titles.holder(:champion, season))
+    |> assign(:deputy, Titles.holder(:deputy, season))
+    |> assign(:champion_challenge, Titles.open_challenge(:champion, season))
+    |> assign(:deputy_challenge, Titles.open_challenge(:deputy, season))
+    |> assign(:own_seat, Titles.seat_held_by(socket.assigns.profile, season))
+  end
+
+  defp account_profiles(%Profile{account_id: account_id}),
+    do: Arena.list_profiles_for_account(account_id)
+
+  defp load_result(socket, match_id) do
+    case History.settlement(socket.assigns.profile, match_id) do
+      nil ->
+        socket
+        |> put_flash(:error, "Этот бой ещё не подведён.")
+        |> push_navigate(to: ~p"/arena")
+
+      settlement ->
+        socket
+        |> assign(:page_title, "Итог боя")
+        |> assign(:settlement, settlement)
+        |> assign(:profile, Arena.get_profile!(socket.assigns.profile.id))
+    end
+  end
+
+  defp load_history(socket) do
+    socket
+    |> assign(:page_title, "История боёв")
+    |> assign(:history, History.list_for_profile(socket.assigns.profile))
+  end
+
+  # A replay is only readable by someone who fought it: the record of a match is
+  # not public, and a combat id from elsewhere must not open one.
+  defp load_replay(socket, combat_id) do
+    own? =
+      socket.assigns.profile
+      |> History.list_for_profile(100)
+      |> Enum.any?(&(&1.combat_id == combat_id))
+
+    case own? && History.replay(combat_id) do
+      nil ->
+        socket
+        |> put_flash(:error, "Этот бой больше не хранится.")
+        |> push_navigate(to: ~p"/arena/history")
+
+      false ->
+        socket
+        |> put_flash(:error, "Это не ваш бой.")
+        |> push_navigate(to: ~p"/arena/history")
+
+      replay ->
+        socket
+        |> assign(:page_title, "Запись боя")
+        |> assign(:replay, replay)
+        |> assign(:replay_turn, 1)
+    end
   end
 
   defp load_queue(socket) do
@@ -878,6 +1377,7 @@ defmodule MMGOWeb.ArenaLive do
         socket
         |> assign(:page_title, "Ранговый бой")
         |> assign(:current_match, match)
+        |> assign(:queue_snapshot, Arena.queue_snapshot(socket.assigns.profile.season))
     end
   end
 
@@ -968,6 +1468,10 @@ defmodule MMGOWeb.ArenaLive do
         "description" => "Экспериментируем с формулами и событиями поля.",
         "team_size" => "1",
         "turn_seconds" => "45",
+        "grimoire" => "prepared",
+        "mana" => "standard",
+        "rank" => "free",
+        "rank_cap" => "",
         "event_policy" => "random",
         "event_codes" => ArenaEvents.event_codes()
       },
@@ -995,19 +1499,9 @@ defmodule MMGOWeb.ArenaLive do
       Enum.all?(room.members, & &1.ready)
   end
 
-  defp rank_label(profile), do: Map.fetch!(@rank_labels, Arena.rank(profile))
+  defp rank_label(profile), do: profile |> Arena.rank() |> Ladder.label()
 
-  defp rank_glyph(profile) do
-    case Arena.rank(profile) do
-      :initiate -> "◇"
-      :bronze -> "◆"
-      :silver -> "✦"
-      :gold -> "✺"
-      :platinum -> "✧"
-      :diamond -> "◈"
-      :archmage -> "✹"
-    end
-  end
+  defp rank_glyph(profile), do: profile |> Arena.rank() |> Ladder.glyph()
 
   defp school_label(school), do: Map.get(@school_labels, school, to_string(school))
 
@@ -1022,6 +1516,83 @@ defmodule MMGOWeb.ArenaLive do
 
   defp room_turn_seconds(%Match{settings: settings}),
     do: Map.get(settings || %{}, "turn_seconds", 45)
+
+  defp current_turn(replay, number), do: Enum.find(replay.turns, &(&1.number == number))
+
+  defp quest_percent(%{progress: progress, goal: goal}) when is_integer(goal) and goal > 0,
+    do: progress |> Kernel./(goal) |> Kernel.*(100) |> round() |> min(100) |> max(0)
+
+  defp quest_percent(_quest), do: 0
+
+  defp wait_estimate_label(%{estimated_wait_seconds: nil}), do: "Ожидание пока не измерено"
+
+  defp wait_estimate_label(%{estimated_wait_seconds: seconds}) when seconds < 60,
+    do: "Обычно ждут около #{seconds} сек."
+
+  defp wait_estimate_label(%{estimated_wait_seconds: seconds}),
+    do: "Обычно ждут около #{div(seconds, 60)} мин."
+
+  defp outcome_label(:win), do: "Победа"
+  defp outcome_label(:loss), do: "Поражение"
+  defp outcome_label(_outcome), do: "Ничья"
+
+  defp opponents_label([]), do: "соперник неизвестен"
+  defp opponents_label(names), do: "против " <> Enum.join(names, ", ")
+
+  defp match_mode_label(:ranked), do: "ранговый"
+  defp match_mode_label(_mode), do: "дружеский"
+
+  defp rating_delta_label(nil), do: "—"
+  defp rating_delta_label(0), do: "±0"
+  defp rating_delta_label(delta) when delta > 0, do: "+#{delta}"
+  defp rating_delta_label(delta), do: to_string(delta)
+
+  defp replay_event_label("spell_cast"), do: "заклинание сработало"
+  defp replay_event_label("partial_spell_cast"), do: "заклинание сработало вполсилы"
+  defp replay_event_label("spell_failed"), do: "заклинание сорвалось"
+  defp replay_event_label("spell_negated"), do: "поле поглотило заклинание"
+  defp replay_event_label("insufficient_mana"), do: "не хватило маны"
+  defp replay_event_label("manifestation_strike"), do: "удар призванным оружием"
+  defp replay_event_label("manifestation_strike_missed"), do: "промах призванным оружием"
+  defp replay_event_label("manifestation_upkeep"), do: "проявления требуют маны"
+  defp replay_event_label("guard_raised"), do: "защита выставлена"
+  defp replay_event_label("parry_failed"), do: "парирование не удалось"
+  defp replay_event_label("summon_action"), do: "призванный союзник атаковал"
+  defp replay_event_label("summon_action_missed"), do: "призванный союзник промахнулся"
+  defp replay_event_label("summon_destroyed"), do: "проявление рассеялось"
+  defp replay_event_label("arena_event"), do: "поле Арены изменилось"
+  defp replay_event_label("state_tick"), do: "состояние изменило поле боя"
+  defp replay_event_label("environment_hazard_tick"), do: "опасная среда наносит урон"
+  defp replay_event_label("action_blocked"), do: "действие сорвалось"
+  defp replay_event_label("wait"), do: "сторона выждала"
+  defp replay_event_label("fled"), do: "участник отступил"
+  defp replay_event_label(event_type), do: event_type
+
+  defp seat_holder_name(%{profile: %Profile{character: %{name: name}}}), do: name
+  defp seat_holder_name(_seat), do: "место свободно"
+
+  defp seat_note(nil, _challenge), do: "Никто не держит его в этом сезоне."
+
+  defp seat_note(_seat, nil), do: "Вызова нет."
+
+  defp seat_note(_seat, challenge),
+    do: "Вызов принят: «#{challenge.challenger_profile.character.name}» ждёт боя."
+
+  defp seat_label(:champion), do: "чемпион"
+  defp seat_label(:deputy), do: "наместник"
+  defp seat_label(_seat), do: "место"
+
+  defp room_rules_summary(%Match{settings: settings}) do
+    settings
+    |> Kernel.||(%{})
+    |> Map.get("rules", %{})
+    |> RoomRules.normalize()
+    |> RoomRules.summary()
+  end
+
+  defp rank_cap_options do
+    [{"Без потолка", ""}] ++ Enum.map(Ladder.keys(), &{Ladder.label(&1), to_string(&1)})
+  end
 
   defp event_policy_label(:random), do: "Случайно"
   defp event_policy_label(:fixed), do: "По колоде"

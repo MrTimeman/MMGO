@@ -1,5 +1,24 @@
 /* Combat-first Arena: obsidian stage, restrained gold, and readable team state. */
+
+/* Arena palette, derived from the app tokens rather than invented: the stage is
+   the world's near-black pulled a step cooler and violet, the ink is the world's
+   stone text cooled to match, and gold stays exactly the parchment gold so it
+   still reads as magic and importance wherever it appears.
+   Blocks written before this palette still carry their literals; new work uses
+   the tokens. */
 .arena-shell {
+  --arena-void: #0c0910;
+  --arena-stage: rgb(23 18 27 / 80%);
+  --arena-ink: #e9e4ed;
+  --arena-ink-dim: #a99eae;
+  --arena-ink-faint: #887f8d;
+  --arena-gold: var(--parch-gold-glow);
+  --arena-gold-deep: #d8b45d;
+  --arena-gold-ink: #dbb863;
+  --arena-violet: rgb(131 73 177 / 26%);
+  --arena-violet-light: #b79ad6;
+  --arena-hairline: rgb(255 255 255 / 10%);
+
   min-height: 100svh;
   background:
     radial-gradient(circle at 50% -8rem, rgb(126 75 174 / 25%), transparent 38rem),
@@ -54,6 +73,101 @@
 .arena-back > span { width: 1rem; height: 1rem; }
 .arena-kicker, .arena-page-title > p, .arena-section__head p, .arena-summons > div p:first-child { color: #dbb863; font-size: 0.68rem; font-weight: 700; letter-spacing: 0.2em; text-transform: uppercase; }
 
+/* Launch block — standing, then the queue button, then everything else. It is
+   deliberately short: at 375px the primary action has to clear the fold. */
+.arena-launch { padding: clamp(1rem, 4vw, 1.6rem); border: 1px solid rgb(226 190 111 / 22%); background: radial-gradient(circle at 88% 0%, var(--arena-violet), transparent 18rem), linear-gradient(145deg, rgb(28 20 34 / 90%), rgb(15 11 18 / 92%)); box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 35%); }
+.arena-launch__standing { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 0.9rem; }
+.arena-launch__seal { display: grid; width: 3.4rem; height: 3.4rem; place-items: center; border: 1px solid var(--arena-gold-deep); border-radius: 50%; box-shadow: 0 0 1.6rem rgb(232 197 106 / 18%); color: var(--arena-gold); font-size: 1.5rem; }
+.arena-launch__figures p { color: var(--arena-gold-ink); font-family: var(--font-sans); font-size: 0.7rem; letter-spacing: 0.14em; text-transform: uppercase; }
+/* The rating is the one display number on the screen: serif, like a title. */
+.arena-launch__figures strong { display: block; color: var(--arena-ink); font-family: var(--font-serif); font-size: 2rem; line-height: 1.1; }
+.arena-launch__figures small { display: block; color: var(--arena-ink-faint); font-size: 0.75rem; }
+.arena-launch__figures small#arena-placements { color: var(--arena-violet-light); }
+.arena-launch__switch { display: grid; width: 2.75rem; height: 2.75rem; place-items: center; border: 1px solid var(--arena-hairline); border-radius: 50%; color: var(--arena-ink-dim); transition: color 0.18s ease, border-color 0.18s ease; }
+.arena-launch__switch:hover { border-color: var(--arena-gold-deep); color: var(--arena-gold); }
+.arena-launch__switch > span { width: 1.05rem; height: 1.05rem; }
+.arena-launch__primary { display: flex; min-height: 3.25rem; margin-top: 1rem; align-items: center; justify-content: center; gap: 0.5rem; border: 1px solid var(--arena-gold-deep); background: linear-gradient(120deg, rgb(232 197 106 / 22%), var(--arena-violet)); color: var(--parch-paper-light); font-family: var(--font-serif); font-size: 1.05rem; text-decoration: none; transition: background 0.18s ease, transform 0.18s ease; }
+.arena-launch__primary:hover { background: linear-gradient(120deg, rgb(232 197 106 / 32%), rgb(131 73 177 / 32%)); }
+.arena-launch__primary:active { transform: translateY(1px); }
+.arena-launch__primary > span { width: 1.1rem; height: 1.1rem; }
+.arena-launch__shortcuts { display: grid; margin-top: 0.6rem; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; }
+.arena-launch__shortcuts a { display: grid; min-height: 2.75rem; place-items: center; border: 1px solid var(--arena-hairline); color: var(--arena-ink-dim); font-size: 0.78rem; text-decoration: none; transition: color 0.18s ease, background 0.18s ease; }
+.arena-launch__shortcuts a:hover { background: rgb(255 255 255 / 6%); color: var(--arena-ink); }
+
+.arena-lore { margin-top: 3rem; padding-top: 1.6rem; border-top: 1px solid rgb(255 255 255 / 8%); }
+.arena-lore h2 { margin-top: 0.5rem; color: var(--arena-ink); font-family: var(--font-serif); font-size: clamp(1.5rem, 4vw, 2.2rem); line-height: 1.15; }
+.arena-lore p:last-child { max-width: 43rem; margin-top: 0.8rem; color: var(--arena-ink-dim); line-height: 1.6; }
+
+.arena-seat-grid { display: grid; margin-top: 1.2rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.9rem; }
+.arena-seat-card { display: flex; padding: 1.2rem; align-items: center; flex-direction: column; border: 1px solid var(--arena-hairline); background: var(--arena-stage); text-align: center; }
+.arena-seat-card--champion { border-color: rgb(232 197 106 / 40%); box-shadow: inset 0 0 3rem rgb(111 64 147 / 18%); }
+.arena-seat-card__seal { display: grid; width: 3rem; height: 3rem; place-items: center; border: 1px solid rgb(232 197 106 / 45%); border-radius: 50%; color: var(--arena-gold); font-size: 1.3rem; }
+.arena-seat-card p { margin-top: 0.6rem; color: var(--arena-gold-ink); font-family: var(--font-sans); font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; }
+.arena-seat-card strong { margin-top: 0.2rem; color: var(--arena-ink); font-family: var(--font-serif); font-size: 1.05rem; }
+.arena-seat-card small { margin-top: 0.4rem; color: var(--arena-ink-faint); font-size: 0.75rem; line-height: 1.5; }
+
+/* The moment after a fight. One focal point: the outcome, then the arithmetic
+   under it, then the way straight back into the queue. */
+.arena-result { padding: clamp(1.2rem, 5vw, 2rem); border: 1px solid var(--arena-hairline); background: radial-gradient(circle at 50% 0%, var(--arena-violet), transparent 20rem), linear-gradient(160deg, rgb(28 20 34 / 92%), rgb(15 11 18 / 94%)); text-align: center; }
+.arena-result h1 { margin-top: 0.4rem; color: var(--arena-ink); font-family: var(--font-serif); font-size: clamp(2rem, 8vw, 3rem); line-height: 1.1; }
+.arena-result--win h1 { color: var(--parch-gold-glow); }
+.arena-result--loss h1 { color: var(--arena-ink-dim); }
+.arena-result__against { margin-top: 0.4rem; color: var(--arena-ink-faint); font-size: 0.82rem; }
+.arena-result__rank { display: grid; margin-top: 1.4rem; padding: 0.9rem; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 0.9rem; border: 1px solid rgb(232 197 106 / 40%); background: rgb(7 5 9 / 55%); text-align: left; }
+.arena-result__rank--up { animation: arena-rank-rise 900ms ease both; }
+.arena-result__rank--down { border-color: rgb(239 68 68 / 35%); }
+.arena-result__rank-seal { display: grid; width: 3rem; height: 3rem; place-items: center; border: 1px solid var(--arena-gold-deep); border-radius: 50%; color: var(--arena-gold); font-size: 1.4rem; }
+.arena-result__rank p { color: var(--arena-gold-ink); font-family: var(--font-sans); font-size: 0.7rem; letter-spacing: 0.16em; text-transform: uppercase; }
+.arena-result__rank strong { display: block; color: var(--arena-ink); font-family: var(--font-serif); font-size: 1.2rem; }
+.arena-result__rank small { color: var(--arena-ink-faint); font-size: 0.75rem; }
+.arena-result__ledger { display: grid; margin-top: 1.2rem; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.6rem; border-top: 1px solid var(--arena-hairline); padding-top: 1rem; }
+.arena-result__ledger dt { color: var(--arena-ink-faint); font-family: var(--font-sans); font-size: 0.7rem; letter-spacing: 0.1em; text-transform: uppercase; }
+.arena-result__ledger dd { margin-top: 0.25rem; color: var(--arena-ink); font-variant-numeric: tabular-nums; }
+.arena-result__ledger em { display: block; color: var(--arena-gold); font-size: 0.82rem; font-style: normal; }
+.arena-result .arena-launch__primary { width: 100%; }
+
+@keyframes arena-rank-rise {
+  from { opacity: 0; transform: translateY(0.6rem); }
+  to { opacity: 1; transform: none; }
+}
+
+.arena-queue-population { margin-top: 0.8rem; color: var(--arena-ink-dim); font-size: 0.78rem; }
+
+/* Quests: a quiet ledger of things already worth doing, not a shop window. */
+.arena-quest-list { display: grid; margin-top: 1rem; gap: 0.5rem; }
+.arena-quest { display: grid; padding: 0.8rem 1rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.3rem 1rem; border: 1px solid var(--arena-hairline); background: var(--arena-stage); }
+.arena-quest.is-done { border-color: rgb(34 197 94 / 35%); }
+.arena-quest__copy strong { display: block; color: var(--arena-ink); font-family: var(--font-serif); }
+.arena-quest__copy span { color: var(--arena-ink-faint); font-size: 0.75rem; }
+.arena-quest__count { color: var(--arena-gold-ink); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arena-quest__meter { grid-column: 1 / -1; height: 3px; margin-top: 0.4rem; border-radius: 999px; background: rgb(255 255 255 / 7%); overflow: hidden; }
+.arena-quest__meter > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--arena-gold-deep), var(--arena-violet-light)); transition: width 220ms ease; }
+.arena-quest.is-done .arena-quest__meter > span { background: var(--color-safe); }
+
+/* History reads as a ledger: the outcome carries the colour, the delta the
+   arithmetic, and nothing else competes for attention. */
+.arena-history-row--win { border-left: 3px solid var(--color-safe); }
+.arena-history-row--loss { border-left: 3px solid var(--color-danger); }
+.arena-history-row--draw { border-left: 3px solid var(--arena-ink-faint); }
+.arena-history-delta { font-family: var(--font-mono); font-variant-numeric: tabular-nums; }
+
+.arena-replay-turn { padding: 1.1rem; border: 1px solid var(--arena-hairline); background: var(--arena-stage); }
+.arena-replay-turn__narration { color: var(--arena-ink); font-family: var(--font-serif); line-height: 1.6; }
+.arena-replay-events { display: grid; margin-top: 1rem; gap: 0.35rem; border-top: 1px solid var(--arena-hairline); padding-top: 0.9rem; }
+.arena-replay-events li { display: grid; grid-template-columns: 1.6rem minmax(0, 1fr); align-items: baseline; gap: 0.6rem; }
+.arena-replay-events span { color: var(--arena-ink-faint); font-family: var(--font-mono); font-size: 0.72rem; }
+.arena-replay-events strong { color: var(--arena-ink-dim); font-size: 0.82rem; font-weight: 400; }
+.arena-replay-controls { display: grid; margin-top: 0.9rem; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 0.4rem; }
+.arena-replay-controls button { display: inline-flex; min-height: 2.75rem; align-items: center; justify-content: center; gap: 0.4rem; border: 1px solid var(--arena-hairline); color: var(--arena-ink-dim); font-size: 0.82rem; transition: color 0.18s ease, background 0.18s ease; }
+.arena-replay-controls button:hover:not(:disabled) { background: rgb(255 255 255 / 6%); color: var(--arena-ink); }
+.arena-replay-controls button:disabled { opacity: 0.4; }
+.arena-replay-controls button > span { width: 1rem; height: 1rem; }
+
+.arena-room-row.is-current { border-color: rgb(232 197 106 / 40%); }
+.arena-profile-current { color: var(--arena-gold-deep); font-size: 0.75rem; }
+.arena-room-row form button { display: inline-flex; min-height: 2.75rem; align-items: center; gap: 0.35rem; color: var(--arena-gold); font-size: 0.78rem; }
+.arena-room-row form button > span { width: 0.9rem; height: 0.9rem; }
+
 .arena-hero { display: grid; padding: clamp(1.4rem, 4vw, 3rem); grid-template-columns: minmax(0, 1fr) minmax(15rem, 21rem); align-items: center; gap: clamp(1.5rem, 5vw, 4rem); border: 1px solid rgb(226 190 111 / 22%); background: radial-gradient(circle at 92% 12%, rgb(131 73 177 / 28%), transparent 22rem), linear-gradient(145deg, rgb(28 20 34 / 90%), rgb(15 11 18 / 92%)); box-shadow: 0 1.5rem 4rem rgb(0 0 0 / 35%); }
 .arena-hero__copy h1 { margin-top: 0.55rem; color: #faf6fb; font-family: var(--font-serif); font-size: clamp(2.1rem, 5vw, 4rem); line-height: 1.02; }
 .arena-hero__copy > p:last-of-type { max-width: 43rem; margin-top: 1rem; color: #ada3b2; line-height: 1.6; }
@@ -105,6 +219,8 @@
 .arena-room-row span { color: #8f8595; font-size: 0.72rem; }
 .arena-room-row a { display: inline-flex; align-items: center; gap: 0.35rem; color: #e8c56a; text-decoration: none; }
 .arena-room-row a > span { width: 0.9rem; height: 0.9rem; }
+.arena-room-row__rules { color: var(--arena-violet-light); font-size: 0.7rem; font-style: normal; letter-spacing: 0.04em; }
+.arena-room-form__hint { margin-bottom: 0.9rem; color: var(--arena-ink-dim); font-size: 0.78rem; line-height: 1.5; }
 .arena-empty { color: #847a8a; text-align: center; }
 
 .arena-event-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0.75rem; }
@@ -219,6 +335,10 @@
   .arena-nav__brand small { display: none; }
   .arena-nav__profile > strong { font-size: 0.82rem; }
   .arena-page { width: min(100% - 0.9rem, 76rem); }
+  /* The launch block is the fold budget: standing, button, shortcuts, schools. */
+  .arena-page:has(#arena-launch) { padding-top: 1rem; }
+  .arena-seat-grid { grid-template-columns: 1fr; }
+  .arena-room-row.is-current > span { display: inline; }
   .arena-hero, .arena-play-card, .arena-room-form__panel { padding: 1rem; }
   .arena-room-row { grid-template-columns: 1fr auto; }
   .arena-room-row > span { display: none; }
@@ -232,4 +352,5 @@
 @media (prefers-reduced-motion: reduce) {
   .arena-searching__orb { animation: none; }
   .arena-play-card, .arena-button { transition: none; }
+  .arena-result__rank--up { animation: none; }
 }

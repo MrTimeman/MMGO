@@ -4,6 +4,7 @@ defmodule MMGO.Spells.Spell do
   import Ecto.Changeset
 
   alias MMGO.Accounts.Character
+  alias MMGO.Arena.Ladder
 
   alias MMGO.Spells.{
     CreationAttempt,
@@ -44,7 +45,9 @@ defmodule MMGO.Spells.Spell do
     field :school, Ecto.Enum, values: @schools
     field :school_quirk, Ecto.Enum, values: SchoolQuirk.values()
     field :description, :string
-    field :level_requirement, :integer, default: 1
+    # What the formula earned. Craft sets power; power sets the rank allowed to
+    # wield the spell. See `MMGO.Spells.Compiler.craft_ceiling/2`.
+    field :power, :integer, default: 1
     field :fatigue_cost, :integer, default: 0
     field :cooldown_turns, :integer, default: 0
     field :targeting, Ecto.Enum, values: @targeting_modes
@@ -76,7 +79,7 @@ defmodule MMGO.Spells.Spell do
       :school,
       :school_quirk,
       :description,
-      :level_requirement,
+      :power,
       :fatigue_cost,
       :cooldown_turns,
       :targeting,
@@ -99,7 +102,7 @@ defmodule MMGO.Spells.Spell do
     |> validate_length(:name, min: 3, max: 120)
     |> validate_length(:formula, min: 3, max: 180)
     |> validate_length(:description, max: @max_description_length)
-    |> validate_number(:level_requirement, greater_than_or_equal_to: 1)
+    |> validate_number(:power, greater_than_or_equal_to: 1)
     |> validate_number(:fatigue_cost, greater_than_or_equal_to: 0)
     |> validate_number(:cooldown_turns, greater_than_or_equal_to: 0)
     |> cast_embed(:effects, required: true, with: &SpellEffect.changeset/2)
@@ -160,6 +163,14 @@ defmodule MMGO.Spells.Spell do
   def effect_states do
     SpellEffect.supported_states()
   end
+
+  @doc """
+  The division a caster must hold to wield this spell.
+
+  Craft decides how strong a spell is, rank decides who may cast it. A spell
+  forged above the crafter's rank is legal the moment they rank into it.
+  """
+  def rank_requirement(%__MODULE__{power: power}), do: Ladder.division_for_power(power)
 
   defp validate_school_quirk(changeset) do
     school = get_field(changeset, :school)

@@ -79,9 +79,9 @@ defmodule MMGO.Combat.SchoolQuirkTest do
            end)
   end
 
-  test "death harvests an enemy state into fatigue recovery" do
+  test "death harvests an enemy state back into the caster's mana" do
     death = spell(:death, :harvest, effect("exposed", 2, 0, 1))
-    attacker = %{participant("p1", "attackers") | fatigue: 10}
+    attacker = %{participant("p1", "attackers") | mana: 40}
 
     defender = %{
       participant("p2", "defenders")
@@ -97,10 +97,11 @@ defmodule MMGO.Combat.SchoolQuirkTest do
 
     assert cast.payload["school_quirk"]["details"] == %{
              "consumed_state" => "frozen",
-             "recovered_fatigue" => 4
+             "recovered_mana" => 4
            }
 
-    assert updated_participant(resolution, "p1").fatigue == 10
+    # 40 in the pool, 10 back at the start of the turn, 4 harvested, 4 spent.
+    assert updated_participant(resolution, "p1").mana == 50
 
     refute Enum.any?(
              updated_participant(resolution, "p2").active_states,
@@ -161,7 +162,9 @@ defmodule MMGO.Combat.SchoolQuirkTest do
       position: 0,
       status: :ready,
       combat_level: 10,
-      fatigue: 0,
+      max_mana: 100,
+      mana: 100,
+      locked_mana: 0,
       cooldowns: %{},
       active_states: [],
       character: %Character{id: "character-#{id}", level: 10}

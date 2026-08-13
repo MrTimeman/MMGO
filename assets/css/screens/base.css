@@ -455,8 +455,8 @@ a.bse-station:hover {
 
 .bse-root--live .bse-exit {
   position: fixed;
-  top: max(0.75rem, env(safe-area-inset-top));
-  left: max(0.75rem, env(safe-area-inset-left));
+  top: max(0.75rem, var(--safe-top));
+  left: max(0.75rem, var(--safe-left));
 }
 
 .bse-hero--live {

@@ -6012,7 +6012,7 @@ defmodule MMGO.Play do
         formula: "Ignis Minima",
         school: :fire,
         description: "Небольшое учебное пламя для первого боя.",
-        level_requirement: 1,
+        power: 1,
         fatigue_cost: 2,
         cooldown_turns: 1,
         targeting: :enemy,

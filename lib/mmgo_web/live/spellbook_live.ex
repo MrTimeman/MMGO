@@ -8,8 +8,9 @@ defmodule MMGOWeb.SpellbookLive do
   """
   use MMGOWeb, :live_view
 
+  alias MMGO.Arena.Ladder
   alias MMGO.Play
-  alias MMGO.Spells.{Creation, SpellFailure}
+  alias MMGO.Spells.{Creation, Spell, SpellFailure}
   alias MMGO.Travel.Clock
 
   @max_visible_rejection_bytes 360
@@ -618,8 +619,8 @@ defmodule MMGOWeb.SpellbookLive do
                         </div>
                         <div class="splist__stat-grid">
                           <div class="splist__stat">
-                            <span class="splist__stat-label">Уровень</span>
-                            <span class="splist__stat-value">{spell.level_requirement}+</span>
+                            <span class="splist__stat-label">Ранг</span>
+                            <span class="splist__stat-value">{rank_requirement_label(spell)}</span>
                           </div>
                           <div class="splist__stat">
                             <span class="splist__stat-label">Утомление</span>
@@ -919,6 +920,11 @@ defmodule MMGOWeb.SpellbookLive do
        do: "здоровье #{hp}, сила #{power}, #{duration} х."
 
   defp manifestation_stats(_manifestation), do: "ограничено длительностью дуэли"
+
+  # Craft decides how strong a spell is; the rank it earned decides who may
+  # wield it outside a custom room.
+  defp rank_requirement_label(%Spell{} = spell),
+    do: spell |> Spell.rank_requirement() |> Ladder.label()
 
   defp delivery_form_label(:single_target), do: "одна цель"
   defp delivery_form_label(:beam), do: "луч"

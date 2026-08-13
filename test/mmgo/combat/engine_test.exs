@@ -902,7 +902,7 @@ defmodule MMGO.Combat.EngineTest do
     second_attacker = %{
       attacker
       | active_states: first.participant_updates[attacker.id].active_states,
-        fatigue: first.participant_updates[attacker.id].fatigue,
+        mana: first.participant_updates[attacker.id].mana,
         cooldowns: first.participant_updates[attacker.id].cooldowns
     }
 
@@ -1083,7 +1083,9 @@ defmodule MMGO.Combat.EngineTest do
         side: "attackers",
         position: 0,
         status: :ready,
-        fatigue: 0,
+        max_mana: 100,
+        mana: 100,
+        locked_mana: 0,
         cooldowns: %{},
         active_states: [],
         grimoire_id: grimoire.id,
@@ -1096,7 +1098,9 @@ defmodule MMGO.Combat.EngineTest do
         side: "defenders",
         position: 0,
         status: :ready,
-        fatigue: 0,
+        max_mana: 100,
+        mana: 100,
+        locked_mana: 0,
         cooldowns: %{},
         active_states: [],
         character: %Character{id: "c2", level: 8}

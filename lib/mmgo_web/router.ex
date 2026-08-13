@@ -31,6 +31,7 @@ defmodule MMGOWeb.Router do
     post "/characters/:id/select", CharacterController, :select
     post "/mode/:mode", GameModeController, :select
     post "/arena/profiles", ArenaProfileController, :create
+    post "/arena/profiles/switch", ArenaProfileController, :switch
 
     live_session :game_entry, on_mount: [{MMGOWeb.GameAuth, :require_account}] do
       live "/mode", GameModeLive
@@ -86,6 +87,11 @@ defmodule MMGOWeb.Router do
     live_session :arena, on_mount: [{MMGOWeb.GameAuth, :require_arena_character}] do
       live "/arena", ArenaLive, :home
       live "/arena/queue", ArenaLive, :queue
+      live "/arena/profiles", ArenaLive, :profiles
+      live "/arena/seats", ArenaLive, :seats
+      live "/arena/result/:match_id", ArenaLive, :result
+      live "/arena/history", ArenaLive, :history
+      live "/arena/history/:combat_id", ArenaLive, :replay
       live "/arena/rooms/new", ArenaLive, :new_room
       live "/arena/rooms/:code", ArenaLive, :room
       live "/arena/rankings", ArenaLive, :rankings

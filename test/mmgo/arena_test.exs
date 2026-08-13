@@ -4,8 +4,10 @@ defmodule MMGO.ArenaTest do
   alias MMGO.Accounts
   alias MMGO.Accounts.{Account, Character, CharacterProfiles}
   alias MMGO.Arena
+  alias MMGO.Arena.{Ladder, Titles}
   alias MMGO.Combat.Combat
   alias MMGO.Grimoires
+  alias MMGO.Grimoires.{Grimoire, GrimoireEntry}
   alias MMGO.Repo
   alias MMGO.Spells
   alias MMGO.Worlds
@@ -103,13 +105,13 @@ defmodule MMGO.ArenaTest do
 
     assert Enum.sort(Enum.map(spells, & &1.school)) == [:earth, :fire, :order]
     assert length(spells) == 3
-    assert [%{status: :active, capacity: 45, weight: 0} = active] = grimoires
+    assert [%{status: :active, capacity: 8, weight: 0} = active] = grimoires
     assert active.metadata["arena"] == true
     assert length(active.entries) == 3
 
     assert {:ok, first_draft} = Arena.create_draft_grimoire(profile)
     assert {:ok, second_draft} = Arena.create_draft_grimoire(profile, %{name: "Counterbook"})
-    assert first_draft.capacity == 45
+    assert first_draft.capacity == 8
     assert first_draft.weight == 0
     assert first_draft.metadata["free"] == true
     assert second_draft.name == "Counterbook"
@@ -185,6 +187,38 @@ defmodule MMGO.ArenaTest do
     assert Arena.active_match_for_profile(host) == nil
   end
 
+  test "ranked queue keeps mismatched ratings apart", context do
+    modest = arena_profile_fixture(context, "band-modest", [:fire, :water, :air])
+    towering = arena_profile_fixture(context, "band-towering", [:earth, :life, :death])
+    peer = arena_profile_fixture(context, "band-peer", [:chaos, :order, :fire])
+
+    modest = set_standing!(modest, 1_000)
+    towering = set_standing!(towering, 2_400)
+    peer = set_standing!(peer, 1_060)
+
+    assert {:ok, queued} = Arena.queue_ranked(modest)
+    assert queued.status == :queued
+    assert queued.metadata["rating_at_queue"] == 1_000
+    assert queued.metadata["division_at_queue"] == "bronze"
+
+    # An Archmage sits far outside the opening band, so this must open its own
+    # queue entry rather than pair immediately.
+    assert {:ok, second} = Arena.queue_ranked(towering)
+    assert second.status == :queued
+    assert second.id != queued.id
+
+    # A peer inside the band pairs at once, and with the modest entry.
+    assert {:ok, paired} = Arena.queue_ranked(peer)
+    assert paired.status == :active
+    assert paired.id == queued.id
+  end
+
+  defp set_standing!(profile, rating) do
+    profile
+    |> Ecto.Changeset.change(rating: rating, division: Ladder.division_for_rating(rating))
+    |> Repo.update!()
+  end
+
   test "ranked queue pairs 1v1 and settlement is idempotent", context do
     first = arena_profile_fixture(context, "ranked-one", [:fire, :water, :air])
     second = arena_profile_fixture(context, "ranked-two", [:earth, :life, :death])
@@ -223,6 +257,104 @@ defmodule MMGO.ArenaTest do
     assert same_settlement.id == settled.id
     assert Arena.get_profile!(first.id).matches_played == 1
     assert Arena.get_profile!(second.id).matches_played == 1
+  end
+
+  # The release wipes every spell forged under the old rules; nobody may be left
+  # with an empty book because of it.
+  test "a wiped profile is re-issued a working book", context do
+    profile = arena_profile_fixture(context, "wiped", [:fire, :water, :air])
+    grimoire = Grimoires.active_grimoire_for_character(profile.character_id)
+
+    Repo.delete_all(Spells.Spell)
+    assert Repo.aggregate(GrimoireEntry, :count) == 0
+
+    assert {:ok, _grimoire} = Arena.reissue_starter_spells(profile)
+
+    entries =
+      GrimoireEntry
+      |> where([entry], entry.grimoire_id == ^grimoire.id)
+      |> Repo.all()
+
+    assert length(entries) == 3
+    assert Enum.map(entries, & &1.slot_index) |> Enum.sort() == [1, 2, 3]
+
+    # The same book the player already had, re-stocked rather than replaced.
+    assert Grimoires.active_grimoire_for_character(profile.character_id).id == grimoire.id
+  end
+
+  # The seed runs this on every deploy, so it must fill only what the wipe
+  # emptied and do nothing on the deploy after that.
+  test "restocking fills emptied books once and is safe to repeat", context do
+    wiped = arena_profile_fixture(context, "restock-wiped", [:fire, :water, :air])
+    stocked = arena_profile_fixture(context, "restock-stocked", [:earth, :life, :death])
+
+    stocked_entries_before =
+      GrimoireEntry
+      |> join(:inner, [entry], grimoire in Grimoire, on: grimoire.id == entry.grimoire_id)
+      |> where([_entry, grimoire], grimoire.owner_character_id == ^stocked.character_id)
+      |> Repo.aggregate(:count)
+
+    # Empty only the first player's book, as the release migration would.
+    Repo.delete_all(
+      from spell in Spells.Spell,
+        where: spell.creator_character_id == ^wiped.character_id
+    )
+
+    assert [restocked_id] = Arena.restock_empty_arena_books()
+    assert restocked_id == wiped.id
+
+    # Repeating it changes nothing.
+    assert Arena.restock_empty_arena_books() == []
+
+    assert Repo.aggregate(
+             from(entry in GrimoireEntry,
+               join: grimoire in Grimoire,
+               on: grimoire.id == entry.grimoire_id,
+               where: grimoire.owner_character_id == ^stocked.character_id
+             ),
+             :count
+           ) == stocked_entries_before
+  end
+
+  test "a title bout settles the seat and leaves the ladder alone", context do
+    champion = arena_profile_fixture(context, "bout-champion", [:fire, :water, :air])
+    deputy = arena_profile_fixture(context, "bout-deputy", [:earth, :life, :death])
+    challenger = arena_profile_fixture(context, "bout-challenger", [:chaos, :order, :fire])
+
+    [champion, deputy, challenger] =
+      Enum.map([champion, deputy, challenger], &set_standing!(&1, 2_600))
+
+    {:ok, _seat} = Titles.crown_champion(champion)
+    {:ok, offer} = Titles.appoint_deputy(champion, deputy)
+    {:ok, _held} = Titles.accept_deputy(offer)
+
+    {:ok, challenge} = Titles.challenge_deputy(challenger)
+
+    assert {:ok, bout} = Arena.start_title_bout(challenge)
+    assert bout.status == :active
+    assert bout.mode == :custom
+    assert bout.metadata["title_challenge_id"] == challenge.id
+
+    # A title bout is fought under ordinary arena rules; only the seat is at stake.
+    assert bout.settings["rules"]["rank"] == "own"
+    assert bout.settings["rules"]["mana"] == "standard"
+
+    combat =
+      bout.combat
+      |> Combat.changeset(%{
+        status: :finished,
+        winner_side: "a",
+        finished_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    assert {:ok, settled} = Arena.settle_match(combat)
+    assert settled.winner_team == :a
+
+    # The challenger earned the right to the Champion, and nobody's rating moved.
+    assert Titles.gauntlet_right?(challenger)
+    assert Arena.get_profile!(challenger.id).rating == 2_600
+    assert Arena.get_profile!(deputy.id).rating == 2_600
   end
 
   defp arena_profile_fixture(context, handle, schools) do

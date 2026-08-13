@@ -52,6 +52,144 @@ defmodule MMGOWeb.ArenaLiveTest do
     end
   end
 
+  # The measured problem this rework exists to fix: the queue button used to sit
+  # a screen and a half below the fold, under a 693px lore hero. Source order is
+  # what decides that, so it is what is guarded here.
+  test "the queue button comes before the lore, not after it", %{conn: conn, profile: profile} do
+    {:ok, view, html} = live(arena_session(conn, profile), ~p"/arena")
+
+    assert has_element?(view, "#arena-launch #arena-ranked-queue")
+
+    [queue_at, lore_at] =
+      Enum.map(
+        ["id=\"arena-ranked-queue\"", "id=\"arena-lore\""],
+        &:binary.match(html, &1)
+      )
+
+    assert queue_at < lore_at
+  end
+
+  test "a player with one profile is not offered a profile switcher", %{
+    conn: conn,
+    profile: profile
+  } do
+    {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena")
+
+    refute has_element?(view, "#arena-profile-switch")
+
+    {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena/profiles")
+
+    assert has_element?(view, "#arena-profile-#{profile.id}")
+    refute has_element?(view, "#arena-switch-profile-#{profile.id}")
+  end
+
+  test "history lists a settled fight and steps through its replay", %{
+    conn: conn,
+    profile: profile
+  } do
+    rival = arena_profile_fixture("arena-history-#{System.unique_integer([:positive])}")
+
+    {:ok, _queued} = Arena.queue_ranked(profile)
+    {:ok, paired} = Arena.queue_ranked(rival)
+
+    {:ok, _resolved} = MMGO.Combat.resolve_turn(paired.combat, force?: true)
+
+    combat =
+      paired.combat_id
+      |> MMGO.Combat.get_combat!()
+      |> MMGO.Combat.Combat.changeset(%{
+        status: :finished,
+        winner_side: "a",
+        finished_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    {:ok, settled} = Arena.settle_match(combat)
+
+    {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena/history")
+
+    assert has_element?(view, "#arena-history-#{settled.id}")
+    assert has_element?(view, "#arena-replay-#{settled.id}")
+
+    {:ok, replay, _html} = live(arena_session(conn, profile), ~p"/arena/history/#{combat.id}")
+
+    assert has_element?(replay, "#arena-replay-turn")
+    assert has_element?(replay, "#arena-replay-prev[disabled]")
+  end
+
+  test "a finished fight lands on its result, with the way back into the queue", %{
+    conn: conn,
+    profile: profile
+  } do
+    rival = arena_profile_fixture("arena-result-#{System.unique_integer([:positive])}")
+
+    {:ok, _queued} = Arena.queue_ranked(profile)
+    {:ok, paired} = Arena.queue_ranked(rival)
+
+    combat =
+      paired.combat
+      |> MMGO.Combat.Combat.changeset(%{
+        status: :finished,
+        winner_side: "a",
+        finished_at: DateTime.utc_now()
+      })
+      |> Repo.update!()
+
+    {:ok, settled} = Arena.settle_match(combat)
+
+    {:ok, view, html} = live(arena_session(conn, profile), ~p"/arena/result/#{settled.id}")
+
+    assert has_element?(view, "#arena-result-rating")
+    assert has_element?(view, "#arena-result-requeue")
+    assert html =~ "Победа"
+
+    # And the queue is genuinely one tap away.
+    view |> element("#arena-result-requeue") |> render_click()
+    assert %{status: :queued} = Arena.active_match_for_profile(profile)
+  end
+
+  test "the home board shows standing reasons to come back", %{conn: conn, profile: profile} do
+    {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena")
+
+    assert has_element?(view, "#arena-quests")
+
+    for quest <- MMGO.Arena.Quests.definitions() do
+      assert has_element?(view, "#arena-quest-#{quest.code}")
+    end
+
+    # A player who has not played has no streak to boast about.
+    refute has_element?(view, "#arena-streak")
+  end
+
+  test "the queue says who is waiting and how long it usually takes", %{
+    conn: conn,
+    profile: profile
+  } do
+    {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena/queue")
+
+    assert has_element?(view, "#arena-queue-population")
+  end
+
+  test "someone else's fight cannot be replayed", %{conn: conn, profile: profile} do
+    rival = arena_profile_fixture("arena-nosy-#{System.unique_integer([:positive])}")
+
+    {:ok, _queued} = Arena.queue_ranked(profile)
+    {:ok, paired} = Arena.queue_ranked(rival)
+
+    stranger = arena_profile_fixture("arena-stranger-#{System.unique_integer([:positive])}")
+
+    assert {:error, {:live_redirect, %{to: "/arena/history"}}} =
+             live(arena_session(conn, stranger), ~p"/arena/history/#{paired.combat_id}")
+  end
+
+  test "the seats screen names both seats and the way to them", %{conn: conn, profile: profile} do
+    {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena/seats")
+
+    assert has_element?(view, "#arena-seat-champion")
+    assert has_element?(view, "#arena-seat-deputy")
+    assert has_element?(view, "#arena-gauntlet-eligibility")
+  end
+
   test "ranked search is persisted and can be cancelled from the queue", %{
     conn: conn,
     profile: profile
