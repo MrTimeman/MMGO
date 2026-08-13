@@ -124,15 +124,19 @@ ordinary rules — it moves no rating, because the stake is the seat.
 
 ## Work remaining
 
-### 1. Declinable ordinary duels
+### 1. Declining duels — already satisfied
 
 The design pairs "title challenges cannot be declined" with "ordinary duels
-become declinable". The first half is built (`Titles.decline_challenge/1`
-refuses by name, and an unanswered challenge is claimed after 7 days). The
-second half has nothing to attach to: the arena's ordinary paths are a queue and
-open rooms, neither of which is an invitation, so there is no decline to offer.
-Building it means adding arena duel invitations first — a feature in its own
-right, not a flag on an existing one.
+become declinable". Both halves already hold:
+
+- World PvP duels are invitations and can be refused — `MMGO.PVP.reject_duel/2`,
+  reachable from the Telegram duel command.
+- Title challenges refuse by name in `Titles.decline_challenge/1`, and an
+  unanswered one is claimed by the challenger after seven days.
+- The arena's ordinary paths are a queue and open rooms. Neither is an
+  invitation, so there is nothing there to decline.
+
+Nothing to build.
 
 ### 2. Deploying again
 
