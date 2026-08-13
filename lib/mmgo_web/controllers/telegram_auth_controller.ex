@@ -32,8 +32,20 @@ defmodule MMGOWeb.TelegramAuthController do
       {:ok, %{account: account, character: character}} ->
         open_mode_selection(conn, account, character)
 
-      _reason ->
-        Logger.error("Telegram player provisioning failed after valid authentication")
+      {:error, operation, %Ecto.Changeset{} = changeset, _changes_so_far} ->
+        # Field names and validation metadata only. The rejected values are the
+        # player's Telegram profile and must stay out of the log.
+        Logger.error(
+          "Telegram player provisioning failed at #{inspect(operation)}: " <>
+            inspect(
+              Enum.map(changeset.errors, fn {field, {message, _opts}} -> {field, message} end)
+            )
+        )
+
+        authentication_failed(conn)
+
+      reason ->
+        Logger.error("Telegram player provisioning failed: #{inspect(reason)}")
         authentication_failed(conn)
     end
   end

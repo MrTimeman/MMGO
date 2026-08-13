@@ -15,7 +15,13 @@
   top: 0;
   display: grid;
   min-height: 4.5rem;
-  padding: 0.6rem clamp(0.8rem, 4vw, 3rem);
+  /* In Telegram fullscreen the bar sits under the status bar and Telegram's
+     floating close/menu controls, so it must clear the reported insets. */
+  padding:
+    calc(0.6rem + var(--safe-top))
+    calc(clamp(0.8rem, 4vw, 3rem) + var(--safe-right))
+    0.6rem
+    calc(clamp(0.8rem, 4vw, 3rem) + var(--safe-left));
   grid-template-columns: 1fr auto 1fr;
   align-items: center;
   gap: 1rem;
@@ -189,8 +195,13 @@
 @keyframes arena-pulse { 50% { transform: scale(1.04); box-shadow: 0 0 4.5rem rgb(127 75 165 / 72%), inset 0 0 2rem rgb(232 197 106 / 26%); } }
 
 @media (max-width: 800px) {
-  .arena-nav { grid-template-columns: 1fr auto; }
-  .arena-nav nav { position: fixed; z-index: 30; right: 0.6rem; bottom: 0.6rem; left: 0.6rem; justify-content: space-around; border: 1px solid rgb(226 190 111 / 18%); background: rgb(10 7 13 / 94%); box-shadow: 0 0.7rem 2rem black; }
+  /* A backdrop-filter makes the header a containing block for fixed children,
+     which stranded the bar below inside it instead of at the foot of the
+     screen. The header background is near-opaque, so drop the blur here. */
+  .arena-nav { grid-template-columns: 1fr auto; backdrop-filter: none; }
+  .arena-nav nav { position: fixed; z-index: 30; right: calc(0.6rem + var(--safe-right)); bottom: calc(0.6rem + var(--safe-bottom)); left: calc(0.6rem + var(--safe-left)); justify-content: space-around; border: 1px solid rgb(226 190 111 / 18%); background: rgb(10 7 13 / 94%); box-shadow: 0 0.7rem 2rem black; }
+  /* Clear the fixed bar above, plus the home indicator underneath it. */
+  .arena-page { padding-bottom: calc(7rem + var(--safe-bottom)); }
   .arena-nav__profile > span { display: none; }
   .arena-hero { grid-template-columns: 1fr; }
   .arena-rank-card { min-height: 17rem; }

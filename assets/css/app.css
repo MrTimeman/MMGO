@@ -64,6 +64,19 @@
   --panel-padding: 1rem;
   --panel-radius:  0.5rem;
 
+  /* Telegram Mini App insets, republished by assets/js/telegram-viewport.js.
+     They stay 0 outside Telegram, where env() alone describes the device.
+     In Telegram fullscreen env() reports nothing about Telegram's own status
+     bar and floating controls, so screens must clear whichever is larger. */
+  --tg-inset-top:    0px;
+  --tg-inset-right:  0px;
+  --tg-inset-bottom: 0px;
+  --tg-inset-left:   0px;
+  --safe-top:    max(env(safe-area-inset-top, 0px), var(--tg-inset-top));
+  --safe-right:  max(env(safe-area-inset-right, 0px), var(--tg-inset-right));
+  --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-inset-bottom));
+  --safe-left:   max(env(safe-area-inset-left, 0px), var(--tg-inset-left));
+
   /* Parchment palette — used by the book/page chrome and any "physical
      document" surface (spellbook, letters, ledgers). Kept separate from
      the dark game-shell tokens above so screens can migrate one at a time. */
@@ -112,12 +125,17 @@ code {
 .game-flash-stack {
   position: fixed;
   z-index: 50;
-  top: calc(env(safe-area-inset-top, 0px) + 0.75rem);
-  right: 0.75rem;
+  top: calc(var(--safe-top) + 0.75rem);
+  right: calc(var(--safe-right) + 0.75rem);
   display: flex;
   width: min(calc(100vw - 1.5rem), 24rem);
   flex-direction: column;
   gap: 0.65rem;
+}
+
+/* Inside the game shell the "Сменить режим" pill already owns this corner. */
+.game-shell .game-flash-stack {
+  top: calc(var(--safe-top) + 3.5rem);
 }
 
 .game-flash {

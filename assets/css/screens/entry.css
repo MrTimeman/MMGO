@@ -3,6 +3,9 @@
 .public-shell,
 .anonymous-shell {
   min-height: 100vh;
+  /* The header is in normal flow, so in Telegram fullscreen the whole shell
+     would otherwise start underneath the status bar. */
+  padding-top: var(--safe-top);
   background: var(--color-bg);
   color: var(--color-text);
 }

@@ -1,3 +1,5 @@
+import {watchTelegramViewport} from "./telegram-viewport"
+
 let telegramWebAppPromise
 let preparedTelegramWebApp
 
@@ -15,6 +17,9 @@ export function prepareTelegramWebApp(webApp) {
     safelyInvoke(() => webApp.setHeaderColor?.("#0c0a09"))
     safelyInvoke(() => webApp.requestFullscreen())
   }
+
+  // Must follow the fullscreen request so the first inset publish reflects it.
+  safelyInvoke(() => watchTelegramViewport(webApp))
 
   return webApp
 }

@@ -74,11 +74,17 @@ defmodule MMGOWeb.Layouts do
       id="game-shell"
       class="game-shell"
     >
-      <nav id="game-mode-switcher" aria-label="Режим игры">
+      <%!-- The Arena header carries its own #arena-switch-mode link, and this
+            floating pill would sit on top of it. --%>
+      <nav
+        :if={@current_scope[:game_mode] != :arena}
+        id="game-mode-switcher"
+        aria-label="Режим игры"
+      >
         <.link
           id="open-game-mode-picker"
           navigate={~p"/mode"}
-          class="fixed right-3 top-3 z-[90] flex min-h-9 items-center gap-1.5 rounded-full border border-amber-200/25 bg-stone-950/75 px-3 font-sans text-xs font-semibold text-amber-50/90 shadow-lg shadow-black/25 backdrop-blur transition hover:-translate-y-0.5 hover:border-amber-200/50 hover:bg-stone-900/90"
+          class="fixed right-[calc(var(--safe-right)+0.75rem)] top-[calc(var(--safe-top)+0.75rem)] z-[90] flex min-h-9 items-center gap-1.5 rounded-full border border-amber-200/25 bg-stone-950/75 px-3 font-sans text-xs font-semibold text-amber-50/90 shadow-lg shadow-black/25 backdrop-blur transition hover:-translate-y-0.5 hover:border-amber-200/50 hover:bg-stone-900/90"
         >
           <.icon name="hero-arrows-right-left" class="size-4 text-amber-300" /> Сменить режим
         </.link>

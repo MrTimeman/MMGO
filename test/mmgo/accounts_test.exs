@@ -65,6 +65,36 @@ defmodule MMGO.AccountsTest do
     assert Repo.aggregate(Character, :count, :id) == 1
   end
 
+  test "provision_from_telegram/1 admits a one-character Telegram name via the username" do
+    assert {:ok, %{account: account}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 1051,
+               "username" => "LaetusGzaho",
+               "first_name" => "L"
+             })
+
+    assert account.display_name == "LaetusGzaho"
+  end
+
+  test "provision_from_telegram/1 admits an emoji-only Telegram name without a username" do
+    assert {:ok, %{account: account}} =
+             Accounts.provision_from_telegram(%{"id" => 1052, "first_name" => "🦊"})
+
+    assert account.display_name == "Безымянный маг"
+  end
+
+  test "provision_from_telegram/1 keeps a short name when both parts are present" do
+    assert {:ok, %{account: account}} =
+             Accounts.provision_from_telegram(%{
+               "id" => 1053,
+               "username" => "duelist",
+               "first_name" => "L",
+               "last_name" => "G"
+             })
+
+    assert account.display_name == "L G"
+  end
+
   test "provision_from_telegram/1 updates an existing identity without duplicating records" do
     assert {:ok, %{account: account}} =
              Accounts.provision_from_telegram(%{

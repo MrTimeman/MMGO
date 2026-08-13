@@ -9,6 +9,10 @@ defmodule MMGO.Accounts do
   alias MMGO.Worlds
   alias MMGO.Worlds.Realm
 
+  # Mirrors the `display_name` length floor in `Account.registration_changeset/2`.
+  @min_display_name_length 2
+  @fallback_display_name "Безымянный маг"
+
   def get_account!(id), do: Repo.get!(Account, id)
   def get_character!(id), do: Repo.get!(Character, id)
 
@@ -641,14 +645,25 @@ defmodule MMGO.Accounts do
     end
   end
 
+  # Telegram permits a one-character or emoji-only profile name, which is
+  # shorter than the account `display_name` minimum. Such a name used to abort
+  # provisioning and lock the player out of Telegram sign-in entirely, so fall
+  # back through the username before the anonymous default.
   defp display_name_from_telegram(telegram_attrs) do
-    [telegram_attrs.first_name, telegram_attrs.last_name]
-    |> Enum.reject(&is_nil_or_empty?/1)
-    |> Enum.join(" ")
-    |> case do
-      "" -> telegram_attrs.telegram_username || "Безымянный маг"
-      name -> name
-    end
+    joined =
+      [telegram_attrs.first_name, telegram_attrs.last_name]
+      |> Enum.reject(&is_nil_or_empty?/1)
+      |> Enum.join(" ")
+
+    Enum.find(
+      [joined, telegram_attrs.telegram_username],
+      @fallback_display_name,
+      &usable_display_name?/1
+    )
+  end
+
+  defp usable_display_name?(value) do
+    is_binary(value) and String.length(String.trim(value)) >= @min_display_name_length
   end
 
   defp telegram_account_settings(existing_settings, telegram_attrs) do
