@@ -282,6 +282,50 @@ defmodule MMGO.ArenaTest do
     assert Grimoires.active_grimoire_for_character(profile.character_id).id == grimoire.id
   end
 
+  # An arena loadout is a deck, not a sealed book. The active one has to stay
+  # open or a player can never change what they take into a fight.
+  test "the active arena loadout accepts and releases spells", context do
+    profile = arena_profile_fixture(context, "loadout", [:fire, :water, :air])
+    grimoire = Grimoires.active_grimoire_for_character(profile.character_id)
+
+    assert grimoire.status == :active
+    assert Grimoires.writable?(grimoire)
+    assert Grimoires.arena?(grimoire)
+
+    forged =
+      Spells.create_spell(
+        Repo.get!(Character, profile.character_id),
+        %{
+          name: "Новая формула",
+          formula: "Ignis Novus",
+          school: :fire,
+          description: "Свежая формула для проверки раскладки.",
+          targeting: :enemy,
+          delivery_form: :sphere,
+          effects: [
+            %{applies_to: :target, state: "impact", intensity: 10, variance: 0, duration: 0}
+          ],
+          failure_profile: %{difficulty: 4, base_success_rate: 90, partial_success_rate: 5}
+        }
+      )
+      |> elem(1)
+
+    before =
+      Repo.aggregate(from(e in GrimoireEntry, where: e.grimoire_id == ^grimoire.id), :count)
+
+    assert {:ok, _entry} = Grimoires.inscribe_spell(grimoire, forged)
+
+    assert Repo.aggregate(from(e in GrimoireEntry, where: e.grimoire_id == ^grimoire.id), :count) ==
+             before + 1
+
+    # And a formula can be swapped back out, which the loadout needs just as much.
+    assert {:ok, _removed} =
+             Grimoires.erase_spell(Grimoires.get_grimoire!(grimoire.id), forged)
+
+    assert Repo.aggregate(from(e in GrimoireEntry, where: e.grimoire_id == ^grimoire.id), :count) ==
+             before
+  end
+
   # The seed runs this on every deploy, so it must fill only what the wipe
   # emptied and do nothing on the deploy after that.
   test "restocking fills emptied books once and is safe to repeat", context do

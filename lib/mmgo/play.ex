@@ -549,7 +549,7 @@ defmodule MMGO.Play do
          spells: spells,
          grimoires: grimoires,
          active_grimoire: Enum.find(grimoires, &(&1.status == :active)),
-         writable_grimoires: Enum.filter(grimoires, &(&1.status == :draft)),
+         writable_grimoires: Enum.filter(grimoires, &Grimoires.writable?/1),
          arena_mode?: not is_nil(arena_profile),
          arena_profile: arena_profile,
          permitted_schools: permitted_spellbook_schools(character, spells),
@@ -808,6 +808,23 @@ defmodule MMGO.Play do
   end
 
   def inscribe_spell(_character_or_id, _grimoire_id, _spell_id),
+    do: {:error, :missing_inscription}
+
+  @doc """
+  Removes an owned spell from an owned grimoire that still accepts changes.
+  """
+  def erase_spell(character_or_id, grimoire_id, spell_id)
+
+  def erase_spell(character_or_id, grimoire_id, spell_id)
+      when is_binary(grimoire_id) and is_binary(spell_id) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, grimoire} <- owned_grimoire(character, grimoire_id),
+         {:ok, spell} <- owned_spell(character, spell_id) do
+      Grimoires.erase_spell(grimoire, spell)
+    end
+  end
+
+  def erase_spell(_character_or_id, _grimoire_id, _spell_id),
     do: {:error, :missing_inscription}
 
   # ------------------------------------------------------------------

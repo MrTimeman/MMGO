@@ -147,6 +147,36 @@ defmodule MMGOWeb.SpellbookLive do
   end
 
   def handle_event(
+        "erase",
+        %{"grimoire_id" => grimoire_id, "spell_id" => spell_id},
+        socket
+      ) do
+    case Play.erase_spell(socket.assigns.current_scope.character, grimoire_id, spell_id) do
+      {:ok, _entry} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{kind: :success, message: "Формула стёрта из переплёта."})
+         |> maybe_push_shelf()}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })}
+    end
+  end
+
+  def handle_event("erase", _params, socket) do
+    {:noreply,
+     assign(socket, :action_feedback, %{
+       kind: :error,
+       message: spellbook_error_message(:invalid_inscription)
+     })}
+  end
+
+  def handle_event(
         "shelf_inscribe",
         %{"grimoire_id" => grimoire_id, "spell_id" => spell_id},
         socket
@@ -455,12 +485,13 @@ defmodule MMGOWeb.SpellbookLive do
                     phx-click="create_arena_grimoire"
                     class="grim__panel-btn"
                   >
-                    + Новый свободный гримуар · 45 формул
+                    + Новый свободный гримуар · {MMGO.Arena.grimoire_capacity()} формул
                   </button>
 
                   <p :if={@arena_mode?} id="arena-grimoire-policy" class="spellbook-note__aside">
-                    Переплёты бесплатны и не ограничены по количеству. В бой всё равно берётся
-                    только один активный гримуар с конечным числом формул.
+                    Переплёты бесплатны и не ограничены по количеству. Активную раскладку можно
+                    менять между боями: записывайте и стирайте формулы прямо в ней. В бой
+                    берётся один гримуар — {MMGO.Arena.grimoire_capacity()} формул.
                   </p>
 
                   <div
@@ -513,6 +544,18 @@ defmodule MMGOWeb.SpellbookLive do
                           >
                             <span>{entry_label(entry)}</span>
                             <small>слот {entry.slot_index}</small>
+                            <button
+                              :if={writable_grimoire?(grimoire, @writable_grimoires)}
+                              id={"grimoire-erase-#{entry.id}"}
+                              type="button"
+                              phx-click="erase"
+                              phx-value-grimoire_id={grimoire.id}
+                              phx-value-spell_id={entry.spell_id}
+                              class="grim-fallback__erase"
+                              aria-label={"Стереть #{entry_label(entry)}"}
+                            >
+                              Стереть
+                            </button>
                           </li>
                         </ol>
 

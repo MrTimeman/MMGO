@@ -162,6 +162,29 @@ defmodule MMGO.Grimoires do
     |> normalize_transaction_result()
   end
 
+  @doc """
+  Removes one spell from a grimoire that still accepts changes.
+
+  Swapping a formula out matters most in the arena, where the book is small and
+  the point is to keep trying combinations; a sealed world book stays closed.
+  The spell itself is untouched and can be inscribed again later.
+  """
+  def erase_spell(%Grimoire{} = grimoire, %Spell{} = spell) do
+    Repo.transaction(fn ->
+      grimoire = lock_grimoire!(grimoire.id)
+
+      with :ok <- validate_grimoire_is_writable(grimoire),
+           %GrimoireEntry{} = entry <-
+             Repo.get_by(GrimoireEntry, grimoire_id: grimoire.id, spell_id: spell.id) do
+        Repo.delete!(entry)
+      else
+        nil -> Repo.rollback(missing_entry_changeset())
+        {:error, %Changeset{} = changeset} -> Repo.rollback(changeset)
+      end
+    end)
+    |> normalize_transaction_result()
+  end
+
   def activate_grimoire(%Character{} = character, %Grimoire{} = grimoire) do
     Repo.transaction(fn ->
       grimoire = lock_owned_grimoire(character.id, grimoire.id)
@@ -228,12 +251,33 @@ defmodule MMGO.Grimoires do
     end
   end
 
-  defp validate_grimoire_is_writable(%Grimoire{status: status})
-       when status in [:sealed, :active] do
-    {:error, writable_changeset()}
+  @doc """
+  Whether a grimoire still accepts changes.
+
+  A world grimoire is a physical book: sealing it, or carrying it into the
+  world, closes it to its owner. An arena loadout is not a book but a deck —
+  free, weightless, and meant to be rearranged between fights — so it stays open
+  while it is the active one.
+
+  Both the domain guard and the screen ask this same question. They used to
+  decide separately, which is how an arena player ended up with a book the
+  server would refuse and a screen that quietly hid the form rather than saying
+  so.
+  """
+  def writable?(%Grimoire{} = grimoire), do: grimoire.status == :draft or arena?(grimoire)
+  def writable?(_grimoire), do: false
+
+  @doc "Whether this grimoire is an arena loadout rather than a world book."
+  def arena?(%Grimoire{metadata: metadata}) when is_map(metadata),
+    do: Map.get(metadata, "arena") == true
+
+  def arena?(_grimoire), do: false
+
+  defp validate_grimoire_is_writable(%Grimoire{} = grimoire) do
+    if writable?(grimoire), do: :ok, else: {:error, writable_changeset()}
   end
 
-  defp validate_grimoire_is_writable(_grimoire), do: :ok
+  defp validate_grimoire_is_writable(_grimoire), do: {:error, writable_changeset()}
 
   defp validate_grimoire_capacity(%Grimoire{} = grimoire) do
     if length(grimoire.entries) >= grimoire.capacity do
@@ -317,6 +361,12 @@ defmodule MMGO.Grimoires do
     %Grimoire{}
     |> Changeset.change()
     |> Changeset.add_error(:capacity, "grimoire is at capacity")
+  end
+
+  defp missing_entry_changeset do
+    %Grimoire{}
+    |> Changeset.change()
+    |> Changeset.add_error(:entries, "spell is not inscribed in this grimoire")
   end
 
   defp duplicate_spell_changeset do
