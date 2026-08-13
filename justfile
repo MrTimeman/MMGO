@@ -3,8 +3,11 @@ set shell := ["bash", "-euo", "pipefail", "-c"]
 
 app := "mmgo"
 version := `sed -nE 's/^[[:space:]]*version: "([^"]+)".*/\1/p' mix.exs | head -1`
-jump_host := env_var_or_default("MMGO_JUMP_HOST", "klara")
-app_host := env_var_or_default("MMGO_APP_HOST", "nova")
+# The production host since the alpha.9 cutover. `nova` is the retired box and
+# still runs a stale alpha.8, so defaulting to it would deploy to the wrong
+# machine whenever the override is forgotten.
+jump_host := env_var_or_default("MMGO_JUMP_HOST", "")
+app_host := env_var_or_default("MMGO_APP_HOST", "root@138.249.117.21")
 remote_root := env_var_or_default("MMGO_REMOTE_ROOT", "/opt/mmgo")
 public_url := env_var_or_default("MMGO_PUBLIC_URL", "https://mmgo.mrtimeman.ru")
 private_health_url := env_var_or_default("MMGO_PRIVATE_HEALTH_URL", "http://127.0.0.1:4000")

@@ -2,6 +2,8 @@ defmodule MMGO.AI.Providers.DeepSeek do
   @behaviour MMGO.AI.Provider
 
   @api_base "https://api.deepseek.com/v1"
+  @receive_timeout :timer.seconds(90)
+  @connect_timeout :timer.seconds(15)
   @default_model "deepseek-chat"
 
   # DeepSeek has no native structured-output/schema field (unlike Gemini's
@@ -56,7 +58,14 @@ defmodule MMGO.AI.Providers.DeepSeek do
 
       case Req.post(url,
              json: body,
-             headers: [{"authorization", "Bearer #{api_key}"}]
+             headers: [{"authorization", "Bearer #{api_key}"}],
+             # Req defaults to a 15s receive timeout, which is far too tight for
+             # this endpoint: the served model spends completion tokens on
+             # reasoning before it emits any content, and the 1 GB host can be
+             # swapping while a release builds. A compile that would have
+             # succeeded came back as a transport error instead.
+             receive_timeout: @receive_timeout,
+             connect_options: [timeout: @connect_timeout]
            ) do
         {:ok, %Req.Response{status: status, body: response_body}} when status in 200..299 ->
           extract_text(decode_body(response_body))
