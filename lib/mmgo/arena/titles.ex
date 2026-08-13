@@ -214,6 +214,7 @@ defmodule MMGO.Arena.Titles do
     offer
     |> TitleSeat.changeset(%{status: :held, accepted_at: DateTime.utc_now()})
     |> Repo.update()
+    |> widen_book_on_seat()
   end
 
   def accept_deputy(%TitleSeat{}), do: {:error, :not_a_pending_offer}
@@ -256,7 +257,26 @@ defmodule MMGO.Arena.Titles do
         {:error, changeset} -> Repo.rollback(changeset)
       end
     end)
+    |> widen_book_on_seat()
   end
+
+  # A seat carries the widest book in the game, and the shelf enforces the
+  # number it stores rather than recomputing it, so taking a seat has to widen
+  # the book then and there. Called fully qualified: `MMGO.Arena` already knows
+  # this module, and this is the only direction the dependency runs back.
+  defp widen_book_on_seat({:ok, %TitleSeat{profile_id: profile_id} = seat})
+       when not is_nil(profile_id) do
+    case MMGO.Arena.get_profile(profile_id) do
+      nil ->
+        {:ok, seat}
+
+      profile ->
+        MMGO.Arena.raise_grimoire_capacity(profile, MMGO.Arena.grimoire_capacity_for(profile))
+        {:ok, seat}
+    end
+  end
+
+  defp widen_book_on_seat(result), do: result
 
   @doc """
   Calls out the Deputy.

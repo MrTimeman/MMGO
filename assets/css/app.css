@@ -379,7 +379,14 @@ code {
   overflow-x: hidden;
   background:
     radial-gradient(ellipse at 50% -10%, #2a1f14 0%, #170f09 55%, #0c0805 100%);
-  padding: 2.5rem 1rem 3rem;
+
+  /* The desk fills the viewport, so in Telegram fullscreen its first row sits
+     under the status bar and Telegram's own controls unless it clears them. */
+  padding:
+    calc(2.5rem + var(--safe-top))
+    calc(1rem + var(--safe-right))
+    calc(3rem + var(--safe-bottom))
+    calc(1rem + var(--safe-left));
 }
 
 .book {

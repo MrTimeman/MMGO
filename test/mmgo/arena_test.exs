@@ -401,6 +401,26 @@ defmodule MMGO.ArenaTest do
     assert Arena.get_profile!(deputy.id).rating == 2_600
   end
 
+  test "taking a seat widens the book the shelf actually enforces", context do
+    champion = arena_profile_fixture(context, "seat-champ", [:fire, :earth, :order])
+    deputy = arena_profile_fixture(context, "seat-deputy", [:water, :air, :life])
+
+    assert [%{capacity: 15}] = Grimoires.list_grimoires_for_character(champion.character_id)
+
+    {:ok, _seat} = MMGO.Arena.Titles.crown_champion(champion)
+
+    assert [%{capacity: 45}] = Grimoires.list_grimoires_for_character(champion.character_id)
+
+    {:ok, offer} = MMGO.Arena.Titles.appoint_deputy(champion, deputy)
+
+    # The offer alone changes nothing: the book widens when the seat is taken.
+    assert [%{capacity: 15}] = Grimoires.list_grimoires_for_character(deputy.character_id)
+
+    {:ok, _held} = MMGO.Arena.Titles.accept_deputy(offer)
+
+    assert [%{capacity: 45}] = Grimoires.list_grimoires_for_character(deputy.character_id)
+  end
+
   defp arena_profile_fixture(context, handle, schools) do
     account = account_fixture("arena-#{handle}")
 

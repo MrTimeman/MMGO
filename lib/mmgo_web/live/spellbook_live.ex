@@ -59,7 +59,6 @@ defmodule MMGOWeb.SpellbookLive do
          |> assign(:action_feedback, nil)
          |> assign(:view, :cast)
          |> assign(:grimoire_order, nil)
-         |> assign(:inscription_form, inscription_form())
          |> assign_spellbook_state(state)
          |> restore_recent_spell_creation(state)}
 
@@ -138,11 +137,54 @@ defmodule MMGOWeb.SpellbookLive do
     end
   end
 
+  # One tap on a formula is the fast path; the wrapped form above is the same
+  # action reached from a keyboard.
+  def handle_event(
+        "inscribe",
+        %{"grimoire_id" => grimoire_id, "spell_id" => spell_id},
+        socket
+      ) do
+    handle_event(
+      "inscribe",
+      %{"inscription" => %{"grimoire_id" => grimoire_id, "spell_id" => spell_id}},
+      socket
+    )
+  end
+
   def handle_event("inscribe", _params, socket) do
     {:noreply,
      assign(socket, :action_feedback, %{
        kind: :error,
        message: spellbook_error_message(:invalid_inscription)
+     })}
+  end
+
+  def handle_event("rename_grimoire", %{"grimoire_id" => grimoire_id, "name" => name}, socket) do
+    case Play.rename_grimoire(socket.assigns.current_scope.character, grimoire_id, name) do
+      {:ok, grimoire} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{
+           kind: :success,
+           message: "Переплёт теперь зовётся «#{grimoire.name}»."
+         })
+         |> maybe_push_shelf()}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })}
+    end
+  end
+
+  def handle_event("rename_grimoire", _params, socket) do
+    {:noreply,
+     assign(socket, :action_feedback, %{
+       kind: :error,
+       message: spellbook_error_message(:invalid_grimoire_name)
      })}
   end
 
@@ -464,6 +506,12 @@ defmodule MMGOWeb.SpellbookLive do
                           @last_spell.manifestation
                         )}
                       </p>
+                      <p
+                        :if={manifestation_trait_label(@last_spell.manifestation.trait)}
+                        class="spellbook-note__aside"
+                      >
+                        {manifestation_trait_label(@last_spell.manifestation.trait)}
+                      </p>
                       <p class="spellbook-note__aside">
                         Призыв существует только в бою и не становится предметом инвентаря.
                       </p>
@@ -494,14 +542,6 @@ defmodule MMGOWeb.SpellbookLive do
                     берётся один гримуар — {MMGO.Arena.grimoire_capacity_for(@arena_profile)} формул.
                   </p>
 
-                  <div
-                    id="grimoire-shelf-root"
-                    phx-hook="GrimoireShelf"
-                    phx-update="ignore"
-                    aria-label="Полка гримуаров"
-                  >
-                  </div>
-
                   <p :if={@grimoires == []} id="grimoire-empty" class="splist__empty">
                     На полке пока пусто. Новый физический гримуар приобретается у торговца.
                   </p>
@@ -517,99 +557,135 @@ defmodule MMGOWeb.SpellbookLive do
                     {@action_feedback.message}
                   </div>
 
-                  <details :if={@grimoires != []} class="grim-fallback">
-                    <summary>Каталог переплётов</summary>
-                    <div class="grim-fallback__list">
-                      <article
-                        :for={grimoire <- @grimoires}
-                        id={"grimoire-#{grimoire.id}"}
-                        class={[
-                          "grim-fallback__volume",
-                          active_grimoire?(grimoire, @active_grimoire) &&
-                            "grim-fallback__volume--active"
-                        ]}
-                      >
-                        <div class="grim-fallback__head">
-                          <div>
-                            <p>{grimoire_status_label(grimoire.status)}</p>
-                            <h2>{grimoire.name}</h2>
-                          </div>
-                          <span>{entry_count(grimoire)} / {grimoire.capacity}</span>
-                        </div>
-
-                        <ol :if={grimoire_entries(grimoire) != []} class="grim-fallback__entries">
-                          <li
-                            :for={entry <- sorted_entries(grimoire)}
-                            id={"grimoire-entry-#{entry.id}"}
+                  <div :if={@grimoires != []} class="grim-list">
+                    <article
+                      :for={grimoire <- @grimoires}
+                      id={"grimoire-#{grimoire.id}"}
+                      class={[
+                        "grim-vol",
+                        active_grimoire?(grimoire, @active_grimoire) && "grim-vol--active"
+                      ]}
+                    >
+                      <header class="grim-vol__head">
+                        <div class="grim-vol__titling">
+                          <p class="grim-vol__status">
+                            {grimoire_status_label(grimoire.status)}
+                            <span :if={active_grimoire?(grimoire, @active_grimoire)}>· боевой</span>
+                          </p>
+                          <form
+                            id={"grimoire-rename-form-#{grimoire.id}"}
+                            phx-submit="rename_grimoire"
+                            class="grim-vol__rename"
                           >
-                            <span>{entry_label(entry)}</span>
-                            <small>слот {entry.slot_index}</small>
+                            <input type="hidden" name="grimoire_id" value={grimoire.id} />
+                            <input
+                              id={"grimoire-name-#{grimoire.id}"}
+                              type="text"
+                              name="name"
+                              value={grimoire.name}
+                              maxlength="60"
+                              class="grim-vol__name"
+                              aria-label={"Название переплёта #{grimoire.name}"}
+                            />
                             <button
-                              :if={writable_grimoire?(grimoire, @writable_grimoires)}
-                              id={"grimoire-erase-#{entry.id}"}
-                              type="button"
-                              phx-click="erase"
-                              phx-value-grimoire_id={grimoire.id}
-                              phx-value-spell_id={entry.spell_id}
-                              class="grim-fallback__erase"
-                              aria-label={"Стереть #{entry_label(entry)}"}
+                              id={"grimoire-rename-#{grimoire.id}"}
+                              type="submit"
+                              class="grim-vol__rename-btn"
                             >
-                              Стереть
+                              Переименовать
                             </button>
-                          </li>
-                        </ol>
+                          </form>
+                        </div>
+                        <span class="grim-vol__count">
+                          {entry_count(grimoire)} / {grimoire.capacity}
+                        </span>
+                      </header>
 
-                        <.form
-                          :if={
-                            @composition_available? and
-                              writable_grimoire?(grimoire, @writable_grimoires) and
-                              uninscribed_spells(grimoire, @spells) != []
-                          }
-                          for={@inscription_form}
-                          id={"grimoire-inscribe-form-#{grimoire.id}"}
-                          phx-submit="inscribe"
-                          class="grim-fallback__form"
-                        >
-                          <.input
-                            field={@inscription_form[:grimoire_id]}
-                            id={"grimoire-target-#{grimoire.id}"}
-                            type="hidden"
-                            value={grimoire.id}
-                          />
-                          <.input
-                            field={@inscription_form[:spell_id]}
-                            id={"grimoire-spell-#{grimoire.id}"}
-                            type="select"
-                            label="Заклинание для записи"
-                            options={spell_options(uninscribed_spells(grimoire, @spells))}
-                            prompt="Выберите формулу"
-                            required
-                          />
+                      <ol :if={grimoire_entries(grimoire) != []} class="grim-vol__entries">
+                        <li :for={entry <- sorted_entries(grimoire)} id={"grimoire-entry-#{entry.id}"}>
+                          <span class="grim-vol__entry-name">{entry_label(entry)}</span>
                           <button
-                            id={"grimoire-inscribe-#{grimoire.id}"}
-                            type="submit"
-                            class="grim__panel-btn"
+                            :if={writable_grimoire?(grimoire, @writable_grimoires)}
+                            id={"grimoire-erase-#{entry.id}"}
+                            type="button"
+                            phx-click="erase"
+                            phx-value-grimoire_id={grimoire.id}
+                            phx-value-spell_id={entry.spell_id}
+                            class="grim-vol__erase"
+                            aria-label={"Стереть #{entry_label(entry)}"}
                           >
-                            Записать в переплёт
+                            Стереть
                           </button>
-                        </.form>
+                        </li>
+                      </ol>
 
-                        <button
-                          :if={
-                            @composition_available? and
-                              not active_grimoire?(grimoire, @active_grimoire)
-                          }
-                          id={"grimoire-activate-#{grimoire.id}"}
-                          type="button"
-                          phx-click="activate"
-                          phx-value-id={grimoire.id}
-                          class="grim__panel-btn"
+                      <p :if={grimoire_entries(grimoire) == []} class="grim-vol__empty">
+                        Переплёт пуст.
+                      </p>
+
+                      <div
+                        :if={
+                          @composition_available? and
+                            writable_grimoire?(grimoire, @writable_grimoires)
+                        }
+                        id={"grimoire-inscribe-form-#{grimoire.id}"}
+                        class="grim-vol__add"
+                      >
+                        <p class="grim-vol__add-label">Записать формулу</p>
+                        <div
+                          :if={uninscribed_spells(grimoire, @spells) != []}
+                          class="grim-vol__add-list"
                         >
-                          Сделать боевым
-                        </button>
-                      </article>
-                    </div>
-                  </details>
+                          <button
+                            :for={spell <- uninscribed_spells(grimoire, @spells)}
+                            id={"grimoire-inscribe-#{grimoire.id}-#{spell.id}"}
+                            type="button"
+                            phx-click="inscribe"
+                            phx-value-grimoire_id={grimoire.id}
+                            phx-value-spell_id={spell.id}
+                            class="grim-vol__add-btn"
+                          >
+                            <span
+                              class="grim-vol__add-mark"
+                              style={"background: #{school_color(spell.school)}"}
+                            >
+                            </span>
+                            {spell.name}
+                          </button>
+                        </div>
+                        <p
+                          :if={uninscribed_spells(grimoire, @spells) == []}
+                          class="grim-vol__add-empty"
+                        >
+                          Все известные формулы уже записаны здесь.
+                        </p>
+                      </div>
+
+                      <button
+                        :if={
+                          @composition_available? and
+                            not active_grimoire?(grimoire, @active_grimoire)
+                        }
+                        id={"grimoire-activate-#{grimoire.id}"}
+                        type="button"
+                        phx-click="activate"
+                        phx-value-id={grimoire.id}
+                        class="grim__panel-btn"
+                      >
+                        Сделать боевым
+                      </button>
+                    </article>
+                  </div>
+
+                  <%!-- The painted shelf keeps drag-to-reorder, but it is the
+                        scenic view of a library the list above already manages. --%>
+                  <div
+                    id="grimoire-shelf-root"
+                    phx-hook="GrimoireShelf"
+                    phx-update="ignore"
+                    aria-label="Полка гримуаров"
+                  >
+                  </div>
                 </div>
               <% :spells -> %>
                 <div id="spell-library" class="book__leaf">
@@ -658,6 +734,12 @@ defmodule MMGOWeb.SpellbookLive do
                             {spell.manifestation.display_name} · {manifestation_stats(
                               spell.manifestation
                             )}
+                          </p>
+                          <p
+                            :if={manifestation_trait_label(spell.manifestation.trait)}
+                            class="spellbook-note__aside"
+                          >
+                            {manifestation_trait_label(spell.manifestation.trait)}
                           </p>
                         </div>
                         <div class="splist__stat-grid">
@@ -918,12 +1000,6 @@ defmodule MMGOWeb.SpellbookLive do
     do:
       "Полный академический круг: обязательны Schola и Actio. Остальные печати уточняют действие, а Fundamen связывает новую формулу с известным заклинанием."
 
-  defp inscription_form do
-    to_form(%{"grimoire_id" => "", "spell_id" => ""}, as: :inscription)
-  end
-
-  defp spell_options(spells), do: Enum.map(spells, &{"#{&1.name} — #{&1.formula}", &1.id})
-
   defp school_label(school), do: Map.get(@school_labels, to_string(school), "Неизвестная школа")
 
   defp school_quirk_label(:escalation), do: "эскалация"
@@ -964,6 +1040,18 @@ defmodule MMGOWeb.SpellbookLive do
        do: "здоровье #{hp}, сила #{power}, #{duration} х."
 
   defp manifestation_stats(_manifestation), do: "ограничено длительностью дуэли"
+
+  # What the construct does beyond the plain blow, so the player can read it off
+  # the page instead of discovering it mid-duel.
+  defp manifestation_trait_label(:ignite), do: "поджигает цель"
+  defp manifestation_trait_label(:chill), do: "сковывает цель холодом"
+  defp manifestation_trait_label(:gale), do: "сбивает цель с ног"
+  defp manifestation_trait_label(:drain), do: "вытягивает здоровье в вашу сторону"
+  defp manifestation_trait_label(:mending), do: "залечивает раны вашей стороны"
+  defp manifestation_trait_label(:rupture), do: "разрывает раны, добавляя урон"
+  defp manifestation_trait_label(:bastion), do: "поглощает больше урона"
+  defp manifestation_trait_label(:ward), do: "усиливает носителя при блоке"
+  defp manifestation_trait_label(_trait), do: nil
 
   # Craft decides how strong a spell is; the rank it earned decides who may
   # wield it outside a custom room.
@@ -1026,6 +1114,10 @@ defmodule MMGOWeb.SpellbookLive do
     do: "Это заклинание нельзя записать в ваш переплёт."
 
   defp spellbook_error_message(:no_spell_to_inscribe), do: "Нет доступной формулы для записи."
+
+  defp spellbook_error_message(:invalid_grimoire_name),
+    do: "Имя переплёта должно быть от одного до шестидесяти знаков."
+
   defp spellbook_error_message(:invalid_composition), do: generic_composition_error()
   defp spellbook_error_message(:invalid_spell_circle), do: generic_composition_error()
 
@@ -1098,6 +1190,9 @@ defmodule MMGOWeb.SpellbookLive do
 
       :formula in error_fields ->
         "Словесные печати не удержали формулу, и круг рассыпался до толкования."
+
+      :name in error_fields ->
+        spellbook_error_message(:invalid_grimoire_name)
 
       true ->
         spell_persistence_error()

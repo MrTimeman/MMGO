@@ -59,6 +59,7 @@ defmodule MMGO.Spells.Compiler do
                  compiled_spell <- normalize_engine_vocabulary(compiled_spell),
                  compiled_spell <- enforce_circle_limits(compiled_spell, base_spell, opts),
                  compiled_spell <- enforce_power_budget(compiled_spell, character),
+                 compiled_spell <- ensure_manifestation_trait(compiled_spell, request),
                  spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell, opts),
                  {:ok, spell} <-
                    Spells.create_spell(character, spell_attrs,
@@ -336,6 +337,68 @@ defmodule MMGO.Spells.Compiler do
     |> Map.update("effects", [], &power_bounded_effects(&1, budget))
   end
 
+  # A construct must always do something beyond hitting or absorbing, so a
+  # missing or mismatched trait is filled from the school that made it rather
+  # than left blank. The engine reads shield traits and strike traits from two
+  # different lists, so a shield can never carry a striking trait and a blade
+  # can never carry a shield's.
+  @striking_traits_by_school %{
+    "fire" => "ignite",
+    "water" => "chill",
+    "air" => "gale",
+    "earth" => "rupture",
+    "life" => "mending",
+    "death" => "drain",
+    "chaos" => "rupture",
+    "order" => "chill"
+  }
+
+  @shield_traits_by_school %{
+    "fire" => "ward",
+    "water" => "bastion",
+    "air" => "ward",
+    "earth" => "bastion",
+    "life" => "ward",
+    "death" => "ward",
+    "chaos" => "ward",
+    "order" => "bastion"
+  }
+
+  @shield_traits ["bastion", "ward"]
+  @striking_traits ["ignite", "chill", "gale", "drain", "mending", "rupture"]
+
+  defp ensure_manifestation_trait(compiled_spell, request) do
+    case Map.get(compiled_spell, "manifestation") do
+      manifestation when is_map(manifestation) ->
+        school = to_string(Map.get(compiled_spell, "school") || Map.get(request, "school"))
+        permitted = permitted_traits(Map.get(manifestation, "kind"))
+
+        trait =
+          case Map.get(manifestation, "trait") do
+            value when value in @shield_traits or value in @striking_traits ->
+              if value in permitted, do: value, else: default_trait(permitted, school)
+
+            _absent_or_invalid ->
+              default_trait(permitted, school)
+          end
+
+        Map.put(compiled_spell, "manifestation", Map.put(manifestation, "trait", trait))
+
+      _no_manifestation ->
+        compiled_spell
+    end
+  end
+
+  defp permitted_traits("held_shield"), do: @shield_traits
+  defp permitted_traits(:held_shield), do: @shield_traits
+  defp permitted_traits(_weapon_or_creature), do: @striking_traits
+
+  defp default_trait(@shield_traits, school),
+    do: Map.get(@shield_traits_by_school, school, "bastion")
+
+  defp default_trait(_striking, school),
+    do: Map.get(@striking_traits_by_school, school, "rupture")
+
   defp power_bounded_effects(effects, budget) when is_list(effects) do
     Enum.map(effects, fn
       effect when is_map(effect) ->
@@ -585,7 +648,8 @@ defmodule MMGO.Spells.Compiler do
       display_name: manifestation.display_name,
       hp: manifestation.hp,
       power: manifestation.power,
-      duration_turns: manifestation.duration_turns
+      duration_turns: manifestation.duration_turns,
+      trait: manifestation.trait
     }
   end
 

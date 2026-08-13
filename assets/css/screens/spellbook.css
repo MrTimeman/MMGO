@@ -228,46 +228,41 @@
   opacity: 0.48;
 }
 
-.grim-fallback {
-  margin-top: 1rem;
-  padding-top: 0.65rem;
-  border-top: 1px dashed rgba(74, 47, 28, 0.28);
-}
-
-.grim-fallback > summary {
-  cursor: pointer;
-  color: var(--parch-ink-faint);
-  font-family: var(--font-hand);
-  font-size: 1rem;
-}
-
-.grim-fallback__list {
+/* The volume manager. Every action a player needs on a book — rename, write,
+   erase, take into battle — is visible without opening anything first, and
+   every control is a full-width tap target on a phone. */
+.grim-list {
   display: grid;
-  gap: 0.75rem;
-  margin-top: 0.75rem;
+  gap: 0.9rem;
+  margin-top: 0.9rem;
 }
 
-.grim-fallback__volume {
-  padding: 0.75rem;
+.grim-vol {
+  padding: 0.8rem;
   border: 1px solid rgba(74, 47, 28, 0.25);
   border-left: 0.7rem solid var(--parch-leather);
   border-radius: 0.15rem;
   background: rgba(255, 249, 223, 0.44);
 }
 
-.grim-fallback__volume--active {
+.grim-vol--active {
   border-left-color: var(--parch-gold);
   box-shadow: inset 0 0 16px rgba(169, 121, 31, 0.08);
 }
 
-.grim-fallback__head {
+.grim-vol__head {
   display: flex;
   align-items: start;
   justify-content: space-between;
   gap: 0.7rem;
 }
 
-.grim-fallback__head p {
+.grim-vol__titling {
+  min-width: 0;
+  flex: 1;
+}
+
+.grim-vol__status {
   color: var(--parch-ink-faint);
   font-family: var(--font-sans);
   font-size: 0.6rem;
@@ -275,36 +270,148 @@
   text-transform: uppercase;
 }
 
-.grim-fallback__head h2 {
+.grim-vol__count {
+  flex: none;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.grim-vol__rename {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-top: 0.15rem;
+}
+
+/* The name is the field: tapping the title is how you rename a book, so it
+   must read as the heading it replaces rather than as a form control. */
+.grim-vol__name {
+  width: 100%;
+  min-width: 0;
+  padding: 0.15rem 0.3rem;
+  border: 1px solid transparent;
+  border-radius: 0.15rem;
+  background: transparent;
   color: var(--parch-red);
   font-family: var(--font-hand);
   font-size: 1.25rem;
   font-weight: 700;
 }
 
-.grim-fallback__entries {
-  margin: 0.55rem 0;
+.grim-vol__name:hover {
+  border-color: rgba(74, 47, 28, 0.22);
+}
+
+.grim-vol__name:focus {
+  border-color: var(--parch-gold);
+  background: rgba(255, 255, 255, 0.5);
+  outline: none;
+}
+
+.grim-vol__rename-btn {
+  flex: none;
+  padding: 0.3rem 0.55rem;
+  border: 1px solid rgba(74, 47, 28, 0.25);
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.grim-vol__entries {
+  margin: 0.6rem 0 0;
   border-top: 1px solid rgba(74, 47, 28, 0.18);
 }
 
-.grim-fallback__entries li {
+.grim-vol__entries li {
   display: flex;
+  align-items: center;
   justify-content: space-between;
   gap: 0.6rem;
-  padding: 0.35rem 0;
+  padding: 0.4rem 0;
   border-bottom: 1px solid rgba(74, 47, 28, 0.14);
   font-family: var(--font-hand);
 }
 
-.grim-fallback__entries small {
-  color: var(--parch-ink-faint);
-  font-family: var(--font-sans);
+.grim-vol__entry-name {
+  min-width: 0;
+  overflow: hidden;
+  flex: 1;
+  font-size: 1.05rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.grim-fallback__form {
-  display: grid;
-  gap: 0.5rem;
-  margin-top: 0.6rem;
+.grim-vol__erase {
+  flex: none;
+  min-height: 1.9rem;
+  padding: 0 0.6rem;
+  border: 1px solid rgba(140, 46, 34, 0.32);
+  border-radius: 0.15rem;
+  background: rgba(140, 46, 34, 0.08);
+  color: var(--parch-red);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+}
+
+.grim-vol__empty,
+.grim-vol__add-empty {
+  margin: 0.6rem 0 0;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.grim-vol__add {
+  margin-top: 0.7rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed rgba(74, 47, 28, 0.24);
+}
+
+.grim-vol__add-label {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.grim-vol__add-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.45rem;
+}
+
+/* One tap writes a formula. No select, no submit, no second step. */
+.grim-vol__add-btn {
+  display: inline-flex;
+  min-height: 2.1rem;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0 0.65rem;
+  border: 1px solid rgba(74, 47, 28, 0.28);
+  border-radius: 1.1rem;
+  background: rgba(255, 255, 255, 0.42);
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+}
+
+.grim-vol__add-btn:hover {
+  border-color: var(--parch-gold);
+  background: rgba(255, 255, 255, 0.68);
+}
+
+.grim-vol__add-mark {
+  width: 0.55rem;
+  height: 0.55rem;
+  flex: none;
+  border-radius: 50%;
 }
 
 .spell-ritual .book {

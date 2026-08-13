@@ -41,6 +41,51 @@ defmodule MMGO.Spells.CompilerTest do
     def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
   end
 
+  # A provider that summons a construct but says nothing about what it does
+  # beyond existing — the exact case the server has to fill in.
+  defmodule TraitlessManifestationProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(prompt_payload, schema, opts) do
+      {:ok, compiled_spell} =
+        MMGO.AI.Providers.Mock.structured_completion(prompt_payload, schema, opts)
+
+      manifestation =
+        compiled_spell
+        |> Map.get("manifestation", %{})
+        |> Map.merge(%{"kind" => "summoned_weapon", "power" => 4, "duration_turns" => 3})
+        |> Map.delete("trait")
+        |> Map.delete("hp")
+
+      {:ok, Map.put(compiled_spell, "manifestation", manifestation)}
+    end
+
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
+  end
+
+  # A provider that hands a blade a shield's trait, which the engine would read
+  # from the wrong list and silently ignore.
+  defmodule MismatchedTraitProvider do
+    @behaviour MMGO.AI.Provider
+
+    def structured_completion(prompt_payload, schema, opts) do
+      {:ok, compiled_spell} =
+        MMGO.AI.Providers.Mock.structured_completion(prompt_payload, schema, opts)
+
+      manifestation = %{
+        "kind" => "summoned_weapon",
+        "display_name" => "Клинок праха",
+        "power" => 4,
+        "duration_turns" => 3,
+        "trait" => "bastion"
+      }
+
+      {:ok, Map.put(compiled_spell, "manifestation", manifestation)}
+    end
+
+    def text_completion(_prompt_payload, _opts), do: {:ok, "unused"}
+  end
+
   defmodule MissingOutcomeProvider do
     @behaviour MMGO.AI.Provider
 
@@ -273,6 +318,38 @@ defmodule MMGO.Spells.CompilerTest do
 
       assert compiled_spell["manifestation"]["kind"] == kind
     end
+  end
+
+  test "a summoned blade always carries its school's trait", %{character: character} do
+    assert {:ok, %{spell: spell}} =
+             Compiler.compile_and_store(
+               character,
+               %{formula: "Vocatio Gladius Adepto", school: "death"},
+               provider: TraitlessManifestationProvider,
+               model: "traitless-manifestation-test",
+               allow_root_spell: true,
+               circle_tier: :trained
+             )
+
+    # Death drains: the blade takes health back to its wielder's side rather
+    # than merely landing a hit.
+    assert spell.manifestation.trait == :drain
+  end
+
+  test "a construct never keeps a trait its kind cannot use", %{character: character} do
+    assert {:ok, %{spell: spell}} =
+             Compiler.compile_and_store(
+               character,
+               %{formula: "Vocatio Gladius Adepto", school: "fire"},
+               provider: MismatchedTraitProvider,
+               model: "mismatched-trait-test",
+               allow_root_spell: true,
+               circle_tier: :trained
+             )
+
+    # `bastion` only reads on a shield, so a blade given one is corrected to a
+    # striking trait instead of being left inert.
+    assert spell.manifestation.trait == :ignite
   end
 
   test "compile_and_store/3 canonicalizes unambiguous provider vocabulary", %{

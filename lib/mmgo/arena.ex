@@ -152,6 +152,16 @@ defmodule MMGO.Arena do
     |> preload_profile()
   end
 
+  @doc "The profile behind an id, or nil."
+  def get_profile(id) when is_binary(id) do
+    case Repo.get(Profile, id) do
+      nil -> nil
+      profile -> preload_profile(profile)
+    end
+  end
+
+  def get_profile(_id), do: nil
+
   @doc """
   The account's current arena profile.
 

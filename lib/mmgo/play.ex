@@ -827,6 +827,18 @@ defmodule MMGO.Play do
   def erase_spell(_character_or_id, _grimoire_id, _spell_id),
     do: {:error, :missing_inscription}
 
+  @doc "Renames one owned grimoire."
+  def rename_grimoire(character_or_id, grimoire_id, name)
+      when is_binary(grimoire_id) and is_binary(name) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, grimoire} <- owned_grimoire(character, grimoire_id) do
+      Grimoires.rename_grimoire(grimoire, name)
+    end
+  end
+
+  def rename_grimoire(_character_or_id, _grimoire_id, _name),
+    do: {:error, :grimoire_not_found}
+
   # ------------------------------------------------------------------
   # Organizations (GDD §17)
   # ------------------------------------------------------------------

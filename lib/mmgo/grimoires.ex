@@ -163,6 +163,24 @@ defmodule MMGO.Grimoires do
   end
 
   @doc """
+  Renames one grimoire.
+
+  A book's name is a label its owner chooses, not part of its magic, so this
+  stays open even after the binding is sealed: a shelf is only navigable when
+  the spines can be told apart.
+  """
+  def rename_grimoire(%Grimoire{} = grimoire, name) when is_binary(name) do
+    grimoire
+    |> Changeset.change()
+    |> Changeset.cast(%{"name" => String.trim(name)}, [:name])
+    |> Changeset.validate_required([:name])
+    |> Changeset.validate_length(:name, min: 1, max: 60)
+    |> Repo.update()
+  end
+
+  def rename_grimoire(%Grimoire{}, _name), do: {:error, invalid_name_changeset()}
+
+  @doc """
   Removes one spell from a grimoire that still accepts changes.
 
   Swapping a formula out matters most in the arena, where the book is small and
@@ -361,6 +379,12 @@ defmodule MMGO.Grimoires do
     %Grimoire{}
     |> Changeset.change()
     |> Changeset.add_error(:capacity, "grimoire is at capacity")
+  end
+
+  defp invalid_name_changeset do
+    %Grimoire{}
+    |> Changeset.change()
+    |> Changeset.add_error(:name, "grimoire name is invalid")
   end
 
   defp missing_entry_changeset do

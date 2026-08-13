@@ -17,6 +17,23 @@ const VIEWPORT_EVENTS = [
 // trusting the report: a status bar plus Telegram's control row.
 const FULLSCREEN_MIN_TOP = 92
 
+// `isFullscreen` is not trustworthy on every client: some leave it false while
+// the app is plainly drawn under the status bar, which is exactly the case the
+// floor above exists for. So the request itself is the signal, and Telegram
+// tells us when it refuses.
+let fullscreenRequested = false
+let fullscreenDenied = false
+
+export function markFullscreenRequested() {
+  fullscreenRequested = true
+  fullscreenDenied = false
+}
+
+function fullscreenActive(webApp) {
+  if (webApp.isFullscreen === true) return true
+  return fullscreenRequested && !fullscreenDenied
+}
+
 function readInset(inset) {
   const measured = {top: 0, right: 0, bottom: 0, left: 0}
   if (!inset || typeof inset !== "object") return measured
@@ -57,7 +74,7 @@ export function publishTelegramInsets(webApp) {
   // usable offset is the sum of the two.
   const safeArea = readInset(webApp.safeAreaInset)
   const contentSafeArea = readInset(webApp.contentSafeAreaInset)
-  const fullscreen = webApp.isFullscreen === true
+  const fullscreen = fullscreenActive(webApp)
 
   const top = fullscreen
     ? Math.max(reportedTop(webApp), FULLSCREEN_MIN_TOP)
@@ -77,6 +94,15 @@ export function watchTelegramViewport(webApp) {
   publishTelegramInsets(webApp)
 
   if (typeof webApp.onEvent !== "function") return
+
+  try {
+    webApp.onEvent("fullscreenFailed", () => {
+      fullscreenDenied = true
+      publishTelegramInsets(webApp)
+    })
+  } catch (_error) {
+    // An older client without the event simply never refuses.
+  }
 
   for (const event of VIEWPORT_EVENTS) {
     try {

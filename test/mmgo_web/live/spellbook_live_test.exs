@@ -691,13 +691,11 @@ defmodule MMGOWeb.SpellbookLiveTest do
     |> render_click()
 
     assert has_element?(view, "#grimoire-#{grimoire.id}")
-    assert has_element?(view, "#grimoire-inscribe-#{grimoire.id}")
 
+    # One tap on the formula writes it: no select, no second step.
     view
-    |> form("#grimoire-inscribe-form-#{grimoire.id}", %{
-      "inscription" => %{"grimoire_id" => grimoire.id, "spell_id" => base_spell.id}
-    })
-    |> render_submit()
+    |> element("#grimoire-inscribe-#{grimoire.id}-#{base_spell.id}")
+    |> render_click()
 
     assert Grimoires.spell_inscribed?(grimoire.id, base_spell.id)
 
@@ -707,6 +705,54 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     assert %{id: active_id} = Grimoires.active_grimoire_for_character(character.id)
     assert active_id == grimoire.id
+  end
+
+  test "the player renames a grimoire from its shelf entry", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower,
+    grimoire: grimoire
+  } do
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    view
+    |> element("#spellbook-tab-grimoires")
+    |> render_click()
+
+    view
+    |> form("#grimoire-rename-form-#{grimoire.id}", %{
+      "grimoire_id" => grimoire.id,
+      "name" => "Книга штормов"
+    })
+    |> render_submit()
+
+    assert %{name: "Книга штормов"} = MMGO.Repo.get!(MMGO.Grimoires.Grimoire, grimoire.id)
+  end
+
+  test "a blank grimoire name is refused and the old one stands", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower,
+    grimoire: grimoire
+  } do
+    character = move_to(character, the_tower)
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+
+    view
+    |> element("#spellbook-tab-grimoires")
+    |> render_click()
+
+    html =
+      view
+      |> form("#grimoire-rename-form-#{grimoire.id}", %{
+        "grimoire_id" => grimoire.id,
+        "name" => "   "
+      })
+      |> render_submit()
+
+    assert html =~ "Имя переплёта"
+    assert %{name: "Дорожный гримуар"} = MMGO.Repo.get!(MMGO.Grimoires.Grimoire, grimoire.id)
   end
 
   defp session_conn(conn, character) do

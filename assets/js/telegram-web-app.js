@@ -1,4 +1,4 @@
-import {watchTelegramViewport} from "./telegram-viewport"
+import {markFullscreenRequested, watchTelegramViewport} from "./telegram-viewport"
 
 let telegramWebAppPromise
 let preparedTelegramWebApp
@@ -15,8 +15,15 @@ export function prepareTelegramWebApp(webApp) {
     // Telegram uses this colour to choose contrasting status-bar controls
     // while its own header is transparent in fullscreen mode.
     safelyInvoke(() => webApp.setHeaderColor?.("#0c0a09"))
-    safelyInvoke(() => webApp.requestFullscreen())
+    safelyInvoke(() => {
+      webApp.requestFullscreen()
+      markFullscreenRequested()
+    })
   }
+
+  // A client that was already fullscreen when the page loaded never fires the
+  // request, but its layout still needs the reserved room.
+  if (webApp.isFullscreen === true) markFullscreenRequested()
 
   // Must follow the fullscreen request so the first inset publish reflects it.
   safelyInvoke(() => watchTelegramViewport(webApp))
