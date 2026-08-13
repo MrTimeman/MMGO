@@ -89,3 +89,34 @@ defmodule MMGO.Arena.LadderTest do
     assert Ladder.regen_for(40) == 8
   end
 end
+
+defmodule MMGO.Arena.LadderCapacityTest do
+  use ExUnit.Case, async: true
+
+  alias MMGO.Arena.Ladder
+
+  test "books grow with the ladder and the seats sit above it" do
+    assert Ladder.grimoire_capacity(:initiate) == 15
+    assert Ladder.grimoire_capacity(:bronze) == 15
+    assert Ladder.grimoire_capacity(:silver) == 20
+    assert Ladder.grimoire_capacity(:gold) == 25
+    assert Ladder.grimoire_capacity(:platinum) == 30
+    assert Ladder.grimoire_capacity(:diamond) == 35
+    assert Ladder.grimoire_capacity(:archmage) == 40
+    assert Ladder.grimoire_capacity(:champion) == 45
+    assert Ladder.deputy_grimoire_capacity() == 45
+  end
+
+  test "rank bands top out at the strongest power" do
+    assert Ladder.power_band(:bronze) == {4, 5}
+    assert Ladder.power_band(:champion) == {43, 60}
+    assert Ladder.power_band(:initiate) == {0, 3}
+  end
+
+  test "a world character's level stands in for the ladder" do
+    assert Ladder.division_for_level(1) == :initiate
+    assert Ladder.division_for_level(18) == :bronze
+    assert Ladder.division_for_level(35) == :gold
+    assert Ladder.division_for_level(85) == :champion
+  end
+end

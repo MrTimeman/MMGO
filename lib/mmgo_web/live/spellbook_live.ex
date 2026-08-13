@@ -485,13 +485,13 @@ defmodule MMGOWeb.SpellbookLive do
                     phx-click="create_arena_grimoire"
                     class="grim__panel-btn"
                   >
-                    + Новый свободный гримуар · {MMGO.Arena.grimoire_capacity()} формул
+                    + Новый свободный гримуар · {MMGO.Arena.grimoire_capacity_for(@arena_profile)} формул
                   </button>
 
                   <p :if={@arena_mode?} id="arena-grimoire-policy" class="spellbook-note__aside">
                     Переплёты бесплатны и не ограничены по количеству. Активную раскладку можно
                     менять между боями: записывайте и стирайте формулы прямо в ней. В бой
-                    берётся один гримуар — {MMGO.Arena.grimoire_capacity()} формул.
+                    берётся один гримуар — {MMGO.Arena.grimoire_capacity_for(@arena_profile)} формул.
                   </p>
 
                   <div
@@ -774,6 +774,7 @@ defmodule MMGOWeb.SpellbookLive do
     |> assign(:grimoires, state.grimoires)
     |> assign(:active_grimoire, state.active_grimoire)
     |> assign(:arena_mode?, Map.get(state, :arena_mode?, false))
+    |> assign(:arena_profile, Map.get(state, :arena_profile))
     |> assign(:permitted_schools, state.permitted_schools)
     |> assign(:spell_circle_tier, state.spell_circle_tier)
     |> assign(:spell_creation_attempt, Map.get(state, :spell_creation_attempt))

@@ -808,6 +808,17 @@ defmodule MMGO.Combat.ActionSnapshot do
              "power" => power,
              "duration_turns" => remaining_turns
            }) do
+      # The trait is a bounded word, not browser authority: only the server's
+      # own vocabulary survives rehydration.
+      trait =
+        case Map.get(snapshot, "trait") do
+          value when is_binary(value) ->
+            if value in Enum.map(Manifestation.traits(), &to_string/1), do: value, else: nil
+
+          _other ->
+            nil
+        end
+
       {:ok,
        %{
          "state" => "summoned_weapon",
@@ -816,13 +827,17 @@ defmodule MMGO.Combat.ActionSnapshot do
          "power" => power,
          "remaining_turns" => remaining_turns,
          "applied_on_turn" => applied_on_turn
-       }}
+       }
+       |> maybe_put_weapon_trait(trait)}
     else
       _other -> {:error, :invalid_snapshot}
     end
   end
 
   defp weapon_from_snapshot(_snapshot), do: {:error, :manifestation_unavailable}
+
+  defp maybe_put_weapon_trait(weapon, nil), do: weapon
+  defp maybe_put_weapon_trait(weapon, trait), do: Map.put(weapon, "trait", trait)
 
   defp optional_enum_value(nil, _values), do: {:ok, nil}
   defp optional_enum_value(value, values), do: enum_value(value, values)

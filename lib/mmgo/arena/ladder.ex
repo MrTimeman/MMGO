@@ -67,6 +67,19 @@ defmodule MMGO.Arena.Ladder do
 
   @deputy_mana 240
 
+  # Books grow with the ladder; 45 slots belong to the Champion and the Deputy
+  # alone.
+  @grimoire_capacity_by_division %{
+    initiate: 15,
+    bronze: 15,
+    silver: 20,
+    gold: 25,
+    platinum: 30,
+    diamond: 35,
+    archmage: 40,
+    champion: 45
+  }
+
   # Regen is a share of the pool so a wider pool also refills faster, with a
   # floor that keeps the smallest pool from stalling.
   @regen_share 10
@@ -151,6 +164,63 @@ defmodule MMGO.Arena.Ladder do
   def power_gate(key) do
     Keyword.get(@power_gates, key, 0)
   end
+
+  @doc "The strongest power a spell may reach at all."
+  def max_power, do: 60
+
+  @doc """
+  The power band a division may forge within.
+
+  The caster's rank is the limit of the art they have mastered: a spell's power
+  must stay inside this band no matter how the incantation is written. Word
+  count is deliberately absent — coherence and intent decide where in the band a
+  spell lands, the band itself decides how far that can go.
+  """
+  def power_band(division) when division in @keys do
+    ordinal_division = ordinal(division)
+    minimum = Keyword.get(@power_gates, division, 0)
+
+    maximum =
+      if ordinal_division < length(@keys) - 1 do
+        power_gate(Enum.at(@keys, ordinal_division + 1)) - 1
+      else
+        max_power()
+      end
+
+    {minimum, maximum}
+  end
+
+  def power_band(_division), do: power_band(hd(@keys))
+
+  @doc """
+  The division a world character's level stands in for.
+
+  World characters have no arena division; their level is the honest
+  approximation of the same ladder for the spell compiler's guardrails.
+  """
+  def division_for_level(level) when is_integer(level) do
+    cond do
+      level >= 80 -> :champion
+      level >= 60 -> :archmage
+      level >= 50 -> :diamond
+      level >= 40 -> :platinum
+      level >= 30 -> :gold
+      level >= 20 -> :silver
+      level >= 10 -> :bronze
+      true -> :initiate
+    end
+  end
+
+  def division_for_level(_level), do: :initiate
+
+  @doc """
+  The grimoire slot count a division may keep.
+  """
+  def grimoire_capacity(division),
+    do: Map.get(@grimoire_capacity_by_division, division, 15)
+
+  @doc "The Deputy's book matches the Champion's."
+  def deputy_grimoire_capacity, do: 45
 
   @doc """
   The mana pool a division carries.

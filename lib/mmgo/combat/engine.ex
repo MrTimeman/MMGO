@@ -626,7 +626,8 @@ defmodule MMGO.Combat.Engine do
             target_participant_id,
             Map.fetch!(creature, "power"),
             participants,
-            sides
+            sides,
+            combat.turn_number
           )
 
         action_event =
@@ -645,7 +646,21 @@ defmodule MMGO.Combat.Engine do
             [action_event]
           )
 
-        {participants, sides, manifestation_events, next_seq}
+        {participants, sides, trait_events, next_seq} =
+          apply_manifestation_trait(
+            combat,
+            creature,
+            participant,
+            target_side,
+            target_participant_id,
+            damage_payload,
+            participants,
+            sides,
+            next_seq,
+            manifestation_events
+          )
+
+        {participants, sides, trait_events, next_seq}
       end
     else
       {participants, sides, [], seq}
@@ -1210,7 +1225,8 @@ defmodule MMGO.Combat.Engine do
                   target_participant_id,
                   Map.fetch!(weapon, "power"),
                   participants,
-                  sides
+                  sides,
+                  combat.turn_number
                 )
 
               payload =
@@ -1228,7 +1244,21 @@ defmodule MMGO.Combat.Engine do
                   [strike_event | events]
                 )
 
-              {participants, sides, tags, inventory_updates, next_seq, manifestation_events}
+              {participants, sides, trait_events, next_seq} =
+                apply_manifestation_trait(
+                  combat,
+                  weapon,
+                  participant,
+                  target_side,
+                  target_participant_id,
+                  damage_payload,
+                  participants,
+                  sides,
+                  next_seq,
+                  manifestation_events
+                )
+
+              {participants, sides, tags, inventory_updates, next_seq, trait_events}
             end
         end
 
@@ -1756,6 +1786,7 @@ defmodule MMGO.Combat.Engine do
       |> maybe_put_manifestation_stat("hp", manifestation.hp, multiplier)
       |> maybe_put_manifestation_stat("power", manifestation.power, multiplier)
       |> put_manifestation_burden(spell)
+      |> maybe_put_manifestation_trait(manifestation)
 
     participants =
       Map.update!(participants, participant_id, fn participant ->
@@ -1792,6 +1823,11 @@ defmodule MMGO.Combat.Engine do
   defp manifestation_weight(state) do
     Map.get(state, "power", 0) + Map.get(state, "hp", 0)
   end
+
+  defp maybe_put_manifestation_trait(state, %{trait: trait}) when not is_nil(trait),
+    do: Map.put(state, "trait", to_string(trait))
+
+  defp maybe_put_manifestation_trait(state, _manifestation), do: state
 
   defp maybe_put_manifestation_stat(state, _field, nil, _multiplier), do: state
 
@@ -2050,7 +2086,7 @@ defmodule MMGO.Combat.Engine do
     case effect.state do
       "impact" ->
         {participants, sides, damage_payload} =
-          apply_damage(side, participant_id, intensity, participants, sides)
+          apply_damage(side, participant_id, intensity, participants, sides, turn_number)
 
         {participants, sides, tags, Map.merge(damage_payload, %{"state" => effect.state})}
 
@@ -2085,13 +2121,16 @@ defmodule MMGO.Combat.Engine do
     end
   end
 
-  defp apply_damage(side, target_participant_id, damage, participants, sides) do
+  defp apply_damage(side, target_participant_id, damage, participants, sides, turn_number) do
     # The active choice resolves first: a raised guard is what the blow meets,
     # and only what gets past it reaches the passive absorptions.
     {participants, damage, guard} = consume_guard(target_participant_id, damage, participants)
 
     {participants, damage, manifestation_absorption} =
       consume_manifestations(side, target_participant_id, damage, participants)
+
+    {participants, damage, shield_trait} =
+      apply_shield_traits(side, target_participant_id, damage, participants, turn_number)
 
     {participants, damage, absorbed} = consume_shield(side, damage, participants)
 
@@ -2115,12 +2154,156 @@ defmodule MMGO.Combat.Engine do
         "channeling_broken" => channeling_broken?
       }
       |> maybe_put_guard(guard)
+      |> maybe_put_shield_trait(shield_trait)
 
     {participants, sides, payload}
   end
 
   defp maybe_put_guard(payload, nil), do: payload
   defp maybe_put_guard(payload, guard), do: Map.put(payload, "guard", guard)
+
+  defp maybe_put_shield_trait(payload, nil), do: payload
+  defp maybe_put_shield_trait(payload, trait), do: Map.put(payload, "shield_trait", trait)
+
+  # A shield's trait colours what happens when it takes the blow. Bastion is
+  # earth: it simply absorbs more. Ward is order: the block empowers its holder
+  # for their next cast.
+  defp apply_shield_traits(side, target_participant_id, damage, participants, turn_number) do
+    participant_id =
+      case Map.get(participants, target_participant_id) do
+        %Participant{side: ^side} -> target_participant_id
+        _other -> first_ready_participant_on_side(participants, side)
+      end
+
+    participant = Map.get(participants, participant_id)
+    shield = participant && shield_state(participant)
+
+    case shield && Map.get(shield, "trait") do
+      "bastion" when damage > 0 ->
+        reduced = max(damage - 10, 0)
+        {participants, reduced, %{"trait" => "bastion", "absorbed" => damage - reduced}}
+
+      "ward" ->
+        participants =
+          update_participant_state(participants, participant_id, %{
+            "state" => "empowered",
+            "intensity" => 2,
+            "duration" => 1,
+            "applied_on_turn" => turn_number,
+            "source" => "manifestation_trait"
+          })
+
+        {participants, damage, %{"trait" => "ward"}}
+
+      _no_trait ->
+        {participants, damage, nil}
+    end
+  end
+
+  defp shield_state(%Participant{} = participant) do
+    Enum.find(participant.active_states || [], &(&1["state"] == "summoned_shield"))
+  end
+
+  defp shield_state(_participant), do: nil
+
+  # What a construct does beyond plain hits. One bounded word per school,
+  # chosen at compile time and carried on the manifestation state.
+  @trait_states %{"ignite" => "burning", "chill" => "frozen", "gale" => "staggered"}
+
+  defp apply_manifestation_trait(
+         combat,
+         source,
+         wielder,
+         target_side,
+         target_participant_id,
+         damage_payload,
+         participants,
+         sides,
+         seq,
+         events
+       ) do
+    damage = Map.get(damage_payload, "damage", 0)
+    power = Map.get(source, "power", 0)
+    trait = Map.get(source, "trait")
+
+    payload = %{
+      "trait" => trait,
+      "source_spell_id" => Map.get(source, "source_spell_id"),
+      "display_name" => Map.get(source, "display_name"),
+      "target_side" => target_side,
+      "target_participant_id" => target_participant_id
+    }
+
+    case trait do
+      state_name when state_name in ["ignite", "chill", "gale"] ->
+        participants =
+          update_participant_state(participants, target_participant_id, %{
+            "state" => Map.fetch!(@trait_states, state_name),
+            "intensity" => max(div(power, 3), 2),
+            "duration" => 2,
+            "applied_on_turn" => combat.turn_number,
+            "source" => "manifestation_trait"
+          })
+
+        trait_event =
+          event(
+            seq,
+            combat.turn_number,
+            "manifestation_trait",
+            Map.put(payload, "state", Map.fetch!(@trait_states, state_name))
+          )
+
+        {participants, sides, [trait_event | events], seq + 1}
+
+      "drain" ->
+        healed = damage |> div(2) |> max(1) |> min(max(power, 1))
+        sides = apply_side_delta(sides, wielder.side, healed)
+
+        {participants, sides,
+         [
+           event(
+             seq,
+             combat.turn_number,
+             "manifestation_trait",
+             Map.put(payload, "healed", healed)
+           )
+           | events
+         ], seq + 1}
+
+      "mending" ->
+        healed = max(div(power, 2), 1)
+        sides = apply_side_delta(sides, wielder.side, healed)
+
+        {participants, sides,
+         [
+           event(
+             seq,
+             combat.turn_number,
+             "manifestation_trait",
+             Map.put(payload, "healed", healed)
+           )
+           | events
+         ], seq + 1}
+
+      "rupture" ->
+        extra = max(div(damage, 2), 1)
+        sides = apply_side_delta(sides, target_side, -extra)
+
+        {participants, sides,
+         [
+           event(
+             seq,
+             combat.turn_number,
+             "manifestation_trait",
+             Map.put(payload, "extra_damage", extra)
+           )
+           | events
+         ], seq + 1}
+
+      _no_trait ->
+        {participants, sides, events, seq}
+    end
+  end
 
   defp consume_manifestations(_side, _target_participant_id, damage, participants)
        when damage <= 0,

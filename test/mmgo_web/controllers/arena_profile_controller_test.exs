@@ -55,7 +55,7 @@ defmodule MMGOWeb.ArenaProfileControllerTest do
     assert CharacterProfiles.arena?(profile.character)
     assert world_character.id != profile.character_id
 
-    assert %{capacity: 8, weight: 0, status: :active} =
+    assert %{capacity: 15, weight: 0, status: :active} =
              Grimoires.active_grimoire_for_character(profile.character_id)
   end
 

@@ -618,11 +618,11 @@ defmodule MMGO.Spells.CompilerTest do
              )
 
     # A trained root keeps the compiler budget rather than collapsing to the
-    # novice caps, but craft still bounds it: "Aqua Lente" fills two seals, so
-    # the provider's claim of power 80 is earned down to that ceiling and every
-    # magnitude rescales to it.
-    assert trained_root.power == 4
-    assert trained_root.fatigue_cost == 18
+    # novice caps, but the rank band still bounds it: the caster is a level-18
+    # world character (Bronze, band max 5), so the provider's claim of power 80
+    # is pulled down into the band and every magnitude rescales to it.
+    assert trained_root.power == 5
+    assert trained_root.fatigue_cost == 20
     assert trained_root.cooldown_turns == 3
     assert trained_root.environment_mode == :replace
     assert trained_root.environment_tags == ["world-fire", "collapsed-reality"]
@@ -630,18 +630,16 @@ defmodule MMGO.Spells.CompilerTest do
     assert length(trained_root.interaction_rules) == 1
   end
 
-  test "craft, not the caster, sets the power a spell can earn", %{character: character} do
-    common_opts = [provider: OverpoweredRootProvider, model: "craft-ceiling-test-model"]
+  test "the caster's rank band bounds power, never the word count", %{
+    realm: realm,
+    character: character
+  } do
+    common_opts = [provider: OverpoweredRootProvider, model: "rank-band-test-model"]
 
-    # Same greedy provider, same caster: only the number of filled seals differs.
-    assert {:ok, %{spell: terse}} =
-             Compiler.compile_and_store(
-               character,
-               %{name: "Terse", formula: "Ignis Ictus Levis", school: "fire"},
-               common_opts ++ [allow_root_spell: true, circle_tier: :trained]
-             )
-
-    assert {:ok, %{spell: wrought}} =
+    # A level-18 world character sits in Bronze (band max 5). The greediest
+    # provider claim lands on the band regardless of how many words the formula
+    # uses.
+    assert {:ok, %{spell: six_words}} =
              Compiler.compile_and_store(
                character,
                %{
@@ -652,17 +650,27 @@ defmodule MMGO.Spells.CompilerTest do
                common_opts ++ [allow_root_spell: true, circle_tier: :trained]
              )
 
-    assert terse.power == 5
-    assert wrought.power == 50
+    assert six_words.power == 5
 
-    # Power is the whole budget, so the fuller formula is mechanically stronger.
-    assert wrought.fatigue_cost > terse.fatigue_cost
+    # A level-85 caster stands in for the Champion's band (max 60). A terse
+    # three-word formula may still reach the top of it: words are free, the
+    # band is the only ceiling.
+    champion = character_fixture(realm, "champion-mage", "Champion Mage", 85)
 
-    assert Enum.max_by(wrought.effects, & &1.intensity).intensity >
-             Enum.max_by(terse.effects, & &1.intensity).intensity
+    assert {:ok, %{spell: terse}} =
+             Compiler.compile_and_store(
+               champion,
+               %{name: "Terse", formula: "Ignis Ictus Levis", school: "fire"},
+               common_opts ++ [allow_root_spell: true, circle_tier: :trained]
+             )
+
+    assert terse.power == 60
+    assert terse.fatigue_cost > six_words.fatigue_cost
   end
 
-  test "a refinement pass reaches past the lineage it evolves", %{character: character} do
+  test "an ancestor may guide a refinement but never raises the band", %{
+    character: character
+  } do
     assert {:ok, %{spell: refined}} =
              Compiler.compile_and_store(
                character,
@@ -673,12 +681,13 @@ defmodule MMGO.Spells.CompilerTest do
                  base_spell_id: spell_fixture(character, "Ancestor", power: 30).id
                },
                provider: OverpoweredRootProvider,
-               model: "lineage-ceiling-test-model",
+               model: "lineage-band-test-model",
                circle_tier: :trained
              )
 
-    # Three seals alone would cap this at 5; the power-30 ancestor lifts it.
-    assert refined.power == 35
+    # The ancestor's own power is irrelevant to the caster's Bronze band.
+    assert refined.power == 5
+    assert refined.source_spell_id != nil
   end
 
   test "compiler limits the owned library context", %{
@@ -703,14 +712,14 @@ defmodule MMGO.Spells.CompilerTest do
     assert Enum.any?(prompt["library"], &(&1["id"] == base_spell.id))
   end
 
-  defp character_fixture(realm, handle, name) do
+  defp character_fixture(realm, handle, name, level \\ 18) do
     account =
       %Account{}
       |> Account.registration_changeset(%{display_name: name, handle: handle})
       |> Repo.insert!()
 
     %Character{account_id: account.id, realm_id: realm.id}
-    |> Character.changeset(%{name: name, status: :active, level: 18})
+    |> Character.changeset(%{name: name, status: :active, level: level})
     |> Repo.insert!()
   end
 

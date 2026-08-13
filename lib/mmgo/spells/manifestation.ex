@@ -11,6 +11,9 @@ defmodule MMGO.Spells.Manifestation do
   import Ecto.Changeset
 
   @kinds [:held_shield, :summoned_weapon, :creature_ally]
+  # What a construct does beyond plain hits and absorption — one bounded word,
+  # matched to its school at compile time.
+  @traits [:ignite, :chill, :gale, :bastion, :mending, :drain, :rupture, :ward]
   @max_display_name_bytes 96
   @max_hp 120
   @max_power 60
@@ -25,11 +28,12 @@ defmodule MMGO.Spells.Manifestation do
     field :hp, :integer
     field :power, :integer
     field :duration_turns, :integer
+    field :trait, Ecto.Enum, values: @traits
   end
 
   def changeset(manifestation, attrs) do
     manifestation
-    |> cast(attrs, [:kind, :display_name, :hp, :power, :duration_turns])
+    |> cast(attrs, [:kind, :display_name, :hp, :power, :duration_turns, :trait])
     |> validate_required([:kind, :display_name, :duration_turns])
     |> validate_number(:hp, greater_than: 0, less_than_or_equal_to: @max_hp)
     |> validate_number(:power, greater_than: 0, less_than_or_equal_to: @max_power)
@@ -42,6 +46,7 @@ defmodule MMGO.Spells.Manifestation do
   end
 
   def kinds, do: @kinds
+  def traits, do: @traits
   def max_hp, do: @max_hp
   def max_power, do: @max_power
   def max_duration_turns, do: @max_duration_turns

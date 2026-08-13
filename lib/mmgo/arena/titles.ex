@@ -35,6 +35,18 @@ defmodule MMGO.Arena.Titles do
   def failure_cooldown_days, do: @failure_cooldown_days
   def eligible_division, do: @eligible_division
 
+  @doc "True when the profile holds `seat` this season."
+  def holds_seat?(profile, seat), do: holds_seat?(profile, seat, 1)
+
+  def holds_seat?(%Profile{} = profile, seat, season) do
+    case holder(seat, season) do
+      %TitleSeat{profile_id: profile_id} when profile_id == profile.id -> true
+      _other -> false
+    end
+  end
+
+  def holds_seat?(_profile, _seat, _season), do: false
+
   @doc "The profile holding `seat` this season, or nil."
   def holder(seat, season \\ 1) when seat in [:champion, :deputy] do
     TitleSeat

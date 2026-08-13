@@ -155,7 +155,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
 
     grimoires = Grimoires.list_grimoires_for_character(profile.character_id)
     assert length(grimoires) == initial_count + 1
-    assert Enum.any?(grimoires, &(&1.status == :draft and &1.capacity == 8 and &1.weight == 0))
+    assert Enum.any?(grimoires, &(&1.status == :draft and &1.capacity == 15 and &1.weight == 0))
   end
 
   test "the novice circle has exactly three seals and compiles at the Tower", %{

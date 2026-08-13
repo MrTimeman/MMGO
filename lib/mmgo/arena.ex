@@ -35,10 +35,6 @@ defmodule MMGO.Arena do
   alias MMGO.Worlds.{Location, Realm}
 
   @combat_level 100
-  # Arena loadouts are deliberately tight: spell applications here are far less
-  # varied than in the world, so a wide book removes the choice rather than
-  # rewarding it.
-  @grimoire_capacity 8
 
   # Ranked pairing starts inside this rating band and widens with every step of
   # waiting, so a thin queue still resolves.
@@ -118,7 +114,37 @@ defmodule MMGO.Arena do
 
   def schools, do: Profile.schools()
   def combat_level, do: @combat_level
-  def grimoire_capacity, do: @grimoire_capacity
+
+  @doc """
+  The loadout slot count a profile may keep.
+
+  Books grow with the ladder, and the two seats sit above it: 45 slots belong
+  to the Champion and the Deputy alone.
+  """
+  def grimoire_capacity_for(%Profile{} = profile) do
+    cond do
+      Titles.holds_seat?(profile, :champion) -> Ladder.grimoire_capacity(:champion)
+      Titles.holds_seat?(profile, :deputy) -> Ladder.deputy_grimoire_capacity()
+      true -> Ladder.grimoire_capacity(profile.division)
+    end
+  end
+
+  def grimoire_capacity_for(_profile), do: Ladder.grimoire_capacity(:initiate)
+
+  @doc """
+  Raises every arena loadout the profile owns to the given capacity.
+
+  Promotion goes up and never down, so a book that already holds entries is
+  never squeezed by a demotion.
+  """
+  def raise_grimoire_capacity(%Profile{} = profile, capacity) when is_integer(capacity) do
+    query =
+      from g in Grimoire,
+        where: g.owner_character_id == ^profile.character_id,
+        where: fragment("COALESCE(?->>'arena', '') = 'true'", g.metadata)
+
+    Repo.update_all(query, set: [capacity: capacity])
+  end
 
   def get_profile!(id) when is_binary(id) do
     Profile
@@ -256,13 +282,19 @@ defmodule MMGO.Arena do
       name = attrs["name"] || "Arena Grimoire #{count + 1}"
 
       %Grimoire{}
-      |> arena_grimoire_changeset(character, name, :draft, %{
-        "arena" => true,
-        "free" => true,
-        "top_tier" => true,
-        "editable" => true,
-        "loadout_rules" => "limited"
-      })
+      |> arena_grimoire_changeset(
+        character,
+        name,
+        :draft,
+        %{
+          "arena" => true,
+          "free" => true,
+          "top_tier" => true,
+          "editable" => true,
+          "loadout_rules" => "limited"
+        },
+        grimoire_capacity_for(profile)
+      )
       |> insert_or_rollback()
     end)
     |> broadcast_profile_result(profile.id, :grimoire_created)
@@ -1162,7 +1194,7 @@ defmodule MMGO.Arena do
 
       case Repo.get_by(Grimoire, owner_character_id: character.id, status: :active) do
         %Grimoire{} = grimoire -> bind_starter_spells!(grimoire, spells)
-        nil -> create_starter_grimoire!(character, spells)
+        nil -> create_starter_grimoire!(character, spells, grimoire_capacity_for(profile))
       end
     end)
   end
@@ -1222,16 +1254,24 @@ defmodule MMGO.Arena do
     end
   end
 
-  defp create_starter_grimoire!(character, spells) do
+  defp create_starter_grimoire!(character, spells, capacity \\ nil) do
+    capacity = capacity || Ladder.grimoire_capacity(:initiate)
+
     grimoire =
       %Grimoire{}
-      |> arena_grimoire_changeset(character, "Arena Grimoire", :draft, %{
-        "arena" => true,
-        "free" => true,
-        "top_tier" => true,
-        "starter" => true,
-        "loadout_rules" => "limited"
-      })
+      |> arena_grimoire_changeset(
+        character,
+        "Arena Grimoire",
+        :draft,
+        %{
+          "arena" => true,
+          "free" => true,
+          "top_tier" => true,
+          "starter" => true,
+          "loadout_rules" => "limited"
+        },
+        capacity
+      )
       |> insert_or_rollback()
 
     spells
@@ -1249,14 +1289,14 @@ defmodule MMGO.Arena do
     grimoire |> Changeset.change(status: :active) |> Repo.update!()
   end
 
-  defp arena_grimoire_changeset(grimoire, character, name, status, metadata) do
+  defp arena_grimoire_changeset(grimoire, character, name, status, metadata, capacity) do
     grimoire
     |> Changeset.change(%{
       owner_character_id: character.id,
       realm_id: character.realm_id,
       name: name,
       status: status,
-      capacity: @grimoire_capacity,
+      capacity: capacity,
       weight: 0,
       metadata: metadata
     })

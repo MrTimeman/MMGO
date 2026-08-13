@@ -566,7 +566,10 @@ defmodule MMGO.PlayTest do
 
     assert {:ok, draft} = Play.create_arena_draft_grimoire(profile.character)
     assert draft.status == :draft
-    assert draft.capacity == Arena.grimoire_capacity()
+
+    assert draft.capacity ==
+             Arena.grimoire_capacity_for(Arena.get_profile_by_character(draft.owner_character_id))
+
     assert draft.weight == 0
     assert draft.metadata["free"] == true
 

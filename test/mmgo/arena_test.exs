@@ -105,13 +105,13 @@ defmodule MMGO.ArenaTest do
 
     assert Enum.sort(Enum.map(spells, & &1.school)) == [:earth, :fire, :order]
     assert length(spells) == 3
-    assert [%{status: :active, capacity: 8, weight: 0} = active] = grimoires
+    assert [%{status: :active, capacity: 15, weight: 0} = active] = grimoires
     assert active.metadata["arena"] == true
     assert length(active.entries) == 3
 
     assert {:ok, first_draft} = Arena.create_draft_grimoire(profile)
     assert {:ok, second_draft} = Arena.create_draft_grimoire(profile, %{name: "Counterbook"})
-    assert first_draft.capacity == 8
+    assert first_draft.capacity == 15
     assert first_draft.weight == 0
     assert first_draft.metadata["free"] == true
     assert second_draft.name == "Counterbook"

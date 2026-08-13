@@ -2,6 +2,7 @@ defmodule MMGO.Spells.Compiler do
   alias MMGO.AI
   alias MMGO.AI.Prompts.SpellCompilePrompt
   alias MMGO.Accounts.Character
+  alias MMGO.Arena.Ladder
   alias MMGO.Spells
   alias MMGO.Spells.{Incantation, Spell, SpellFailure}
 
@@ -19,17 +20,6 @@ defmodule MMGO.Spells.Compiler do
   @novice_root_max_fatigue_cost 12
   @novice_root_max_cooldown_turns 3
 
-  # Craft, not the caster, decides how strong a spell may become: a Champion
-  # writing a lazy three-seal formula still earns a weak spell. Without this the
-  # model chose the power freely, which produced a power-50 sword beside a
-  # power-1 undead army.
-  @craft_ceiling_by_seals %{1 => 3, 2 => 4, 3 => 5, 4 => 15, 5 => 30, 6 => 50}
-  @unsealed_craft_ceiling 5
-  # Each refinement pass may push a little past the ancestor it evolves, so the
-  # top of the range is reached by patient iteration rather than one lucky cast.
-  @lineage_step 5
-  @max_power 60
-
   def compile_and_store(%Character{} = character, attrs, opts \\ []) when is_map(attrs) do
     with {:ok, request} <- normalize_request(attrs),
          {:ok, base_spell} <- resolve_owned_base_spell(character, request, opts) do
@@ -43,7 +33,9 @@ defmodule MMGO.Spells.Compiler do
             level: character.level,
             realm_id: character.realm_id,
             school_primary: schools[:primary],
-            school_secondary: schools[:secondary]
+            school_secondary: schools[:secondary],
+            division: to_string(caster_division(character)),
+            division_label: Ladder.label(caster_division(character))
           },
           environment_tags: environment_tags,
           request: prompt_request(request, opts),
@@ -66,8 +58,7 @@ defmodule MMGO.Spells.Compiler do
             with :ok <- validate_created_player_facing_output(request, compiled_spell),
                  compiled_spell <- normalize_engine_vocabulary(compiled_spell),
                  compiled_spell <- enforce_circle_limits(compiled_spell, base_spell, opts),
-                 compiled_spell <-
-                   enforce_power_budget(compiled_spell, request, base_spell, opts),
+                 compiled_spell <- enforce_power_budget(compiled_spell, character),
                  spell_attrs <- merge_spell_attrs(request, base_spell, compiled_spell, opts),
                  {:ok, spell} <-
                    Spells.create_spell(character, spell_attrs,
@@ -279,25 +270,16 @@ defmodule MMGO.Spells.Compiler do
   end
 
   @doc """
-  The strongest spell this formula could earn.
+  The division whose band a spell is compiled within.
 
-  Seals set the band and lineage lets a refinement pass reach past the ancestor
-  it evolves. The caster is deliberately absent: rank governs where a spell may
-  be cast, never how strong it may be forged.
+  An arena profile's division is authoritative. A world character has no
+  arena profile, so their level stands in for the same ladder.
   """
-  def craft_ceiling(seal_count, base_spell) do
-    seal_ceiling = Map.get(@craft_ceiling_by_seals, seal_count, @unsealed_craft_ceiling)
-
-    lineage_ceiling =
-      case base_spell do
-        %Spell{power: power} when is_integer(power) -> power + @lineage_step
-        _no_lineage -> 0
-      end
-
-    seal_ceiling
-    |> max(lineage_ceiling)
-    |> min(@max_power)
-    |> max(1)
+  def caster_division(%Character{} = character) do
+    case MMGO.Arena.get_profile_by_character(character.id) do
+      %MMGO.Arena.Profile{division: division} when not is_nil(division) -> division
+      _no_arena_profile -> Ladder.division_for_level(character.level)
+    end
   end
 
   @doc """
@@ -323,7 +305,13 @@ defmodule MMGO.Spells.Compiler do
     }
   end
 
-  defp enforce_power_budget(compiled_spell, request, base_spell, opts) do
+  defp enforce_power_budget(compiled_spell, character) do
+    # The prompt carries the same band, so this is the backstop, not the judge:
+    # whatever the model proposes is pulled down into the band the caster's
+    # rank has mastered, then every magnitude is rescaled to the result. Word
+    # count plays no part; the band is the limit of the art itself.
+    {_band_min, band_max} = Ladder.power_band(caster_division(character))
+
     power =
       compiled_spell
       |> Map.get("power")
@@ -331,7 +319,7 @@ defmodule MMGO.Spells.Compiler do
         value when is_integer(value) and value >= 1 -> value
         _absent_or_invalid -> 1
       end
-      |> min(craft_ceiling(seal_count(request, opts), base_spell))
+      |> min(band_max)
 
     budget = power_budget(power)
 
@@ -367,29 +355,6 @@ defmodule MMGO.Spells.Compiler do
   end
 
   defp power_bounded_effects(effects, _budget), do: effects
-
-  # The keyed slots are authoritative when supplied; a bare formula is counted
-  # positionally. Blank seals never count toward craft.
-  defp seal_count(request, opts) do
-    case incantation_slots(opts) do
-      slots when map_size(slots) > 0 ->
-        Enum.count(slots, fn {_seal, word} -> present_seal?(word) end)
-
-      _no_slots ->
-        request
-        |> Map.get("formula")
-        |> case do
-          formula when is_binary(formula) ->
-            formula |> String.split(~r/\s+/, trim: true) |> length()
-
-          _absent ->
-            0
-        end
-    end
-  end
-
-  defp present_seal?(word) when is_binary(word), do: String.trim(word) != ""
-  defp present_seal?(_word), do: false
 
   defp novice_root_effects(compiled_spell) do
     case Map.get(compiled_spell, "effects") do

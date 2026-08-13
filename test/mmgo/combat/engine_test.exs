@@ -1023,6 +1023,97 @@ defmodule MMGO.Combat.EngineTest do
     assert strike_event.payload["target_side"] == "defenders"
   end
 
+  test "a draining weapon returns half the damage to its wielder's side" do
+    combat = %{combat_fixture() | turn_number: 2}
+    [attacker, defender] = participants_fixture()
+
+    # The attackers take some damage first so the heal is visible.
+    sides = %{
+      "attackers" => %{"shared_hp" => 60, "max_shared_hp" => 100},
+      "defenders" => %{"shared_hp" => 100, "max_shared_hp" => 100}
+    }
+
+    combat = %{combat | sides: sides}
+
+    weapon = %{
+      "state" => "summoned_weapon",
+      "source_spell_id" => "weapon-spell",
+      "display_name" => "Коса жнеца",
+      "power" => 20,
+      "trait" => "drain",
+      "remaining_turns" => 3,
+      "applied_on_turn" => 1
+    }
+
+    attacker = %{attacker | active_states: [weapon]}
+
+    action = %Action{
+      participant_id: attacker.id,
+      action_type: :manifestation_strike,
+      target_side: "attackers",
+      payload: %{
+        "snapshot" => %{
+          "kind" => "manifestation_strike",
+          "manifestation" => weapon,
+          "target_side" => "defenders",
+          "target_participant_id" => defender.id
+        }
+      }
+    }
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 2, status: :locked}, [attacker, defender], [
+        action
+      ])
+
+    # 20 damage lands, and half of it returns to the wielder's side.
+    assert resolution.combat_attrs.sides["defenders"]["shared_hp"] == 80
+    assert resolution.combat_attrs.sides["attackers"]["shared_hp"] == 70
+
+    trait_event = Enum.find(resolution.events, &(&1.event_type == "manifestation_trait"))
+    assert trait_event.payload["trait"] == "drain"
+    assert trait_event.payload["healed"] == 10
+  end
+
+  test "an igniting weapon leaves the target burning" do
+    combat = %{combat_fixture() | turn_number: 2}
+    [attacker, defender] = participants_fixture()
+
+    weapon = %{
+      "state" => "summoned_weapon",
+      "source_spell_id" => "weapon-spell",
+      "display_name" => "Огненный клинок",
+      "power" => 12,
+      "trait" => "ignite",
+      "remaining_turns" => 3,
+      "applied_on_turn" => 1
+    }
+
+    attacker = %{attacker | active_states: [weapon]}
+
+    action = %Action{
+      participant_id: attacker.id,
+      action_type: :manifestation_strike,
+      target_side: "attackers",
+      payload: %{
+        "snapshot" => %{
+          "kind" => "manifestation_strike",
+          "manifestation" => weapon,
+          "target_side" => "defenders",
+          "target_participant_id" => defender.id
+        }
+      }
+    }
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 2, status: :locked}, [attacker, defender], [
+        action
+      ])
+
+    defender_after = resolution.participant_updates[defender.id]
+    assert Enum.any?(defender_after.active_states, &(&1["state"] == "burning"))
+  end
+
   test "a manifestation strike fails closed when its active weapon is gone" do
     combat = %{combat_fixture() | turn_number: 2}
     [attacker, defender] = participants_fixture()
