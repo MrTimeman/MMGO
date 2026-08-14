@@ -462,6 +462,39 @@ defmodule MMGO.ArenaTest do
     assert [%{capacity: 45}] = Grimoires.list_grimoires_for_character(deputy.character_id)
   end
 
+  # The Arena is unplayable alone. Training needs no opponent, no queue, and
+  # costs nothing: it exists so a player can see what their formulas do.
+  test "the training hall opens a fight with nobody else in it", context do
+    profile = arena_profile_fixture(context, "trainee", [:fire, :earth, :order])
+    rating_before = profile.rating
+
+    assert {:ok, match} = Arena.start_training(profile)
+    assert match.status == :active
+    assert is_binary(match.combat_id)
+
+    combat = MMGO.Combat.get_combat!(match.combat_id)
+    assert length(combat.participants) == 2
+
+    # One of them is the player; the other is nobody's character.
+    assert Enum.any?(combat.participants, &(&1.character_id == profile.character_id))
+    assert Enum.any?(combat.participants, &(&1.character_id == nil and &1.actor_template_id))
+
+    # Nothing about it is ranked.
+    assert match.mode == :custom
+    assert combat.metadata["training"] == true
+    assert Arena.get_profile!(profile.id).rating == rating_before
+  end
+
+  test "training reuses one dummy per realm rather than breeding them", context do
+    first = arena_profile_fixture(context, "trainee-one", [:fire, :earth, :order])
+    second = arena_profile_fixture(context, "trainee-two", [:water, :air, :life])
+
+    assert {:ok, _one} = Arena.start_training(first)
+    assert {:ok, _two} = Arena.start_training(second)
+
+    assert length(MMGO.Actors.list_actor_templates(context.realm.id)) == 1
+  end
+
   defp arena_profile_fixture(context, handle, schools) do
     account = account_fixture("arena-#{handle}")
 

@@ -92,6 +92,19 @@ defmodule MMGOWeb.ArenaLive do
     end
   end
 
+  def handle_event("start_training", _params, socket) do
+    case Arena.start_training(socket.assigns.profile) do
+      {:ok, %Match{combat_id: combat_id}} when is_binary(combat_id) ->
+        {:noreply, push_navigate(socket, to: ~p"/arena/combat/#{combat_id}")}
+
+      {:ok, _match} ->
+        {:noreply, assign(socket, :arena_error, "Зал не открылся. Попробуйте ещё раз.")}
+
+      {:error, reason} ->
+        {:noreply, assign(socket, :arena_error, arena_error(reason))}
+    end
+  end
+
   def handle_event("cancel_ranked", _params, socket) do
     case Arena.cancel_ranked_queue(socket.assigns.profile) do
       {:ok, _match} ->
@@ -425,6 +438,17 @@ defmodule MMGOWeb.ArenaLive do
 
         <%!-- Only what the bar does not already reach. The grimoire lives in the
               bar, so a second button for it here was two doors to one room. --%>
+        <%!-- The Arena is unplayable alone: a queue needs someone else in it
+              and a room needs someone to join. This needs neither. --%>
+        <button
+          id="arena-training"
+          type="button"
+          phx-click="start_training"
+          class="arena-launch__secondary"
+        >
+          Тренировочный зал
+        </button>
+
         <nav class="arena-launch__shortcuts" aria-label="Быстрые действия">
           <.link id="arena-create-room" navigate={~p"/arena/rooms/new"}>Своя комната</.link>
           <.link id="arena-launch-seats" navigate={~p"/arena/seats"}>Титулы</.link>

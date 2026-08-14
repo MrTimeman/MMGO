@@ -93,6 +93,11 @@
 .arena-launch__primary:hover { background: var(--parch-gold-ink); }
 .arena-launch__primary:active { transform: translateY(1px); }
 .arena-launch__primary > span { width: 1.1rem; height: 1.1rem; }
+/* The way in that needs nobody else. Sits under the queue because ranked play
+   is still the point; sits above the shortcuts because it is a way to fight. */
+.arena-launch__secondary { display: flex; width: 100%; min-height: 2.9rem; margin-top: 0.5rem; align-items: center; justify-content: center; border: 1px solid var(--arena-gold-deep); background: transparent; color: var(--arena-gold-ink); font-family: var(--font-serif); font-size: 0.95rem; }
+.arena-launch__secondary:hover { background: rgb(169 121 31 / 10%); }
+
 .arena-launch__shortcuts { display: grid; margin-top: 0.6rem; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 0.4rem; }
 .arena-launch__shortcuts a { display: grid; min-height: 2.75rem; place-items: center; border: 1px solid var(--arena-hairline); color: var(--arena-ink-dim); font-size: 0.78rem; text-decoration: none; transition: color 0.18s ease, background 0.18s ease; }
 .arena-launch__shortcuts a:hover { background: rgb(42 38 33 / 6%); color: var(--arena-ink); }

@@ -12,6 +12,8 @@ defmodule MMGO.Arena do
 
   alias Ecto.Changeset
   alias MMGO.Accounts.{Account, Character, CharacterProfiles}
+  alias MMGO.Actors
+  alias MMGO.Actors.ActorTemplate
 
   alias MMGO.Arena.{
     Ladder,
@@ -325,6 +327,132 @@ defmodule MMGO.Arena do
       |> insert_or_rollback()
     end)
     |> broadcast_profile_result(profile.id, :grimoire_created)
+  end
+
+  @doc """
+  Opens a practice fight against a training dummy, immediately.
+
+  The Arena is unplayable alone: a ranked queue needs someone else in it, and a
+  custom room needs someone to join. This needs neither. It is a `custom` match
+  so nothing it does touches rating, division, quests or the streak — the only
+  thing at stake is finding out what your formulas actually do.
+  """
+  def start_training(%Profile{} = profile) do
+    Repo.transaction(fn ->
+      profile = lock_profile!(profile.id)
+      ensure_profile_available!(profile.id)
+
+      character = Repo.get!(Character, profile.character_id)
+      realm = Repo.get!(Realm, character.realm_id)
+      dummy = training_dummy!(realm)
+
+      grimoire =
+        Repo.get_by(Grimoire, owner_character_id: profile.character_id, status: :active) ||
+          Repo.rollback({:active_grimoire_required, profile.id})
+
+      match =
+        %Match{host_profile_id: profile.id, realm_id: realm.id}
+        |> Match.changeset(%{
+          mode: :custom,
+          status: :active,
+          team_size: 1,
+          seed: System.unique_integer([:positive, :monotonic]),
+          event_policy: :random,
+          event_codes: ArenaEvents.event_codes(),
+          code: new_room_code(),
+          settings: %{"room_name" => "Тренировочный зал", "training" => true},
+          metadata: %{"training" => true},
+          queued_at: DateTime.utc_now(),
+          started_at: DateTime.utc_now()
+        })
+        |> insert_or_rollback()
+
+      insert_member!(match, profile, :a, 1, true)
+
+      combat = start_training_combat!(match, profile, grimoire, dummy, realm)
+
+      match
+      |> Changeset.change(combat_id: combat.id)
+      |> Repo.update!()
+      |> preload_match()
+    end)
+    |> broadcast_profile_result(profile.id, :training_started)
+  end
+
+  defp start_training_combat!(match, profile, grimoire, dummy, realm) do
+    schedule = event_schedule!(match.event_policy, match.event_codes, match.seed)
+    initial_event = ArenaEvents.event_for_turn(schedule, 1)
+    initial_event_tags = ArenaEvents.active_tags(schedule, 1)
+
+    participants = [
+      %{
+        character_id: profile.character_id,
+        display_name: profile.character.name,
+        side: "a",
+        position: 0,
+        combat_level: @combat_level,
+        rank: casting_rank(profile),
+        max_mana: Titles.mana_pool_for(profile),
+        grimoire_id: grimoire.id,
+        metadata: %{"arena_profile_id" => profile.id}
+      },
+      %{
+        actor_template_id: dummy.id,
+        display_name: dummy.name,
+        side: "b",
+        position: 0,
+        combat_level: @combat_level
+      }
+    ]
+
+    combat_attrs = %{
+      participants: participants,
+      sides: %{
+        "a" => %{"label" => "Вы", "shared_hp" => 100, "max_shared_hp" => 100},
+        "b" => %{"label" => "Манекен", "shared_hp" => 100, "max_shared_hp" => 100}
+      },
+      seed: match.seed,
+      environment_tags: initial_event_tags,
+      metadata: %{
+        "arena_match_id" => match.id,
+        "arena_mode" => "custom",
+        "training" => true,
+        RoomRules.metadata_key() => RoomRules.defaults(),
+        "arena_events" => schedule,
+        "arena_active_event_code" => initial_event && initial_event["code"],
+        "arena_active_event_tags" => initial_event_tags,
+        "arena_hp_per_member" => 100,
+        "friendly" => true
+      }
+    }
+
+    case Combat.create_arena_match(realm, combat_attrs) do
+      {:ok, %{combat: combat}} -> combat
+      {:error, reason} -> Repo.rollback(reason)
+      {:error, _step, reason, _changes} -> Repo.rollback(reason)
+    end
+  end
+
+  # One dummy per realm, made on first use so no seed has to know about it.
+  defp training_dummy!(%Realm{} = realm) do
+    case Actors.get_actor_template_by_code(realm.id, "arena-training-dummy") do
+      %ActorTemplate{} = template ->
+        template
+
+      nil ->
+        case Actors.create_actor_template(realm, %{
+               code: "arena-training-dummy",
+               name: "Тренировочный манекен",
+               role: :hostile,
+               combat_level: @combat_level,
+               base_hp: 100,
+               behavior_profile: :defensive,
+               metadata: %{"training" => true}
+             }) do
+          {:ok, template} -> template
+          {:error, reason} -> Repo.rollback(reason)
+        end
+    end
   end
 
   @doc "Selects one owned arena grimoire as the combat loadout."
