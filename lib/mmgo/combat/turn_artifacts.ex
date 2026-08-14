@@ -26,13 +26,15 @@ defmodule MMGO.Combat.TurnArtifacts do
 
   def persist(_combat_id, _turn_id), do: :ok
 
-  # There is nothing to orchestrate or narrate about a turn in which nobody did
-  # anything, and both cost a provider call. An abandoned fight used to buy
-  # prose about its own silence every deadline, forever.
+  # There is nothing to orchestrate or narrate about a turn in which nobody
+  # chose anything, and both cost a provider call. The resolver marks such a
+  # turn idle: emptiness is not the test, because the deadline fills a `wait`
+  # in for everyone who did not answer, and a fight both players walked away
+  # from would otherwise buy prose about its own silence forever.
   defp eventful?(%Turn{resolution: resolution}) when is_map(resolution) do
-    case Map.get(resolution, "event_count") do
-      count when is_integer(count) -> count > 0
-      _unknown -> true
+    case Map.get(resolution, "idle") do
+      true -> false
+      _not_idle -> true
     end
   end
 

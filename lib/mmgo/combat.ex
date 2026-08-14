@@ -246,7 +246,9 @@ defmodule MMGO.Combat do
         end)
 
         turn
-        |> Turn.changeset(resolved_turn_attrs(turn, resolution.turn_attrs, now))
+        |> Turn.changeset(
+          resolved_turn_attrs(turn, resolution.turn_attrs, now, idle_turn?(actions))
+        )
         |> Repo.update!()
 
         Enum.each(resolution.events, fn event ->
@@ -359,17 +361,33 @@ defmodule MMGO.Combat do
 
   def turn_lifecycle(%Turn{}), do: %{}
 
-  defp idle_turns_after(combat, []) do
-    combat.metadata
-    |> Kernel.||(%{})
-    |> Map.get("idle_turns", 0)
-    |> case do
-      count when is_integer(count) -> count + 1
-      _not_a_count -> 1
-    end
+  # A turn is idle when nobody chose anything. Emptiness is not the test: the
+  # deadline fills a `wait` in for every participant who did not answer, so an
+  # abandoned fight submits a full set of actions every turn and would otherwise
+  # look busy forever.
+  defp idle_turn?(actions) do
+    actions == [] or Enum.all?(actions, &deadline_wait?/1)
   end
 
-  defp idle_turns_after(_combat, _actions), do: 0
+  defp deadline_wait?(%Action{action_type: :wait, payload: payload}) when is_map(payload) do
+    Map.get(payload, "source") == "turn_deadline"
+  end
+
+  defp deadline_wait?(_action), do: false
+
+  defp idle_turns_after(combat, actions) do
+    if idle_turn?(actions) do
+      combat.metadata
+      |> Kernel.||(%{})
+      |> Map.get("idle_turns", 0)
+      |> case do
+        count when is_integer(count) -> count + 1
+        _not_a_count -> 1
+      end
+    else
+      0
+    end
+  end
 
   defp lock_combat!(combat_id) do
     Combat
@@ -668,13 +686,17 @@ defmodule MMGO.Combat do
     |> Repo.update!()
   end
 
-  defp resolved_turn_attrs(%Turn{} = turn, turn_attrs, now) do
+  defp resolved_turn_attrs(%Turn{} = turn, turn_attrs, now, idle?) do
     lifecycle =
       turn
       |> turn_lifecycle()
       |> Map.put("resolved_at", DateTime.to_iso8601(now))
 
-    Map.update!(turn_attrs, :resolution, &Map.put(&1, @lifecycle_key, lifecycle))
+    Map.update!(turn_attrs, :resolution, fn resolution ->
+      resolution
+      |> Map.put(@lifecycle_key, lifecycle)
+      |> Map.put("idle", idle?)
+    end)
   end
 
   defp lock_turn!(%Turn{} = turn, now) do

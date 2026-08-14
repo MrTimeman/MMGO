@@ -43,8 +43,14 @@ defmodule MMGO.Combat.ResolveTurnWorkerTest do
     resolved_turn = Repo.get!(Turn, turn.id)
     assert resolved_turn.status == :resolved
     assert %{"resolved_at" => _, "resolution_token" => _} = Combat.turn_lifecycle(resolved_turn)
-    assert %{"source" => "fallback"} = resolved_turn.resolution["orchestration"]
-    assert %{"source" => "provider"} = resolved_turn.resolution["narration"]
+    # Nobody answered, so the deadline filled a wait in for each of them. That
+    # is silence, not action: the turn is marked idle and no provider is paid to
+    # orchestrate or narrate it. An abandoned fight used to buy both, forever.
+    assert resolved_turn.resolution["idle"] == true
+    refute resolved_turn.resolution["orchestration"]
+    refute resolved_turn.resolution["narration"]
+
+    # The engine's own summary still stands in, so the turn is never blank.
     assert is_binary(resolved_turn.narration)
 
     timeout_actions =

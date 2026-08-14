@@ -89,6 +89,47 @@ defmodule MMGO.CombatTest do
     refute Repo.get_by(MMGO.Combat.Turn, combat_id: combat.id, status: :open)
   end
 
+  # The shape the bug actually had in production: the deadline fills a `wait`
+  # in for every participant who did not answer, so an abandoned fight submits
+  # a full set of actions every turn and looks busy. An arena match ran 133
+  # turns on nothing but deadline waits.
+  test "deadline waits are silence, not action", %{combat: combat} do
+    combat = Combat.get_combat!(combat.id)
+
+    combat =
+      Enum.reduce(1..3, combat, fn _turn, current ->
+        turn = Repo.get_by!(MMGO.Combat.Turn, combat_id: current.id, status: :open)
+
+        Enum.each(current.participants, fn participant ->
+          %MMGO.Combat.Action{}
+          |> MMGO.Combat.Action.changeset(%{
+            combat_turn_id: turn.id,
+            participant_id: participant.id,
+            action_type: :wait,
+            submitted_at: DateTime.utc_now(),
+            payload: %{"source" => "turn_deadline"}
+          })
+          |> Repo.insert!()
+        end)
+
+        assert {:ok, resolved} = Combat.resolve_turn(current, force?: true)
+        Combat.get_combat!(resolved.id)
+      end)
+
+    assert combat.status == :finished
+    assert combat.metadata["idle_turns"] >= 3
+  end
+
+  # A turn of pure silence is not worth paying a provider to describe.
+  test "an idle turn is marked so it is never narrated", %{combat: combat} do
+    combat = Combat.get_combat!(combat.id)
+    assert {:ok, resolved} = Combat.resolve_turn(combat, force?: true)
+
+    turn = Repo.get_by!(MMGO.Combat.Turn, combat_id: resolved.id, number: 1)
+    assert turn.resolution["idle"] == true
+    assert :ok = MMGO.Combat.TurnArtifacts.persist(resolved.id, turn.id)
+  end
+
   test "one acted turn clears the idle count", %{
     combat: combat,
     attacker: attacker,
