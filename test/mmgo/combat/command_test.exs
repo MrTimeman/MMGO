@@ -108,8 +108,10 @@ defmodule MMGO.Combat.CommandTest do
              Command.parse("бежать", state(%{flee_available?: false}))
   end
 
-  test "a strike needs a summoned weapon in hand" do
-    assert {:error, :no_summoned_weapon} = Command.parse("удар", state())
+  # One word for hitting something; what it means is decided by what is in hand.
+  test "a strike is bare-handed unless a summoned weapon stands" do
+    assert {:ok, %{"action_type" => "strike", "target_side" => "b"}} =
+             Command.parse("удар", state())
 
     assert {:ok, %{"action_type" => "manifestation_strike", "target_side" => "b"}} =
              Command.parse("удар", with_weapon(state()))

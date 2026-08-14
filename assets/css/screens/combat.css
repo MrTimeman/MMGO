@@ -290,6 +290,50 @@
   outline: none;
 }
 
+/* The loadout, folded at the foot. Closed it is one line; open it is the book. */
+.cbt-book {
+  flex: none;
+}
+
+.cbt-book > summary {
+  cursor: pointer;
+  padding: 0.2rem 0;
+  color: var(--cbt-faint);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.cbt-book__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.8rem;
+  padding: 0.2rem 0;
+  color: var(--cbt-ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+}
+
+/* A formula the pool cannot pay for is still worth remembering, and still
+   wrong to write this turn. */
+.cbt-book__row.is-spent {
+  color: var(--cbt-faint);
+  text-decoration: line-through;
+}
+
+.cbt-book__cost {
+  font-variant-numeric: tabular-nums;
+}
+
+.cbt-book__link {
+  display: inline-block;
+  margin-top: 0.35rem;
+  color: var(--cbt-own);
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+}
+
 .cbt-line__error {
   flex: none;
   color: var(--cbt-enemy);

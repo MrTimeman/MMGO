@@ -10,7 +10,20 @@ defmodule MMGO.Combat.Action do
   # `parry` and `block` are the active defence: a choice spent instead of an
   # attack. They are not the same thing as a magical shield, which absorbs
   # passively whether or not the caster chose to defend.
-  @action_types [:wait, :cast_spell, :manifestation_strike, :parry, :block, :use_item, :flee]
+  # `strike` is the blow you always have: no summon, no item, no mana. It is
+  # deliberately weak, because its purpose is to be the thing you can still do
+  # when the pool is dry and the book is on cooldown — not a competitor to the
+  # spells the game is about.
+  @action_types [
+    :wait,
+    :cast_spell,
+    :strike,
+    :manifestation_strike,
+    :parry,
+    :block,
+    :use_item,
+    :flee
+  ]
 
   @primary_key {:id, :binary_id, autogenerate: true}
   @foreign_key_type :binary_id

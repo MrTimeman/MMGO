@@ -97,14 +97,15 @@ defmodule MMGO.Combat.Command do
     end
   end
 
+  # One word for hitting something. What it means depends on what is in hand:
+  # a summoned weapon if one stands, bare hands otherwise. A player should not
+  # have to remember which verb their current loadout permits.
   defp build(:manifestation_strike, words, state) do
     {_ignored, target} = split_target(words)
 
-    if summoned_weapon?(state) do
-      {:ok, put_target(%{"action_type" => "manifestation_strike"}, target, state)}
-    else
-      {:error, :no_summoned_weapon}
-    end
+    action = if summoned_weapon?(state), do: "manifestation_strike", else: "strike"
+
+    {:ok, put_target(%{"action_type" => action}, target, state)}
   end
 
   defp build(mode, words, state) when mode in [:parry, :block] do

@@ -238,6 +238,38 @@ defmodule MMGOWeb.CombatLive do
         <p :if={@action_error} id="combat-action-error" class="cbt-line__error">
           {@action_error}
         </p>
+
+        <%!--
+        The loadout, folded. You cannot write a formula you cannot remember,
+        and leaving the fight to look it up loses the turn. One line closed,
+        the whole book open, and a way through to the shelf itself.
+        --%>
+        <details :if={not @combat_state.spectator?} id="combat-book" class="cbt-book">
+          <summary>Гримуар</summary>
+          <p
+            :for={spell <- @combat_state.prepared_spells}
+            id={"combat-formula-#{spell.id}"}
+            class={[
+              "cbt-book__row",
+              not affordable_spell?(spell, @combat_state.participant) && "is-spent"
+            ]}
+          >
+            <span class="cbt-book__formula">{spell.formula}</span>
+            <span class="cbt-book__cost">{spell.fatigue_cost}</span>
+          </p>
+
+          <p :if={@combat_state.prepared_spells == []} class="cbt-book__row">
+            Раскладка пуста.
+          </p>
+
+          <.link
+            id="combat-open-grimoire"
+            navigate={grimoire_path(@combat_state)}
+            class="cbt-book__link"
+          >
+            Открыть гримуар
+          </.link>
+        </details>
       </main>
     </Layouts.app>
     """
@@ -347,6 +379,14 @@ defmodule MMGOWeb.CombatLive do
     end)
   end
 
+  defp grimoire_path(%{arena?: true}), do: ~p"/arena/spellbook/books"
+  defp grimoire_path(_state), do: ~p"/spellbook/books"
+
+  defp affordable_spell?(spell, %{mana: mana}) when is_integer(mana),
+    do: mana >= spell.fatigue_cost
+
+  defp affordable_spell?(_spell, _participant), do: true
+
   defp outcome_link_id(%{arena?: true}), do: "combat-outcome-arena"
   defp outcome_link_id(_state), do: "combat-outcome-map"
 
@@ -447,9 +487,6 @@ defmodule MMGOWeb.CombatLive do
 
   defp command_error_message({:ambiguous_spell, written, names}),
     do: "«#{written}» подходит нескольким формулам: #{Enum.join(names, ", ")}. Уточните."
-
-  defp command_error_message(:no_summoned_weapon),
-    do: "Призванного оружия в руках нет."
 
   defp command_error_message({:no_guard, :parry}),
     do: "Парировать нечем: нужно что-то в руках."
@@ -568,6 +605,10 @@ defmodule MMGOWeb.CombatLive do
   defp event_label("spell_cast"), do: "заклинание сработало"
 
   defp event_label("arena_event"), do: "поле Арены изменилось"
+
+  defp event_label("strike"), do: "удар голыми руками"
+
+  defp event_label("strike_missed"), do: "удар прошёл мимо"
 
   defp event_label("manifestation_strike"), do: "призванное оружие нанесло удар"
 

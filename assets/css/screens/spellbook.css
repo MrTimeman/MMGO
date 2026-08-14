@@ -339,11 +339,17 @@
 
 .grim-vol__entry-name {
   min-width: 0;
-  overflow: hidden;
   flex: 1;
   font-size: 1.05rem;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+}
+
+/* The line you would actually type, under the name it goes by. */
+.grim-vol__entry-meta {
+  display: block;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  line-height: 1.4;
 }
 
 .grim-vol__erase {

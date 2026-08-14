@@ -33,6 +33,7 @@ defmodule MMGO.Combat.ActionSnapshot do
   @action_types %{
     "wait" => :wait,
     "cast_spell" => :cast_spell,
+    "strike" => :strike,
     "manifestation_strike" => :manifestation_strike,
     "parry" => :parry,
     "block" => :block,
@@ -50,6 +51,11 @@ defmodule MMGO.Combat.ActionSnapshot do
     "item" => %{block: 50, parry: 45},
     "bare" => %{block: 20, parry: 0}
   }
+
+  # A fist, in the same units as a spell's power. Below the weakest division's
+  # band (Bronze reaches 5) so that having nothing left is a real setback and
+  # never a shortcut past the craft.
+  @bare_hand_power 3
 
   @guard_manifestations ~w(summoned_shield summoned_creature summoned_weapon)
   @physical_guard_kinds [:raise_shield, :strike, :sweep, :deploy]
@@ -169,6 +175,33 @@ defmodule MMGO.Combat.ActionSnapshot do
   def manifestation_strike_for_resolution(_action), do: {:error, :invalid_snapshot}
 
   @doc """
+  Rehydrates a bare-handed blow and its target.
+
+  There is nothing to authorize: everyone always has hands. The power is the
+  server's own constant, never a number the browser offered.
+  """
+  def strike_for_resolution(%Action{action_type: :strike, payload: payload} = action) do
+    with %{"snapshot" => snapshot} when is_map(snapshot) <- payload,
+         "strike" <- Map.get(snapshot, "kind"),
+         {:ok, target_side, target_participant_id} <- target_from_snapshot(snapshot) do
+      {:ok, %{action | target_side: target_side, target_participant_id: target_participant_id},
+       bare_hand_power()}
+    else
+      _other -> {:error, :invalid_snapshot}
+    end
+  end
+
+  def strike_for_resolution(_action), do: {:error, :invalid_snapshot}
+
+  @doc """
+  What a blow with nothing in hand is worth.
+
+  Kept below the weakest division's spell band on purpose. A fist should be the
+  answer to an empty pool, never an alternative to the craft.
+  """
+  def bare_hand_power, do: @bare_hand_power
+
+  @doc """
   Rehydrates the defence the server approved at submission time.
 
   Only the source and its efficiency are carried, both of them server-chosen, so
@@ -274,6 +307,27 @@ defmodule MMGO.Combat.ActionSnapshot do
              "kind" => "cast_spell",
              "incantation" => incantation,
              "spell" => spell_snapshot(spell),
+             "target_side" => target_side,
+             "target_participant_id" => target_participant_id
+           }
+         }
+       }}
+    end
+  end
+
+  # Hands need no authorization; the only thing to settle is who is being hit.
+  defp normalize_action(:strike, combat, participant, attrs) do
+    with {:ok, target_side, target_participant_id} <-
+           normalize_target(combat, participant, :enemy, attrs) do
+      {:ok,
+       %{
+         action_type: :strike,
+         target_side: target_side,
+         target_participant_id: target_participant_id,
+         payload: %{
+           "snapshot" => %{
+             "kind" => "strike",
+             "power" => @bare_hand_power,
              "target_side" => target_side,
              "target_participant_id" => target_participant_id
            }

@@ -912,6 +912,55 @@ defmodule MMGO.Combat.Engine do
 
   defp resolve_action(
          combat,
+         %Action{action_type: :strike} = action,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    participant = Map.fetch!(participants, action.participant_id)
+
+    cond do
+      participant.status != :ready ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "skipped", %{"participant_id" => participant.id})
+           | events
+         ]}
+
+      blocked = blocked_action(participant, :strike) ->
+        {updated_participant, blocked_state, consumed?} = blocked
+        participants = Map.put(participants, participant.id, updated_participant)
+
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "action_blocked", %{
+             "participant_id" => participant.id,
+             "state" => blocked_state,
+             "consumed" => consumed?
+           })
+           | events
+         ]}
+
+      true ->
+        resolve_strike(
+          combat,
+          action,
+          participant,
+          participants,
+          sides,
+          tags,
+          inventory_updates,
+          seq,
+          events
+        )
+    end
+  end
+
+  defp resolve_action(
+         combat,
          %Action{action_type: :manifestation_strike} = action,
          participants,
          sides,
@@ -1133,6 +1182,81 @@ defmodule MMGO.Combat.Engine do
        })
        | events
      ]}
+  end
+
+  # A blow with nothing in hand. It costs no mana — that is the whole point of
+  # it — and lands by the same accuracy the ground and the pool decide, so a
+  # flooded floor makes a fist as unreliable as a blade.
+  defp resolve_strike(
+         combat,
+         action,
+         participant,
+         participants,
+         sides,
+         tags,
+         inventory_updates,
+         seq,
+         events
+       ) do
+    case ActionSnapshot.strike_for_resolution(action) do
+      {:ok, resolved_action, power} ->
+        target_side =
+          resolve_legal_target_side(:enemy, resolved_action.target_side, participant, sides)
+
+        target_participant_id =
+          resolve_target_participant_id(resolved_action, participants, target_side)
+
+        accuracy = melee_accuracy(participant, tags)
+        roll = RNG.percent(combat.seed, [combat.turn_number, participant.id, :strike])
+
+        base_payload = %{
+          "participant_id" => participant.id,
+          "power" => power,
+          "target_side" => target_side,
+          "target_participant_id" => target_participant_id,
+          "accuracy" => accuracy
+        }
+
+        if roll > accuracy do
+          {participants, sides, tags, inventory_updates, seq + 1,
+           [event(seq, combat.turn_number, "strike_missed", base_payload) | events]}
+        else
+          {participants, state_breaks} =
+            break_states_for_conditions(
+              participants,
+              ["physical_hit"],
+              List.wrap(target_participant_id)
+            )
+
+          {participants, sides, damage_payload} =
+            apply_damage(
+              target_side,
+              target_participant_id,
+              power,
+              participants,
+              sides,
+              combat.turn_number
+            )
+
+          payload =
+            base_payload
+            |> Map.put("damage", clean_damage_payload(damage_payload))
+            |> maybe_put_state_breaks(state_breaks)
+
+          {participants, sides, tags, inventory_updates, seq + 1,
+           [event(seq, combat.turn_number, "strike", payload) | events]}
+        end
+
+      {:error, reason} ->
+        {participants, sides, tags, inventory_updates, seq + 1,
+         [
+           event(seq, combat.turn_number, "invalid_action", %{
+             "participant_id" => participant.id,
+             "reason" => to_string(reason)
+           })
+           | events
+         ]}
+    end
   end
 
   defp resolve_manifestation_strike(

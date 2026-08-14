@@ -982,6 +982,44 @@ defmodule MMGO.Combat.EngineTest do
            )
   end
 
+  # The blow you always have: no summon, no item, no mana, and weak enough that
+  # it never competes with the craft.
+  test "a bare-handed strike lands without a weapon and without mana" do
+    combat = %{combat_fixture() | turn_number: 2}
+    [attacker, defender] = participants_fixture()
+
+    attacker = %{attacker | mana: 0, active_states: []}
+
+    action = %Action{
+      participant_id: attacker.id,
+      action_type: :strike,
+      target_side: "defenders",
+      payload: %{
+        "snapshot" => %{
+          "kind" => "strike",
+          "power" => 3,
+          "target_side" => "defenders",
+          "target_participant_id" => defender.id
+        }
+      }
+    }
+
+    resolution =
+      Engine.resolve_turn(combat, %Turn{number: 2, status: :locked}, [attacker, defender], [
+        action
+      ])
+
+    strike_event = Enum.find(resolution.events, &(&1.event_type == "strike"))
+
+    assert strike_event, "an empty pool must not stop a fist"
+    assert strike_event.payload["power"] == MMGO.Combat.ActionSnapshot.bare_hand_power()
+
+    # Nothing was spent to throw it: a summoned weapon records what its swing
+    # cost, and a fist has nothing to record.
+    refute Map.has_key?(strike_event.payload, "mana_cost")
+    refute Enum.any?(resolution.events, &(&1.event_type == "insufficient_mana"))
+  end
+
   test "a summoned weapon authorizes a bounded manifestation strike" do
     combat = %{combat_fixture() | turn_number: 2}
     [attacker, defender] = participants_fixture()

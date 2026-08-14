@@ -638,7 +638,15 @@ defmodule MMGOWeb.SpellbookLive do
 
                       <ol :if={grimoire_entries(grimoire) != []} class="grim-vol__entries">
                         <li :for={entry <- sorted_entries(grimoire)} id={"grimoire-entry-#{entry.id}"}>
-                          <span class="grim-vol__entry-name">{entry_label(entry)}</span>
+                          <%!-- A name alone says nothing about what a formula
+                                does. The line you must type in a duel, and what
+                                it costs to type it, belong here. --%>
+                          <span class="grim-vol__entry-name">
+                            {entry_label(entry)}
+                            <small :if={entry.spell} class="grim-vol__entry-meta">
+                              {entry.spell.formula} · {school_label(entry.spell.school)} · мана {entry.spell.fatigue_cost}
+                            </small>
+                          </span>
                           <button
                             :if={writable_grimoire?(grimoire, @writable_grimoires)}
                             id={"grimoire-erase-#{entry.id}"}
