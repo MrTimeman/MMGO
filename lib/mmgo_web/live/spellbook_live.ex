@@ -59,6 +59,7 @@ defmodule MMGOWeb.SpellbookLive do
          |> assign(:action_feedback, nil)
          |> assign(:view, :cast)
          |> assign(:grimoire_order, nil)
+         |> assign(:book_pages, %{})
          |> assign_spellbook_state(state)
          |> restore_recent_spell_creation(state)}
 
@@ -228,6 +229,18 @@ defmodule MMGOWeb.SpellbookLive do
            message: spellbook_error_message(reason)
          })}
     end
+  end
+
+  def handle_event("turn_book", %{"grimoire_id" => id, "page" => page}, socket) do
+    pages = grimoire_pages(socket.assigns.grimoires, id)
+
+    page =
+      case Integer.parse(to_string(page)) do
+        {parsed, _rest} -> parsed |> max(1) |> min(pages)
+        :error -> 1
+      end
+
+    {:noreply, assign(socket, :book_pages, Map.put(socket.assigns.book_pages, id, page))}
   end
 
   def handle_event("write_grimoire_note", %{"grimoire_id" => id, "note" => note}, socket) do
@@ -745,8 +758,33 @@ defmodule MMGOWeb.SpellbookLive do
                         </form>
                       </div>
 
+                      <%!-- Ribbons along the head of the book, then a leaf of
+                            five. The same shape as the duel's book, so a player
+                            learns one object rather than two. --%>
+                      <div :if={grimoire.bookmarks != []} class="grim-vol__ribbon-row">
+                        <button
+                          :for={bookmark <- grimoire.bookmarks}
+                          id={"grimoire-ribbon-#{bookmark.id}"}
+                          type="button"
+                          phx-click="turn_book"
+                          phx-value-grimoire_id={grimoire.id}
+                          phx-value-page={bookmark.page}
+                          class={[
+                            "grim-vol__tab",
+                            book_page(@book_pages, grimoire) == bookmark.page && "is-open"
+                          ]}
+                          style={bookmark.colour && "background: #{bookmark.colour}; color: white"}
+                        >
+                          <span :if={bookmark.icon} aria-hidden="true">{bookmark.icon}</span>
+                          {bookmark.label}
+                        </button>
+                      </div>
+
                       <ol :if={grimoire_entries(grimoire) != []} class="grim-vol__entries">
-                        <li :for={entry <- sorted_entries(grimoire)} id={"grimoire-entry-#{entry.id}"}>
+                        <li
+                          :for={entry <- page_entries(grimoire, book_page(@book_pages, grimoire))}
+                          id={"grimoire-entry-#{entry.id}"}
+                        >
                           <%!-- A name alone says nothing about what a formula
                                 does. The line you must type in a duel, and what
                                 it costs to type it, belong here. --%>
@@ -770,6 +808,34 @@ defmodule MMGOWeb.SpellbookLive do
                           </button>
                         </li>
                       </ol>
+
+                      <div
+                        :if={entry_pages(grimoire) > 1}
+                        id={"grimoire-folio-#{grimoire.id}"}
+                        class="grim-vol__folio"
+                      >
+                        <button
+                          type="button"
+                          phx-click="turn_book"
+                          phx-value-grimoire_id={grimoire.id}
+                          phx-value-page={book_page(@book_pages, grimoire) - 1}
+                          disabled={book_page(@book_pages, grimoire) <= 1}
+                        >
+                          ‹
+                        </button>
+                        <span>
+                          с. {book_page(@book_pages, grimoire)} из {entry_pages(grimoire)}
+                        </span>
+                        <button
+                          type="button"
+                          phx-click="turn_book"
+                          phx-value-grimoire_id={grimoire.id}
+                          phx-value-page={book_page(@book_pages, grimoire) + 1}
+                          disabled={book_page(@book_pages, grimoire) >= entry_pages(grimoire)}
+                        >
+                          ›
+                        </button>
+                      </div>
 
                       <p :if={grimoire_entries(grimoire) == []} class="grim-vol__empty">
                         Переплёт пуст.
@@ -996,6 +1062,37 @@ defmodule MMGOWeb.SpellbookLive do
        kind: :error,
        message: spellbook_error_message(reason)
      })}
+  end
+
+  # Five formulas to a leaf, the same as the duel's book, so a player learns one
+  # shape rather than two.
+  @entries_per_page 5
+
+  defp grimoire_pages(grimoires, grimoire_id) do
+    grimoires
+    |> Enum.find(&(&1.id == grimoire_id))
+    |> case do
+      nil -> 1
+      grimoire -> entry_pages(grimoire)
+    end
+  end
+
+  defp entry_pages(grimoire) do
+    grimoire
+    |> grimoire_entries()
+    |> length()
+    |> Kernel./(@entries_per_page)
+    |> Float.ceil()
+    |> trunc()
+    |> max(1)
+  end
+
+  defp book_page(book_pages, grimoire), do: Map.get(book_pages, grimoire.id, 1)
+
+  defp page_entries(grimoire, page) do
+    grimoire
+    |> sorted_entries()
+    |> Enum.slice((page - 1) * @entries_per_page, @entries_per_page)
   end
 
   # An empty select is no choice, not an empty string the validator must reject.

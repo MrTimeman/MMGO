@@ -29,6 +29,12 @@ defmodule MMGO.Combat do
   # abandoned. Three is long enough to survive a reconnect and short enough that
   # a walked-away encounter costs almost nothing.
   @abandon_after_idle_turns 3
+
+  # Training is different in kind: the dummy never acts, so every turn the
+  # player spends reading the page counts as silence. Three turns is about two
+  # minutes, which is hostile in the one room built for reading. Idle turns are
+  # free now — no provider is paid for them — so patience here costs nothing.
+  @abandon_after_idle_training_turns 40
   @base_turn_seconds 45
   @additional_participant_seconds 10
   @max_turn_seconds 120
@@ -283,7 +289,7 @@ defmodule MMGO.Combat do
             |> Repo.update!()
           end
 
-        abandoned? = idle_turns >= @abandon_after_idle_turns
+        abandoned? = idle_turns >= abandon_threshold(updated_combat)
 
         updated_combat =
           if abandoned? do
@@ -374,6 +380,14 @@ defmodule MMGO.Combat do
   end
 
   defp deadline_wait?(_action), do: false
+
+  defp abandon_threshold(%Combat{metadata: metadata}) when is_map(metadata) do
+    if Map.get(metadata, "training") == true,
+      do: @abandon_after_idle_training_turns,
+      else: @abandon_after_idle_turns
+  end
+
+  defp abandon_threshold(_combat), do: @abandon_after_idle_turns
 
   defp idle_turns_after(combat, actions) do
     if idle_turn?(actions) do
