@@ -35,38 +35,46 @@ defmodule MMGOWeb.ArenaLiveTest do
     %{profile: profile}
   end
 
-  test "home makes ranked, custom, environmental, and summon play immediately visible", %{
+  # The home is for finding a fight. What it used to carry besides — an
+  # eight-card catalogue of arena events, a block advertising summons, and a
+  # paragraph explaining what the Arena is — told the player things instead of
+  # letting them do anything.
+  test "the home is standing, a way into a fight, and what is open", %{
     conn: conn,
     profile: profile
   } do
     {:ok, view, _html} = live(arena_session(conn, profile), ~p"/arena")
 
     assert has_element?(view, "#arena-home")
+    assert has_element?(view, "#arena-profile-card")
     assert has_element?(view, "#arena-ranked-queue[href='/arena/queue']")
     assert has_element?(view, "#arena-create-room[href='/arena/rooms/new']")
-    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook']")
-    assert has_element?(view, "#arena-system-highlights")
+    assert has_element?(view, "#arena-open-rooms-section")
+
+    refute has_element?(view, "#arena-system-highlights")
+    refute has_element?(view, "#arena-summon-highlight")
+    refute has_element?(view, "#arena-lore")
 
     for event_code <- ArenaEvents.event_codes() do
-      assert has_element?(view, "#arena-event-#{event_code}")
+      refute has_element?(view, "#arena-event-#{event_code}")
     end
   end
 
   # The measured problem this rework exists to fix: the queue button used to sit
-  # a screen and a half below the fold, under a 693px lore hero. Source order is
-  # what decides that, so it is what is guarded here.
-  test "the queue button comes before the lore, not after it", %{conn: conn, profile: profile} do
+  # a screen and a half below the fold, under a 693px lore hero. The lore is
+  # gone entirely now, and the button sits above everything that remains.
+  test "the queue button is the first thing on the page", %{conn: conn, profile: profile} do
     {:ok, view, html} = live(arena_session(conn, profile), ~p"/arena")
 
     assert has_element?(view, "#arena-launch #arena-ranked-queue")
 
-    [queue_at, lore_at] =
+    [queue_at, rooms_at] =
       Enum.map(
-        ["id=\"arena-ranked-queue\"", "id=\"arena-lore\""],
+        ["id=\"arena-ranked-queue\"", "id=\"arena-open-rooms-section\""],
         &:binary.match(html, &1)
       )
 
-    assert queue_at < lore_at
+    assert queue_at < rooms_at
   end
 
   # The Arena had two navigations stacked on one screen — a bar and a shortcut
@@ -105,8 +113,6 @@ defmodule MMGOWeb.ArenaLiveTest do
 
     assert nav_hrefs == Enum.uniq(nav_hrefs)
 
-    # The shelf and the circle are separate errands, so they are separate links.
-    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook']")
     assert is_binary(html)
   end
 

@@ -499,56 +499,12 @@ defmodule MMGOWeb.ArenaLive do
         </div>
       </section>
 
-      <section id="arena-system-highlights" class="arena-section arena-section--events">
-        <div class="arena-section__head">
-          <div>
-            <p>Поле — часть формулы</p>
-            <h2>События меняют правила хода</h2>
-          </div>
-          <span>По умолчанию включены</span>
-        </div>
-        <div id="arena-event-catalog" phx-update="stream" class="arena-event-grid">
-          <article :for={{id, event} <- @streams.arena_events} id={id} class="arena-event-card">
-            <span>{event_glyph(event["code"])}</span>
-            <div>
-              <strong>{event["name"]}</strong>
-              <p>{event["description"]}</p>
-            </div>
-            <small>{Enum.join(event["tags"], " · ")}</small>
-          </article>
-        </div>
-      </section>
-
-      <section id="arena-summon-highlight" class="arena-summons">
-        <div class="arena-summons__art" aria-hidden="true">♞</div>
-        <div>
-          <p>Новая ветвь spellcraft</p>
-          <h2>Призывайте то, чего не нужно носить</h2>
-          <p>
-            Создайте заклинание щита, оружия или существа-союзника. Щит перехватывает удары,
-            клинок открывает отдельную атаку, а существо имеет здоровье, защищает хозяина и
-            действует само.
-          </p>
-        </div>
-        <%!-- Straight to the circle: the bar already leads to the shelf. --%>
-        <.link
-          id="arena-create-summon-spell"
-          navigate={~p"/arena/spellbook"}
-          class="arena-button"
-        >
-          Открыть круг заклинаний <.icon name="hero-sparkles" />
-        </.link>
-      </section>
-
-      <%!-- The lore reads last: it is what the Arena is, not what to do now. --%>
-      <section id="arena-lore" class="arena-lore">
-        <p class="arena-kicker">Бой начинается сейчас</p>
-        <h2>Испытывайте заклинания. Поднимайтесь в рейтинге.</h2>
-        <p>
-          Без похода за зельями и экипировкой: только три выбранные школы,
-          ограниченный гримуар и поле, которое отвечает на вашу магию.
-        </p>
-      </section>
+      <%!--
+      What was here — an eight-card catalogue of arena events, a block
+      advertising summons, and a paragraph explaining what the Arena is — told
+      the player things rather than letting them do anything. A player who has
+      arrived does not need to be sold the room they are standing in.
+      --%>
     </div>
     """
   end
