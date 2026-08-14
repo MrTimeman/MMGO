@@ -68,18 +68,23 @@ defmodule MMGOWeb.SpellbookLive do
   end
 
   @doc """
-  The three leaves of the book are separate destinations.
+  The three leaves of the book are three pages.
 
-  Creating a formula, arranging a loadout, and reading the index are different
-  errands, and a link that means one of them should not have to land on another
-  and ask the player to find their way.
+  Writing a formula, arranging a loadout, and reading the index are different
+  errands with different shapes, and cramming them behind ribbons in one corner
+  made each of them harder to do. Each has its own address now, so a link means
+  what it says and the back button works.
   """
   @impl true
   def handle_params(params, _uri, socket) do
-    case Map.get(params, "view") do
-      nil -> {:noreply, socket}
-      requested -> {:noreply, switch_to_view(socket, requested)}
-    end
+    view =
+      case socket.assigns.live_action do
+        action when action in [:cast, :grimoires, :spells] -> action
+        # `?view=` is how these were reached before they were pages.
+        _other -> Map.get(params, "view")
+      end
+
+    {:noreply, switch_to_view(socket, view)}
   end
 
   @impl true
@@ -172,6 +177,47 @@ defmodule MMGOWeb.SpellbookLive do
          |> assign(:action_feedback, %{
            kind: :success,
            message: "Переплёт теперь зовётся «#{grimoire.name}»."
+         })
+         |> maybe_push_shelf()}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })}
+    end
+  end
+
+  def handle_event("rename_spell", %{"spell_id" => spell_id, "name" => name}, socket) do
+    case Play.rename_spell(socket.assigns.current_scope.character, spell_id, name) do
+      {:ok, spell} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{
+           kind: :success,
+           message: "Формула теперь зовётся «#{spell.name}»."
+         })}
+
+      {:error, reason} ->
+        {:noreply,
+         assign(socket, :action_feedback, %{
+           kind: :error,
+           message: spellbook_error_message(reason)
+         })}
+    end
+  end
+
+  def handle_event("delete_spell", %{"spell_id" => spell_id}, socket) do
+    case Play.delete_spell(socket.assigns.current_scope.character, spell_id) do
+      {:ok, spell} ->
+        {:noreply,
+         socket
+         |> reload_spellbook()
+         |> assign(:action_feedback, %{
+           kind: :success,
+           message: "«#{spell.name}» сожжена и стёрта из всех переплётов."
          })
          |> maybe_push_shelf()}
 
@@ -393,37 +439,20 @@ defmodule MMGOWeb.SpellbookLive do
         <div class="book spellbook-book">
           <div class="book__spine"></div>
           <div class="book__page">
-            <nav class="book__ribbons" aria-label="Разделы гримуара">
-              <button
-                id="spellbook-tab-cast"
-                type="button"
-                class={["book__ribbon", @view == :cast && "book__ribbon--active"]}
-                phx-click="switch_view"
-                phx-value-view="cast"
-                aria-pressed={to_string(@view == :cast)}
+            <%!-- Three pages, three links, full width. These were ribbons in the
+                  top corner: a tap target the size of a fingernail on the one
+                  device this game is played on. --%>
+            <nav class="book__leaves" aria-label="Разделы гримуара">
+              <.link
+                :for={{leaf, id, label} <- spellbook_leaves()}
+                id={id}
+                navigate={leaf_path(@arena_mode?, leaf)}
+                class={["book__leaf-tab", @view == leaf && "book__leaf-tab--active"]}
+                aria-current={@view == leaf && "page"}
+                aria-pressed={to_string(@view == leaf)}
               >
-                Создать
-              </button>
-              <button
-                id="spellbook-tab-grimoires"
-                type="button"
-                class={["book__ribbon", @view == :grimoires && "book__ribbon--active"]}
-                phx-click="switch_view"
-                phx-value-view="grimoires"
-                aria-pressed={to_string(@view == :grimoires)}
-              >
-                Гримуары
-              </button>
-              <button
-                id="spellbook-tab-spells"
-                type="button"
-                class={["book__ribbon", @view == :spells && "book__ribbon--active"]}
-                phx-click="switch_view"
-                phx-value-view="spells"
-                aria-pressed={to_string(@view == :spells)}
-              >
-                Заклинания
-              </button>
+                {label}
+              </.link>
             </nav>
 
             <.link
@@ -433,6 +462,19 @@ defmodule MMGOWeb.SpellbookLive do
             >
               ← покинуть гримуар
             </.link>
+
+            <%!-- Every leaf acts on the library, so the ink speaks on all of
+                  them rather than only on the shelf. --%>
+            <div
+              :if={@action_feedback}
+              id="spellbook-action-feedback"
+              class={[
+                "spellbook-ink-feedback",
+                @action_feedback.kind == :error && "spellbook-ink-feedback--error"
+              ]}
+            >
+              {@action_feedback.message}
+            </div>
 
             <%= case @view do %>
               <% :cast -> %>
@@ -549,17 +591,6 @@ defmodule MMGOWeb.SpellbookLive do
                   <p :if={@grimoires == []} id="grimoire-empty" class="splist__empty">
                     На полке пока пусто. Новый физический гримуар приобретается у торговца.
                   </p>
-
-                  <div
-                    :if={@action_feedback}
-                    id="spellbook-action-feedback"
-                    class={[
-                      "spellbook-ink-feedback",
-                      @action_feedback.kind == :error && "spellbook-ink-feedback--error"
-                    ]}
-                  >
-                    {@action_feedback.message}
-                  </div>
 
                   <div :if={@grimoires != []} class="grim-list">
                     <article
@@ -767,6 +798,42 @@ defmodule MMGOWeb.SpellbookLive do
                           </div>
                         </div>
                         <p class="splist__lineage">{lineage_label(spell)}</p>
+
+                        <%!-- A library the player cannot prune is one they stop
+                              reading. The formula is the spell; the name is only
+                              what its author calls it. --%>
+                        <div :if={@composition_available?} class="splist__manage">
+                          <form
+                            id={"spell-rename-form-#{spell.id}"}
+                            phx-submit="rename_spell"
+                            class="splist__rename"
+                          >
+                            <input type="hidden" name="spell_id" value={spell.id} />
+                            <input
+                              id={"spell-name-#{spell.id}"}
+                              type="text"
+                              name="name"
+                              value={spell.name}
+                              maxlength="120"
+                              class="splist__name-field"
+                              aria-label={"Название заклинания #{spell.name}"}
+                            />
+                            <button id={"spell-rename-#{spell.id}"} type="submit">
+                              Переименовать
+                            </button>
+                          </form>
+
+                          <button
+                            id={"spell-delete-#{spell.id}"}
+                            type="button"
+                            phx-click="delete_spell"
+                            phx-value-spell_id={spell.id}
+                            data-confirm={"Сжечь «#{spell.name}»? Заклинание исчезнет из всех переплётов."}
+                            class="splist__burn"
+                          >
+                            Сжечь формулу
+                          </button>
+                        </div>
                       </div>
                     </details>
                   </div>
@@ -782,15 +849,24 @@ defmodule MMGOWeb.SpellbookLive do
   defp switch_to_view(socket, requested) do
     view =
       case requested do
+        view when view in [:cast, :grimoires, :spells] -> view
         "cast" -> :cast
         "grimoires" -> :grimoires
         "spells" -> :spells
-        _other -> socket.assigns.view
+        _other -> Map.get(socket.assigns, :view, :cast)
       end
 
-    socket = assign(socket, :view, view)
+    socket =
+      socket
+      |> assign(:view, view)
+      |> assign(:page_title, leaf_title(view))
+
     if view == :grimoires, do: push_shelf(socket), else: socket
   end
+
+  defp leaf_title(:cast), do: "Круг заклинаний"
+  defp leaf_title(:grimoires), do: "Полка гримуаров"
+  defp leaf_title(:spells), do: "Библиотека"
 
   defp reload_spellbook(socket) do
     case Play.spellbook_state(socket.assigns.current_scope.character) do
@@ -1036,6 +1112,21 @@ defmodule MMGOWeb.SpellbookLive do
 
   defp spellbook_exit_path(true), do: ~p"/arena"
   defp spellbook_exit_path(false), do: ~p"/map"
+
+  defp spellbook_leaves do
+    [
+      {:cast, "spellbook-tab-cast", "Создать"},
+      {:grimoires, "spellbook-tab-grimoires", "Гримуары"},
+      {:spells, "spellbook-tab-spells", "Заклинания"}
+    ]
+  end
+
+  defp leaf_path(true, :cast), do: ~p"/arena/spellbook"
+  defp leaf_path(true, :grimoires), do: ~p"/arena/spellbook/books"
+  defp leaf_path(true, :spells), do: ~p"/arena/spellbook/library"
+  defp leaf_path(false, :cast), do: ~p"/spellbook"
+  defp leaf_path(false, :grimoires), do: ~p"/spellbook/books"
+  defp leaf_path(false, :spells), do: ~p"/spellbook/library"
 
   defp manifestation_kind_label(:held_shield), do: "Удерживаемый щит"
   defp manifestation_kind_label(:summoned_weapon), do: "Призванное оружие"

@@ -44,7 +44,7 @@ defmodule MMGOWeb.ArenaLiveTest do
     assert has_element?(view, "#arena-home")
     assert has_element?(view, "#arena-ranked-queue[href='/arena/queue']")
     assert has_element?(view, "#arena-create-room[href='/arena/rooms/new']")
-    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook?view=cast']")
+    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook']")
     assert has_element?(view, "#arena-system-highlights")
 
     for event_code <- ArenaEvents.event_codes() do
@@ -87,7 +87,7 @@ defmodule MMGOWeb.ArenaLiveTest do
     # No two navigation entries lead to the same place.
     nav_hrefs = [
       "/arena",
-      "/arena/spellbook?view=grimoires",
+      "/arena/spellbook/books",
       "/arena/rankings",
       "/arena/rooms/new",
       "/arena/seats",
@@ -106,7 +106,7 @@ defmodule MMGOWeb.ArenaLiveTest do
     assert nav_hrefs == Enum.uniq(nav_hrefs)
 
     # The shelf and the circle are separate errands, so they are separate links.
-    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook?view=cast']")
+    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook']")
     assert is_binary(html)
   end
 

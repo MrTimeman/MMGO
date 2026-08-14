@@ -533,7 +533,7 @@ defmodule MMGOWeb.ArenaLive do
         <%!-- Straight to the circle: the bar already leads to the shelf. --%>
         <.link
           id="arena-create-summon-spell"
-          navigate={~p"/arena/spellbook?view=cast"}
+          navigate={~p"/arena/spellbook"}
           class="arena-button"
         >
           Открыть круг заклинаний <.icon name="hero-sparkles" />
@@ -1523,7 +1523,8 @@ defmodule MMGOWeb.ArenaLive do
     [
       {"arena-nav-fights", ~p"/arena", "Бои",
        [:home, :queue, :new_room, :room, :result, :history, :replay, :seats]},
-      {"arena-nav-spellbook", ~p"/arena/spellbook?view=grimoires", "Гримуар", [:spellbook]},
+      {"arena-nav-spellbook", ~p"/arena/spellbook/books", "Гримуар",
+       [:cast, :grimoires, :spells]},
       {"arena-nav-rankings", ~p"/arena/rankings", "Рейтинг", [:rankings, :profiles]}
     ]
   end

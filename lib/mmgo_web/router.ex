@@ -41,7 +41,9 @@ defmodule MMGOWeb.Router do
     live_session :game, on_mount: [{MMGOWeb.GameAuth, :require_world_character}] do
       live "/map", MapLive
       live "/notifications", NotificationsLive
-      live "/spellbook", SpellbookLive
+      live "/spellbook", SpellbookLive, :cast
+      live "/spellbook/books", SpellbookLive, :grimoires
+      live "/spellbook/library", SpellbookLive, :spells
       live "/pvp", DuelLive
 
       live "/academy/bulletin-board", BulletinBoardLive
@@ -95,7 +97,9 @@ defmodule MMGOWeb.Router do
       live "/arena/rooms/new", ArenaLive, :new_room
       live "/arena/rooms/:code", ArenaLive, :room
       live "/arena/rankings", ArenaLive, :rankings
-      live "/arena/spellbook", SpellbookLive, :index
+      live "/arena/spellbook", SpellbookLive, :cast
+      live "/arena/spellbook/books", SpellbookLive, :grimoires
+      live "/arena/spellbook/library", SpellbookLive, :spells
       live "/arena/combat/:id", CombatLive, :show
     end
 

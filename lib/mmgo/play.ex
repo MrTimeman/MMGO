@@ -827,6 +827,32 @@ defmodule MMGO.Play do
   def erase_spell(_character_or_id, _grimoire_id, _spell_id),
     do: {:error, :missing_inscription}
 
+  @doc "Renames one owned spell."
+  def rename_spell(character_or_id, spell_id, name)
+      when is_binary(spell_id) and is_binary(name) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, spell} <- owned_spell(character, spell_id) do
+      Spells.rename_spell(spell, name)
+    end
+  end
+
+  def rename_spell(_character_or_id, _spell_id, _name), do: {:error, :spell_not_found}
+
+  @doc """
+  Burns one owned spell out of the library, inscriptions and all.
+
+  Requires the same standing as writing one: the spellbook only answers where
+  the player can work.
+  """
+  def delete_spell(character_or_id, spell_id) when is_binary(spell_id) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, spell} <- owned_spell(character, spell_id) do
+      Spells.delete_spell(spell)
+    end
+  end
+
+  def delete_spell(_character_or_id, _spell_id), do: {:error, :spell_not_found}
+
   @doc "Renames one owned grimoire."
   def rename_grimoire(character_or_id, grimoire_id, name)
       when is_binary(grimoire_id) and is_binary(name) do

@@ -70,6 +70,35 @@ defmodule MMGO.Spells do
   end
 
   @doc """
+  Renames one spell.
+
+  A spell's name is what its author calls it, not part of its magic: the formula
+  and everything the engine reads are untouched.
+  """
+  def rename_spell(%Spell{} = spell, name) when is_binary(name) do
+    spell
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.cast(%{"name" => String.trim(name)}, [:name])
+    |> Ecto.Changeset.validate_required([:name])
+    |> Ecto.Changeset.validate_length(:name, min: 1, max: 120)
+    |> Repo.update()
+  end
+
+  def rename_spell(%Spell{}, _name), do: {:error, spell_error(%{}, :name, "is invalid")}
+
+  @doc """
+  Burns one spell out of its author's library for good.
+
+  Every inscription of it is torn out with it, and anything that merely
+  remembers it — a lineage, a settled combat, a request log — keeps its record
+  and loses the reference. Written spells are cheap to make and a library the
+  player cannot prune is a library they stop reading.
+  """
+  def delete_spell(%Spell{} = spell) do
+    Repo.delete(spell)
+  end
+
+  @doc """
   Returns whether two magic schools are opposite on the elemental compass.
 
   Opposed schools may not be selected together for a Wizardry specialization;

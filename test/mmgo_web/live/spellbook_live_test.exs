@@ -135,15 +135,13 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert has_element?(view, "#spell-compose-result-#{summoned_spell.id}")
     assert has_element?(view, "#spell-compose-manifestation-#{summoned_spell.id}")
 
-    view
-    |> element("#spellbook-tab-spells")
-    |> render_click()
+    {:ok, library, _html} =
+      live(arena_session_conn(conn, account, profile.character), ~p"/arena/spellbook/library")
 
-    assert has_element?(view, "#spell-manifestation-#{summoned_spell.id}")
+    assert has_element?(library, "#spell-manifestation-#{summoned_spell.id}")
 
-    view
-    |> element("#spellbook-tab-grimoires")
-    |> render_click()
+    {:ok, view, _html} =
+      live(arena_session_conn(conn, account, profile.character), ~p"/arena/spellbook/books")
 
     assert has_element?(view, "#create-arena-grimoire")
     assert has_element?(view, "#arena-grimoire-policy")
@@ -215,11 +213,9 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert compiled_spell.source_spell_id == nil
     assert has_element?(view, "#spell-compose-result-#{compiled_spell.id}")
 
-    view
-    |> element("#spellbook-tab-spells")
-    |> render_click()
+    {:ok, library, _html} = live(session_conn(conn, character), ~p"/spellbook/library")
 
-    assert has_element?(view, "#spell-library-#{compiled_spell.id}")
+    assert has_element?(library, "#spell-library-#{compiled_spell.id}")
   end
 
   test "a novice with an empty library can create a root spell", %{
@@ -684,11 +680,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     grimoire: grimoire
   } do
     character = move_to(character, the_tower)
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
-
-    view
-    |> element("#spellbook-tab-grimoires")
-    |> render_click()
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/books")
 
     assert has_element?(view, "#grimoire-#{grimoire.id}")
 
@@ -716,15 +708,68 @@ defmodule MMGOWeb.SpellbookLiveTest do
   } do
     character = move_to(character, the_tower)
 
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook?view=grimoires")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/books")
     assert has_element?(view, "#grimoire-loadouts")
+    assert has_element?(view, "#spellbook-tab-grimoires[aria-current='page']")
 
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook?view=spells")
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/library")
     assert has_element?(view, "#spell-library")
+    assert has_element?(view, "#spellbook-tab-spells[aria-current='page']")
 
-    # No parameter still opens on the circle, as it always did.
+    # The bare path still opens on the circle, as it always did.
     {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
-    assert has_element?(view, "#spellbook-tab-cast[aria-pressed='true']")
+    assert has_element?(view, "#spellbook-tab-cast[aria-current='page']")
+  end
+
+  test "the player renames and burns a spell from the library", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower,
+    base_spell: base_spell,
+    grimoire: grimoire
+  } do
+    character = move_to(character, the_tower)
+    {:ok, _entry} = Play.inscribe_spell(character, grimoire.id, base_spell.id)
+    assert Grimoires.spell_inscribed?(grimoire.id, base_spell.id)
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/library")
+
+    view
+    |> form("#spell-rename-form-#{base_spell.id}", %{
+      "spell_id" => base_spell.id,
+      "name" => "Первое пламя"
+    })
+    |> render_submit()
+
+    assert %{name: "Первое пламя"} = Repo.get!(Spells.Spell, base_spell.id)
+
+    # The formula itself is untouched by a rename.
+    assert %{formula: "Ignis Prima"} = Repo.get!(Spells.Spell, base_spell.id)
+
+    view
+    |> element("#spell-delete-#{base_spell.id}")
+    |> render_click()
+
+    assert Repo.get(Spells.Spell, base_spell.id) == nil
+
+    # Burning the formula tears it out of every book that held it.
+    refute Grimoires.spell_inscribed?(grimoire.id, base_spell.id)
+  end
+
+  test "a spell outside its owner's library cannot be burned", %{
+    conn: conn,
+    realm: realm,
+    the_tower: the_tower,
+    base_spell: base_spell
+  } do
+    stranger = character_fixture(realm, the_tower, "stranger", "Stranger")
+
+    assert {:error, :spell_not_found} = Play.delete_spell(stranger, base_spell.id)
+    assert {:error, :spell_not_found} = Play.rename_spell(stranger, base_spell.id, "Чужое")
+    assert Repo.get(Spells.Spell, base_spell.id)
+
+    {:ok, view, _html} = live(session_conn(conn, stranger), ~p"/spellbook/library")
+    refute has_element?(view, "#spell-delete-#{base_spell.id}")
   end
 
   test "the player renames a grimoire from its shelf entry", %{
@@ -734,11 +779,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     grimoire: grimoire
   } do
     character = move_to(character, the_tower)
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
-
-    view
-    |> element("#spellbook-tab-grimoires")
-    |> render_click()
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/books")
 
     view
     |> form("#grimoire-rename-form-#{grimoire.id}", %{
@@ -757,11 +798,7 @@ defmodule MMGOWeb.SpellbookLiveTest do
     grimoire: grimoire
   } do
     character = move_to(character, the_tower)
-    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
-
-    view
-    |> element("#spellbook-tab-grimoires")
-    |> render_click()
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/books")
 
     html =
       view
