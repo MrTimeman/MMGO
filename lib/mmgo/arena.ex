@@ -1403,7 +1403,7 @@ defmodule MMGO.Arena do
 
     %{
       "turn_seconds" => normalize_turn_seconds(settings["turn_seconds"]),
-      "room_name" => sanitize_room_copy(settings["room_name"], "Дружеский круг", 60),
+      "room_name" => sanitize_room_copy(settings["room_name"], "Дружеская комната", 60),
       "description" => sanitize_room_copy(settings["description"], "", 180),
       "rules" => sanitize_rules(settings["rules"])
     }

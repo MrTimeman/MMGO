@@ -44,7 +44,7 @@ defmodule MMGOWeb.ArenaLiveTest do
     assert has_element?(view, "#arena-home")
     assert has_element?(view, "#arena-ranked-queue[href='/arena/queue']")
     assert has_element?(view, "#arena-create-room[href='/arena/rooms/new']")
-    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook']")
+    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook?view=cast']")
     assert has_element?(view, "#arena-system-highlights")
 
     for event_code <- ArenaEvents.event_codes() do
@@ -67,6 +67,57 @@ defmodule MMGOWeb.ArenaLiveTest do
       )
 
     assert queue_at < lore_at
+  end
+
+  # The Arena had two navigations stacked on one screen — a bar and a shortcut
+  # row — that both led to the grimoire, and the bar offered the page you were
+  # standing on as though it were somewhere to go.
+  test "one navigation, no destination offered twice", %{conn: conn, profile: profile} do
+    {:ok, view, html} = live(arena_session(conn, profile), ~p"/arena")
+
+    # The section you are in is marked as a place, not repeated as a button.
+    assert has_element?(view, "#arena-nav-fights[aria-current='page']")
+    refute has_element?(view, "#arena-nav-spellbook[aria-current='page']")
+
+    # The shortcut row carries only what the bar cannot reach.
+    refute has_element?(view, "#arena-launch-spellbook")
+    assert has_element?(view, "#arena-create-room[href='/arena/rooms/new']")
+    assert has_element?(view, "#arena-launch-seats[href='/arena/seats']")
+
+    # No two navigation entries lead to the same place.
+    nav_hrefs = [
+      "/arena",
+      "/arena/spellbook?view=grimoires",
+      "/arena/rankings",
+      "/arena/rooms/new",
+      "/arena/seats",
+      "/arena/history"
+    ]
+
+    ids = ~w(
+      arena-nav-fights arena-nav-spellbook arena-nav-rankings
+      arena-create-room arena-launch-seats arena-launch-history
+    )
+
+    for {id, href} <- Enum.zip(ids, nav_hrefs) do
+      assert has_element?(view, "##{id}[href='#{href}']"), "#{id} should lead to #{href}"
+    end
+
+    assert nav_hrefs == Enum.uniq(nav_hrefs)
+
+    # The shelf and the circle are separate errands, so they are separate links.
+    assert has_element?(view, "#arena-create-summon-spell[href='/arena/spellbook?view=cast']")
+    assert is_binary(html)
+  end
+
+  # `круг` is the spell-creation circle. A fight is a fight.
+  test "a fight is never called a circle", %{conn: conn, profile: profile} do
+    {:ok, _view, html} = live(arena_session(conn, profile), ~p"/arena")
+
+    refute html =~ "Свой круг"
+    refute html =~ "Три круга"
+    refute html =~ "Дюжина кругов"
+    assert html =~ "Своя комната"
   end
 
   test "a player with one profile is not offered a profile switcher", %{

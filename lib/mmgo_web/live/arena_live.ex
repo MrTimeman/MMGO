@@ -216,7 +216,7 @@ defmodule MMGOWeb.ArenaLive do
     else
       nil -> {:noreply, assign(socket, :arena_error, "Комната больше не открыта.")}
       {:error, reason} -> {:noreply, assign(socket, :arena_error, arena_error(reason))}
-      _missing_combat -> {:noreply, assign(socket, :arena_error, "Боевой круг ещё не готов.")}
+      _missing_combat -> {:noreply, assign(socket, :arena_error, "Бой ещё не готов.")}
     end
   end
 
@@ -293,10 +293,20 @@ defmodule MMGOWeb.ArenaLive do
             <span><small>MMGO</small><strong>Арена</strong></span>
           </.link>
 
+          <%!-- The only navigation in the Arena. On a phone this becomes the
+                bottom bar, so nothing else may repeat its destinations, and the
+                section you are already in reads as a place rather than as a
+                button that does nothing. --%>
           <nav aria-label="Разделы Арены">
-            <.link id="arena-nav-fights" navigate={~p"/arena"}>Бои</.link>
-            <.link id="arena-nav-spellbook" navigate={~p"/arena/spellbook"}>Гримуары</.link>
-            <.link id="arena-nav-rankings" navigate={~p"/arena/rankings"}>Рейтинг</.link>
+            <.link
+              :for={{id, path, label, sections} <- arena_sections()}
+              id={id}
+              navigate={path}
+              aria-current={arena_section_current(@live_action, sections)}
+              class={arena_section_current(@live_action, sections) && "is-current"}
+            >
+              {label}
+            </.link>
           </nav>
 
           <div class="arena-nav__profile">
@@ -372,7 +382,7 @@ defmodule MMGOWeb.ArenaLive do
       --%>
       <section :if={@current_match} id="arena-active-match" class="arena-active-match">
         <div>
-          <p>Незавершённый круг</p>
+          <p>Незавершённый бой</p>
           <h2>{active_match_title(@current_match)}</h2>
         </div>
         <.link
@@ -413,9 +423,10 @@ defmodule MMGOWeb.ArenaLive do
           Найти соперника <.icon name="hero-bolt" />
         </.link>
 
+        <%!-- Only what the bar does not already reach. The grimoire lives in the
+              bar, so a second button for it here was two doors to one room. --%>
         <nav class="arena-launch__shortcuts" aria-label="Быстрые действия">
-          <.link id="arena-create-room" navigate={~p"/arena/rooms/new"}>Свой круг</.link>
-          <.link id="arena-launch-spellbook" navigate={~p"/arena/spellbook"}>Гримуар</.link>
+          <.link id="arena-create-room" navigate={~p"/arena/rooms/new"}>Своя комната</.link>
           <.link id="arena-launch-seats" navigate={~p"/arena/seats"}>Титулы</.link>
           <.link id="arena-launch-history" navigate={~p"/arena/history"}>История</.link>
         </nav>
@@ -429,36 +440,38 @@ defmodule MMGOWeb.ArenaLive do
       Standing reasons to come back, right under the button that takes you back
       in. Nothing here is claimed: a reward that waits behind a button is a chore.
       --%>
-      <section id="arena-quests" class="arena-section">
-        <div class="arena-section__head">
-          <div>
-            <p>Задачи</p>
-            <h2>Что засчитается сегодня</h2>
-          </div>
-          <span :if={@profile.streak_days > 0} id="arena-streak">
-            Дней подряд: {@profile.streak_days}
+      <%!--
+      Quests are a reason to come back, not the point of the screen. One line
+      each, folded away by default: the fight button must stay the tallest thing
+      on the page.
+      --%>
+      <details id="arena-quests" class="arena-quests">
+        <summary>
+          <span class="arena-quests__label">Задачи</span>
+          <span id="arena-quests-progress" class="arena-quests__tally">
+            {quests_done(@quests)}/{length(@quests)}
           </span>
-        </div>
+          <span :if={@profile.streak_days > 0} id="arena-streak" class="arena-quests__streak">
+            {@profile.streak_days} дн. подряд
+          </span>
+        </summary>
 
-        <div class="arena-quest-list">
-          <article
+        <ul class="arena-quest-list">
+          <li
             :for={quest <- @quests}
             id={"arena-quest-#{quest.code}"}
             class={["arena-quest", quest.completed? && "is-done"]}
           >
-            <div class="arena-quest__copy">
-              <strong>{quest.name}</strong>
-              <span>{quest.description}</span>
-            </div>
-            <div class="arena-quest__meter" aria-hidden="true">
+            <span class="arena-quest__name">{quest.name}</span>
+            <span class="arena-quest__meter" aria-hidden="true">
               <span style={"width: #{quest_percent(quest)}%"} />
-            </div>
+            </span>
             <span class="arena-quest__count">
               {min(quest.progress, quest.goal)}/{quest.goal} · +{quest.reward_xp}
             </span>
-          </article>
-        </div>
-      </section>
+          </li>
+        </ul>
+      </details>
 
       <section id="arena-open-rooms-section" class="arena-section">
         <div class="arena-section__head">
@@ -517,7 +530,12 @@ defmodule MMGOWeb.ArenaLive do
             действует само.
           </p>
         </div>
-        <.link id="arena-create-summon-spell" navigate={~p"/arena/spellbook"} class="arena-button">
+        <%!-- Straight to the circle: the bar already leads to the shelf. --%>
+        <.link
+          id="arena-create-summon-spell"
+          navigate={~p"/arena/spellbook?view=cast"}
+          class="arena-button"
+        >
           Открыть круг заклинаний <.icon name="hero-sparkles" />
         </.link>
       </section>
@@ -549,7 +567,7 @@ defmodule MMGOWeb.ArenaLive do
         <div class="arena-section__head">
           <div>
             <p>Профили Арены</p>
-            <h2>Кем вы выходите на круг</h2>
+            <h2>Кем вы выходите на бой</h2>
           </div>
         </div>
         <p class="arena-room-form__hint">
@@ -856,7 +874,7 @@ defmodule MMGOWeb.ArenaLive do
         <%= if @current_match && @current_match.status == :queued do %>
           <div id="arena-searching" class="arena-searching">
             <span class="arena-searching__orb"><.icon name="hero-sparkles" /></span>
-            <h2>Круг ищет равного соперника</h2>
+            <h2>Ищем равного соперника</h2>
             <p>Можно закрыть экран — очередь сохранена на сервере.</p>
             <button id="arena-cancel-queue" type="button" phx-click="cancel_ranked">
               Остановить поиск
@@ -910,7 +928,7 @@ defmodule MMGOWeb.ArenaLive do
 
       <header class="arena-page-title">
         <p>Дружеский бой · без изменения рейтинга</p>
-        <h1>Настройте боевой круг</h1>
+        <h1>Настройте комнату</h1>
         <span>Все исполняемые эффекты событий принадлежат серверу; вы выбираете только колоду.</span>
       </header>
 
@@ -1207,7 +1225,7 @@ defmodule MMGOWeb.ArenaLive do
             disabled={not room_startable?(@room)}
             class="arena-button arena-button--gold"
           >
-            Открыть боевой круг <.icon name="hero-bolt" />
+            Начать бой <.icon name="hero-bolt" />
           </button>
           <button
             :if={@membership}
@@ -1464,7 +1482,7 @@ defmodule MMGOWeb.ArenaLive do
   defp room_form do
     to_form(
       %{
-        "room_name" => "Дружеский круг",
+        "room_name" => "Дружеская комната",
         "description" => "Экспериментируем с формулами и событиями поля.",
         "team_size" => "1",
         "turn_seconds" => "45",
@@ -1499,6 +1517,21 @@ defmodule MMGOWeb.ArenaLive do
       Enum.all?(room.members, & &1.ready)
   end
 
+  # The Arena's three sections and every screen that lives inside one, so the
+  # bar can say where you are instead of offering you a door you came through.
+  defp arena_sections do
+    [
+      {"arena-nav-fights", ~p"/arena", "Бои",
+       [:home, :queue, :new_room, :room, :result, :history, :replay, :seats]},
+      {"arena-nav-spellbook", ~p"/arena/spellbook?view=grimoires", "Гримуар", [:spellbook]},
+      {"arena-nav-rankings", ~p"/arena/rankings", "Рейтинг", [:rankings, :profiles]}
+    ]
+  end
+
+  defp arena_section_current(live_action, sections) do
+    if live_action in sections, do: "page"
+  end
+
   defp rank_label(profile), do: profile |> Arena.rank() |> Ladder.label()
 
   defp rank_glyph(profile), do: profile |> Arena.rank() |> Ladder.glyph()
@@ -1509,7 +1542,7 @@ defmodule MMGOWeb.ArenaLive do
     do: profile.schools |> Enum.map(&school_label/1) |> Enum.join(" · ")
 
   defp room_name(%Match{settings: settings}),
-    do: Map.get(settings || %{}, "room_name", "Дружеский круг")
+    do: Map.get(settings || %{}, "room_name", "Дружеская комната")
 
   defp room_description(%Match{settings: settings}),
     do: Map.get(settings || %{}, "description", "Свободный тренировочный бой.")
@@ -1523,6 +1556,8 @@ defmodule MMGOWeb.ArenaLive do
     do: progress |> Kernel./(goal) |> Kernel.*(100) |> round() |> min(100) |> max(0)
 
   defp quest_percent(_quest), do: 0
+
+  defp quests_done(quests), do: Enum.count(quests, & &1.completed?)
 
   defp wait_estimate_label(%{estimated_wait_seconds: nil}), do: "Ожидание пока не измерено"
 
@@ -1638,7 +1673,7 @@ defmodule MMGOWeb.ArenaLive do
       else: "Проверьте состав команд и настройки комнаты."
   end
 
-  defp arena_error(:profile_busy), do: "Вы уже состоите в другом боевом круге."
+  defp arena_error(:profile_busy), do: "Вы уже состоите в другом бою."
   defp arena_error(:already_joined), do: "Вы уже в этой комнате."
   defp arena_error(:room_full), do: "Все места в комнате заняты."
   defp arena_error(:team_full), do: "В этой команде больше нет мест."

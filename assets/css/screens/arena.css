@@ -59,6 +59,9 @@
 .arena-nav nav { display: flex; gap: 0.3rem; }
 .arena-nav nav a { padding: 0.55rem 0.8rem; border-radius: 0.2rem; color: #aaa0b1; font-size: 0.78rem; text-decoration: none; transition: color 0.16s ease, background 0.16s ease; }
 .arena-nav nav a:hover { background: rgb(255 255 255 / 6%); color: white; }
+/* Where you already are is a place, not a button that goes nowhere. */
+.arena-nav nav a.is-current { color: var(--arena-gold); }
+.arena-nav nav a.is-current::after { display: block; height: 2px; margin-top: 0.25rem; border-radius: 999px; background: var(--arena-gold-deep); content: ""; }
 .arena-nav__profile { display: flex; justify-self: end; align-items: center; gap: 0.55rem; }
 .arena-nav__profile > span { color: #9c8ba8; font-size: 0.7rem; }
 .arena-nav__profile > strong { color: #e8c56a; }
@@ -133,15 +136,27 @@
 
 .arena-queue-population { margin-top: 0.8rem; color: var(--arena-ink-dim); font-size: 0.78rem; }
 
-/* Quests: a quiet ledger of things already worth doing, not a shop window. */
-.arena-quest-list { display: grid; margin-top: 1rem; gap: 0.5rem; }
-.arena-quest { display: grid; padding: 0.8rem 1rem; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0.3rem 1rem; border: 1px solid var(--arena-hairline); background: var(--arena-stage); }
-.arena-quest.is-done { border-color: rgb(34 197 94 / 35%); }
-.arena-quest__copy strong { display: block; color: var(--arena-ink); font-family: var(--font-serif); }
-.arena-quest__copy span { color: var(--arena-ink-faint); font-size: 0.75rem; }
-.arena-quest__count { color: var(--arena-gold-ink); font-size: 0.75rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
-.arena-quest__meter { grid-column: 1 / -1; height: 3px; margin-top: 0.4rem; border-radius: 999px; background: rgb(255 255 255 / 7%); overflow: hidden; }
+/* Quests: a quiet ledger of things already worth doing, not a shop window.
+   Folded to a single line by default so the fight button stays the tallest
+   thing on the page. */
+.arena-quests { margin-top: 0.9rem; border: 1px solid var(--arena-hairline); background: var(--arena-stage); }
+.arena-quests > summary { display: flex; min-height: 2.9rem; align-items: center; gap: 0.6rem; padding: 0 1rem; cursor: pointer; list-style: none; }
+.arena-quests > summary::-webkit-details-marker { display: none; }
+.arena-quests__label { color: var(--arena-ink-dim); font-size: 0.62rem; letter-spacing: 0.2em; text-transform: uppercase; }
+.arena-quests__tally { color: var(--arena-gold-ink); font-size: 0.78rem; font-variant-numeric: tabular-nums; }
+.arena-quests__streak { margin-left: auto; color: var(--arena-ink-faint); font-size: 0.72rem; }
+.arena-quests > summary::after { content: "▾"; margin-left: 0.4rem; color: var(--arena-ink-faint); font-size: 0.7rem; transition: transform 160ms ease; }
+.arena-quests[open] > summary::after { transform: rotate(180deg); }
+.arena-quests[open] > summary { border-bottom: 1px solid var(--arena-hairline); }
+.arena-quests__streak + .arena-quests__tally { margin-left: 0; }
+
+.arena-quest-list { display: grid; padding: 0.6rem 1rem 0.8rem; gap: 0.55rem; }
+.arena-quest { display: grid; align-items: center; gap: 0.2rem 0.8rem; grid-template-columns: minmax(0, 1fr) auto; }
+.arena-quest__name { overflow: hidden; color: var(--arena-ink); font-family: var(--font-serif); font-size: 0.92rem; text-overflow: ellipsis; white-space: nowrap; }
+.arena-quest__count { color: var(--arena-gold-ink); font-size: 0.72rem; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.arena-quest__meter { display: block; overflow: hidden; height: 3px; border-radius: 999px; grid-column: 1 / -1; background: rgb(255 255 255 / 7%); }
 .arena-quest__meter > span { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, var(--arena-gold-deep), var(--arena-violet-light)); transition: width 220ms ease; }
+.arena-quest.is-done .arena-quest__name { color: var(--arena-ink-faint); }
 .arena-quest.is-done .arena-quest__meter > span { background: var(--color-safe); }
 
 /* History reads as a ledger: the outcome carries the colour, the delta the

@@ -707,6 +707,26 @@ defmodule MMGOWeb.SpellbookLiveTest do
     assert active_id == grimoire.id
   end
 
+  # Creating a formula and arranging a loadout are different errands, so a link
+  # that means one of them must not land on the other.
+  test "each leaf of the book is its own destination", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower
+  } do
+    character = move_to(character, the_tower)
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook?view=grimoires")
+    assert has_element?(view, "#grimoire-loadouts")
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook?view=spells")
+    assert has_element?(view, "#spell-library")
+
+    # No parameter still opens on the circle, as it always did.
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook")
+    assert has_element?(view, "#spellbook-tab-cast[aria-pressed='true']")
+  end
+
   test "the player renames a grimoire from its shelf entry", %{
     conn: conn,
     character: character,

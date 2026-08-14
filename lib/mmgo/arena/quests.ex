@@ -25,7 +25,7 @@ defmodule MMGO.Arena.Quests do
       goal: 3,
       counts: :match,
       reward_xp: 60,
-      name: "Три круга",
+      name: "Три боя",
       description: "Проведите три боя за день."
     },
     %{
@@ -43,7 +43,7 @@ defmodule MMGO.Arena.Quests do
       goal: 12,
       counts: :match,
       reward_xp: 180,
-      name: "Дюжина кругов",
+      name: "Дюжина боёв",
       description: "Проведите двенадцать боёв за неделю."
     },
     %{

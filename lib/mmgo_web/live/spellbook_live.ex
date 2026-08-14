@@ -67,21 +67,26 @@ defmodule MMGOWeb.SpellbookLive do
     end
   end
 
-  @impl true
-  def handle_event("switch_view", %{"view" => view}, socket) do
-    view =
-      case view do
-        "cast" -> :cast
-        "grimoires" -> :grimoires
-        "spells" -> :spells
-        _other -> socket.assigns.view
-      end
+  @doc """
+  The three leaves of the book are separate destinations.
 
-    socket = assign(socket, :view, view)
-    {:noreply, if(view == :grimoires, do: push_shelf(socket), else: socket)}
+  Creating a formula, arranging a loadout, and reading the index are different
+  errands, and a link that means one of them should not have to land on another
+  and ask the player to find their way.
+  """
+  @impl true
+  def handle_params(params, _uri, socket) do
+    case Map.get(params, "view") do
+      nil -> {:noreply, socket}
+      requested -> {:noreply, switch_to_view(socket, requested)}
+    end
   end
 
   @impl true
+  def handle_event("switch_view", %{"view" => view}, socket) do
+    {:noreply, switch_to_view(socket, view)}
+  end
+
   def handle_event("hook_mounted", %{"hook" => "SpellCircle"}, socket) do
     {:noreply, push_spell_circle(socket)}
   end
@@ -90,7 +95,6 @@ defmodule MMGOWeb.SpellbookLive do
     {:noreply, push_shelf(socket)}
   end
 
-  @impl true
   def handle_event("spell_compile", params, socket) do
     case Play.begin_spell_creation(socket.assigns.current_scope.character, params) do
       {:ok, %{attempt: attempt}} ->
@@ -773,6 +777,19 @@ defmodule MMGOWeb.SpellbookLive do
       </div>
     </Layouts.app>
     """
+  end
+
+  defp switch_to_view(socket, requested) do
+    view =
+      case requested do
+        "cast" -> :cast
+        "grimoires" -> :grimoires
+        "spells" -> :spells
+        _other -> socket.assigns.view
+      end
+
+    socket = assign(socket, :view, view)
+    if view == :grimoires, do: push_shelf(socket), else: socket
   end
 
   defp reload_spellbook(socket) do
