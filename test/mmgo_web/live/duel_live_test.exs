@@ -113,8 +113,8 @@ defmodule MMGOWeb.DuelLiveTest do
 
     {:ok, combat_view, _html} = live(session_conn(conn, challenger), combat_path)
     assert has_element?(combat_view, "#combat-screen")
-    assert has_element?(combat_view, "#combat-action-form")
-    assert has_element?(combat_view, "#combat-cast-spell option[value=\"#{killing_blow.id}\"]")
+    assert has_element?(combat_view, "#combat-command-form")
+    assert has_element?(combat_view, "#combat-formula-#{killing_blow.id}")
   end
 
   test "the sealed combat worker resolves and settles the wager", %{
@@ -133,14 +133,8 @@ defmodule MMGOWeb.DuelLiveTest do
     {:ok, combat_view, _html} = live(session_conn(conn, challenger), ~p"/combat/#{combat.id}")
 
     combat_view
-    |> form("#combat-action-form", %{
-      "combat_action" => %{
-        "action_type" => "cast_spell",
-        "spell_id" => killing_blow.id,
-        "incantation" => killing_blow.formula,
-        "target_side" => "defenders",
-        "target_participant_id" => defender_participant.id
-      }
+    |> form("#combat-command-form", %{
+      "command" => "#{killing_blow.formula} по #{defender_participant.display_name}"
     })
     |> render_submit()
 
@@ -169,9 +163,10 @@ defmodule MMGOWeb.DuelLiveTest do
              Combat.submit_action(combat, defender_participant.id, %{action_type: :wait})
 
     {:ok, combat_view, _html} = live(session_conn(conn, challenger), ~p"/combat/#{combat.id}")
-    combat_view |> element("#combat-flee") |> render_click()
-    assert has_element?(combat_view, "#combat-flee-confirmation")
-    combat_view |> element("#combat-flee-confirm") |> render_click()
+
+    combat_view
+    |> form("#combat-command-form", %{"command" => "бежать"})
+    |> render_submit()
 
     perform_all_actions_worker(active_duel.combat_id)
 

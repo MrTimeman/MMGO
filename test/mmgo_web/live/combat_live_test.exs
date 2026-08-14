@@ -107,9 +107,11 @@ defmodule MMGOWeb.CombatLiveTest do
     {:ok, view, _html} = live(conn, combat_path)
 
     assert has_element?(view, "#combat-screen")
-    assert has_element?(view, "#combat-action-form")
-    assert has_element?(view, "#combat-action-kind")
-    assert has_element?(view, "#combat-cast-spell option[value=\"#{spell.id}\"]")
+    assert has_element?(view, "#combat-command-form")
+    assert has_element?(view, "#combat-command")
+
+    # The formula is offered for reading, not for pressing: it writes the line.
+    assert has_element?(view, "#combat-formula-#{spell.id}")
     assert has_element?(view, "#combat-target-#{defender_participant.id}")
 
     assert has_element?(
@@ -130,36 +132,15 @@ defmodule MMGOWeb.CombatLiveTest do
 
     assert has_element?(view, "#combat-incantation-slots .cbt-slot[title='Pretium · цена']", "P")
 
-    assert has_element?(
-             view,
-             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Actio · действие']"
-           )
-
-    assert has_element?(
-             view,
-             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Tempus · время']"
-           )
-
-    refute has_element?(
-             view,
-             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Forma · форма']"
-           )
-
-    refute has_element?(
-             view,
-             "#combat-incantation-slots .cbt-slot.cbt-slot--lit[title='Vis · сила']"
-           )
-
-    assert has_element?(view, "#combat-incantation-slots .cbt-slots__count", "2/6")
+    # Nothing is written yet, so nothing is lit. The seals answer the line.
+    refute has_element?(view, "#combat-incantation-slots .cbt-slot.cbt-slot--lit")
+    assert has_element?(view, "#combat-incantation-slots .cbt-slots__count", "0/6")
 
     view
-    |> form("#combat-action-form", %{
-      "combat_action" => %{
-        "spell_id" => spell.id,
-        "incantation" => "vocatio sustineo"
-      }
-    })
+    |> form("#combat-command-form", %{"command" => "vocatio sustineo"})
     |> render_change()
+
+    assert has_element?(view, "#combat-incantation-slots .cbt-slots__count", "2/6")
 
     assert has_element?(
              view,
@@ -179,14 +160,8 @@ defmodule MMGOWeb.CombatLiveTest do
     refute has_element?(view, "#atmosphere-audio")
 
     view
-    |> form("#combat-action-form", %{
-      "combat_action" => %{
-        "action_type" => "cast_spell",
-        "spell_id" => spell.id,
-        "incantation" => spell.formula,
-        "target_side" => "defenders",
-        "target_participant_id" => defender_participant.id
-      }
+    |> form("#combat-command-form", %{
+      "command" => "#{spell.formula} по #{defender_participant.display_name}"
     })
     |> render_submit()
 
@@ -216,7 +191,7 @@ defmodule MMGOWeb.CombatLiveTest do
     {:ok, view, _html} = live(session_conn(conn, outsider), ~p"/combat/#{combat.id}")
 
     assert has_element?(view, "#combat-spectator")
-    refute has_element?(view, "#combat-action-form")
+    refute has_element?(view, "#combat-command-form")
   end
 
   test "a channeling participant can clearly choose to interrupt the channel", %{
@@ -237,11 +212,8 @@ defmodule MMGOWeb.CombatLiveTest do
 
     assert has_element?(view, "#combat-channeling-hint")
 
-    assert has_element?(
-             view,
-             "#combat-action-kind option[value='wait']",
-             "Прервать канал"
-           )
+    # `ждать` is what ends a channel now, and the hint says so.
+    assert has_element?(view, "#combat-verb-ждать")
   end
 
   test "a remote non-participant is redirected away from a guessed combat ID", %{
@@ -264,10 +236,13 @@ defmodule MMGOWeb.CombatLiveTest do
     combat_path = ~p"/combat/#{combat.id}"
     {:ok, view, _html} = live(conn, combat_path)
 
-    assert has_element?(view, "#combat-flee")
-    view |> element("#combat-flee") |> render_click()
-    assert has_element?(view, "#combat-flee-confirmation")
-    view |> element("#combat-flee-confirm") |> render_click()
+    # Fleeing is a word like any other, and it is kept the moment it is written.
+    assert has_element?(view, "#combat-verb-бежать")
+
+    view
+    |> form("#combat-command-form", %{"command" => "бежать"})
+    |> render_submit()
+
     assert has_element?(view, "#combat-resolving")
 
     job =

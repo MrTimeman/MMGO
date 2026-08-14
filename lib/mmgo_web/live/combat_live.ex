@@ -2,15 +2,16 @@ defmodule MMGOWeb.CombatLive do
   @moduledoc """
   Scoped, server-rendered combat surface.
 
-  The browser supplies only a proposed action selection. `MMGO.Play` checks
-  that the current scoped character belongs to the requested combat, while the
-  combat context locks the exact participant, turn, spell, item, and target
-  before sealing anything. Resolution is performed by the durable turn worker,
+  The duel is fought by writing: the player types one line, the server reads it
+  against the state it already holds, and that becomes the turn. The browser
+  supplies only the line. `MMGO.Play` checks that the current scoped character
+  belongs to the requested combat, while the combat context locks the exact
+  participant, turn, spell, item, and target before sealing anything. Resolution is performed by the durable turn worker,
   never by a client timer or a scripted UI sequence.
   """
   use MMGOWeb, :live_view
 
-  alias MMGO.Combat.ActionSnapshot
+  alias MMGO.Combat.Command
   alias MMGO.Play
   alias MMGO.Spells.Incantation
 
@@ -27,7 +28,6 @@ defmodule MMGOWeb.CombatLive do
          socket
          |> assign(:page_title, "Бой")
          |> assign(:action_error, nil)
-         |> assign(:flee_confirm?, false)
          |> assign_combat_state(state)
          |> schedule_refresh()}
 
@@ -39,61 +39,59 @@ defmodule MMGOWeb.CombatLive do
     end
   end
 
+  @doc """
+  One typed line is one decision.
+
+  The line is parsed against the state the server holds, so a name only ever
+  points at something the player really has. A line that cannot be read costs
+  nothing but the writing of it — the turn is spent by what the engine accepts,
+  never by a typo. A line that *is* read is sealed at once: there is no
+  confirmation, and a poor choice honestly written is simply a poor choice.
+  """
   @impl true
-  def handle_event("submit_action", %{"combat_action" => attrs}, socket) when is_map(attrs) do
+  def handle_event("submit_command", %{"command" => line}, socket) do
     state = socket.assigns.combat_state
 
+    case Command.parse(line, state) do
+      {:ok, attrs} ->
+        submit_parsed_command(socket, state, attrs, line)
+
+      {:error, reason} ->
+        {:noreply,
+         socket
+         |> assign(:command, line)
+         |> assign(:action_error, command_error_message(reason))}
+    end
+  end
+
+  def handle_event("submit_command", _params, socket) do
+    {:noreply, assign(socket, :action_error, combat_error_message(:invalid_action))}
+  end
+
+  def handle_event("change_command", %{"command" => line}, socket) do
+    {:noreply, assign(socket, :command, line)}
+  end
+
+  # The reference sheet writes into the line rather than acting on its own, so
+  # the player still commits the decision themselves.
+  def handle_event("suggest_command", %{"command" => line}, socket) do
+    {:noreply, socket |> assign(:command, line) |> assign(:action_error, nil)}
+  end
+
+  defp submit_parsed_command(socket, state, attrs, line) do
     case Play.submit_combat_action(socket.assigns.current_scope.character, state.combat.id, attrs) do
       {:ok, updated_state} ->
         {:noreply,
          socket
          |> assign_combat_state(updated_state)
+         |> assign(:command, "")
          |> assign(:action_error, nil)}
 
       {:error, reason} ->
         {:noreply,
          socket
-         |> assign(:action_form, action_form(state, attrs))
+         |> assign(:command, line)
          |> assign(:action_error, combat_error_message(reason))}
-    end
-  end
-
-  def handle_event("submit_action", _params, socket) do
-    {:noreply, assign(socket, :action_error, combat_error_message(:invalid_action))}
-  end
-
-  @impl true
-  def handle_event("change_action", %{"combat_action" => attrs}, socket) when is_map(attrs) do
-    {:noreply,
-     socket
-     |> assign(:action_form, action_form(socket.assigns.combat_state, attrs))
-     |> assign(:action_error, nil)}
-  end
-
-  @impl true
-  def handle_event("flee", _params, socket) do
-    {:noreply, assign(socket, :flee_confirm?, true)}
-  end
-
-  @impl true
-  def handle_event("cancel_flee", _params, socket) do
-    {:noreply, assign(socket, :flee_confirm?, false)}
-  end
-
-  @impl true
-  def handle_event("confirm_flee", _params, socket) do
-    state = socket.assigns.combat_state
-
-    case Play.flee_combat(socket.assigns.current_scope.character, state.combat.id) do
-      {:ok, updated_state} ->
-        {:noreply,
-         socket
-         |> assign_combat_state(updated_state)
-         |> assign(:flee_confirm?, false)
-         |> assign(:action_error, nil)}
-
-      {:error, reason} ->
-        {:noreply, assign(socket, :action_error, combat_error_message(reason))}
     end
   end
 
@@ -126,7 +124,7 @@ defmodule MMGOWeb.CombatLive do
       |> assign(:ally_side, ally_side)
       |> assign(
         :lit_incantation_slots,
-        lit_incantation_slots(assigns.action_form, assigns.combat_state.prepared_spells)
+        lit_incantation_slots(assigns.command, assigns.combat_state.prepared_spells)
       )
 
     ~H"""
@@ -369,229 +367,133 @@ defmodule MMGOWeb.CombatLive do
             </div>
           </section>
 
+          <%!--
+          The whole interaction. One line, typed, sealed on Enter. What is
+          written is what happens: there is no confirmation step and no way to
+          take a turn back, so a decision honestly made is a decision kept.
+          --%>
           <section
             :if={@combat_state.action_open? and is_nil(@combat_state.own_action)}
-            class="cbt-action-ledger"
+            id="combat-console"
+            class="cbt-console"
           >
-            <div class="cbt-action-ledger__head">
-              <span class="cbt-action-ledger__rune">❧</span>
-              <div>
-                <p>Ваше решение</p>
-                <h2>Начертите действие и наложите печать</h2>
-              </div>
-            </div>
-
             <div :if={@combat_state.participant} id="combat-mana" class="cbt-mana">
-              <div class="cbt-mana__head">
-                <span class="cbt-mana__label">Мана</span>
-                <span class="cbt-mana__value">
-                  {@combat_state.participant.mana} / {@combat_state.participant.max_mana}
-                </span>
-              </div>
+              <span class="cbt-mana__label">Мана</span>
               <div class="cbt-mana__track" aria-hidden="true">
                 <span
                   class="cbt-mana__fill"
                   style={"width: #{mana_percent(@combat_state.participant)}%"}
                 />
               </div>
-              <p :if={locked_mana(@combat_state.participant) > 0} class="cbt-mana__locked">
-                Земля удерживает {locked_mana(@combat_state.participant)} маны, пока проявление стоит.
-              </p>
+              <span class="cbt-mana__value">
+                {@combat_state.participant.mana}/{@combat_state.participant.max_mana}
+              </span>
             </div>
+
+            <p :if={locked_mana(@combat_state.participant) > 0} class="cbt-console__note">
+              Земля удерживает {locked_mana(@combat_state.participant)} маны, пока проявление стоит.
+            </p>
 
             <p
               :if={channeling?(@combat_state.participant)}
               id="combat-channeling-hint"
-              class="cbt-env"
+              class="cbt-console__note"
             >
-              Вы поддерживаете эффект. «Прервать канал» закончит его добровольно; полученный
-              урон оборвёт канал автоматически.
+              Вы поддерживаете эффект. «ждать» оборвёт его добровольно.
             </p>
 
-            <p
-              :if={summoned_weapon?(@combat_state.participant)}
-              id="combat-summoned-weapon-hint"
-              class="cbt-env cbt-env--summon"
+            <form
+              id="combat-command-form"
+              phx-submit="submit_command"
+              phx-change="change_command"
+              class="cbt-command"
             >
-              Призванное оружие готово: выберите «Удар призванным оружием» и цель. Это отдельное
-              действие — предметы инвентаря не используются.
-            </p>
+              <span class="cbt-command__caret" aria-hidden="true">❧</span>
+              <input
+                id="combat-command"
+                type="text"
+                name="command"
+                value={@command}
+                autocomplete="off"
+                autocapitalize="off"
+                autocorrect="off"
+                spellcheck="false"
+                placeholder={command_placeholder(@combat_state)}
+                aria-label="Строка действия"
+                phx-mounted={JS.focus()}
+                class="cbt-command__input"
+              />
+              <button id="combat-seal" type="submit" class="cbt-command__seal">
+                Запечатать
+              </button>
+            </form>
 
-            <.form
-              for={@action_form}
-              id="combat-action-form"
-              phx-change="change_action"
-              phx-submit="submit_action"
-              class="cbt-action-form"
+            <div
+              id="combat-incantation-slots"
+              class="cbt-slots"
+              aria-label="Строение формулы"
             >
-              <div
-                id="combat-incantation-slots"
-                class="cbt-slots"
-                aria-label="Строение формулы"
+              <span
+                :for={{key, mark, title} <- incantation_slots()}
+                class={[
+                  "cbt-slot",
+                  MapSet.member?(@lit_incantation_slots, key) && "cbt-slot--lit"
+                ]}
+                title={title}
               >
-                <span
-                  :for={{key, mark, title} <- incantation_slots()}
-                  class={[
-                    "cbt-slot",
-                    MapSet.member?(@lit_incantation_slots, key) && "cbt-slot--lit"
-                  ]}
-                  title={title}
-                >
-                  {mark}
-                </span>
-                <span class="cbt-slots__count">{MapSet.size(@lit_incantation_slots)}/6</span>
-              </div>
-
-              <fieldset class="cbt-action-case">
-                <legend>I · Намерение</legend>
-                <.input
-                  field={@action_form[:action_type]}
-                  id="combat-action-kind"
-                  type="select"
-                  label="Тип действия"
-                  options={action_type_options(@combat_state)}
-                  required
-                />
-              </fieldset>
-
-              <div class="cbt-action-grid">
-                <fieldset class="cbt-action-case">
-                  <legend>II · Гримуар</legend>
-                  <.input
-                    field={@action_form[:spell_id]}
-                    id="combat-cast-spell"
-                    type="select"
-                    label="Основа"
-                    options={spell_options(@combat_state.prepared_spells, @combat_state.participant)}
-                    prompt="Выберите запись"
-                  />
-                  <.input
-                    field={@action_form[:incantation]}
-                    id="combat-incantation"
-                    type="text"
-                    label="Формула"
-                    autocomplete="off"
-                  />
-                </fieldset>
-
-                <fieldset
-                  :if={@action_form[:action_type].value in ["block", "parry"]}
-                  id="combat-guard-case"
-                  class="cbt-action-case"
-                >
-                  <legend>III · Защита</legend>
-                  <.input
-                    field={@action_form[:guard_source]}
-                    id="combat-guard-source"
-                    type="select"
-                    label="Чем защищаетесь"
-                    options={
-                      guard_source_options(
-                        guard_mode(@action_form[:action_type].value),
-                        @combat_state
-                      )
-                    }
-                  />
-                  <p class="cbt-env">
-                    Блок смягчает следующий удар; парирование либо отводит его целиком, либо не
-                    срабатывает вовсе. Магический щит поглощает урон сам по себе — это другое.
-                  </p>
-                </fieldset>
-
-                <fieldset :if={@combat_state.items != []} class="cbt-action-case">
-                  <legend>IV · Инструмент</legend>
-                  <.input
-                    field={@action_form[:inventory_item_id]}
-                    id="combat-tool-item"
-                    type="select"
-                    label="Предмет"
-                    options={item_options(@combat_state.items)}
-                    prompt="Выберите предмет"
-                  />
-                  <.input
-                    field={@action_form[:tool_action]}
-                    id="combat-tool-action"
-                    type="select"
-                    label="Приём"
-                    options={item_action_options(@combat_state.items)}
-                    prompt="Выберите приём"
-                  />
-                </fieldset>
-              </div>
-
-              <fieldset class="cbt-action-case">
-                <legend>V · Цель</legend>
-                <div class="cbt-action-grid">
-                  <.input
-                    field={@action_form[:target_side]}
-                    id="combat-target-side"
-                    type="select"
-                    label="Сторона"
-                    options={target_side_options(@combat_state)}
-                  />
-                  <.input
-                    field={@action_form[:target_participant_id]}
-                    id="combat-target-selector"
-                    type="select"
-                    label="Участник"
-                    options={target_options(@combat_state)}
-                  />
-                </div>
-              </fieldset>
-
-              <p :if={@action_error} id="combat-action-error" class="cbt-action-error">
-                {@action_error}
-              </p>
-
-              <button
-                id="combat-seal"
-                type="submit"
-                phx-disable-with="Печать накладывается…"
-                class="cbt-action-submit"
-              >
-                <span class="cbt-action-submit__wax">ᛟ</span>
-                <span>Запечатать действие</span>
-              </button>
-
-              <button
-                :if={@combat_state.can_flee?}
-                id="combat-flee"
-                type="button"
-                phx-click="flee"
-                class="cbt-action-flee"
-              >
-                <.icon name="hero-arrow-uturn-left" class="size-4" /> {flee_action_label(
-                  @combat_state
-                )}
-              </button>
-            </.form>
-          </section>
-
-          <section
-            :if={@flee_confirm?}
-            id="combat-flee-confirmation"
-            class="cbt-flee-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby="combat-flee-title"
-          >
-            <h2 id="combat-flee-title" class="cbt-flee-modal__title">
-              {flee_confirmation_title(@combat_state)}
-            </h2>
-            <p class="cbt-flee-modal__body">{flee_confirmation_body(@combat_state)}</p>
-            <div class="cbt-flee-modal__row">
-              <button type="button" phx-click="cancel_flee" class="cbt-flee-modal__stay">
-                Остаться в бою
-              </button>
-              <button
-                id="combat-flee-confirm"
-                type="button"
-                phx-click="confirm_flee"
-                class="cbt-flee-modal__go"
-              >
-                {flee_confirmation_action(@combat_state)}
-              </button>
+                {mark}
+              </span>
+              <span class="cbt-slots__count">{MapSet.size(@lit_incantation_slots)}/6</span>
             </div>
+
+            <p :if={@action_error} id="combat-action-error" class="cbt-command__error">
+              {@action_error}
+            </p>
+
+            <%!--
+            The reference writes into the line instead of acting, so reading it
+            is never a shortcut around deciding.
+            --%>
+            <details id="combat-reference" class="cbt-reference">
+              <summary>Что можно написать</summary>
+
+              <div :if={@combat_state.prepared_spells != []} class="cbt-reference__group">
+                <p class="cbt-reference__label">Формулы в раскладке</p>
+                <button
+                  :for={spell <- @combat_state.prepared_spells}
+                  id={"combat-formula-#{spell.id}"}
+                  type="button"
+                  phx-click="suggest_command"
+                  phx-value-command={spell.formula}
+                  class={[
+                    "cbt-reference__chip",
+                    not affordable_spell?(spell, @combat_state.participant) && "is-spent"
+                  ]}
+                >
+                  {spell.formula} · {spell.fatigue_cost}
+                </button>
+              </div>
+
+              <div class="cbt-reference__group">
+                <p class="cbt-reference__label">Приказы</p>
+                <button
+                  :for={{word, gloss} <- command_reference(@combat_state)}
+                  id={"combat-verb-#{word}"}
+                  type="button"
+                  phx-click="suggest_command"
+                  phx-value-command={word}
+                  class="cbt-reference__chip"
+                  title={gloss}
+                >
+                  {word}
+                </button>
+              </div>
+
+              <p class="cbt-reference__hint">
+                Цель указывается через «по» или «→»: <code>Ignis Prima по Бранд</code>.
+                Без цели удар идёт по противной стороне.
+              </p>
+            </details>
           </section>
 
           <section id="combat-events" class="cbt-chronicle">
@@ -699,11 +601,12 @@ defmodule MMGOWeb.CombatLive do
       |> assign(:character, state.character)
       |> assign(:atmosphere, state.atmosphere)
 
+    # The line the player is part-way through writing survives a background
+    # refresh; only sealing an action clears it.
     if preserve_form? do
       socket
     else
-      form = if state.spectator?, do: to_form(%{}, as: :combat_action), else: action_form(state)
-      assign(socket, :action_form, form)
+      assign_new(socket, :command, fn -> "" end)
     end
   end
 
@@ -717,97 +620,11 @@ defmodule MMGOWeb.CombatLive do
 
   defp active_combat?(combat), do: combat.status in [:active_turn, :locked, :resolving]
 
-  defp action_form(state, attrs \\ nil) do
-    params = attrs || default_action_params(state)
-    to_form(params, as: :combat_action)
-  end
-
-  defp default_action_params(state) do
-    spell = List.first(state.prepared_spells)
-    item = List.first(state.items)
-    item_action = item && List.first(item.actions)
-    target = List.first(opponents(state))
-
-    action_type =
-      if channeling?(state.participant),
-        do: "wait",
-        else: if(spell, do: "cast_spell", else: "wait")
-
-    %{
-      "action_type" => action_type,
-      "spell_id" => spell && spell.id,
-      "incantation" => spell && spell.formula,
-      "inventory_item_id" => item && item.id,
-      "tool_action" => item_action && item_action.key,
-      "guard_source" => List.first(guard_sources(:block, state)),
-      "target_side" => target && target.side,
-      "target_participant_id" => target && target.id
-    }
-  end
-
-  defp opponents(state) do
-    Enum.filter(
-      state.combat.participants,
-      &(&1.side != state.participant.side and &1.status == :ready)
-    )
-  end
-
   defp participants_on_side(state, side_id) do
     state.combat.participants
     |> Enum.filter(&(&1.side == side_id))
     |> Enum.sort_by(& &1.position)
   end
-
-  defp action_type_options(state) do
-    spell_options = if state.prepared_spells == [], do: [], else: [{"Заклинание", "cast_spell"}]
-
-    manifestation_options =
-      if summoned_weapon?(state.participant),
-        do: [{"Удар призванным оружием", "manifestation_strike"}],
-        else: []
-
-    item_options = if state.items == [], do: [], else: [{"Предмет", "use_item"}]
-
-    spell_options ++
-      manifestation_options ++
-      defence_options(state) ++
-      item_options ++
-      [{if(channeling?(state.participant), do: "Прервать канал", else: "Выждать"), "wait"}]
-  end
-
-  # Blocking is always possible — bare arms are a poor guard, not an impossible
-  # one. A parry needs something in hand you could strike back with.
-  defp defence_options(state) do
-    Enum.flat_map([{:block, "Блок"}, {:parry, "Парирование"}], fn {mode, label} ->
-      case guard_sources(mode, state) do
-        [] -> []
-        _available -> [{label, to_string(mode)}]
-      end
-    end)
-  end
-
-  defp guard_sources(mode, state) do
-    ActionSnapshot.guard_sources(mode, state.participant, holding_item?: state.items != [])
-  end
-
-  defp guard_mode("parry"), do: :parry
-  defp guard_mode(_value), do: :block
-
-  defp guard_source_options(mode, state) do
-    mode
-    |> guard_sources(state)
-    |> Enum.map(fn source ->
-      {"#{guard_source_label(source)} · #{ActionSnapshot.guard_efficiency(mode, source)}%",
-       source}
-    end)
-  end
-
-  defp guard_source_label("summoned_shield"), do: "Призванный щит"
-  defp guard_source_label("summoned_creature"), do: "Призванный союзник"
-  defp guard_source_label("summoned_weapon"), do: "Призванное оружие"
-  defp guard_source_label("item"), do: "Предмет в руках"
-  defp guard_source_label("bare"), do: "Руки и воля"
-  defp guard_source_label(source), do: source
 
   defp channeling?(%{active_states: active_states}) do
     Enum.any?(List.wrap(active_states), &(Map.get(&1, "state") == "channeling"))
@@ -828,21 +645,6 @@ defmodule MMGOWeb.CombatLive do
   end
 
   defp manifestation_states(_participant), do: []
-
-  # Cost is load-bearing now, so a caster must be able to see, before choosing,
-  # which entries their pool can still pay for.
-  defp spell_options(spells, participant) do
-    Enum.map(spells, fn spell ->
-      label =
-        if affordable_spell?(spell, participant) do
-          "#{spell.name} · мана #{spell.fatigue_cost}"
-        else
-          "#{spell.name} · мана #{spell.fatigue_cost} · не хватает"
-        end
-
-      {label, spell.id}
-    end)
-  end
 
   defp affordable_spell?(spell, %{mana: mana}) when is_integer(mana),
     do: mana >= spell.fatigue_cost
@@ -873,40 +675,6 @@ defmodule MMGOWeb.CombatLive do
 
   defp locked_mana(%{locked_mana: locked}) when is_integer(locked), do: locked
   defp locked_mana(_participant), do: 0
-
-  defp item_options(items),
-    do: Enum.map(items, &{"#{&1.name} · доступно #{&1.available_quantity}", &1.id})
-
-  defp item_action_options(items) do
-    Enum.flat_map(items, fn item ->
-      Enum.map(item.actions, fn action ->
-        {"#{item.name} · #{item_action_label(action.kind)}", action.key}
-      end)
-    end)
-  end
-
-  defp target_side_options(state) do
-    state.combat.participants
-    |> Enum.map(& &1.side)
-    |> Enum.uniq()
-    |> Enum.map(fn side_id -> {side_label(state, side_id), side_id} end)
-  end
-
-  defp target_options(state) do
-    state.combat.participants
-    |> Enum.filter(&(&1.status == :ready))
-    |> Enum.sort_by(&{&1.side, &1.position})
-    |> Enum.map(&{"#{&1.display_name} · #{side_label(state, &1.side)}", &1.id})
-  end
-
-  defp side_label(state, side_id) do
-    state.sides
-    |> Enum.find(&(&1.id == side_id))
-    |> case do
-      nil -> side_id
-      side -> side_display_label(side.label)
-    end
-  end
 
   defp hp_percent(_hp, max_hp) when max_hp <= 0, do: 0
 
@@ -951,6 +719,63 @@ defmodule MMGOWeb.CombatLive do
       nil -> "?"
       initial -> initial
     end
+  end
+
+  # A line the parser could not read. These are the only messages that cost
+  # nothing: the turn is still open and the player writes again.
+  defp command_error_message(:empty_command), do: "Строка пуста."
+
+  defp command_error_message({:unknown_spell, written}),
+    do: "«#{written}» нет в боевой раскладке."
+
+  defp command_error_message({:ambiguous_spell, written, names}),
+    do: "«#{written}» подходит нескольким формулам: #{Enum.join(names, ", ")}. Уточните."
+
+  defp command_error_message(:no_summoned_weapon),
+    do: "Призванного оружия в руках нет."
+
+  defp command_error_message({:no_guard, :parry}),
+    do: "Парировать нечем: нужно что-то в руках."
+
+  defp command_error_message({:no_guard, _mode}), do: "Защититься нечем."
+
+  defp command_error_message({:unknown_guard, written}),
+    do: "«#{written}» — не то, чем можно защититься."
+
+  defp command_error_message(:item_not_named), do: "Назовите предмет."
+
+  defp command_error_message({:unknown_item, written}),
+    do: "«#{written}» нет в сумке."
+
+  defp command_error_message({:ambiguous_item, written, names}),
+    do: "«#{written}» подходит нескольким предметам: #{Enum.join(names, ", ")}."
+
+  defp command_error_message({:item_has_no_action, name}),
+    do: "«#{name}» нечего сделать в бою."
+
+  defp command_error_message(reason), do: combat_error_message(reason)
+
+  defp command_placeholder(%{prepared_spells: [spell | _rest]}),
+    do: "#{spell.formula} · ждать · блок"
+
+  defp command_placeholder(_state), do: "ждать · блок · бежать"
+
+  # The verbs worth showing, filtered to the ones this fight actually permits.
+  defp command_reference(state) do
+    strike =
+      if summoned_weapon?(state.participant),
+        do: [{"удар", "Удар призванным оружием"}],
+        else: []
+
+    item = if state.items == [], do: [], else: [{"предмет", "Использовать предмет из сумки"}]
+    flee = if state.flee_available?, do: [{"бежать", "Выйти из боя"}], else: []
+
+    strike ++
+      [
+        {"блок", "Смягчить следующий удар"},
+        {"парировать", "Отвести удар целиком или не отвести вовсе"},
+        {"ждать", "Пропустить ход или оборвать канал"}
+      ] ++ item ++ flee
   end
 
   defp combat_exit_path(%{game_mode: :arena}), do: ~p"/arena"
@@ -1071,98 +896,13 @@ defmodule MMGOWeb.CombatLive do
 
   defp outcome_subtitle(_state), do: "Исход вписан в хронику мира."
 
-  defp flee_action_label(%{arena?: true}), do: "Сдаться в этом матче"
-  defp flee_action_label(_state), do: "Отступить и отдать этот круг"
+  defp lit_incantation_slots(command, prepared_spells) do
+    entered_formula = normalized_formula(command)
 
-  defp flee_confirmation_title(%{arena?: true}), do: "Отдать матч соперникам?"
-  defp flee_confirmation_title(_state), do: "Отдать круг противнику?"
-
-  defp flee_confirmation_body(%{arena?: true}),
-    do:
-      "Сдача немедленно завершит матч поражением вашей команды. Инвентарь мира не пострадает, но результат рейтингового боя будет учтён."
-
-  defp flee_confirmation_body(_state),
-    do:
-      "Отступление немедленно запечатает поражение вашей стороны. Отменить его после подтверждения нельзя."
-
-  defp flee_confirmation_action(%{arena?: true}), do: "Подтвердить сдачу"
-  defp flee_confirmation_action(_state), do: "Подтвердить отступление"
-
-  defp deadline_label(_deadline_at, true), do: "ход разрешается"
-  defp deadline_label(nil, _resolving?), do: "время уточняется"
-
-  defp deadline_label(deadline_at, _resolving?),
-    do: Calendar.strftime(deadline_at, "%H:%M:%S UTC")
-
-  defp combat_kind_label(:duel), do: "Дуэль"
-  defp combat_kind_label(:arena_match), do: "Арена"
-  defp combat_kind_label(:dungeon_encounter), do: "Схватка в подземелье"
-  defp combat_kind_label(:overworld_encounter), do: "Столкновение в пути"
-  defp combat_kind_label(_kind), do: "Бой"
-
-  defp dungeon_combat?(%{kind: :dungeon_encounter}), do: true
-  defp dungeon_combat?(_combat), do: false
-
-  defp combat_status_label(:active_turn), do: "ход открыт"
-  defp combat_status_label(:locked), do: "печати собраны"
-  defp combat_status_label(:resolving), do: "разрешение"
-  defp combat_status_label(:finished), do: "завершён"
-  defp combat_status_label(_status), do: "состояние уточняется"
-
-  defp participant_status_label(:ready), do: "готов"
-  defp participant_status_label(:defeated), do: "повержен"
-  defp participant_status_label(:fled), do: "отступил"
-  defp participant_status_label(_status), do: "состояние неизвестно"
-
-  defp winner_label(state) do
-    case Enum.find(state.sides, &(&1.id == state.combat.winner_side)) do
-      nil -> "не определена"
-      side -> side_display_label(side.label)
-    end
-  end
-
-  defp item_action_label(:strike), do: "удар"
-  defp item_action_label(:sweep), do: "взмах"
-  defp item_action_label(:raise_shield), do: "щит"
-  defp item_action_label(:throw), do: "бросок"
-  defp item_action_label(:deploy), do: "развернуть"
-  defp item_action_label(:repair), do: "починка"
-  defp item_action_label(_kind), do: "особый приём"
-
-  defp event_label("spell_cast"), do: "заклинание сработало"
-  defp event_label("arena_event"), do: "поле Арены изменилось"
-  defp event_label("manifestation_strike"), do: "призванное оружие нанесло удар"
-  defp event_label("manifestation_strike_missed"), do: "призванное оружие промахнулось"
-  defp event_label("summon_action"), do: "призванный союзник атаковал"
-  defp event_label("summon_action_missed"), do: "призванный союзник промахнулся"
-  defp event_label("insufficient_mana"), do: "не хватило маны"
-  defp event_label("manifestation_upkeep"), do: "проявления требуют маны"
-  defp event_label("guard_raised"), do: "защита выставлена"
-  defp event_label("parry_failed"), do: "парирование не удалось"
-  defp event_label("summon_destroyed"), do: "призванная сущность рассеялась"
-  defp event_label("tool_action"), do: "предмет применён"
-  defp event_label("action_blocked"), do: "действие сорвалось"
-  defp event_label("state_tick"), do: "состояние изменило поле боя"
-  defp event_label("environment_hazard_tick"), do: "опасная среда наносит урон"
-  defp event_label("channeling_stopped"), do: "канал добровольно прерван"
-  defp event_label("wait"), do: "сторона выжидает"
-  defp event_label("fled"), do: "участник отступил"
-  defp event_label(_event_type), do: "неизвестное событие"
-
-  defp incantation_slots do
-    [
-      {"actio", "A", "Actio · действие"},
-      {"forma", "F", "Forma · форма"},
-      {"vis", "V", "Vis · сила"},
-      {"tempus", "T", "Tempus · время"},
-      {"mutatio", "M", "Mutatio · изменение"},
-      {"pretium", "P", "Pretium · цена"}
-    ]
-  end
-
-  defp lit_incantation_slots(form, prepared_spells) do
-    selected_spell = Enum.find(prepared_spells, &(&1.id == form[:spell_id].value))
-    entered_formula = normalized_formula(form[:incantation].value)
+    selected_spell =
+      Enum.find(prepared_spells, fn spell ->
+        normalized_formula(spell.formula) == entered_formula
+      end)
 
     case selected_spell do
       %{formula: formula, incantation_slots: slots}
@@ -1257,4 +997,99 @@ defmodule MMGOWeb.CombatLive do
 
   defp combat_error_message(:invalid_action), do: "Не удалось прочитать действие."
   defp combat_error_message(_reason), do: "Мир отклонил это действие. Попробуйте обновить бой."
+
+  defp combat_kind_label(:duel), do: "Дуэль"
+
+  defp combat_kind_label(:arena_match), do: "Арена"
+
+  defp combat_kind_label(:dungeon_encounter), do: "Схватка в подземелье"
+
+  defp combat_kind_label(:overworld_encounter), do: "Столкновение в пути"
+
+  defp combat_kind_label(_kind), do: "Бой"
+
+  defp combat_status_label(:active_turn), do: "ход открыт"
+
+  defp combat_status_label(:locked), do: "печати собраны"
+
+  defp combat_status_label(:resolving), do: "разрешение"
+
+  defp combat_status_label(:finished), do: "завершён"
+
+  defp combat_status_label(_status), do: "состояние уточняется"
+
+  defp deadline_label(_deadline_at, true), do: "ход разрешается"
+
+  defp deadline_label(nil, _resolving?), do: "время уточняется"
+
+  defp deadline_label(deadline_at, _resolving?),
+    do: Calendar.strftime(deadline_at, "%H:%M:%S UTC")
+
+  defp dungeon_combat?(%{kind: :dungeon_encounter}), do: true
+
+  defp dungeon_combat?(_combat), do: false
+
+  defp event_label("spell_cast"), do: "заклинание сработало"
+
+  defp event_label("arena_event"), do: "поле Арены изменилось"
+
+  defp event_label("manifestation_strike"), do: "призванное оружие нанесло удар"
+
+  defp event_label("manifestation_strike_missed"), do: "призванное оружие промахнулось"
+
+  defp event_label("summon_action"), do: "призванный союзник атаковал"
+
+  defp event_label("summon_action_missed"), do: "призванный союзник промахнулся"
+
+  defp event_label("insufficient_mana"), do: "не хватило маны"
+
+  defp event_label("manifestation_upkeep"), do: "проявления требуют маны"
+
+  defp event_label("guard_raised"), do: "защита выставлена"
+
+  defp event_label("parry_failed"), do: "парирование не удалось"
+
+  defp event_label("summon_destroyed"), do: "призванная сущность рассеялась"
+
+  defp event_label("tool_action"), do: "предмет применён"
+
+  defp event_label("action_blocked"), do: "действие сорвалось"
+
+  defp event_label("state_tick"), do: "состояние изменило поле боя"
+
+  defp event_label("environment_hazard_tick"), do: "опасная среда наносит урон"
+
+  defp event_label("channeling_stopped"), do: "канал добровольно прерван"
+
+  defp event_label("wait"), do: "сторона выжидает"
+
+  defp event_label("fled"), do: "участник отступил"
+
+  defp event_label(_event_type), do: "неизвестное событие"
+
+  defp incantation_slots do
+    [
+      {"actio", "A", "Actio · действие"},
+      {"forma", "F", "Forma · форма"},
+      {"vis", "V", "Vis · сила"},
+      {"tempus", "T", "Tempus · время"},
+      {"mutatio", "M", "Mutatio · изменение"},
+      {"pretium", "P", "Pretium · цена"}
+    ]
+  end
+
+  defp participant_status_label(:ready), do: "готов"
+
+  defp participant_status_label(:defeated), do: "повержен"
+
+  defp participant_status_label(:fled), do: "отступил"
+
+  defp participant_status_label(_status), do: "состояние неизвестно"
+
+  defp winner_label(state) do
+    case Enum.find(state.sides, &(&1.id == state.combat.winner_side)) do
+      nil -> "не определена"
+      side -> side_display_label(side.label)
+    end
+  end
 end

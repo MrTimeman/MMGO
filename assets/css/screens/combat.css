@@ -1,55 +1,67 @@
 /* MMGO design-pass styles: combat (see docs/UI_DESIGN_BRIEF.md)
    Owns two screens: CombatLive (.cbt-) and DefeatLive (.dft-).
-   Dark world-shell aesthetic — darkness with one warm light source,
-   the AI narration is the single focal point. */
+
+   The duel is a page of a chronicle being written, not a console. The surface
+   is parchment, the chronicle is the largest thing on it, and the player's
+   whole interaction is one line written at the foot of the page. Everything
+   else — bars, seals, counters — is marginalia and is sized like marginalia. */
 
 /* ============================================================
-   Combat — the arena
+   Combat — the page
    ============================================================ */
 
 .cbt-arena {
-  /* Scoped tokens, derived from the warm palette in app.css (brief rule 5).
-     Status-glyph hues and the ember light live only on this screen. */
-  --cbt-ember:      #d9541f;  /* burning fire, warmer than --color-danger */
-  --cbt-ash:        #7a6a5c;  /* pepel / neutral debuff */
-  --cbt-frost:      var(--arc-blue-bright);
-  --cbt-shield:     var(--parch-gold-bright);
-  --cbt-blood:      var(--color-danger);
-  --cbt-trap:       #9a6ae0;
-  --cbt-regen:      var(--color-safe);
-  --cbt-enemy:      #d1495b;  /* enemy side accent */
-  --cbt-ally:       var(--color-accent);
+  /* Status-glyph hues, pulled toward ink and pigment rather than neon so they
+     read as something drawn on the page. */
+  --cbt-ember:      #a8401b;  /* burning */
+  --cbt-ash:        #7a6a5c;  /* neutral debuff */
+  --cbt-frost:      #3f6b86;
+  --cbt-shield:     var(--parch-gold);
+  --cbt-blood:      var(--parch-red);
+  --cbt-trap:       #6b4a86;
+  --cbt-regen:      #4a6b3a;
+  --cbt-enemy:      var(--parch-red);
+  --cbt-ally:       var(--parch-gold);
+
+  /* The screen inherits ink-on-paper by redefining the shell's own tokens
+     rather than by overriding every rule that used them. */
+  --color-text:       var(--parch-ink);
+  --color-text-muted: var(--parch-ink-faint);
+  --color-bg:         var(--parch-paper);
+  --color-accent:     var(--parch-gold);
+  --color-danger:     var(--parch-red);
+  --arc-blue-bright:  #3f6b86;
 
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
   background:
-    radial-gradient(ellipse 120% 60% at 50% 118%, rgba(217,84,31,0.20) 0%, transparent 60%),
-    radial-gradient(ellipse at 50% -20%, #241a13 0%, #130d09 55%, #0a0705 100%);
-  color: var(--color-text);
+    radial-gradient(ellipse at 50% -10%, #f3e9cd 0%, var(--parch-paper) 46%, #dccba0 100%);
+  color: var(--parch-ink);
   font-family: var(--font-serif);
   overflow: hidden;
 }
 
+/* The page darkens at its edges the way a real one does where hands hold it. */
 .cbt-vignette {
   position: absolute;
   inset: 0;
   pointer-events: none;
   z-index: 0;
   background:
-    radial-gradient(ellipse at 50% 42%, transparent 45%, rgba(0,0,0,0.55) 100%);
+    radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(169, 143, 92, 0.34) 100%);
   mix-blend-mode: multiply;
 }
 
-/* Grain overlay */
+/* Fibre, not film grain. */
 .cbt-vignette::after {
   content: '';
   position: absolute;
   inset: 0;
-  opacity: 0.05;
-  mix-blend-mode: overlay;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='100' height='100'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
+  opacity: 0.16;
+  mix-blend-mode: multiply;
+  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/><feColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.34  0 0 0 0 0.2  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
 }
 
 /* ── Top region: combatants, HP, turn timer ──────────────────────────── */
@@ -94,7 +106,7 @@
   border: 1px solid var(--color-border);
   border-radius: 999px;
   padding: 2px;
-  background: rgba(0,0,0,0.35);
+  background: rgba(74, 47, 28, 0.35);
 }
 .cbt-mode {
   font-family: var(--font-sans);
@@ -131,7 +143,7 @@
   letter-spacing: 0.01em;
 }
 .cbt-side--enemy .cbt-side__name { color: #f0a9b3; }
-.cbt-side--ally  .cbt-side__name { color: #f2d7a0; }
+.cbt-side--ally  .cbt-side__name { color: var(--parch-ink); }
 .cbt-side__hpnum {
   font-family: var(--font-sans);
   font-size: 0.66rem;
@@ -144,15 +156,15 @@
   position: relative;
   height: 9px;
   border-radius: 999px;
-  background: rgba(0,0,0,0.5);
-  box-shadow: inset 0 1px 3px rgba(0,0,0,0.7), 0 0 0 1px rgba(255,255,255,0.03);
+  background: rgba(74, 47, 28, 0.5);
+  box-shadow: inset 0 1px 3px rgba(74, 47, 28, 0.7), 0 0 0 1px rgba(55, 43, 25, 0.03);
   overflow: hidden;
 }
 .cbt-hp__fill {
   height: 100%;
   border-radius: 999px;
   transition: width 0.65s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s ease;
-  box-shadow: 0 0 8px rgba(0,0,0,0.4);
+  box-shadow: 0 0 8px rgba(74, 47, 28, 0.4);
 }
 .cbt-side--enemy .cbt-hp__fill {
   background: linear-gradient(90deg, #7c1d2b, var(--cbt-enemy));
@@ -164,12 +176,12 @@
   background: linear-gradient(90deg, #8a3d10, #e07a1e) !important;
 }
 .cbt-hp__fill--critical {
-  background: linear-gradient(90deg, #7c1d1d, #ef4444) !important;
+  background: linear-gradient(90deg, #7c1d1d, var(--parch-red)) !important;
   animation: cbt-hp-pulse 1.1s ease-in-out infinite;
 }
 @keyframes cbt-hp-pulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(239,68,68,0.4); }
-  50%      { box-shadow: 0 0 16px rgba(239,68,68,0.9); }
+  0%, 100% { box-shadow: 0 0 6px rgba(124,43,34,0.4); }
+  50%      { box-shadow: 0 0 16px rgba(124,43,34,0.9); }
 }
 
 /* ── Member chips with status glyphs ─────────────────────────────────── */
@@ -185,8 +197,8 @@
   gap: 0.3rem;
   padding: 0.15rem 0.45rem 0.15rem 0.15rem;
   border-radius: 999px;
-  background: rgba(255,255,255,0.035);
-  border: 1px solid rgba(255,255,255,0.06);
+  background: rgba(55, 43, 25, 0.035);
+  border: 1px solid rgba(55, 43, 25, 0.06);
 }
 .cbt-chip__token {
   display: inline-flex;
@@ -200,7 +212,7 @@
   font-weight: 700;
   color: var(--color-text);
   background: radial-gradient(circle at 35% 30%, #3a322b, #201a15);
-  box-shadow: inset 0 0 0 1px rgba(255,255,255,0.08);
+  box-shadow: inset 0 0 0 1px rgba(55, 43, 25, 0.08);
 }
 .cbt-side--enemy .cbt-chip__token { color: #f0b8bf; }
 .cbt-chip__name {
@@ -222,7 +234,7 @@
   border-radius: 50%;
   font-size: 0.72rem;
   line-height: 1;
-  background: rgba(0,0,0,0.35);
+  background: rgba(74, 47, 28, 0.35);
   animation: cbt-glyph-in 0.3s ease both;
 }
 @keyframes cbt-glyph-in {
@@ -230,9 +242,9 @@
   to   { transform: scale(1);   opacity: 1; }
 }
 .cbt-glyph--burn    { color: var(--cbt-ember);  text-shadow: 0 0 6px rgba(217,84,31,0.8); }
-.cbt-glyph--freeze  { color: var(--cbt-frost);  text-shadow: 0 0 6px rgba(126,203,255,0.7); }
+.cbt-glyph--freeze  { color: var(--cbt-frost);  text-shadow: 0 0 6px rgba(63,107,134,0.7); }
 .cbt-glyph--shield  { color: var(--cbt-shield); text-shadow: 0 0 5px rgba(217,169,54,0.6); }
-.cbt-glyph--expose  { color: var(--cbt-blood);  text-shadow: 0 0 6px rgba(239,68,68,0.7); }
+.cbt-glyph--expose  { color: var(--cbt-blood);  text-shadow: 0 0 6px rgba(124,43,34,0.7); }
 .cbt-glyph--stagger { color: #e08a3c; }
 .cbt-glyph--trap    { color: var(--cbt-trap); }
 .cbt-glyph--silence { color: var(--cbt-ash); }
@@ -264,7 +276,7 @@
 }
 .cbt-turnring__track {
   fill: none;
-  stroke: rgba(255,255,255,0.08);
+  stroke: rgba(55, 43, 25, 0.08);
   stroke-width: 2;
 }
 .cbt-turnring__sweep {
@@ -273,7 +285,7 @@
   stroke-width: 2;
   stroke-linecap: round;
   stroke-dasharray: 119.4;   /* 2πr, r=19 */
-  filter: drop-shadow(0 0 3px rgba(245,158,11,0.6));
+  filter: drop-shadow(0 0 3px rgba(169,121,31,0.6));
   animation: cbt-ring-countdown 20s linear forwards;
 }
 .cbt-turnring__sweep.is-held { animation-play-state: paused; }
@@ -343,7 +355,7 @@
 .cbt-turn__prologue {
   font-size: 0.98rem;
   line-height: 1.62;
-  color: #cdbfa8;
+  color: var(--parch-ink-faint);
   font-style: italic;
   text-align: center;
   padding: 0 0.3rem;
@@ -374,7 +386,7 @@
   flex: 1;
   font-family: var(--font-hand);
   font-size: 1.02rem;
-  color: #b79968;
+  color: var(--parch-caption);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -385,14 +397,14 @@
 .cbt-turn__para {
   font-size: 1.02rem;
   line-height: 1.68;
-  color: #e2d8c6;
+  color: var(--parch-ink);
   margin-bottom: 0.55rem;
   text-wrap: pretty;
 }
 .cbt-turn__para:last-child { margin-bottom: 0; }
 
 .cbt-turn--danger .cbt-turn__label { color: var(--cbt-blood); }
-.cbt-turn--danger .cbt-turn__para  { color: #f0dcd0; }
+.cbt-turn--danger .cbt-turn__para  { color: var(--parch-red); }
 
 /* the "reading light" sweep the hook adds to the freshest turn */
 .cbt-turn--focus { position: relative; }
@@ -402,7 +414,7 @@
   inset: -0.4rem -0.6rem;
   border-radius: 0.6rem;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 40%, rgba(245,158,11,0.10), transparent 70%);
+  background: radial-gradient(ellipse at 50% 40%, rgba(169,121,31,0.10), transparent 70%);
   animation: cbt-focus-fade 1.6s ease forwards;
 }
 @keyframes cbt-focus-fade {
@@ -437,7 +449,7 @@
   height: 5px;
   margin-top: 0.35rem;
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.07);
+  background: rgba(55, 43, 25, 0.07);
   overflow: hidden;
 }
 .cbt-mana__fill {
@@ -485,16 +497,16 @@
   padding: 1.4rem 1rem 1.2rem;
   border-radius: 0.6rem;
   border: 1px solid rgba(217,169,54,0.28);
-  background: radial-gradient(ellipse at 50% 0%, rgba(245,158,11,0.12), rgba(0,0,0,0.25) 70%);
+  background: radial-gradient(ellipse at 50% 0%, rgba(169,121,31,0.12), rgba(74, 47, 28, 0.25) 70%);
   animation: cbt-turn-in 0.9s ease both;
 }
 .cbt-outcome--defeat {
-  border-color: rgba(239,68,68,0.35);
-  background: radial-gradient(ellipse at 50% 0%, rgba(239,68,68,0.12), rgba(0,0,0,0.3) 70%);
+  border-color: rgba(124,43,34,0.35);
+  background: radial-gradient(ellipse at 50% 0%, rgba(124,43,34,0.12), rgba(74, 47, 28, 0.3) 70%);
 }
 .cbt-outcome--draw {
-  border-color: rgba(126,203,255,0.34);
-  background: radial-gradient(ellipse at 50% 0%, rgba(126,203,255,0.12), rgba(0,0,0,0.28) 70%);
+  border-color: rgba(63,107,134,0.34);
+  background: radial-gradient(ellipse at 50% 0%, rgba(63,107,134,0.12), rgba(74, 47, 28, 0.28) 70%);
 }
 .cbt-outcome__seal {
   display: inline-block;
@@ -529,7 +541,7 @@
   text-decoration: none;
   transition: background 0.18s ease;
 }
-.cbt-outcome__btn:hover { background: #fbbf24; }
+.cbt-outcome__btn:hover { background: var(--parch-gold); }
 
 /* ============================================================
    Caster action bar
@@ -543,8 +555,8 @@
   margin: 0 auto;
   border-top: 1px solid rgba(217,169,54,0.16);
   background:
-    linear-gradient(180deg, transparent, rgba(0,0,0,0.35)),
-    radial-gradient(ellipse 80% 100% at 50% 120%, rgba(245,158,11,0.08), transparent);
+    linear-gradient(180deg, transparent, rgba(74, 47, 28, 0.35)),
+    radial-gradient(ellipse 80% 100% at 50% 120%, rgba(169,121,31,0.08), transparent);
 }
 
 .cbt-actbar__done {
@@ -572,7 +584,7 @@
   font-size: 0.66rem;
   font-weight: 700;
   color: var(--color-text-muted);
-  background: rgba(255,255,255,0.03);
+  background: rgba(55, 43, 25, 0.03);
   border: 1px solid var(--color-border);
   transition: all 0.2s ease;
 }
@@ -580,7 +592,7 @@
   color: var(--color-bg);
   background: var(--color-accent);
   border-color: var(--color-accent);
-  box-shadow: 0 0 8px rgba(245,158,11,0.5);
+  box-shadow: 0 0 8px rgba(169,121,31,0.5);
 }
 .cbt-slots__count {
   margin-left: auto;
@@ -601,13 +613,13 @@
   align-self: flex-start;
   padding: 0.28rem 0.6rem;
   border-radius: 999px;
-  background: rgba(245,158,11,0.10);
-  border: 1px solid rgba(245,158,11,0.35);
+  background: rgba(169,121,31,0.10);
+  border: 1px solid rgba(169,121,31,0.35);
   max-width: 100%;
 }
 .cbt-basechip--tool {
-  background: rgba(126,203,255,0.08);
-  border-color: rgba(126,203,255,0.3);
+  background: rgba(63,107,134,0.08);
+  border-color: rgba(63,107,134,0.3);
 }
 .cbt-basechip__mark { color: var(--color-accent); font-size: 0.8rem; }
 .cbt-basechip--tool .cbt-basechip__mark { color: var(--arc-blue-bright); }
@@ -615,7 +627,7 @@
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 0.86rem;
-  color: #f2d7a0;
+  color: var(--parch-ink);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -629,7 +641,7 @@
   height: 2.9rem;
   padding: 0 0.9rem;
   border-radius: 0.5rem;
-  background: rgba(0,0,0,0.4);
+  background: rgba(74, 47, 28, 0.4);
   border: 1px solid var(--color-border);
   color: var(--color-text);
   font-family: var(--font-serif);
@@ -641,7 +653,7 @@
 .cbt-input:focus {
   outline: none;
   border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent), 0 0 14px rgba(245,158,11,0.25);
+  box-shadow: 0 0 0 1px var(--color-accent), 0 0 14px rgba(169,121,31,0.25);
 }
 .cbt-cast {
   flex: 0 0 auto;
@@ -655,10 +667,10 @@
   font-weight: 700;
   font-size: 0.92rem;
   cursor: pointer;
-  box-shadow: 0 2px 10px rgba(245,158,11,0.3);
+  box-shadow: 0 2px 10px rgba(169,121,31,0.3);
   transition: transform 0.12s ease, box-shadow 0.18s ease;
 }
-.cbt-cast:hover { box-shadow: 0 3px 16px rgba(245,158,11,0.5); }
+.cbt-cast:hover { box-shadow: 0 3px 16px rgba(169,121,31,0.5); }
 .cbt-cast:active { transform: translateY(1px); }
 
 .cbt-drawer-btns { display: flex; gap: 0.5rem; }
@@ -666,7 +678,7 @@
   flex: 1;
   height: 2.6rem;
   border-radius: 0.5rem;
-  background: rgba(255,255,255,0.035);
+  background: rgba(55, 43, 25, 0.035);
   border: 1px solid var(--color-border);
   color: var(--color-text);
   font-family: var(--font-serif);
@@ -678,13 +690,13 @@
   gap: 0.4rem;
   transition: all 0.18s ease;
 }
-.cbt-dbtn:hover { border-color: var(--parch-gold); background: rgba(245,158,11,0.06); }
+.cbt-dbtn:hover { border-color: var(--parch-gold); background: rgba(169,121,31,0.06); }
 .cbt-dbtn__glyph { color: var(--parch-gold); font-size: 1rem; }
 
 /* Sealed state — wax-seal / rune lock */
 .cbt-actbar--sealed {
   background:
-    linear-gradient(180deg, transparent, rgba(0,0,0,0.5)),
+    linear-gradient(180deg, transparent, rgba(74, 47, 28, 0.5)),
     radial-gradient(ellipse 80% 120% at 50% 120%, rgba(124,43,34,0.18), transparent);
 }
 .cbt-seal {
@@ -704,7 +716,7 @@
   align-items: center;
   justify-content: center;
   background: radial-gradient(circle at 38% 32%, #a13327, #6d1d17 70%, #4a130f);
-  box-shadow: inset 0 0 6px rgba(0,0,0,0.5), 0 3px 10px rgba(0,0,0,0.5);
+  box-shadow: inset 0 0 6px rgba(74, 47, 28, 0.5), 0 3px 10px rgba(74, 47, 28, 0.5);
   animation: cbt-seal-press 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
 }
 .cbt-seal__wax::before {
@@ -716,8 +728,8 @@
 }
 .cbt-seal__rune {
   font-size: 1.4rem;
-  color: #f3c9b8;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+  color: var(--parch-red);
+  text-shadow: 0 1px 2px rgba(74, 47, 28, 0.5);
 }
 @keyframes cbt-seal-press {
   0%   { transform: scale(1.6) rotate(-12deg); opacity: 0; }
@@ -728,7 +740,7 @@
   font-family: var(--font-serif);
   font-weight: 700;
   font-size: 0.98rem;
-  color: #f0c3b3;
+  color: var(--parch-red);
 }
 .cbt-seal__sub {
   font-size: 0.78rem;
@@ -742,7 +754,7 @@
   position: fixed;
   inset: 0;
   z-index: 20;
-  background: rgba(0,0,0,0.6);
+  background: rgba(74, 47, 28, 0.6);
   animation: cbt-fade-in 0.2s ease both;
 }
 @keyframes cbt-fade-in { from { opacity: 0; } to { opacity: 1; } }
@@ -761,7 +773,7 @@
   background: radial-gradient(ellipse at 50% 0%, #241a12, #150e08 80%);
   border-top: 1px solid rgba(217,169,54,0.3);
   border-radius: 1rem 1rem 0 0;
-  box-shadow: 0 -12px 40px rgba(0,0,0,0.6);
+  box-shadow: 0 -12px 40px rgba(74, 47, 28, 0.6);
   animation: cbt-sheet-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes cbt-sheet-up {
@@ -772,7 +784,7 @@
   width: 2.5rem;
   height: 4px;
   border-radius: 999px;
-  background: rgba(255,255,255,0.2);
+  background: rgba(55, 43, 25, 0.2);
   margin: 0.2rem auto 0.7rem;
 }
 .cbt-sheet__title {
@@ -799,13 +811,13 @@
   gap: 0.6rem;
   padding: 0.55rem 0.7rem;
   border-radius: 0.5rem;
-  background: rgba(255,255,255,0.03);
+  background: rgba(55, 43, 25, 0.03);
   border: 1px solid var(--color-border);
   cursor: pointer;
   text-align: left;
   transition: all 0.16s ease;
 }
-.cbt-spell:hover { border-color: var(--parch-gold); background: rgba(245,158,11,0.06); }
+.cbt-spell:hover { border-color: var(--parch-gold); background: rgba(169,121,31,0.06); }
 .cbt-spell__dot {
   flex: 0 0 auto;
   width: 0.7rem;
@@ -820,7 +832,7 @@
   font-family: var(--font-serif);
   font-style: italic;
   font-size: 0.95rem;
-  color: #f2d7a0;
+  color: var(--parch-ink);
 }
 .cbt-spell__ru { font-size: 0.72rem; color: var(--color-text-muted); }
 .cbt-spell__cd {
@@ -836,7 +848,7 @@
 .cbt-item {
   padding: 0.5rem 0.7rem;
   border-radius: 0.5rem;
-  background: rgba(255,255,255,0.03);
+  background: rgba(55, 43, 25, 0.03);
   border: 1px solid var(--color-border);
 }
 .cbt-item__head {
@@ -857,15 +869,15 @@
 .cbt-iact {
   padding: 0.3rem 0.7rem;
   border-radius: 999px;
-  background: rgba(126,203,255,0.07);
-  border: 1px solid rgba(126,203,255,0.25);
+  background: rgba(63,107,134,0.07);
+  border: 1px solid rgba(63,107,134,0.25);
   color: #cfe8ff;
   font-family: var(--font-serif);
   font-size: 0.78rem;
   cursor: pointer;
   transition: all 0.16s ease;
 }
-.cbt-iact:hover { background: rgba(126,203,255,0.16); border-color: var(--arc-blue-bright); }
+.cbt-iact:hover { background: rgba(63,107,134,0.16); border-color: var(--arc-blue-bright); }
 
 /* ── Flee confirmation ───────────────────────────────────────────────── */
 .cbt-flee-modal {
@@ -879,8 +891,8 @@
   padding: 1.3rem 1.2rem;
   border-radius: 0.7rem;
   background: radial-gradient(ellipse at 50% 0%, #2a1712, #170d0a 80%);
-  border: 1px solid rgba(239,68,68,0.35);
-  box-shadow: 0 20px 60px rgba(0,0,0,0.7);
+  border: 1px solid rgba(124,43,34,0.35);
+  box-shadow: 0 20px 60px rgba(74, 47, 28, 0.7);
   text-align: center;
   animation: cbt-turn-in 0.25s ease both;
 }
@@ -888,7 +900,7 @@
   font-family: var(--font-serif);
   font-size: 1.2rem;
   font-weight: 700;
-  color: #f0c3b3;
+  color: var(--parch-red);
   margin-bottom: 0.5rem;
 }
 .cbt-flee-modal__body {
@@ -910,7 +922,7 @@
   transition: all 0.16s ease;
 }
 .cbt-flee-modal__stay {
-  background: rgba(255,255,255,0.05);
+  background: rgba(55, 43, 25, 0.05);
   border: 1px solid var(--color-border);
   color: var(--color-text);
 }
@@ -946,12 +958,12 @@
   align-items: center;
   gap: 0.7rem;
   padding: 0.65rem 0.75rem;
-  border: 1px solid rgba(126,203,255,0.3);
+  border: 1px solid rgba(63,107,134,0.3);
   border-radius: 0.7rem;
   background:
     linear-gradient(105deg, rgba(19,31,50,0.96), rgba(24,16,35,0.92)),
-    rgba(0,0,0,0.7);
-  box-shadow: 0 12px 32px rgba(0,0,0,0.28), inset 0 0 24px rgba(126,203,255,0.04);
+    rgba(74, 47, 28, 0.7);
+  box-shadow: 0 12px 32px rgba(74, 47, 28, 0.28), inset 0 0 24px rgba(63,107,134,0.04);
   animation: cbt-turn-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 
@@ -1006,7 +1018,7 @@
 }
 .cbt-arena-event__tags span,
 .cbt-arena-deck__chip {
-  border: 1px solid rgba(126,203,255,0.22);
+  border: 1px solid rgba(63,107,134,0.22);
   border-radius: 999px;
   color: #badbf3;
   font-family: var(--font-sans);
@@ -1027,7 +1039,7 @@
 }
 .cbt-arena-deck::-webkit-scrollbar { display: none; }
 .cbt-arena-deck__label {
-  color: #71675a;
+  color: var(--parch-caption);
   flex: 0 0 auto;
   font-family: var(--font-sans);
   font-size: 0.52rem;
@@ -1035,10 +1047,10 @@
   margin-right: 0.12rem;
   text-transform: uppercase;
 }
-.cbt-arena-deck__chip { color: #827d79; border-color: rgba(255,255,255,0.08); }
+.cbt-arena-deck__chip { color: #827d79; border-color: rgba(55, 43, 25, 0.08); }
 .cbt-arena-deck__chip--active {
-  background: rgba(126,203,255,0.1);
-  border-color: rgba(126,203,255,0.42);
+  background: rgba(63,107,134,0.1);
+  border-color: rgba(63,107,134,0.42);
   color: #d5efff;
 }
 
@@ -1086,7 +1098,7 @@
   border: 1px solid rgba(217,169,54,0.26);
   border-radius: 0.38rem;
   background: rgba(217,169,54,0.06);
-  color: #f2d7a0;
+  color: var(--parch-ink);
   font-size: 0.61rem;
 }
 .cbt-manifestation strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -1098,7 +1110,7 @@
   white-space: nowrap;
 }
 .cbt-manifestation--summoned_shield { border-color: rgba(217,169,54,0.4); }
-.cbt-manifestation--summoned_weapon { border-color: rgba(239,68,68,0.4); color: #f5b0a6; }
+.cbt-manifestation--summoned_weapon { border-color: rgba(124,43,34,0.4); color: #f5b0a6; }
 .cbt-manifestation--summoned_creature { border-color: rgba(167,139,250,0.4); color: #d7c8ff; }
 .cbt-env--summon { border-color: #a78bfa; background: linear-gradient(90deg, rgba(139,92,246,0.12), transparent); }
 
@@ -1202,7 +1214,7 @@
   padding: 0.8rem 0.9rem;
   border: 1px solid rgba(161, 51, 39, 0.25);
   border-radius: 0.6rem;
-  background: linear-gradient(90deg, rgba(83, 28, 22, 0.2), rgba(0, 0, 0, 0.18));
+  background: linear-gradient(90deg, rgba(83, 28, 22, 0.2), rgba(74, 47, 28, 0.18));
 }
 
 .cbt-action-ledger {
@@ -1223,7 +1235,7 @@
     );
   box-shadow:
     inset 0 1px 0 rgba(255, 236, 190, 0.05),
-    0 12px 30px rgba(0, 0, 0, 0.25);
+    0 12px 30px rgba(74, 47, 28, 0.25);
 }
 
 .cbt-action-ledger::before {
@@ -1283,12 +1295,12 @@
   padding: 0.65rem 0.65rem 0.1rem;
   border: 1px solid rgba(217, 169, 54, 0.14);
   border-radius: 0.45rem;
-  background: rgba(0, 0, 0, 0.16);
+  background: rgba(74, 47, 28, 0.16);
 }
 
 .cbt-action-case legend {
   padding: 0 0.35rem;
-  color: #b79968;
+  color: var(--parch-caption);
   font-family: var(--font-sans);
   font-size: 0.54rem;
   font-weight: 700;
@@ -1302,7 +1314,7 @@
 }
 
 .cbt-action-case label {
-  color: #cdbfa8;
+  color: var(--parch-ink-faint);
   font-family: var(--font-sans);
   font-size: 0.6rem;
   letter-spacing: 0.08em;
@@ -1318,7 +1330,7 @@
   color: #eadcc2;
   font-family: var(--font-serif);
   font-size: 0.82rem;
-  box-shadow: inset 0 1px 4px rgba(0, 0, 0, 0.45);
+  box-shadow: inset 0 1px 4px rgba(74, 47, 28, 0.45);
 }
 
 .cbt-action-case input:focus,
@@ -1330,7 +1342,7 @@
 
 .cbt-action-error {
   padding: 0.65rem 0.75rem;
-  color: #efb2a6;
+  color: var(--parch-red);
   border-left: 2px solid var(--cbt-blood);
   background: rgba(124, 29, 29, 0.16);
   font-size: 0.78rem;
@@ -1351,7 +1363,7 @@
   font-family: var(--font-serif);
   font-size: 0.94rem;
   font-weight: 700;
-  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.35);
+  box-shadow: 0 4px 16px rgba(74, 47, 28, 0.35);
   cursor: pointer;
   transition: filter 0.16s ease, transform 0.12s ease;
 }
@@ -1365,7 +1377,7 @@
   justify-content: center;
   width: 1.8rem;
   height: 1.8rem;
-  color: #f3c9b8;
+  color: var(--parch-red);
   border: 1px dashed rgba(255, 220, 200, 0.35);
   border-radius: 50%;
   background: radial-gradient(circle at 38% 32%, #a13327, #6d1d17 70%, #4a130f);
@@ -1389,7 +1401,7 @@
   cursor: pointer;
 }
 
-.cbt-action-flee:hover { color: #efb2a6; }
+.cbt-action-flee:hover { color: var(--parch-red); }
 
 .cbt-chronicle {
   margin-top: 1.35rem;
@@ -1454,7 +1466,7 @@
   inset: 0;
   overflow: hidden;
   background:
-    radial-gradient(ellipse 100% 50% at 50% -5%, rgba(245,158,11,0.10) 0%, transparent 55%),
+    radial-gradient(ellipse 100% 50% at 50% -5%, rgba(169,121,31,0.10) 0%, transparent 55%),
     radial-gradient(ellipse at 50% 30%, #1a130d 0%, #0d0906 60%, #070403 100%);
   color: var(--color-text);
   font-family: var(--font-serif);
@@ -1463,7 +1475,7 @@
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(ellipse at 50% 25%, transparent 40%, rgba(0,0,0,0.6) 100%);
+  background: radial-gradient(ellipse at 50% 25%, transparent 40%, rgba(74, 47, 28, 0.6) 100%);
   mix-blend-mode: multiply;
 }
 .dft-scroll {
@@ -1488,8 +1500,8 @@
     radial-gradient(ellipse 35% 85% at 50% 44%, rgba(240, 178, 74, 0.36), transparent 70%),
     linear-gradient(120deg, #100b08, #24170f 52%, #0d0907);
   box-shadow:
-    inset 0 -22px 30px rgba(0, 0, 0, 0.75),
-    0 10px 30px rgba(0, 0, 0, 0.35);
+    inset 0 -22px 30px rgba(74, 47, 28, 0.75),
+    0 10px 30px rgba(74, 47, 28, 0.35);
 }
 
 .dft-gate__arch {
@@ -1503,7 +1515,7 @@
   border-bottom: 0;
   border-radius: 3rem 3rem 0 0;
   box-shadow:
-    inset 0 0 18px rgba(0, 0, 0, 0.8),
+    inset 0 0 18px rgba(74, 47, 28, 0.8),
     0 0 0 1px rgba(183, 153, 103, 0.12);
 }
 
@@ -1560,7 +1572,7 @@
   border: 1px solid rgba(120,95,50,0.35);
   border-radius: 0.6rem;
   overflow: hidden;
-  background: rgba(0,0,0,0.25);
+  background: rgba(74, 47, 28, 0.25);
   margin-bottom: 1.8rem;
 }
 .dft-ledger__band {
@@ -1570,7 +1582,7 @@
   padding: 0.55rem 0.9rem;
   border-bottom: 1px solid rgba(120,95,50,0.3);
 }
-.dft-ledger__band--lost { background: rgba(239,68,68,0.06); }
+.dft-ledger__band--lost { background: rgba(124,43,34,0.06); }
 .dft-ledger__glyph { color: var(--color-danger); font-size: 0.9rem; }
 .dft-ledger__band-title {
   font-family: var(--font-sans);
@@ -1581,7 +1593,7 @@
 }
 .dft-ledger__run {
   margin-left: auto;
-  color: #71675a;
+  color: var(--parch-caption);
   font-family: var(--font-sans);
   font-size: 0.55rem;
   letter-spacing: 0.05em;
@@ -1609,13 +1621,13 @@
   font-size: 0.94rem;
   color: #d8cdba;
   text-decoration: line-through;
-  text-decoration-color: rgba(239,68,68,0.5);
+  text-decoration-color: rgba(124,43,34,0.5);
 }
 .dft-loot__note {
   grid-area: note;
   font-size: 0.7rem;
   font-style: italic;
-  color: #7d7263;
+  color: var(--parch-caption);
 }
 .dft-loot__qty {
   grid-area: qty;
@@ -1627,18 +1639,18 @@
   text-align: right;
 }
 .dft-loot__row--grim .dft-loot__name { color: #cbb98f; }
-.dft-loot__row--coins { background: rgba(0,0,0,0.2); }
+.dft-loot__row--coins { background: rgba(74, 47, 28, 0.2); }
 .dft-loot__row--coins .dft-loot__name { text-decoration: none; }
 .dft-loot__row--coins .dft-loot__qty::after {
   content: ' м';
   font-size: 0.7rem;
-  color: #7d7263;
+  color: var(--parch-caption);
 }
 
 /* Kept — the hopeful accent */
 .dft-kept {
-  border-top: 2px solid rgba(245,158,11,0.4);
-  background: linear-gradient(180deg, rgba(245,158,11,0.08), transparent);
+  border-top: 2px solid rgba(169,121,31,0.4);
+  background: linear-gradient(180deg, rgba(169,121,31,0.08), transparent);
 }
 .dft-kept__band {
   display: flex;
@@ -1697,10 +1709,10 @@
   font-size: 1rem;
   border-radius: 0.5rem;
   text-decoration: none;
-  box-shadow: 0 3px 16px rgba(245,158,11,0.3);
+  box-shadow: 0 3px 16px rgba(169,121,31,0.3);
   transition: background 0.18s ease;
 }
-.dft-continue:hover { background: #fbbf24; }
+.dft-continue:hover { background: var(--parch-gold); }
 .dft-avenge {
   font-family: var(--font-sans);
   text-transform: uppercase;
@@ -1713,7 +1725,7 @@
   gap: 0.35rem;
   transition: color 0.18s ease;
 }
-.dft-avenge:hover { color: #ef4444; }
+.dft-avenge:hover { color: var(--parch-red); }
 .dft-avenge__glyph { font-size: 0.9rem; }
 
 /* ============================================================
@@ -1733,4 +1745,204 @@
   .cbt-hp__fill--critical { animation: none; }
   .cbt-turn--focus::after { animation: none; opacity: 0; }
   .cbt-hp__fill { transition-duration: 0.01ms; }
+}
+
+
+/* ============================================================
+   The command line — the whole interaction
+   ============================================================ */
+
+/* One line at the foot of the page. It is the only control the duel has, so it
+   is the only thing here allowed to look like a control. */
+.cbt-console {
+  margin: 1.1rem 0 0;
+  padding: 0.85rem 0.9rem 0.9rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.2rem;
+  background: rgba(255, 252, 240, 0.5);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+.cbt-console__note {
+  margin-bottom: 0.5rem;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  line-height: 1.45;
+}
+
+.cbt-command {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-bottom: 0.35rem;
+  border-bottom: 2px solid var(--parch-ink-faint);
+}
+
+.cbt-command__caret {
+  flex: none;
+  color: var(--parch-gold);
+  font-size: 1.1rem;
+  line-height: 1;
+}
+
+/* The written line is the loudest text on the page after the chronicle. */
+.cbt-command__input {
+  min-width: 0;
+  flex: 1;
+  border: none;
+  background: transparent;
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1.32rem;
+  line-height: 1.3;
+}
+
+.cbt-command__input::placeholder {
+  color: var(--parch-caption);
+  opacity: 0.75;
+}
+
+.cbt-command__input:focus {
+  outline: none;
+}
+
+.cbt-command__seal {
+  flex: none;
+  min-height: 2.2rem;
+  padding: 0 0.75rem;
+  border: 1px solid var(--parch-gold);
+  border-radius: 0.15rem;
+  background: var(--parch-gold);
+  color: var(--parch-paper-light);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.cbt-command__seal:active {
+  transform: translateY(1px);
+}
+
+.cbt-command__error {
+  margin-top: 0.55rem;
+  color: var(--parch-red);
+  font-family: var(--font-sans);
+  font-size: 0.76rem;
+  line-height: 1.45;
+}
+
+/* ── The reference sheet ─────────────────────────────────────────────── */
+
+/* Reading it writes into the line; it never acts. Folded away, because a duel
+   fought by looking things up is not the duel this screen is for. */
+.cbt-reference {
+  margin-top: 0.75rem;
+  padding-top: 0.6rem;
+  border-top: 1px dashed var(--parch-paper-dark);
+}
+
+.cbt-reference > summary {
+  cursor: pointer;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cbt-reference__group {
+  margin-top: 0.6rem;
+}
+
+.cbt-reference__label {
+  margin-bottom: 0.35rem;
+  color: var(--parch-caption);
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cbt-reference__chip {
+  display: inline-flex;
+  min-height: 2rem;
+  align-items: center;
+  margin: 0 0.3rem 0.3rem 0;
+  padding: 0 0.6rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 1rem;
+  background: rgba(255, 252, 240, 0.6);
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+}
+
+.cbt-reference__chip:hover {
+  border-color: var(--parch-gold);
+}
+
+/* A formula the pool cannot pay for is still worth reading, and still wrong. */
+.cbt-reference__chip.is-spent {
+  color: var(--parch-caption);
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.cbt-reference__hint {
+  margin-top: 0.55rem;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  line-height: 1.5;
+}
+
+.cbt-reference__hint code {
+  padding: 0 0.25rem;
+  border-radius: 0.12rem;
+  background: rgba(74, 47, 28, 0.08);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+}
+
+/* ── Mana, reduced to marginalia ─────────────────────────────────────── */
+
+.cbt-mana {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.6rem;
+}
+
+.cbt-mana__label {
+  color: var(--parch-caption);
+  font-family: var(--font-sans);
+  font-size: 0.6rem;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
+.cbt-mana__track {
+  overflow: hidden;
+  height: 4px;
+  flex: 1;
+  border-radius: 999px;
+  background: rgba(74, 47, 28, 0.14);
+}
+
+.cbt-mana__fill {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--parch-gold), var(--parch-gold-bright));
+  transition: width 240ms ease;
+}
+
+.cbt-mana__value {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-variant-numeric: tabular-nums;
 }

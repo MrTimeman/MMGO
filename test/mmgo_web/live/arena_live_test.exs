@@ -345,16 +345,15 @@ defmodule MMGOWeb.ArenaLiveTest do
     assert has_element?(view, "#arena-environment-tags span")
     assert has_element?(view, "#arena-event-deck .cbt-arena-deck__chip--active")
     assert has_element?(view, "#combat-manifestation-#{participant.id}-0", "Клинок грозы")
-    assert has_element?(view, "#combat-summoned-weapon-hint")
+    # A summoned weapon shows up as a word worth writing, not a hint to read.
+    assert has_element?(view, "#combat-verb-удар")
 
-    assert has_element?(
-             view,
-             "#combat-action-kind option[value='manifestation_strike']"
-           )
+    assert has_element?(view, "#combat-verb-удар")
 
-    assert has_element?(view, "#combat-flee", "Сдаться")
+    assert has_element?(view, "#combat-verb-бежать")
     refute has_element?(view, "#combat-tool-item")
-    refute has_element?(view, "#combat-action-kind option[value='use_item']")
+    # World items stay out of the arena, so the word is never offered.
+    refute has_element?(view, "#combat-verb-предмет")
   end
 
   defp arena_profile_fixture(handle) do
