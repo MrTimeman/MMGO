@@ -85,8 +85,7 @@ defmodule MMGOWeb.DuelLiveTest do
   test "two scoped players create and accept a pending duel through the browser", %{
     conn: conn,
     challenger: challenger,
-    opponent: opponent,
-    killing_blow: killing_blow
+    opponent: opponent
   } do
     {:ok, challenger_view, _html} = live(session_conn(conn, challenger), ~p"/pvp")
 
@@ -114,7 +113,7 @@ defmodule MMGOWeb.DuelLiveTest do
     {:ok, combat_view, _html} = live(session_conn(conn, challenger), combat_path)
     assert has_element?(combat_view, "#combat-screen")
     assert has_element?(combat_view, "#combat-command-form")
-    assert has_element?(combat_view, "#combat-formula-#{killing_blow.id}")
+    assert has_element?(combat_view, "#combat-command")
   end
 
   test "the sealed combat worker resolves and settles the wager", %{

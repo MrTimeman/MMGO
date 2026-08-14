@@ -1,1460 +1,307 @@
 /* MMGO design-pass styles: combat (see docs/UI_DESIGN_BRIEF.md)
    Owns two screens: CombatLive (.cbt-) and DefeatLive (.dft-).
 
-   The duel is a page of a chronicle being written, not a console. The surface
-   is parchment, the chronicle is the largest thing on it, and the player's
-   whole interaction is one line written at the foot of the page. Everything
-   else — bars, seals, counters — is marginalia and is sized like marginalia. */
+   The duel is a page: a status line, two gauges, who is standing, and then the
+   chronicle, which takes every pixel left over because it is the point. The
+   only control is one field at the foot. Anything that is not one of those
+   five things does not belong on this screen. */
 
 /* ============================================================
    Combat — the page
    ============================================================ */
 
-.cbt-arena {
-  /* Status-glyph hues, pulled toward ink and pigment rather than neon so they
-     read as something drawn on the page. */
-  --cbt-ember:      #a8401b;  /* burning */
-  --cbt-ash:        #7a6a5c;  /* neutral debuff */
-  --cbt-frost:      #3f6b86;
-  --cbt-shield:     var(--parch-gold);
-  --cbt-blood:      var(--parch-red);
-  --cbt-trap:       #6b4a86;
-  --cbt-regen:      #4a6b3a;
-  --cbt-enemy:      var(--parch-red);
-  --cbt-ally:       var(--parch-gold);
-
-  /* The screen inherits ink-on-paper by redefining the shell's own tokens
-     rather than by overriding every rule that used them. */
-  --color-text:       var(--parch-ink);
-  --color-text-muted: var(--parch-ink-faint);
-  --color-bg:         var(--parch-paper);
-  --color-accent:     var(--parch-gold);
-  --color-danger:     var(--parch-red);
-  --arc-blue-bright:  #3f6b86;
+.cbt {
+  --cbt-paper:  #f6efe1;
+  --cbt-card:   #fdf9ef;
+  --cbt-line:   #e0d3ba;
+  --cbt-ink:    #2f2a22;
+  --cbt-faint:  #9a8f7d;
+  --cbt-ally:   #4a7a5c;
+  --cbt-enemy:  #a8453e;
+  --cbt-own:    #6b5b9a;
 
   position: fixed;
   inset: 0;
   display: flex;
   flex-direction: column;
-  background:
-    radial-gradient(ellipse at 50% -10%, #f3e9cd 0%, var(--parch-paper) 46%, #dccba0 100%);
-  color: var(--parch-ink);
+  gap: 0.7rem;
+  padding:
+    calc(0.8rem + var(--safe-top))
+    calc(0.85rem + var(--safe-right))
+    calc(0.8rem + var(--safe-bottom))
+    calc(0.85rem + var(--safe-left));
+  background: var(--cbt-paper);
+  color: var(--cbt-ink);
   font-family: var(--font-serif);
-  overflow: hidden;
 }
 
-/* The page darkens at its edges the way a real one does where hands hold it. */
-.cbt-vignette {
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  z-index: 0;
-  background:
-    radial-gradient(ellipse at 50% 42%, transparent 52%, rgba(169, 143, 92, 0.34) 100%);
-  mix-blend-mode: multiply;
-}
+/* ── Status line ─────────────────────────────────────────────────────── */
 
-/* Fibre, not film grain. */
-.cbt-vignette::after {
-  content: '';
-  position: absolute;
-  inset: 0;
-  opacity: 0.16;
-  mix-blend-mode: multiply;
-  background-image: url("data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='120' height='120'><filter id='n'><feTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3'/><feColorMatrix type='matrix' values='0 0 0 0 0.42  0 0 0 0 0.34  0 0 0 0 0.2  0 0 0 0.6 0'/></filter><rect width='100%25' height='100%25' filter='url(%23n)'/></svg>");
-}
-
-/* ── Top region: combatants, HP, turn timer ──────────────────────────── */
-.cbt-top {
-  position: relative;
-  z-index: 2;
-  /* In a Telegram fullscreen Mini App this bar is the first thing on screen,
-     so it has to clear the status bar and Telegram's own floating controls. */
-  padding: calc(0.55rem + var(--safe-top)) 0.85rem 0.35rem;
+.cbt-bar {
   display: flex;
-  flex-direction: column;
-  gap: 0.4rem;
-  max-width: 30rem;
-  width: 100%;
-  margin: 0 auto;
-}
-
-.cbt-topbar {
-  display: flex;
+  flex: none;
   align-items: center;
   justify-content: space-between;
-  gap: 0.5rem;
+  gap: 0.6rem;
 }
 
-.cbt-flee-btn {
-  font-family: var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.08em;
-  font-size: 0.66rem;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: none;
-  padding: 0.35rem 0.2rem;
-  cursor: pointer;
-  transition: color 0.18s ease;
-}
-.cbt-flee-btn:hover:not(:disabled) { color: var(--cbt-blood); }
-.cbt-flee-btn:disabled { opacity: 0.35; cursor: default; }
-
-.cbt-mode-toggle {
-  display: inline-flex;
-  border: 1px solid var(--color-border);
+.cbt-pill {
+  padding: 0.28rem 0.7rem;
+  border: 1px solid var(--cbt-line);
   border-radius: 999px;
-  padding: 2px;
-  background: rgba(74, 47, 28, 0.35);
-}
-.cbt-mode {
+  background: var(--cbt-card);
+  color: var(--cbt-enemy);
   font-family: var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  font-size: 0.6rem;
-  color: var(--color-text-muted);
-  background: transparent;
-  border: none;
-  border-radius: 999px;
-  padding: 0.3rem 0.7rem;
-  cursor: pointer;
-  transition: all 0.18s ease;
-}
-.cbt-mode--on {
-  color: var(--color-bg);
-  background: var(--color-accent);
-  font-weight: 700;
+  font-size: 0.78rem;
+  white-space: nowrap;
 }
 
-/* ── A side: shared HP pool + member chips ───────────────────────────── */
-.cbt-side { display: flex; flex-direction: column; gap: 0.3rem; }
-
-.cbt-side__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-}
-.cbt-side__name {
-  font-family: var(--font-serif);
-  font-size: 0.92rem;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-}
-.cbt-side--enemy .cbt-side__name { color: #f0a9b3; }
-.cbt-side--ally  .cbt-side__name { color: var(--parch-ink); }
-.cbt-side__hpnum {
-  font-family: var(--font-sans);
-  font-size: 0.66rem;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
+.cbt-clock {
+  color: var(--cbt-ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 1.02rem;
   font-variant-numeric: tabular-nums;
 }
 
-.cbt-hp {
-  position: relative;
-  height: 9px;
-  border-radius: 999px;
-  background: rgba(74, 47, 28, 0.5);
-  box-shadow: inset 0 1px 3px rgba(74, 47, 28, 0.7), 0 0 0 1px rgba(55, 43, 25, 0.03);
-  overflow: hidden;
-}
-.cbt-hp__fill {
-  height: 100%;
-  border-radius: 999px;
-  transition: width 0.65s cubic-bezier(0.4, 0, 0.2, 1), background 0.4s ease;
-  box-shadow: 0 0 8px rgba(74, 47, 28, 0.4);
-}
-.cbt-side--enemy .cbt-hp__fill {
-  background: linear-gradient(90deg, #7c1d2b, var(--cbt-enemy));
-}
-.cbt-side--ally .cbt-hp__fill {
-  background: linear-gradient(90deg, #7a4a12, var(--color-accent));
-}
-.cbt-hp__fill--low {
-  background: linear-gradient(90deg, #8a3d10, #e07a1e) !important;
-}
-.cbt-hp__fill--critical {
-  background: linear-gradient(90deg, #7c1d1d, var(--parch-red)) !important;
-  animation: cbt-hp-pulse 1.1s ease-in-out infinite;
-}
-@keyframes cbt-hp-pulse {
-  0%, 100% { box-shadow: 0 0 6px rgba(124,43,34,0.4); }
-  50%      { box-shadow: 0 0 16px rgba(124,43,34,0.9); }
-}
+/* ── Gauges ──────────────────────────────────────────────────────────── */
 
-/* ── Member chips with status glyphs ─────────────────────────────────── */
-.cbt-chips {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.cbt-chip {
-  display: inline-flex;
-  align-items: center;
+.cbt-gauges {
+  display: grid;
+  flex: none;
   gap: 0.3rem;
-  padding: 0.15rem 0.45rem 0.15rem 0.15rem;
-  border-radius: 999px;
-  background: rgba(55, 43, 25, 0.035);
-  border: 1px solid rgba(55, 43, 25, 0.06);
 }
-.cbt-chip__token {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.35rem;
-  height: 1.35rem;
-  border-radius: 50%;
-  font-family: var(--font-serif);
-  font-size: 0.72rem;
-  font-weight: 700;
-  color: var(--color-text);
-  background: radial-gradient(circle at 35% 30%, #3a322b, #201a15);
-  box-shadow: inset 0 0 0 1px rgba(55, 43, 25, 0.08);
-}
-.cbt-side--enemy .cbt-chip__token { color: #f0b8bf; }
-.cbt-chip__name {
-  font-size: 0.72rem;
-  color: var(--color-text-muted);
-  max-width: 8rem;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cbt-chip__status { display: inline-flex; gap: 0.15rem; }
 
-.cbt-glyph {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.05rem;
-  height: 1.05rem;
-  border-radius: 50%;
-  font-size: 0.72rem;
-  line-height: 1;
-  background: rgba(74, 47, 28, 0.35);
-  animation: cbt-glyph-in 0.3s ease both;
-}
-@keyframes cbt-glyph-in {
-  from { transform: scale(0.4); opacity: 0; }
-  to   { transform: scale(1);   opacity: 1; }
-}
-.cbt-glyph--burn    { color: var(--cbt-ember);  text-shadow: 0 0 6px rgba(217,84,31,0.8); }
-.cbt-glyph--freeze  { color: var(--cbt-frost);  text-shadow: 0 0 6px rgba(63,107,134,0.7); }
-.cbt-glyph--shield  { color: var(--cbt-shield); text-shadow: 0 0 5px rgba(217,169,54,0.6); }
-.cbt-glyph--expose  { color: var(--cbt-blood);  text-shadow: 0 0 6px rgba(124,43,34,0.7); }
-.cbt-glyph--stagger { color: #e08a3c; }
-.cbt-glyph--trap    { color: var(--cbt-trap); }
-.cbt-glyph--silence { color: var(--cbt-ash); }
-.cbt-glyph--regen   { color: var(--cbt-regen); text-shadow: 0 0 6px rgba(34,197,94,0.6); }
-.cbt-glyph--power   { color: var(--parch-gold-bright); text-shadow: 0 0 6px rgba(217,169,54,0.7); }
-
-/* ── Turn number + countdown ring ────────────────────────────────────── */
-.cbt-turnrow {
-  display: flex;
+.cbt-gauge {
+  display: grid;
   align-items: center;
   gap: 0.6rem;
-  margin: 0.05rem 0;
+  grid-template-columns: 3.6rem 1fr auto;
 }
-.cbt-turn-line {
-  flex: 1;
-  height: 1px;
-  background: linear-gradient(90deg, transparent, rgba(217,169,54,0.28), transparent);
-}
-.cbt-turnring {
-  position: relative;
-  width: 2.75rem;
-  height: 2.75rem;
-  flex: 0 0 auto;
-}
-.cbt-turnring__svg {
-  width: 100%;
-  height: 100%;
-  transform: rotate(-90deg);
-}
-.cbt-turnring__track {
-  fill: none;
-  stroke: rgba(55, 43, 25, 0.08);
-  stroke-width: 2;
-}
-.cbt-turnring__sweep {
-  fill: none;
-  stroke: var(--color-accent);
-  stroke-width: 2;
-  stroke-linecap: round;
-  stroke-dasharray: 119.4;   /* 2πr, r=19 */
-  filter: drop-shadow(0 0 3px rgba(169,121,31,0.6));
-  animation: cbt-ring-countdown 20s linear forwards;
-}
-.cbt-turnring__sweep.is-held { animation-play-state: paused; }
-@keyframes cbt-ring-countdown {
-  from { stroke-dashoffset: 0; }
-  to   { stroke-dashoffset: 119.4; }
-}
-.cbt-turnring__label {
-  position: absolute;
-  inset: 0;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 0.82rem;
-  color: var(--parch-gold-bright);
-  line-height: 0.9;
-}
-.cbt-turnring__label em {
+
+.cbt-gauge__label {
+  color: var(--cbt-faint);
   font-family: var(--font-sans);
-  font-style: normal;
-  font-size: 0.42rem;
+  font-size: 0.6rem;
   letter-spacing: 0.14em;
   text-transform: uppercase;
-  color: var(--color-text-muted);
 }
 
-.cbt-stakes {
-  text-align: center;
-  font-size: 0.72rem;
-  color: #d8b98a;
-  font-style: italic;
-  margin-top: 0.1rem;
-}
-.cbt-stakes__mark { color: var(--parch-gold); font-style: normal; margin-right: 0.2rem; }
-
-/* ============================================================
-   The narration — the focal point
-   ============================================================ */
-.cbt-log {
-  position: relative;
-  z-index: 1;
-  flex: 1;
-  min-height: 0;
-  overflow-y: auto;
-  overflow-x: hidden;
-  padding: 1.1rem 1.15rem 2rem;
-  max-width: 30rem;
-  width: 100%;
-  margin: 0 auto;
-  -webkit-mask-image: linear-gradient(180deg, transparent 0, #000 1.1rem, #000 calc(100% - 1.4rem), transparent 100%);
-          mask-image: linear-gradient(180deg, transparent 0, #000 1.1rem, #000 calc(100% - 1.4rem), transparent 100%);
-}
-
-.cbt-turn {
-  animation: cbt-turn-in 0.7s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-.cbt-turn + .cbt-turn,
-.cbt-turn + .cbt-outcome { margin-top: 1.35rem; }
-@keyframes cbt-turn-in {
-  from { opacity: 0; transform: translateY(12px); filter: blur(3px); }
-  to   { opacity: 1; transform: translateY(0);    filter: blur(0); }
-}
-
-.cbt-turn__prologue {
-  font-size: 0.98rem;
-  line-height: 1.62;
-  color: var(--parch-ink-faint);
-  font-style: italic;
-  text-align: center;
-  padding: 0 0.3rem;
-}
-.cbt-turn__prologue::first-letter {
-  font-size: 1.9em;
-  font-weight: 700;
-  color: var(--parch-gold-bright);
-  font-style: normal;
-}
-
-/* Turn separator */
-.cbt-turn__sep {
-  display: flex;
-  align-items: baseline;
-  gap: 0.6rem;
-  margin-bottom: 0.5rem;
-}
-.cbt-turn__label {
-  font-family: var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.18em;
-  font-size: 0.64rem;
-  color: var(--parch-gold);
-  white-space: nowrap;
-}
-.cbt-turn__spoken {
-  flex: 1;
-  font-family: var(--font-hand);
-  font-size: 1.02rem;
-  color: var(--parch-caption);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  border-bottom: 1px solid rgba(217,169,54,0.18);
-  padding-bottom: 0.15rem;
-}
-
-.cbt-turn__para {
-  font-size: 1.02rem;
-  line-height: 1.68;
-  color: var(--parch-ink);
-  margin-bottom: 0.55rem;
-  text-wrap: pretty;
-}
-.cbt-turn__para:last-child { margin-bottom: 0; }
-
-.cbt-turn--danger .cbt-turn__label { color: var(--cbt-blood); }
-.cbt-turn--danger .cbt-turn__para  { color: var(--parch-red); }
-
-/* the "reading light" sweep the hook adds to the freshest turn */
-.cbt-turn--focus { position: relative; }
-.cbt-turn--focus::after {
-  content: '';
-  position: absolute;
-  inset: -0.4rem -0.6rem;
-  border-radius: 0.6rem;
-  pointer-events: none;
-  background: radial-gradient(ellipse at 50% 40%, rgba(169,121,31,0.10), transparent 70%);
-  animation: cbt-focus-fade 1.6s ease forwards;
-}
-@keyframes cbt-focus-fade {
-  0% { opacity: 0; }
-  25% { opacity: 1; }
-  100% { opacity: 0; }
-}
-
-/* Mana — the resource every choice is paid from, so it sits above the ledger */
-.cbt-mana {
-  margin-bottom: 0.9rem;
-}
-.cbt-mana__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.6rem;
-}
-.cbt-mana__label {
-  font-family: var(--font-sans);
-  font-size: 0.7rem;
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  color: var(--cbt-ash);
-}
-.cbt-mana__value {
-  font-variant-numeric: tabular-nums;
-  color: var(--cbt-frost);
-}
-.cbt-mana__track {
+.cbt-gauge__track {
   display: block;
-  height: 5px;
-  margin-top: 0.35rem;
-  border-radius: 999px;
-  background: rgba(55, 43, 25, 0.07);
   overflow: hidden;
+  height: 0.85rem;
+  border: 1px solid var(--cbt-line);
+  border-radius: 999px;
+  background: var(--cbt-card);
 }
-.cbt-mana__fill {
+
+.cbt-gauge__fill {
   display: block;
   height: 100%;
   border-radius: inherit;
-  background: linear-gradient(90deg, var(--cbt-frost), var(--cbt-trap));
   transition: width 260ms ease;
 }
-.cbt-mana__locked {
-  margin-top: 0.35rem;
-  font-size: 0.78rem;
-  color: var(--cbt-ash);
-}
 
-/* Environment note — styled distinctly (an aside, not the narrative) */
-.cbt-env {
-  display: block;
-  margin-top: 0.7rem;
-  padding: 0.5rem 0.75rem 0.5rem 0.85rem;
-  border-left: 2px solid var(--cbt-ember);
-  background: linear-gradient(90deg, rgba(217,84,31,0.10), transparent);
-  border-radius: 0 4px 4px 0;
-}
-.cbt-env__tag {
-  display: block;
-  font-family: var(--font-sans);
-  text-transform: uppercase;
-  letter-spacing: 0.16em;
-  font-size: 0.56rem;
-  color: var(--cbt-ember);
-  margin-bottom: 0.15rem;
-}
-.cbt-env__text {
-  font-size: 0.86rem;
-  line-height: 1.5;
-  font-style: italic;
-  color: #e8c3a6;
-}
+.cbt-gauge--ally .cbt-gauge__fill  { background: var(--cbt-ally); }
+.cbt-gauge--enemy .cbt-gauge__fill { background: var(--cbt-enemy); }
 
-/* Outcome banner */
-.cbt-outcome {
-  margin-top: 1.6rem;
-  text-align: center;
-  padding: 1.4rem 1rem 1.2rem;
-  border-radius: 0.6rem;
-  border: 1px solid rgba(217,169,54,0.28);
-  background: radial-gradient(ellipse at 50% 0%, rgba(169,121,31,0.12), rgba(74, 47, 28, 0.25) 70%);
-  animation: cbt-turn-in 0.9s ease both;
-}
-.cbt-outcome--defeat {
-  border-color: rgba(124,43,34,0.35);
-  background: radial-gradient(ellipse at 50% 0%, rgba(124,43,34,0.12), rgba(74, 47, 28, 0.3) 70%);
-}
-.cbt-outcome--draw {
-  border-color: rgba(63,107,134,0.34);
-  background: radial-gradient(ellipse at 50% 0%, rgba(63,107,134,0.12), rgba(74, 47, 28, 0.28) 70%);
-}
-.cbt-outcome__seal {
-  display: inline-block;
-  font-size: 2rem;
-  color: var(--parch-gold-bright);
-  animation: cbt-seal-press 0.8s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.cbt-outcome--defeat .cbt-outcome__seal { color: var(--cbt-blood); }
-.cbt-outcome--draw .cbt-outcome__seal { color: var(--arc-blue-bright); }
-.cbt-outcome__title {
-  font-family: var(--font-serif);
-  font-size: 1.5rem;
-  font-weight: 700;
-  color: var(--parch-gold-bright);
-  margin-top: 0.2rem;
-}
-.cbt-outcome--defeat .cbt-outcome__title { color: #f0a9a9; }
-.cbt-outcome--draw .cbt-outcome__title { color: #b9ddf3; }
-.cbt-outcome__sub {
+.cbt-gauge__value {
+  color: var(--cbt-ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
   font-size: 0.82rem;
-  color: var(--color-text-muted);
-  margin: 0.35rem 0 1rem;
-}
-.cbt-outcome__btn {
-  display: inline-block;
-  padding: 0.6rem 1.6rem;
-  background: var(--color-accent);
-  color: var(--color-bg);
-  font-family: var(--font-serif);
-  font-weight: 700;
-  border-radius: 0.4rem;
-  text-decoration: none;
-  transition: background 0.18s ease;
-}
-.cbt-outcome__btn:hover { background: var(--parch-gold); }
-
-/* ============================================================
-   Caster action bar
-   ============================================================ */
-.cbt-actbar {
-  position: relative;
-  z-index: 2;
-  padding: 0.7rem 0.85rem calc(0.8rem + var(--safe-bottom));
-  max-width: 30rem;
-  width: 100%;
-  margin: 0 auto;
-  border-top: 1px solid rgba(217,169,54,0.16);
-  background:
-    linear-gradient(180deg, transparent, rgba(74, 47, 28, 0.35)),
-    radial-gradient(ellipse 80% 100% at 50% 120%, rgba(169,121,31,0.08), transparent);
-}
-
-.cbt-actbar__done {
-  text-align: center;
-  font-style: italic;
-  color: var(--color-text-muted);
-  padding: 0.6rem;
-}
-
-/* Word-count slot ticks */
-.cbt-slots {
-  display: flex;
-  align-items: center;
-  gap: 0.3rem;
-  margin-bottom: 0.5rem;
-}
-.cbt-slot {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.5rem;
-  height: 1.5rem;
-  border-radius: 5px;
-  font-family: var(--font-sans);
-  font-size: 0.66rem;
-  font-weight: 700;
-  color: var(--color-text-muted);
-  background: rgba(55, 43, 25, 0.03);
-  border: 1px solid var(--color-border);
-  transition: all 0.2s ease;
-}
-.cbt-slot--lit {
-  color: var(--color-bg);
-  background: var(--color-accent);
-  border-color: var(--color-accent);
-  box-shadow: 0 0 8px rgba(169,121,31,0.5);
-}
-.cbt-slots__count {
-  margin-left: auto;
-  font-family: var(--font-sans);
-  font-size: 0.62rem;
-  letter-spacing: 0.05em;
-  color: var(--color-text-muted);
   font-variant-numeric: tabular-nums;
 }
 
-.cbt-form { display: flex; flex-direction: column; gap: 0.5rem; }
+/* ── Who is standing ─────────────────────────────────────────────────── */
 
-/* Selected base-spell chip */
-.cbt-basechip {
-  display: inline-flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  align-self: flex-start;
-  padding: 0.28rem 0.6rem;
-  border-radius: 999px;
-  background: rgba(169,121,31,0.10);
-  border: 1px solid rgba(169,121,31,0.35);
-  max-width: 100%;
-}
-.cbt-basechip--tool {
-  background: rgba(63,107,134,0.08);
-  border-color: rgba(63,107,134,0.3);
-}
-.cbt-basechip__mark { color: var(--color-accent); font-size: 0.8rem; }
-.cbt-basechip--tool .cbt-basechip__mark { color: var(--arc-blue-bright); }
-.cbt-basechip__name {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 0.86rem;
-  color: var(--parch-ink);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-.cbt-basechip__ru { font-size: 0.66rem; color: var(--color-text-muted); }
-
-.cbt-castrow { display: flex; gap: 0.5rem; }
-.cbt-input {
-  flex: 1;
-  min-width: 0;
-  height: 2.9rem;
-  padding: 0 0.9rem;
+.cbt-board {
+  flex: none;
+  padding: 0.6rem 0.65rem 0.7rem;
+  border: 1px solid var(--cbt-line);
   border-radius: 0.5rem;
-  background: rgba(74, 47, 28, 0.4);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  font-family: var(--font-serif);
-  font-size: 1rem;
-  letter-spacing: 0.02em;
-  transition: border-color 0.18s ease, box-shadow 0.18s ease;
-}
-.cbt-input::placeholder { color: #6b625a; font-style: italic; }
-.cbt-input:focus {
-  outline: none;
-  border-color: var(--color-accent);
-  box-shadow: 0 0 0 1px var(--color-accent), 0 0 14px rgba(169,121,31,0.25);
-}
-.cbt-cast {
-  flex: 0 0 auto;
-  height: 2.9rem;
-  padding: 0 1.15rem;
-  border-radius: 0.5rem;
-  border: none;
-  background: linear-gradient(180deg, #f6b12a, #e08a12);
-  color: #241407;
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 0.92rem;
-  cursor: pointer;
-  box-shadow: 0 2px 10px rgba(169,121,31,0.3);
-  transition: transform 0.12s ease, box-shadow 0.18s ease;
-}
-.cbt-cast:hover { box-shadow: 0 3px 16px rgba(169,121,31,0.5); }
-.cbt-cast:active { transform: translateY(1px); }
-
-.cbt-drawer-btns { display: flex; gap: 0.5rem; }
-.cbt-dbtn {
-  flex: 1;
-  height: 2.6rem;
-  border-radius: 0.5rem;
-  background: rgba(55, 43, 25, 0.035);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-  font-family: var(--font-serif);
-  font-size: 0.88rem;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.4rem;
-  transition: all 0.18s ease;
-}
-.cbt-dbtn:hover { border-color: var(--parch-gold); background: rgba(169,121,31,0.06); }
-.cbt-dbtn__glyph { color: var(--parch-gold); font-size: 1rem; }
-
-/* Sealed state — wax-seal / rune lock */
-.cbt-actbar--sealed {
-  background:
-    linear-gradient(180deg, transparent, rgba(74, 47, 28, 0.5)),
-    radial-gradient(ellipse 80% 120% at 50% 120%, rgba(124,43,34,0.18), transparent);
-}
-.cbt-seal {
-  display: flex;
-  align-items: center;
-  gap: 0.9rem;
-  padding: 0.5rem 0.3rem;
-  animation: cbt-turn-in 0.4s ease both;
-}
-.cbt-seal__wax {
-  position: relative;
-  flex: 0 0 auto;
-  width: 3rem;
-  height: 3rem;
-  border-radius: 50%;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  background: radial-gradient(circle at 38% 32%, #a13327, #6d1d17 70%, #4a130f);
-  box-shadow: inset 0 0 6px rgba(74, 47, 28, 0.5), 0 3px 10px rgba(74, 47, 28, 0.5);
-  animation: cbt-seal-press 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) both;
-}
-.cbt-seal__wax::before {
-  content: '';
-  position: absolute;
-  inset: 4px;
-  border-radius: 50%;
-  border: 1px dashed rgba(255,220,200,0.35);
-}
-.cbt-seal__rune {
-  font-size: 1.4rem;
-  color: var(--parch-red);
-  text-shadow: 0 1px 2px rgba(74, 47, 28, 0.5);
-}
-@keyframes cbt-seal-press {
-  0%   { transform: scale(1.6) rotate(-12deg); opacity: 0; }
-  55%  { transform: scale(0.92) rotate(3deg); opacity: 1; }
-  100% { transform: scale(1) rotate(0); opacity: 1; }
-}
-.cbt-seal__title {
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 0.98rem;
-  color: var(--parch-red);
-}
-.cbt-seal__sub {
-  font-size: 0.78rem;
-  color: var(--color-text-muted);
-  font-style: italic;
-  margin-top: 0.1rem;
 }
 
-/* ── Slide-up drawers ────────────────────────────────────────────────── */
-.cbt-scrim {
-  position: fixed;
-  inset: 0;
-  z-index: 20;
-  background: rgba(74, 47, 28, 0.6);
-  animation: cbt-fade-in 0.2s ease both;
-}
-@keyframes cbt-fade-in { from { opacity: 0; } to { opacity: 1; } }
-
-.cbt-sheet {
-  position: fixed;
-  left: 50%;
-  bottom: 0;
-  transform: translateX(-50%);
-  z-index: 21;
-  width: 100%;
-  max-width: 30rem;
-  max-height: 68vh;
-  overflow-y: auto;
-  padding: 0.6rem 1rem calc(1.2rem + var(--safe-bottom));
-  background: radial-gradient(ellipse at 50% 0%, #241a12, #150e08 80%);
-  border-top: 1px solid rgba(217,169,54,0.3);
-  border-radius: 1rem 1rem 0 0;
-  box-shadow: 0 -12px 40px rgba(74, 47, 28, 0.6);
-  animation: cbt-sheet-up 0.28s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-@keyframes cbt-sheet-up {
-  from { transform: translate(-50%, 100%); }
-  to   { transform: translate(-50%, 0); }
-}
-.cbt-sheet__grip {
-  width: 2.5rem;
-  height: 4px;
-  border-radius: 999px;
-  background: rgba(55, 43, 25, 0.2);
-  margin: 0.2rem auto 0.7rem;
-}
-.cbt-sheet__title {
-  font-family: var(--font-serif);
-  font-size: 1.1rem;
-  font-weight: 700;
-  color: var(--parch-gold-bright);
-  text-align: center;
-}
-.cbt-sheet__hint {
-  text-align: center;
-  font-size: 0.76rem;
-  color: var(--color-text-muted);
-  font-style: italic;
-  margin: 0.15rem 0 0.8rem;
-}
-
-/* Grimoire spell list */
-.cbt-splist, .cbt-itemlist { list-style: none; display: flex; flex-direction: column; gap: 0.4rem; }
-.cbt-spell {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  gap: 0.6rem;
-  padding: 0.55rem 0.7rem;
-  border-radius: 0.5rem;
-  background: rgba(55, 43, 25, 0.03);
-  border: 1px solid var(--color-border);
-  cursor: pointer;
-  text-align: left;
-  transition: all 0.16s ease;
-}
-.cbt-spell:hover { border-color: var(--parch-gold); background: rgba(169,121,31,0.06); }
-.cbt-spell__dot {
-  flex: 0 0 auto;
-  width: 0.7rem;
-  height: 0.7rem;
-  border-radius: 50%;
-  box-shadow: 0 0 6px currentColor;
-}
-.cbt-spell__dot--fire  { background: var(--cbt-ember); color: var(--cbt-ember); }
-.cbt-spell__dot--chaos { background: var(--cbt-trap);  color: var(--cbt-trap); }
-.cbt-spell__names { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-.cbt-spell__lat {
-  font-family: var(--font-serif);
-  font-style: italic;
-  font-size: 0.95rem;
-  color: var(--parch-ink);
-}
-.cbt-spell__ru { font-size: 0.72rem; color: var(--color-text-muted); }
-.cbt-spell__cd {
+.cbt-board__label {
+  margin-bottom: 0.35rem;
+  color: var(--cbt-faint);
   font-family: var(--font-sans);
   font-size: 0.6rem;
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-  color: var(--color-text-muted);
-  white-space: nowrap;
-}
-
-/* Inventory items */
-.cbt-item {
-  padding: 0.5rem 0.7rem;
-  border-radius: 0.5rem;
-  background: rgba(55, 43, 25, 0.03);
-  border: 1px solid var(--color-border);
-}
-.cbt-item__head {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.5rem;
-  margin-bottom: 0.4rem;
-}
-.cbt-item__name { font-size: 0.92rem; color: var(--color-text); }
-.cbt-item__weight {
-  font-family: var(--font-sans);
-  font-size: 0.62rem;
-  color: var(--color-text-muted);
-  letter-spacing: 0.04em;
-}
-.cbt-item__actions { display: flex; flex-wrap: wrap; gap: 0.35rem; }
-.cbt-iact {
-  padding: 0.3rem 0.7rem;
-  border-radius: 999px;
-  background: rgba(63,107,134,0.07);
-  border: 1px solid rgba(63,107,134,0.25);
-  color: #cfe8ff;
-  font-family: var(--font-serif);
-  font-size: 0.78rem;
-  cursor: pointer;
-  transition: all 0.16s ease;
-}
-.cbt-iact:hover { background: rgba(63,107,134,0.16); border-color: var(--arc-blue-bright); }
-
-/* ── Flee confirmation ───────────────────────────────────────────────── */
-.cbt-flee-modal {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
-  z-index: 22;
-  width: calc(100% - 2.5rem);
-  max-width: 22rem;
-  padding: 1.3rem 1.2rem;
-  border-radius: 0.7rem;
-  background: radial-gradient(ellipse at 50% 0%, #2a1712, #170d0a 80%);
-  border: 1px solid rgba(124,43,34,0.35);
-  box-shadow: 0 20px 60px rgba(74, 47, 28, 0.7);
-  text-align: center;
-  animation: cbt-turn-in 0.25s ease both;
-}
-.cbt-flee-modal__title {
-  font-family: var(--font-serif);
-  font-size: 1.2rem;
-  font-weight: 700;
-  color: var(--parch-red);
-  margin-bottom: 0.5rem;
-}
-.cbt-flee-modal__body {
-  font-size: 0.86rem;
-  line-height: 1.5;
-  color: #d8c4bb;
-  margin-bottom: 1.1rem;
-}
-.cbt-flee-modal__row { display: flex; gap: 0.6rem; }
-.cbt-flee-modal__stay,
-.cbt-flee-modal__go {
-  flex: 1;
-  height: 2.7rem;
-  border-radius: 0.5rem;
-  font-family: var(--font-serif);
-  font-weight: 700;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.16s ease;
-}
-.cbt-flee-modal__stay {
-  background: rgba(55, 43, 25, 0.05);
-  border: 1px solid var(--color-border);
-  color: var(--color-text);
-}
-.cbt-flee-modal__stay:hover { border-color: var(--parch-gold); }
-.cbt-flee-modal__go {
-  background: linear-gradient(180deg, #d1495b, #a32c3c);
-  border: none;
-  color: #fff0ee;
-}
-.cbt-flee-modal__go:hover { filter: brightness(1.1); }
-
-/* ── Arena events, interactions, and spell manifestations ───────────── */
-.cbt-arena--arena_match {
-  background:
-    radial-gradient(ellipse 90% 42% at 50% -4%, rgba(99,102,241,0.18), transparent 66%),
-    radial-gradient(ellipse 120% 60% at 50% 118%, rgba(217,84,31,0.18), transparent 60%),
-    radial-gradient(ellipse at 50% -20%, #241a13 0%, #130d09 55%, #0a0705 100%);
-}
-
-.cbt-arena-event,
-.cbt-arena-deck,
-.cbt-interactions {
-  position: relative;
-  z-index: 2;
-  width: calc(100% - 1.7rem);
-  max-width: 28.3rem;
-  margin-inline: auto;
-}
-
-.cbt-arena-event {
-  display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto;
-  align-items: center;
-  gap: 0.7rem;
-  padding: 0.65rem 0.75rem;
-  border: 1px solid rgba(63,107,134,0.3);
-  border-radius: 0.7rem;
-  background:
-    linear-gradient(105deg, rgba(19,31,50,0.96), rgba(24,16,35,0.92)),
-    rgba(74, 47, 28, 0.7);
-  box-shadow: 0 12px 32px rgba(74, 47, 28, 0.28), inset 0 0 24px rgba(63,107,134,0.04);
-  animation: cbt-turn-in 0.45s cubic-bezier(0.22, 1, 0.36, 1) both;
-}
-
-.cbt-arena-event--amber { border-color: rgba(251,191,36,0.42); }
-.cbt-arena-event--cyan { border-color: rgba(34,211,238,0.42); }
-.cbt-arena-event--emerald { border-color: rgba(52,211,153,0.42); }
-.cbt-arena-event--violet { border-color: rgba(167,139,250,0.42); }
-.cbt-arena-event--sky { border-color: rgba(125,211,252,0.42); }
-.cbt-arena-event--fuchsia { border-color: rgba(232,121,249,0.42); }
-.cbt-arena-event--indigo { border-color: rgba(129,140,248,0.42); }
-
-.cbt-arena-event__sigil {
-  display: grid;
-  width: 2.15rem;
-  height: 2.15rem;
-  place-items: center;
-  border: 1px solid currentColor;
-  border-radius: 50%;
-  color: var(--arc-blue-bright);
-  text-shadow: 0 0 12px currentColor;
-}
-
-.cbt-arena-event__copy { min-width: 0; }
-.cbt-arena-event__copy p {
-  color: #9cb9d2;
-  font-family: var(--font-sans);
-  font-size: 0.55rem;
-  font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
 }
-.cbt-arena-event__copy h2 {
-  color: #f3e4c7;
-  font-size: 1rem;
-  font-weight: 700;
-  line-height: 1.1;
-}
-.cbt-arena-event__copy > span {
-  display: block;
-  margin-top: 0.12rem;
-  color: #b9ada0;
-  font-size: 0.71rem;
-  line-height: 1.3;
+
+.cbt-board__label + .cbt-board__row {
+  margin-bottom: 0.6rem;
 }
 
-.cbt-arena-event__tags {
+.cbt-board__row {
   display: flex;
-  max-width: 8rem;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 0.22rem;
-}
-.cbt-arena-event__tags span,
-.cbt-arena-deck__chip {
-  border: 1px solid rgba(63,107,134,0.22);
-  border-radius: 999px;
-  color: #badbf3;
-  font-family: var(--font-sans);
-  font-size: 0.54rem;
-  letter-spacing: 0.04em;
-  padding: 0.18rem 0.38rem;
-  white-space: nowrap;
-}
-
-.cbt-arena-deck {
-  display: flex;
-  align-items: center;
-  gap: 0.28rem;
-  margin-top: 0.35rem;
   overflow-x: auto;
-  padding: 0.1rem 0 0.25rem;
+  gap: 0.45rem;
   scrollbar-width: none;
 }
-.cbt-arena-deck::-webkit-scrollbar { display: none; }
-.cbt-arena-deck__label {
-  color: var(--parch-caption);
-  flex: 0 0 auto;
-  font-family: var(--font-sans);
-  font-size: 0.52rem;
-  letter-spacing: 0.1em;
-  margin-right: 0.12rem;
-  text-transform: uppercase;
-}
-.cbt-arena-deck__chip { color: #827d79; border-color: rgba(55, 43, 25, 0.08); }
-.cbt-arena-deck__chip--active {
-  background: rgba(63,107,134,0.1);
-  border-color: rgba(63,107,134,0.42);
-  color: #d5efff;
+
+.cbt-board__row::-webkit-scrollbar { display: none; }
+
+.cbt-fighter {
+  min-width: 8.5rem;
+  flex: 1;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--cbt-line);
+  border-radius: 0.4rem;
+  background: var(--cbt-card);
 }
 
-.cbt-interactions {
-  display: flex;
-  gap: 0.65rem;
-  margin-top: 0.25rem;
-  padding: 0.42rem 0.65rem;
-  border-left: 2px solid #6ee7b7;
-  background: linear-gradient(90deg, rgba(16,185,129,0.1), transparent);
-  color: #b6e9d7;
-}
-.cbt-interactions__title {
-  display: flex;
-  flex: 0 0 auto;
-  align-items: center;
-  gap: 0.3rem;
-  font-family: var(--font-sans);
-  font-size: 0.61rem;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-}
-.cbt-interactions__list {
-  display: flex;
-  min-width: 0;
-  flex-direction: column;
-  font-size: 0.66rem;
-  line-height: 1.35;
-}
-
-.cbt-chip { flex-wrap: wrap; }
-.cbt-manifestations {
-  display: flex;
-  flex-basis: 100%;
-  flex-wrap: wrap;
-  gap: 0.22rem;
-  padding: 0.05rem 0.12rem 0.12rem 1.48rem;
-}
-.cbt-manifestation {
-  display: inline-grid;
-  grid-template-columns: auto minmax(0, 1fr);
-  gap: 0 0.25rem;
-  align-items: center;
-  padding: 0.15rem 0.35rem;
-  border: 1px solid rgba(217,169,54,0.26);
-  border-radius: 0.38rem;
-  background: rgba(217,169,54,0.06);
-  color: var(--parch-ink);
-  font-size: 0.61rem;
-}
-.cbt-manifestation strong { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.cbt-manifestation small {
-  grid-column: 2;
-  color: #9f9484;
-  font-family: var(--font-sans);
-  font-size: 0.49rem;
-  white-space: nowrap;
-}
-.cbt-manifestation--summoned_shield { border-color: rgba(217,169,54,0.4); }
-.cbt-manifestation--summoned_weapon { border-color: rgba(124,43,34,0.4); color: #f5b0a6; }
-.cbt-manifestation--summoned_creature { border-color: rgba(167,139,250,0.4); color: #d7c8ff; }
-.cbt-env--summon { border-color: #a78bfa; background: linear-gradient(90deg, rgba(139,92,246,0.12), transparent); }
-
-@media (max-width: 420px) {
-  .cbt-arena-event { grid-template-columns: auto minmax(0, 1fr); }
-  .cbt-arena-event__tags { grid-column: 1 / -1; max-width: none; justify-content: flex-start; }
-  .cbt-interactions { flex-direction: column; gap: 0.2rem; }
-}
-
-/* ============================================================
-   Persisted combat — the old arena vocabulary, wired to live state
-   ============================================================ */
-.cbt-status {
-  max-width: 65%;
-  color: var(--parch-gold);
-  font-family: var(--font-sans);
-  font-size: 0.58rem;
-  font-weight: 700;
-  letter-spacing: 0.11em;
-  line-height: 1.35;
-  text-align: right;
-  text-transform: uppercase;
-}
-
-.cbt-deadline {
-  display: flex;
-  flex: 0 0 auto;
-  flex-direction: column;
-  align-items: center;
-  gap: 0.05rem;
-  min-width: 6.4rem;
-}
-
-.cbt-deadline em {
-  color: var(--color-text-muted);
-  font-family: var(--font-sans);
-  font-size: 0.44rem;
-  font-style: normal;
-  letter-spacing: 0.13em;
-  text-transform: uppercase;
-}
-
-.cbt-deadline span {
-  color: var(--parch-gold-bright);
-  font-family: var(--font-sans);
-  font-size: 0.62rem;
-  font-variant-numeric: tabular-nums;
-}
-
-.cbt-participant-state {
-  margin-left: auto;
-  color: var(--color-text-muted);
-  font-family: var(--font-sans);
-  font-size: 0.52rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.cbt-participant-state--ready { color: var(--color-safe); }
-.cbt-participant-state--defeated { color: var(--cbt-blood); }
-.cbt-participant-state--fled { color: var(--cbt-ash); }
-
-.cbt-observer {
-  display: flex;
-  align-items: flex-start;
-  gap: 0.75rem;
-  margin-top: 1rem;
-  padding: 0.8rem;
-  border: 1px solid rgba(154, 106, 224, 0.25);
-  border-radius: 0.55rem;
-  background: rgba(45, 29, 68, 0.2);
-}
-
-.cbt-observer__glyph {
-  display: inline-flex;
-  flex: 0 0 auto;
-  align-items: center;
-  justify-content: center;
-  width: 2rem;
-  height: 2rem;
-  color: #c5a5ee;
-  border: 1px solid rgba(197, 165, 238, 0.25);
-  border-radius: 50%;
-}
-
-.cbt-observer h2 {
-  color: #e0cfef;
+.cbt-fighter__name {
+  color: var(--cbt-ink);
+  font-family: var(--font-serif);
   font-size: 1rem;
   font-weight: 700;
 }
 
-.cbt-observer p {
-  margin-top: 0.15rem;
-  color: var(--color-text-muted);
-  font-size: 0.78rem;
-  line-height: 1.45;
+.cbt-fighter__sub {
+  color: var(--cbt-faint);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.72rem;
 }
 
-.cbt-seal--state {
-  margin: 1.25rem 0 0;
-  padding: 0.8rem 0.9rem;
-  border: 1px solid rgba(161, 51, 39, 0.25);
-  border-radius: 0.6rem;
-  background: linear-gradient(90deg, rgba(83, 28, 22, 0.2), rgba(74, 47, 28, 0.18));
+/* The enemy currently carrying the fight reads warm; your own square is the
+   one with a hand on it. */
+.cbt-fighter--enemy {
+  border-color: rgba(168, 69, 62, 0.45);
+  background: #fbeeea;
 }
 
-.cbt-action-ledger {
-  position: relative;
-  margin-top: 1.35rem;
-  padding: 1rem;
-  overflow: hidden;
-  border: 1px solid rgba(217, 169, 54, 0.28);
-  border-radius: 0.65rem;
-  background:
-    linear-gradient(rgba(35, 23, 14, 0.91), rgba(20, 13, 8, 0.96)),
-    repeating-linear-gradient(
-      0deg,
-      rgba(217, 169, 54, 0.04) 0,
-      rgba(217, 169, 54, 0.04) 1px,
-      transparent 1px,
-      transparent 27px
-    );
-  box-shadow:
-    inset 0 1px 0 rgba(255, 236, 190, 0.05),
-    0 12px 30px rgba(74, 47, 28, 0.25);
+.cbt-fighter--own {
+  border-color: var(--cbt-own);
+  box-shadow: inset 0 0 0 1px rgba(107, 91, 154, 0.25);
 }
 
-.cbt-action-ledger::before {
-  position: absolute;
-  inset: 0.35rem;
-  pointer-events: none;
-  content: "";
-  border: 1px solid rgba(217, 169, 54, 0.08);
-  border-radius: 0.4rem;
+.cbt-fighter--down {
+  opacity: 0.45;
 }
 
-.cbt-action-ledger__head {
-  position: relative;
-  display: flex;
-  align-items: center;
-  gap: 0.7rem;
-  padding-bottom: 0.75rem;
-  border-bottom: 1px solid rgba(217, 169, 54, 0.16);
+.cbt-chip {
+  display: inline-block;
+  margin: 0.3rem 0.25rem 0 0;
+  padding: 0.1rem 0.5rem;
+  border: 1px solid rgba(107, 91, 154, 0.4);
+  border-radius: 999px;
+  color: var(--cbt-own);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
 }
 
-.cbt-action-ledger__rune {
-  color: var(--parch-gold-bright);
-  font-size: 1.5rem;
+.cbt-fighter--enemy .cbt-chip {
+  border-color: rgba(168, 69, 62, 0.4);
+  color: var(--cbt-enemy);
 }
 
-.cbt-action-ledger__head p {
-  color: var(--parch-gold);
+/* ── The chronicle ───────────────────────────────────────────────────── */
+
+.cbt-log {
+  min-height: 0;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0.7rem 0.75rem;
+  border: 1px solid var(--cbt-line);
+  border-radius: 0.5rem;
+  background: var(--cbt-card);
+}
+
+/* What happened: terse, mechanical, monospace. */
+.cbt-log__line {
+  margin-bottom: 0.3rem;
+  color: var(--cbt-ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  line-height: 1.5;
+}
+
+/* The room it happened in: the orchestrator's own voice. */
+.cbt-log__prose {
+  margin: 0.75rem 0 0;
+  color: var(--cbt-ink);
+  font-family: var(--font-serif);
+  font-size: 1.05rem;
+  font-style: italic;
+  line-height: 1.6;
+  text-wrap: pretty;
+}
+
+.cbt-log__note {
+  margin-top: 0.75rem;
+  color: var(--cbt-faint);
   font-family: var(--font-sans);
-  font-size: 0.56rem;
-  font-weight: 700;
-  letter-spacing: 0.17em;
-  text-transform: uppercase;
+  font-size: 0.76rem;
 }
 
-.cbt-action-ledger__head h2 {
-  margin-top: 0.1rem;
-  color: #f2dfb6;
+.cbt-log__outcome {
+  margin-top: 0.9rem;
+  padding-top: 0.7rem;
+  border-top: 1px solid var(--cbt-line);
+}
+
+.cbt-log__outcome p {
+  margin-bottom: 0.5rem;
+  font-family: var(--font-serif);
   font-size: 1.1rem;
   font-weight: 700;
 }
 
-.cbt-action-form {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 0.65rem;
-  margin-top: 0.8rem;
-}
-
-.cbt-action-grid {
-  display: grid;
-  gap: 0.65rem;
-}
-
-.cbt-action-case {
-  min-width: 0;
-  padding: 0.65rem 0.65rem 0.1rem;
-  border: 1px solid rgba(217, 169, 54, 0.14);
-  border-radius: 0.45rem;
-  background: rgba(74, 47, 28, 0.16);
-}
-
-.cbt-action-case legend {
-  padding: 0 0.35rem;
-  color: var(--parch-caption);
+.cbt-log__out {
+  display: inline-flex;
+  min-height: 2.3rem;
+  align-items: center;
+  padding: 0 0.9rem;
+  border: 1px solid var(--cbt-line);
+  border-radius: 0.3rem;
+  background: var(--cbt-paper);
+  color: var(--cbt-ink);
   font-family: var(--font-sans);
-  font-size: 0.54rem;
-  font-weight: 700;
-  letter-spacing: 0.14em;
-  text-transform: uppercase;
+  font-size: 0.82rem;
+  text-decoration: none;
 }
 
-.cbt-action-case > div,
-.cbt-action-case .mb-4 {
-  margin-bottom: 0.55rem;
+/* ── The line ────────────────────────────────────────────────────────── */
+
+.cbt-line {
+  flex: none;
 }
 
-.cbt-action-case label {
-  color: var(--parch-ink-faint);
-  font-family: var(--font-sans);
-  font-size: 0.6rem;
-  letter-spacing: 0.08em;
-  text-transform: uppercase;
-}
-
-.cbt-action-case input,
-.cbt-action-case select {
-  min-height: 2.55rem;
-  border-color: rgba(217, 169, 54, 0.2);
+.cbt-line__input {
+  width: 100%;
+  min-height: 2.9rem;
+  padding: 0 0.85rem;
+  border: 1px solid var(--cbt-line);
   border-radius: 0.4rem;
-  background: rgba(7, 5, 3, 0.62);
-  color: #eadcc2;
-  font-family: var(--font-serif);
-  font-size: 0.82rem;
-  box-shadow: inset 0 1px 4px rgba(74, 47, 28, 0.45);
+  background: var(--cbt-card);
+  color: var(--cbt-ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 1rem;
 }
 
-.cbt-action-case input:focus,
-.cbt-action-case select:focus {
-  border-color: var(--parch-gold);
+.cbt-line__input::placeholder {
+  color: var(--cbt-faint);
+}
+
+.cbt-line__input:focus {
+  border-color: var(--cbt-own);
   outline: none;
-  box-shadow: 0 0 0 1px rgba(217, 169, 54, 0.3);
 }
 
-.cbt-action-error {
-  padding: 0.65rem 0.75rem;
-  color: var(--parch-red);
-  border-left: 2px solid var(--cbt-blood);
-  background: rgba(124, 29, 29, 0.16);
+.cbt-line__error {
+  flex: none;
+  color: var(--cbt-enemy);
+  font-family: var(--font-sans);
   font-size: 0.78rem;
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
-.cbt-action-submit {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 0.65rem;
-  min-height: 3rem;
-  padding: 0.6rem 1rem;
-  color: #f6dfc9;
-  border: 1px solid rgba(180, 69, 55, 0.55);
-  border-radius: 0.5rem;
-  background: linear-gradient(180deg, #7f291f, #4f1712);
-  font-family: var(--font-serif);
-  font-size: 0.94rem;
-  font-weight: 700;
-  box-shadow: 0 4px 16px rgba(74, 47, 28, 0.35);
-  cursor: pointer;
-  transition: filter 0.16s ease, transform 0.12s ease;
-}
-
-.cbt-action-submit:hover { filter: brightness(1.12); }
-.cbt-action-submit:active { transform: translateY(1px); }
-
-.cbt-action-submit__wax {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 1.8rem;
-  height: 1.8rem;
-  color: var(--parch-red);
-  border: 1px dashed rgba(255, 220, 200, 0.35);
-  border-radius: 50%;
-  background: radial-gradient(circle at 38% 32%, #a13327, #6d1d17 70%, #4a130f);
-}
-
-.cbt-action-flee {
-  display: inline-flex;
-  align-items: center;
-  align-self: center;
-  justify-content: center;
-  gap: 0.35rem;
-  min-height: 2.5rem;
-  padding: 0.4rem 0.8rem;
-  color: #be8c82;
-  border: 0;
-  background: transparent;
-  font-family: var(--font-sans);
-  font-size: 0.64rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  cursor: pointer;
-}
-
-.cbt-action-flee:hover { color: var(--parch-red); }
-
-.cbt-chronicle {
-  margin-top: 1.35rem;
-  padding-top: 0.9rem;
-  border-top: 1px solid rgba(217, 169, 54, 0.14);
-}
-
-.cbt-chronicle__empty {
-  color: var(--color-text-muted);
-  font-size: 0.82rem;
-  font-style: italic;
-  line-height: 1.5;
-}
-
-.cbt-chronicle__list {
-  display: flex;
-  flex-direction: column;
-  gap: 0.35rem;
-  list-style: none;
-}
-
-.cbt-chronicle__entry {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.45rem 0.55rem;
-  color: var(--color-text-muted);
-  border-bottom: 1px dotted rgba(217, 169, 54, 0.14);
-  font-size: 0.76rem;
-}
-
-.cbt-chronicle__entry span {
-  color: var(--parch-gold);
-  font-family: var(--font-sans);
-  font-size: 0.58rem;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-}
-
-.cbt-chronicle__entry strong {
-  color: #d9cebb;
-  font-weight: 400;
-}
-
-@media (min-width: 34rem) {
-  .cbt-top,
-  .cbt-log {
-    max-width: 42rem;
-  }
-
-  .cbt-action-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+@media (min-width: 48rem) {
+  .cbt {
+    max-width: 44rem;
+    margin: 0 auto;
   }
 }
 

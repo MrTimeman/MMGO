@@ -330,6 +330,7 @@ defmodule MMGOWeb.ArenaLiveTest do
           "display_name" => "Клинок грозы",
           "power" => 18,
           "remaining_turns" => 3,
+          "applied_on_turn" => 0,
           "source_spell_id" =>
             participant.grimoire.entries |> List.first() |> Map.fetch!(:spell_id)
         }
@@ -340,20 +341,21 @@ defmodule MMGOWeb.ArenaLiveTest do
     {:ok, view, _html} =
       live(arena_session(conn, profile), ~p"/arena/combat/#{match.combat_id}")
 
-    assert has_element?(view, "#combat-back-to-arena[href='/arena']")
-    assert has_element?(view, "#arena-active-event[data-event-code]")
-    assert has_element?(view, "#arena-environment-tags span")
-    assert has_element?(view, "#arena-event-deck .cbt-arena-deck__chip--active")
-    assert has_element?(view, "#combat-manifestation-#{participant.id}-0", "Клинок грозы")
-    # A summoned weapon shows up as a word worth writing, not a hint to read.
-    assert has_element?(view, "#combat-verb-удар")
+    # The screen is five things: status, gauges, who is standing, the
+    # chronicle, and the line. Nothing else may appear on it.
+    assert has_element?(view, "#combat-screen")
+    assert has_element?(view, "#combat-deadline")
+    assert has_element?(view, "#combat-events")
+    assert has_element?(view, "#combat-command")
 
-    assert has_element?(view, "#combat-verb-удар")
+    # A summoned weapon is a word you may write, and the engine honours it.
+    assert has_element?(view, "#combat-target-#{participant.id}")
 
-    assert has_element?(view, "#combat-verb-бежать")
-    refute has_element?(view, "#combat-tool-item")
-    # World items stay out of the arena, so the word is never offered.
-    refute has_element?(view, "#combat-verb-предмет")
+    view
+    |> form("#combat-command-form", %{"command" => "удар"})
+    |> render_submit()
+
+    refute has_element?(view, "#combat-action-error")
   end
 
   defp arena_profile_fixture(handle) do
