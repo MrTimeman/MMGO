@@ -1,4 +1,4 @@
-import {markFullscreenRequested, watchTelegramViewport} from "./telegram-viewport"
+import {watchTelegramViewport} from "./telegram-viewport"
 
 let telegramWebAppPromise
 let preparedTelegramWebApp
@@ -11,21 +11,22 @@ export function prepareTelegramWebApp(webApp) {
   safelyInvoke(() => webApp.ready?.())
   safelyInvoke(() => webApp.expand?.())
 
-  if (supportsFullscreen(webApp) && webApp.isFullscreen !== true) {
-    // Telegram uses this colour to choose contrasting status-bar controls
-    // while its own header is transparent in fullscreen mode.
-    safelyInvoke(() => webApp.setHeaderColor?.("#0c0a09"))
-    safelyInvoke(() => {
-      webApp.requestFullscreen()
-      markFullscreenRequested()
-    })
+  // Telegram uses this colour for its own header and for choosing contrasting
+  // status-bar controls.
+  safelyInvoke(() => webApp.setHeaderColor?.("#0c0a09"))
+
+  // Fullscreen is off. Clients report both safe-area insets as zero while
+  // still drawing the page under the status bar and under Telegram's own
+  // floating controls, so the first row of the interface is unreadable and
+  // nothing the page can measure tells it how much room to reserve. Telegram
+  // remembers the mode per app, so an app that entered fullscreen on an
+  // earlier visit has to be told to leave it.
+  if (webApp.isFullscreen === true) {
+    safelyInvoke(() => webApp.exitFullscreen?.())
   }
 
-  // A client that was already fullscreen when the page loaded never fires the
-  // request, but its layout still needs the reserved room.
-  if (webApp.isFullscreen === true) markFullscreenRequested()
-
-  // Must follow the fullscreen request so the first inset publish reflects it.
+  // The insets still matter outside fullscreen: a notched device reports a real
+  // bottom inset, and the layout reads the same tokens either way.
   safelyInvoke(() => watchTelegramViewport(webApp))
 
   return webApp
@@ -60,18 +61,6 @@ function isTelegramLaunch() {
     hash.has("tgWebAppVersion") ||
     navigator.userAgent.includes("Telegram")
   )
-}
-
-function supportsFullscreen(webApp) {
-  try {
-    return (
-      typeof webApp.isVersionAtLeast === "function" &&
-      webApp.isVersionAtLeast("8.0") &&
-      typeof webApp.requestFullscreen === "function"
-    )
-  } catch (_error) {
-    return false
-  }
 }
 
 function safelyInvoke(callback) {
