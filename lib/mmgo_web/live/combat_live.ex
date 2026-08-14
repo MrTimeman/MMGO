@@ -249,69 +249,76 @@ defmodule MMGOWeb.CombatLive do
             </button>
           </div>
 
+          <%!-- Two leaves open at once, the way a book lies. The arrows sit on
+                the outer edges, where a thumb already is. --%>
           <div class="cbt-tome__spread">
-            <div class="cbt-tome__page">
-              <p :if={@combat_state.book.note} class="cbt-tome__margin">
-                {@combat_state.book.note}
-              </p>
-
-              <button
-                :for={spell <- book_page_spells(@combat_state, @book_page)}
-                id={"combat-formula-#{spell.id}"}
-                type="button"
-                phx-click={
-                  JS.dispatch("mmgo:write",
-                    to: "#combat-command",
-                    detail: %{text: spell.formula}
-                  )
-                }
-                class={[
-                  "cbt-tome__spell",
-                  not affordable_spell?(spell, @combat_state.participant) && "is-spent"
-                ]}
-              >
-                <span class="cbt-tome__seal" style={"background: #{school_color(spell.school)}"}>
-                  {school_glyph(spell.school)}
-                </span>
-                <span class="cbt-tome__text">
-                  <span class="cbt-tome__formula">{spell.formula}</span>
-                  <span class="cbt-tome__cost">{spell.name} · {spell.fatigue_cost}</span>
-                  <span :if={spell.note} class="cbt-tome__note">{spell.note}</span>
-                </span>
-              </button>
-
-              <p :if={@combat_state.prepared_spells == []} class="cbt-tome__empty">
-                Раскладка пуста.
-              </p>
-            </div>
-          </div>
-
-          <div class="cbt-tome__foot">
             <button
               id="combat-page-back"
               type="button"
               phx-click="turn_to"
-              phx-value-page={@book_page - 1}
+              phx-value-page={@book_page - 2}
               disabled={@book_page <= 1}
-              class="cbt-tome__turn"
+              class="cbt-tome__turn cbt-tome__turn--back"
+              aria-label="Предыдущий разворот"
             >
               ‹
             </button>
 
-            <span class="cbt-tome__folio">
-              с. {@book_page} из {book_pages(@combat_state)}
-            </span>
+            <div class="cbt-tome__leaves">
+              <div
+                :for={leaf <- spread_leaves(@combat_state, @book_page)}
+                class="cbt-tome__page"
+              >
+                <p :if={leaf.number == 1 and @combat_state.book.note} class="cbt-tome__margin">
+                  {@combat_state.book.note}
+                </p>
+
+                <button
+                  :for={spell <- leaf.spells}
+                  id={"combat-formula-#{spell.id}"}
+                  type="button"
+                  phx-click={
+                    JS.dispatch("mmgo:write",
+                      to: "#combat-command",
+                      detail: %{text: spell.formula}
+                    )
+                  }
+                  class={[
+                    "cbt-tome__spell",
+                    not affordable_spell?(spell, @combat_state.participant) && "is-spent"
+                  ]}
+                >
+                  <span class="cbt-tome__seal" style={"background: #{school_color(spell.school)}"}>
+                    {school_glyph(spell.school)}
+                  </span>
+                  <span class="cbt-tome__text">
+                    <span class="cbt-tome__formula">{spell.formula}</span>
+                    <span class="cbt-tome__cost">{spell.name} · {spell.fatigue_cost}</span>
+                    <span :if={spell.note} class="cbt-tome__note">{spell.note}</span>
+                  </span>
+                </button>
+
+                <span class="cbt-tome__folio">с. {leaf.number}</span>
+              </div>
+            </div>
 
             <button
               id="combat-page-next"
               type="button"
               phx-click="turn_to"
-              phx-value-page={@book_page + 1}
-              disabled={@book_page >= book_pages(@combat_state)}
-              class="cbt-tome__turn"
+              phx-value-page={@book_page + 2}
+              disabled={@book_page + 1 >= book_pages(@combat_state)}
+              class="cbt-tome__turn cbt-tome__turn--next"
+              aria-label="Следующий разворот"
             >
               ›
             </button>
+          </div>
+
+          <div class="cbt-tome__foot">
+            <p :if={@combat_state.prepared_spells == []} class="cbt-tome__empty">
+              Раскладка пуста.
+            </p>
 
             <.link id="combat-open-grimoire" navigate={grimoire_path(@combat_state)}>
               Гримуар
@@ -519,6 +526,16 @@ defmodule MMGOWeb.CombatLive do
 
   defp book_page_spells(state, page) do
     Enum.slice(state.prepared_spells, (page - 1) * @spells_per_page, @spells_per_page)
+  end
+
+  # The left leaf is always odd, so a spread opens the way a book does.
+  defp spread_leaves(state, page) do
+    left = if rem(page, 2) == 1, do: page, else: page - 1
+    pages = book_pages(state)
+
+    [left, left + 1]
+    |> Enum.filter(&(&1 >= 1 and &1 <= pages))
+    |> Enum.map(&%{number: &1, spells: book_page_spells(state, &1)})
   end
 
   defp grimoire_path(%{arena?: true}), do: ~p"/arena/spellbook/books"

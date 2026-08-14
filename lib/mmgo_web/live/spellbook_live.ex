@@ -780,61 +780,59 @@ defmodule MMGOWeb.SpellbookLive do
                         </button>
                       </div>
 
-                      <ol :if={grimoire_entries(grimoire) != []} class="grim-vol__entries">
-                        <li
-                          :for={entry <- page_entries(grimoire, book_page(@book_pages, grimoire))}
-                          id={"grimoire-entry-#{entry.id}"}
+                      <%!--
+                      A leaf of the book, not a table. Five slots to a page:
+                      the ones that hold a formula show it and whatever the
+                      owner wrote beside it, and the ones that do not are drawn
+                      empty, because a book with room left in it should look
+                      like a book with room left in it.
+                      --%>
+                      <div class="tome-leaf">
+                        <article
+                          :for={slot <- page_slots(grimoire, book_page(@book_pages, grimoire))}
+                          id={slot.entry && "grimoire-entry-#{slot.entry.id}"}
+                          class={["tome-slot", is_nil(slot.entry) && "tome-slot--empty"]}
                         >
-                          <%!-- A name alone says nothing about what a formula
-                                does. The line you must type in a duel, and what
-                                it costs to type it, belong here. --%>
-                          <span class="grim-vol__entry-name">
-                            {entry_label(entry)}
-                            <small :if={entry.spell} class="grim-vol__entry-meta">
-                              {entry.spell.formula} · {school_label(entry.spell.school)} · мана {entry.spell.fatigue_cost}
-                            </small>
-                          </span>
-                          <button
-                            :if={writable_grimoire?(grimoire, @writable_grimoires)}
-                            id={"grimoire-erase-#{entry.id}"}
-                            type="button"
-                            phx-click="erase"
-                            phx-value-grimoire_id={grimoire.id}
-                            phx-value-spell_id={entry.spell_id}
-                            class="grim-vol__erase"
-                            aria-label={"Стереть #{entry_label(entry)}"}
-                          >
-                            Стереть
-                          </button>
-                        </li>
-                      </ol>
+                          <%= if slot.entry do %>
+                            <span
+                              class="tome-slot__seal"
+                              style={
+                                slot.entry.spell &&
+                                  "background: #{school_color(slot.entry.spell.school)}"
+                              }
+                            >
+                              {slot.entry.spell && school_glyph(slot.entry.spell.school)}
+                            </span>
 
-                      <div
-                        :if={entry_pages(grimoire) > 1}
-                        id={"grimoire-folio-#{grimoire.id}"}
-                        class="grim-vol__folio"
-                      >
-                        <button
-                          type="button"
-                          phx-click="turn_book"
-                          phx-value-grimoire_id={grimoire.id}
-                          phx-value-page={book_page(@book_pages, grimoire) - 1}
-                          disabled={book_page(@book_pages, grimoire) <= 1}
-                        >
-                          ‹
-                        </button>
-                        <span>
-                          с. {book_page(@book_pages, grimoire)} из {entry_pages(grimoire)}
-                        </span>
-                        <button
-                          type="button"
-                          phx-click="turn_book"
-                          phx-value-grimoire_id={grimoire.id}
-                          phx-value-page={book_page(@book_pages, grimoire) + 1}
-                          disabled={book_page(@book_pages, grimoire) >= entry_pages(grimoire)}
-                        >
-                          ›
-                        </button>
+                            <div class="tome-slot__body">
+                              <p class="tome-slot__name">{entry_label(slot.entry)}</p>
+                              <p :if={slot.entry.spell} class="tome-slot__formula">
+                                {slot.entry.spell.formula} · мана {slot.entry.spell.fatigue_cost}
+                              </p>
+                              <p
+                                :if={slot.entry.spell && slot.entry.spell.note}
+                                class="tome-slot__note"
+                              >
+                                {slot.entry.spell.note}
+                              </p>
+                            </div>
+
+                            <button
+                              :if={writable_grimoire?(grimoire, @writable_grimoires)}
+                              id={"grimoire-erase-#{slot.entry.id}"}
+                              type="button"
+                              phx-click="erase"
+                              phx-value-grimoire_id={grimoire.id}
+                              phx-value-spell_id={slot.entry.spell_id}
+                              class="tome-slot__erase"
+                              aria-label={"Стереть #{entry_label(slot.entry)}"}
+                            >
+                              ×
+                            </button>
+                          <% else %>
+                            <span class="tome-slot__empty-mark">пусто</span>
+                          <% end %>
+                        </article>
                       </div>
 
                       <p :if={grimoire_entries(grimoire) == []} class="grim-vol__empty">
@@ -1077,22 +1075,34 @@ defmodule MMGOWeb.SpellbookLive do
     end
   end
 
-  defp entry_pages(grimoire) do
-    grimoire
-    |> grimoire_entries()
-    |> length()
+  defp entry_pages(grimoire), do: entry_pages_for_capacity(grimoire)
+
+  defp book_page(book_pages, grimoire), do: Map.get(book_pages, grimoire.id, 1)
+
+  # A page is always five slots. What the book holds fills them from the top and
+  # whatever is left is drawn empty, up to the room the book actually has.
+  defp page_slots(grimoire, page) do
+    offset = (page - 1) * @entries_per_page
+
+    entries =
+      grimoire
+      |> sorted_entries()
+      |> Enum.slice(offset, @entries_per_page)
+
+    room_left = max(grimoire.capacity - offset - length(entries), 0)
+    blanks = min(@entries_per_page - length(entries), room_left)
+
+    Enum.map(entries, &%{entry: &1}) ++ List.duplicate(%{entry: nil}, blanks)
+  end
+
+  # Pages follow the room in the book, not only what is written in it, so a
+  # half-empty volume still has leaves to turn.
+  defp entry_pages_for_capacity(grimoire) do
+    grimoire.capacity
     |> Kernel./(@entries_per_page)
     |> Float.ceil()
     |> trunc()
     |> max(1)
-  end
-
-  defp book_page(book_pages, grimoire), do: Map.get(book_pages, grimoire.id, 1)
-
-  defp page_entries(grimoire, page) do
-    grimoire
-    |> sorted_entries()
-    |> Enum.slice((page - 1) * @entries_per_page, @entries_per_page)
   end
 
   # An empty select is no choice, not an empty string the validator must reject.
@@ -1358,6 +1368,16 @@ defmodule MMGOWeb.SpellbookLive do
   defp school_quirk_label(:volatility), do: "нестабильность"
   defp school_quirk_label(:precision), do: "точность"
   defp school_quirk_label(_quirk), do: "неизвестная особенность"
+
+  defp school_glyph(:fire), do: "✦"
+  defp school_glyph(:water), do: "≈"
+  defp school_glyph(:earth), do: "▲"
+  defp school_glyph(:air), do: "≋"
+  defp school_glyph(:life), do: "✚"
+  defp school_glyph(:death), do: "✖"
+  defp school_glyph(:chaos), do: "✧"
+  defp school_glyph(:order), do: "◈"
+  defp school_glyph(_school), do: "•"
 
   defp school_color(school) do
     hue = Map.get(@school_hues, to_string(school), 45)

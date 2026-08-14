@@ -678,3 +678,96 @@
   font-size: 1rem;
   resize: vertical;
 }
+
+
+/* ── A leaf of the book ──────────────────────────────────────────────── */
+
+/* Five slots to a page. A slot that holds a formula shows it and whatever the
+   owner wrote beside it; a slot that does not is drawn empty, because a book
+   with room left in it should look like one. */
+.tome-leaf {
+  display: grid;
+  gap: 0.4rem;
+  margin-top: 0.7rem;
+}
+
+.tome-slot {
+  display: flex;
+  min-height: 3.2rem;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.5rem 0.55rem;
+  border: 1px solid rgba(74, 47, 28, 0.3);
+  border-radius: 0.2rem;
+  background: rgba(255, 253, 244, 0.72);
+}
+
+.tome-slot--empty {
+  min-height: 2.4rem;
+  align-items: center;
+  justify-content: center;
+  border-style: dashed;
+  border-color: rgba(74, 47, 28, 0.28);
+  background: transparent;
+}
+
+.tome-slot__empty-mark {
+  color: var(--parch-caption);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+.tome-slot__seal {
+  display: grid;
+  width: 2.1rem;
+  height: 2.1rem;
+  flex: none;
+  place-items: center;
+  border: 1px solid rgba(74, 47, 28, 0.4);
+  border-radius: 0.2rem;
+  color: white;
+  font-size: 1rem;
+}
+
+.tome-slot__body {
+  min-width: 0;
+  flex: 1;
+}
+
+.tome-slot__name {
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1.15rem;
+  line-height: 1.2;
+}
+
+.tome-slot__formula {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+}
+
+/* The owner's own hand, underlined the way you underline a thing you must not
+   forget. */
+.tome-slot__note {
+  margin-top: 0.2rem;
+  border-bottom: 1px solid rgba(74, 47, 28, 0.3);
+  color: var(--parch-red);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  line-height: 1.3;
+}
+
+.tome-slot__erase {
+  flex: none;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: 1px solid rgba(140, 46, 34, 0.3);
+  border-radius: 0.15rem;
+  background: rgba(140, 46, 34, 0.06);
+  color: var(--parch-red);
+  font-size: 1rem;
+  line-height: 1;
+}

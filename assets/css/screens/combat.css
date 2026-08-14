@@ -323,22 +323,36 @@
   color: white;
 }
 
-/* Boards and spine. */
+/* Boards and spine, with the page-turns on the outer edges where a thumb is. */
 .cbt-tome__spread {
   position: relative;
-  padding: 0.5rem 0.45rem;
+  display: flex;
+  align-items: stretch;
+  gap: 0.3rem;
+  padding: 0.4rem 0.35rem;
   border: 2px solid var(--cbt-line);
   border-radius: 0.35rem 0.6rem 0.6rem 0.35rem;
   background: var(--cbt-own);
   box-shadow: 0 0.4rem 0 -0.15rem var(--cbt-line);
 }
 
+/* Two leaves open at once, divided by the spine. */
+.cbt-tome__leaves {
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  gap: 0.3rem;
+  grid-template-columns: 1fr 1fr;
+}
+
 /* The sewn page itself, ruled like paper. */
 .cbt-tome__page {
-  min-height: 11.5rem;
-  max-height: 42vh;
+  position: relative;
+  min-width: 0;
+  min-height: 10.5rem;
+  max-height: 38vh;
   overflow-y: auto;
-  padding: 0.5rem 0.6rem 0.6rem;
+  padding: 0.4rem 0.4rem 1.1rem;
   border: 1px solid var(--cbt-line);
   border-radius: 0.15rem 0.4rem 0.4rem 0.15rem;
   background:
@@ -434,27 +448,33 @@
 .cbt-tome__foot {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.6rem;
-  padding: 0.4rem 0.3rem calc(0.2rem + var(--safe-bottom));
+  padding: 0.35rem 0.3rem calc(0.2rem + var(--safe-bottom));
 }
 
+/* The page-turns are the outer edges of the boards themselves. */
 .cbt-tome__turn {
-  min-width: 2.4rem;
-  min-height: 2.1rem;
-  border: 2px solid var(--cbt-line);
+  width: 1.6rem;
+  flex: none;
+  border: none;
   border-radius: 0.2rem;
-  background: var(--cbt-card);
-  color: var(--cbt-ink);
-  font-size: 1rem;
+  background: rgb(255 255 255 / 14%);
+  color: var(--cbt-card);
+  font-size: 1.2rem;
 }
 
 .cbt-tome__turn:disabled { opacity: 0.3; }
 
+/* The folio sits at the foot of its own leaf, as a page number does. */
 .cbt-tome__folio {
-  flex: 1;
+  position: absolute;
+  bottom: 0.25rem;
+  left: 0;
+  right: 0;
   color: var(--cbt-faint);
   font-family: var(--font-mono, ui-monospace, monospace);
-  font-size: 0.7rem;
+  font-size: 0.62rem;
   text-align: center;
 }
 
@@ -464,16 +484,24 @@
   font-size: 0.74rem;
 }
 
-@media (min-width: 34rem) {
-  /* Width enough for a true spread: two leaves either side of the spine. */
+/* A phone has no room for two leaves side by side — two columns of Latin at
+   375px is the unreadable thing this rework exists to avoid — so the spread
+   stacks. Both leaves stay on screen: the turns move by two, and hiding one
+   would silently skip half the book. */
+@media (max-width: 33.99rem) {
+  .cbt-tome__leaves { grid-template-columns: 1fr; }
+
   .cbt-tome__page {
-    column-count: 2;
-    column-gap: 1.4rem;
-    column-rule: 1px solid var(--cbt-hair);
+    max-height: none;
+    overflow: visible;
   }
 
-  .cbt-tome__spell { break-inside: avoid; }
-  .cbt-tome__margin { column-span: all; }
+  /* The spine becomes a rule between the stacked leaves. */
+  .cbt-tome__leaves > .cbt-tome__page + .cbt-tome__page {
+    border-top: 1px dashed var(--cbt-hair);
+  }
+
+  .cbt-tome__spread { max-height: 46vh; overflow-y: auto; }
 }
 
 @media (min-width: 48rem) {
