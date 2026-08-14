@@ -88,6 +88,31 @@ export function publishTelegramInsets(webApp) {
   root.classList.toggle("tg-fullscreen", fullscreen)
 }
 
+// A screen pinned with `position: fixed; inset: 0` does not shrink when the
+// soft keyboard opens: the layout viewport stays the full height of the device
+// while only the visual viewport shrinks, so whatever sits at the bottom of
+// that screen — the line you are typing into — ends up behind the keyboard.
+// Publishing the difference lets those screens reserve room for it.
+export function publishKeyboardInset() {
+  const viewport = window.visualViewport
+  if (!viewport || !document.documentElement) return
+
+  const hidden = Math.max(0, Math.round(window.innerHeight - viewport.height - viewport.offsetTop))
+
+  document.documentElement.style.setProperty("--kb-inset", `${hidden}px`)
+}
+
+export function watchKeyboard() {
+  const viewport = window.visualViewport
+  if (!viewport) return
+
+  publishKeyboardInset()
+
+  for (const event of ["resize", "scroll"]) {
+    viewport.addEventListener(event, publishKeyboardInset)
+  }
+}
+
 export function watchTelegramViewport(webApp) {
   if (!webApp) return
 

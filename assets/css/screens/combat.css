@@ -28,7 +28,7 @@
   padding:
     calc(0.8rem + var(--safe-top))
     calc(0.85rem + var(--safe-right))
-    calc(0.8rem + var(--safe-bottom))
+    calc(0.8rem + var(--safe-bottom) + var(--kb-inset))
     calc(0.85rem + var(--safe-left));
   background: var(--cbt-paper);
   color: var(--cbt-ink);

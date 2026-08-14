@@ -68,6 +68,9 @@
      They stay 0 outside Telegram, where env() alone describes the device.
      In Telegram fullscreen env() reports nothing about Telegram's own status
      bar and floating controls, so screens must clear whichever is larger. */
+  /* How much of the screen the soft keyboard is covering. Published by
+     assets/js/telegram-viewport.js; zero until it says otherwise. */
+  --kb-inset: 0px;
   --tg-inset-top:    0px;
   --tg-inset-right:  0px;
   --tg-inset-bottom: 0px;

@@ -26,11 +26,16 @@ import {hooks as colocatedHooks} from "phoenix-colocated/mmgo"
 import topbar from "../vendor/topbar"
 import {Hooks} from "./hooks"
 import {loadTelegramWebApp} from "./telegram-web-app"
+import {watchKeyboard} from "./telegram-viewport"
 
 // Prepare Telegram chrome on every entry point, including authenticated page
 // reloads that never mount the TelegramAuth hook. Normal browsers resolve to
 // `undefined` without loading the bridge.
 loadTelegramWebApp().catch(() => {})
+
+// The soft keyboard hides the bottom of any pinned screen, in Telegram and in
+// a plain browser alike, so this is watched regardless of how the page opened.
+watchKeyboard()
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {

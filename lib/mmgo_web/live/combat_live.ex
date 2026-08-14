@@ -66,10 +66,6 @@ defmodule MMGOWeb.CombatLive do
     {:noreply, assign(socket, :action_error, combat_error_message(:invalid_action))}
   end
 
-  def handle_event("change_command", %{"command" => line}, socket) do
-    {:noreply, assign(socket, :command, line)}
-  end
-
   defp submit_parsed_command(socket, state, attrs, line) do
     case Play.submit_combat_action(socket.assigns.current_scope.character, state.combat.id, attrs) do
       {:ok, updated_state} ->
@@ -208,12 +204,19 @@ defmodule MMGOWeb.CombatLive do
           </div>
         </section>
 
-        <%!-- The whole interaction. --%>
+        <%!--
+        The whole interaction. Deliberately uncontrolled: the line lives in the
+        browser until it is submitted. Echoing every keystroke through the
+        server raced the one-second refresh and overwrote the word being typed,
+        and nothing on this screen needs to watch the line being written — the
+        seals that once did are gone. `@command` is only ever written back to
+        restore a line the parser refused, and the form unmounts the moment an
+        action is sealed, so it returns empty on the next turn by itself.
+        --%>
         <form
           :if={@combat_state.action_open? and is_nil(@combat_state.own_action)}
           id="combat-command-form"
           phx-submit="submit_command"
-          phx-change="change_command"
           class="cbt-line"
         >
           <input
