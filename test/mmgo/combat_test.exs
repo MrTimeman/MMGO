@@ -71,6 +71,47 @@ defmodule MMGO.CombatTest do
     }
   end
 
+  # A fight nobody is playing used to tick forever: nobody takes damage, so no
+  # winner is found, so another turn always opened. One abandoned encounter in
+  # production reached 31,805 of them, each paying a provider for orchestration
+  # and narration of nothing.
+  test "a fight nobody is playing is abandoned instead of ticking forever", %{combat: combat} do
+    combat =
+      Enum.reduce(1..3, Combat.get_combat!(combat.id), fn _turn, current ->
+        assert {:ok, resolved} = Combat.resolve_turn(current, force?: true)
+        Combat.get_combat!(resolved.id)
+      end)
+
+    assert combat.status == :finished
+    assert combat.metadata["idle_turns"] >= 3
+
+    # And no further turn was opened to be resolved after it.
+    refute Repo.get_by(MMGO.Combat.Turn, combat_id: combat.id, status: :open)
+  end
+
+  test "one acted turn clears the idle count", %{
+    combat: combat,
+    attacker: attacker,
+    fireball: fireball
+  } do
+    combat = Combat.get_combat!(combat.id)
+    assert {:ok, resolved} = Combat.resolve_turn(combat, force?: true)
+    assert Combat.get_combat!(resolved.id).metadata["idle_turns"] == 1
+
+    combat = Combat.get_combat!(resolved.id)
+    attacker_participant = Enum.find(combat.participants, &(&1.character_id == attacker.id))
+
+    assert {:ok, _action} =
+             Combat.submit_action(combat, attacker_participant.id, %{
+               action_type: :cast_spell,
+               spell_id: fireball.id,
+               target_side: "defenders"
+             })
+
+    assert {:ok, acted} = Combat.resolve_turn(combat, force?: true)
+    assert Combat.get_combat!(acted.id).metadata["idle_turns"] == 0
+  end
+
   test "resolve_turn/1 applies deterministic spell damage and states", %{
     combat: combat,
     attacker: attacker,

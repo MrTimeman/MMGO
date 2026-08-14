@@ -37,6 +37,18 @@ loadTelegramWebApp().catch(() => {})
 // a plain browser alike, so this is watched regardless of how the page opened.
 watchKeyboard()
 
+// Tapping a spell in the open book writes its formula into the cast line and
+// stops there. It never casts: the decision stays with the player, and the
+// line stays uncontrolled so nothing the server sends can overwrite it.
+document.addEventListener("mmgo:write", (event) => {
+  const field = event.target
+  if (!field || typeof field.value !== "string") return
+
+  field.value = event.detail?.text ?? ""
+  field.focus()
+  field.setSelectionRange(field.value.length, field.value.length)
+})
+
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,

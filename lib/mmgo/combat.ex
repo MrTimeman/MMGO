@@ -24,6 +24,11 @@ defmodule MMGO.Combat do
   alias MMGO.Worlds.Realm
 
   @lifecycle_key "lifecycle"
+
+  # How many consecutive turns may pass with nobody acting before the fight is
+  # abandoned. Three is long enough to survive a reconnect and short enough that
+  # a walked-away encounter costs almost nothing.
+  @abandon_after_idle_turns 3
   @base_turn_seconds 45
   @additional_participant_seconds 10
   @max_turn_seconds 120
@@ -255,7 +260,39 @@ defmodule MMGO.Combat do
           |> Combat.changeset(resolution.combat_attrs)
           |> Repo.update!()
 
-        if resolution.create_next_turn? do
+        # A fight nobody is playing must end, not tick forever. Without this a
+        # combat whose participants walked away resolved an empty turn every
+        # deadline for as long as the server ran — nobody takes damage, so no
+        # winner is ever found, so another turn always opened. One abandoned
+        # encounter reached thirty-one thousand of them, each paying for
+        # orchestration and narration of nothing.
+        idle_turns = idle_turns_after(updated_combat, actions)
+        metadata = updated_combat.metadata || %{}
+
+        # Written whenever it changes, including back down to zero: one acted
+        # turn clears the count, so a fight is only abandoned after a genuinely
+        # unbroken run of silence.
+        updated_combat =
+          if Map.get(metadata, "idle_turns") == idle_turns do
+            updated_combat
+          else
+            updated_combat
+            |> Combat.changeset(%{metadata: Map.put(metadata, "idle_turns", idle_turns)})
+            |> Repo.update!()
+          end
+
+        abandoned? = idle_turns >= @abandon_after_idle_turns
+
+        updated_combat =
+          if abandoned? do
+            updated_combat
+            |> Combat.changeset(%{status: :finished, finished_at: now})
+            |> Repo.update!()
+          else
+            updated_combat
+          end
+
+        if resolution.create_next_turn? and not abandoned? do
           next_turn =
             %Turn{}
             |> Turn.changeset(
@@ -321,6 +358,18 @@ defmodule MMGO.Combat do
   end
 
   def turn_lifecycle(%Turn{}), do: %{}
+
+  defp idle_turns_after(combat, []) do
+    combat.metadata
+    |> Kernel.||(%{})
+    |> Map.get("idle_turns", 0)
+    |> case do
+      count when is_integer(count) -> count + 1
+      _not_a_count -> 1
+    end
+  end
+
+  defp idle_turns_after(_combat, _actions), do: 0
 
   defp lock_combat!(combat_id) do
     Combat

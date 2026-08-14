@@ -114,83 +114,43 @@ defmodule MMGOWeb.CombatLive do
     ~H"""
     <Layouts.app flash={@flash} current_scope={@current_scope} atmosphere={@atmosphere}>
       <main id="combat-screen" class="cbt">
-        <header class="cbt-bar">
-          <span class="cbt-pill">Ход {turn_number(@combat_state)}</span>
-          <span id="combat-deadline" class="cbt-clock">
-            <span aria-hidden="true">⧗</span> {countdown_label(@combat_state)}
-          </span>
-          <span id="combat-status" class="cbt-pill">{match_label(@combat_state)}</span>
-        </header>
+        <%!-- What the orchestrator has written. The largest thing on the
+              screen, because it is the fight. --%>
+        <section id="combat-events" class="cbt-scroll" role="log" aria-live="polite">
+          <p class="cbt-scroll__meta">
+            <span>Ход {turn_number(@combat_state)}</span>
+            <span id="combat-deadline">{countdown_label(@combat_state)}</span>
+            <span id="combat-status">{match_label(@combat_state)}</span>
+          </p>
 
-        <div class="cbt-gauges">
-          <.cbt_gauge :if={@ally_side} label="ОТРЯД" side={@ally_side} tone="ally" />
-          <.cbt_gauge :if={@enemy_side} label="ВРАГИ" side={@enemy_side} tone="enemy" />
-        </div>
-
-        <section class="cbt-board">
-          <p class="cbt-board__label">Противники</p>
-          <div class="cbt-board__row">
-            <.cbt_fighter
-              :for={fighter <- participants_on_side(@combat_state, @enemy_side && @enemy_side.id)}
-              fighter={fighter}
-              state={@combat_state}
-              tone="enemy"
-            />
-          </div>
-
-          <p class="cbt-board__label">Отряд</p>
-          <div class="cbt-board__row">
-            <.cbt_fighter
-              :for={fighter <- participants_on_side(@combat_state, @ally_side && @ally_side.id)}
-              fighter={fighter}
-              state={@combat_state}
-              tone="ally"
-            />
-          </div>
-        </section>
-
-        <%!-- The chronicle. Everything that happened, and the room it happened
-              in. It takes whatever height is left because it is the point. --%>
-        <section id="combat-events" class="cbt-log" role="log" aria-live="polite">
-          <%!-- Each resolved turn: what the engine recorded, then what the
-                orchestrator made of it. The prose is the fight; the lines above
-                it are the receipt. --%>
           <article
             :for={entry <- @combat_state.chronicle}
             id={"combat-turn-#{entry.number}"}
-            class="cbt-log__turn"
+            class="cbt-scroll__turn"
           >
-            <p
-              :for={line <- entry.events}
-              id={"combat-event-#{line.id}"}
-              class="cbt-log__line"
-            >
+            <p :for={line <- entry.events} id={"combat-event-#{line.id}"} class="cbt-scroll__line">
               <span aria-hidden="true">▸</span> Ход {entry.number}. {chronicle_sentence(line)}
             </p>
 
-            <p :if={entry.narration} class="cbt-log__prose">{entry.narration}</p>
+            <p :if={entry.narration} class="cbt-scroll__prose">{entry.narration}</p>
           </article>
 
-          <p
-            :if={@combat_state.chronicle == []}
-            id="combat-events-empty"
-            class="cbt-log__prose"
-          >
+          <p :if={@combat_state.chronicle == []} id="combat-events-empty" class="cbt-scroll__prose">
             {combat_opening(@combat_state.combat.kind)}
           </p>
 
-          <p :if={@combat_state.spectator?} id="combat-spectator" class="cbt-log__note">
+          <p :if={@combat_state.spectator?} id="combat-spectator" class="cbt-scroll__note">
             Вы наблюдаете. Писать в круг могут только участники.
           </p>
 
-          <p :if={@combat_state.resolving?} id="combat-resolving" class="cbt-log__note">
+          <p :if={@combat_state.resolving?} id="combat-resolving" class="cbt-scroll__note">
             Ход разрешается…
           </p>
 
           <p
             :if={@combat_state.awaiting? and not @combat_state.resolving?}
             id="combat-awaiting"
-            class="cbt-log__note"
+            class="cbt-scroll__note"
           >
             Действие принято. Ждём остальных.
           </p>
@@ -198,34 +158,29 @@ defmodule MMGOWeb.CombatLive do
           <div
             :if={@combat_state.combat.status == :finished}
             id="combat-outcome"
-            class="cbt-log__outcome"
+            class="cbt-scroll__outcome"
           >
             <p>{outcome_title(@combat_state)}</p>
             <.link
               id={outcome_link_id(@combat_state)}
               navigate={outcome_path(@combat_state, @current_scope)}
-              class="cbt-log__out"
+              class="cbt-scroll__out"
             >
               {outcome_link_label(@combat_state)}
             </.link>
           </div>
         </section>
 
-        <%!--
-        The whole interaction. Deliberately uncontrolled: the line lives in the
-        browser until it is submitted. Echoing every keystroke through the
-        server raced the one-second refresh and overwrote the word being typed,
-        and nothing on this screen needs to watch the line being written — the
-        seals that once did are gone. `@command` is only ever written back to
-        restore a line the parser refused, and the form unmounts the moment an
-        action is sealed, so it returns empty on the next turn by itself.
-        --%>
+        <%!-- The line. Uncontrolled on purpose: it lives in the browser until
+              it is submitted, so nothing the server sends can overwrite a word
+              being typed. --%>
         <form
           :if={@combat_state.action_open? and is_nil(@combat_state.own_action)}
           id="combat-command-form"
           phx-submit="submit_command"
-          class="cbt-line"
+          class="cbt-cast"
         >
+          <label for="combat-command" class="cbt-cast__label">Каст:</label>
           <input
             id="combat-command"
             type="text"
@@ -236,100 +191,130 @@ defmodule MMGOWeb.CombatLive do
             autocorrect="off"
             spellcheck="false"
             placeholder={command_placeholder(@combat_state)}
-            aria-label="Строка действия"
             phx-mounted={JS.focus()}
-            class="cbt-line__input"
+            class="cbt-cast__input"
           />
         </form>
 
-        <p :if={@action_error} id="combat-action-error" class="cbt-line__error">
+        <p :if={@action_error} id="combat-action-error" class="cbt-cast__error">
           {@action_error}
         </p>
 
-        <%!--
-        The loadout, folded. You cannot write a formula you cannot remember,
-        and leaving the fight to look it up loses the turn. One line closed,
-        the whole book open, and a way through to the shelf itself.
-        --%>
-        <details :if={not @combat_state.spectator?} id="combat-book" class="cbt-book">
-          <summary>Гримуар</summary>
-          <p
-            :for={spell <- @combat_state.prepared_spells}
-            id={"combat-formula-#{spell.id}"}
-            class={[
-              "cbt-book__row",
-              not affordable_spell?(spell, @combat_state.participant) && "is-spent"
-            ]}
-          >
-            <span class="cbt-book__formula">{spell.formula}</span>
-            <span class="cbt-book__cost">{spell.fatigue_cost}</span>
-          </p>
+        <div class="cbt-teams">
+          <.cbt_team
+            :if={@ally_side}
+            side={@ally_side}
+            state={@combat_state}
+            tone="ally"
+          />
+          <.cbt_team
+            :if={@enemy_side}
+            side={@enemy_side}
+            state={@combat_state}
+            tone="enemy"
+          />
+        </div>
 
-          <p :if={@combat_state.prepared_spells == []} class="cbt-book__row">
-            Раскладка пуста.
-          </p>
+        <%!-- The open book. Your loadout as an object rather than a list: a
+              spell is a coloured seal and the line you would write. Tapping one
+              writes it into the cast line; it never casts on its own. --%>
+        <section :if={not @combat_state.spectator?} id="combat-book" class="cbt-tome">
+          <div class="cbt-tome__tabs" aria-hidden="true">
+            <span
+              :for={spell <- Enum.take(@combat_state.prepared_spells, 6)}
+              style={"background: #{school_color(spell.school)}"}
+            />
+          </div>
+
+          <div class="cbt-tome__pages">
+            <button
+              :for={spell <- @combat_state.prepared_spells}
+              id={"combat-formula-#{spell.id}"}
+              type="button"
+              phx-click={
+                JS.dispatch("mmgo:write",
+                  to: "#combat-command",
+                  detail: %{text: spell.formula}
+                )
+              }
+              class={[
+                "cbt-tome__spell",
+                not affordable_spell?(spell, @combat_state.participant) && "is-spent"
+              ]}
+            >
+              <span class="cbt-tome__seal" style={"background: #{school_color(spell.school)}"}>
+                {school_glyph(spell.school)}
+              </span>
+              <span class="cbt-tome__text">
+                <span class="cbt-tome__formula">{spell.formula}</span>
+                <span class="cbt-tome__cost">{spell.name} · {spell.fatigue_cost}</span>
+              </span>
+            </button>
+
+            <p :if={@combat_state.prepared_spells == []} class="cbt-tome__empty">
+              Раскладка пуста.
+            </p>
+          </div>
 
           <.link
             id="combat-open-grimoire"
             navigate={grimoire_path(@combat_state)}
-            class="cbt-book__link"
+            class="cbt-tome__link"
           >
-            Открыть гримуар
+            Гримуар
           </.link>
-        </details>
+        </section>
       </main>
     </Layouts.app>
     """
   end
 
-  attr :label, :string, required: true
   attr :side, :map, required: true
-  attr :tone, :string, required: true
-
-  defp cbt_gauge(assigns) do
-    ~H"""
-    <div class={["cbt-gauge", "cbt-gauge--#{@tone}"]}>
-      <span class="cbt-gauge__label">{@label}</span>
-      <span class="cbt-gauge__track">
-        <span
-          class="cbt-gauge__fill"
-          style={"width: #{hp_percent(@side.shared_hp, @side.max_shared_hp)}%"}
-        />
-      </span>
-      <span class="cbt-gauge__value">{@side.shared_hp}/{@side.max_shared_hp}</span>
-    </div>
-    """
-  end
-
-  attr :fighter, :map, required: true
   attr :state, :map, required: true
   attr :tone, :string, required: true
 
-  defp cbt_fighter(assigns) do
+  defp cbt_team(assigns) do
     ~H"""
-    <div
-      id={"combat-target-#{@fighter.id}"}
-      class={[
-        "cbt-fighter",
-        "cbt-fighter--#{@tone}",
-        own_participant?(@state, @fighter) && "cbt-fighter--own",
-        @fighter.status != :ready && "cbt-fighter--down"
-      ]}
-    >
-      <p class="cbt-fighter__name">{fighter_name(@state, @fighter)}</p>
-      <p :if={own_participant?(@state, @fighter)} class="cbt-fighter__sub">
-        мана {@fighter.mana}/{@fighter.max_mana}
+    <section class={["cbt-team", "cbt-team--#{@tone}"]}>
+      <p class="cbt-team__label">
+        {if @tone == "ally", do: "Отряд", else: "Враги"}
+        <span>{@side.shared_hp}/{@side.max_shared_hp}</span>
       </p>
-      <p :if={not own_participant?(@state, @fighter)} class="cbt-fighter__sub">
-        {participant_status_label(@fighter.status)}
-      </p>
-      <span
-        :for={state_name <- fighter_states(@fighter)}
-        class="cbt-chip"
+
+      <div
+        :for={fighter <- participants_on_side(@state, @side.id)}
+        id={"combat-target-#{fighter.id}"}
+        class={[
+          "cbt-fighter",
+          own_participant?(@state, fighter) && "cbt-fighter--own",
+          fighter.status != :ready && "cbt-fighter--down"
+        ]}
       >
-        {state_name}
-      </span>
-    </div>
+        <span class="cbt-fighter__face" aria-hidden="true">
+          {fighter_initial(@state, fighter)}
+        </span>
+
+        <span class="cbt-fighter__bars">
+          <span class="cbt-fighter__name">{fighter_name(@state, fighter)}</span>
+          <span class="cbt-bar cbt-bar--hp">
+            <span style={"width: #{hp_percent(@side.shared_hp, @side.max_shared_hp)}%"} />
+          </span>
+          <span class="cbt-bar cbt-bar--mana">
+            <span style={"width: #{mana_percent(fighter)}%"} />
+          </span>
+        </span>
+      </div>
+
+      <div class="cbt-team__states">
+        <span
+          :for={state_name <- side_states(@state, @side.id)}
+          class="cbt-chip"
+          title={state_name}
+        >
+          {state_name}
+        </span>
+      </div>
+    </section>
     """
   end
 
@@ -415,6 +400,55 @@ defmodule MMGOWeb.CombatLive do
   defp chronicle_verb("arena_event"), do: "поле меняется"
   defp chronicle_verb("flee"), do: "выходит из боя"
   defp chronicle_verb(type), do: event_label(type)
+
+  # The eight schools, as a seal and a colour. The book is the one place in a
+  # duel allowed to be beautiful: it is the content, not the chrome.
+  @school_hues %{
+    "fire" => 18,
+    "water" => 210,
+    "earth" => 80,
+    "air" => 190,
+    "life" => 140,
+    "death" => 270,
+    "chaos" => 320,
+    "order" => 45
+  }
+
+  defp school_color(school) do
+    "hsl(#{Map.get(@school_hues, to_string(school), 45)}, 55%, 46%)"
+  end
+
+  defp school_glyph(:fire), do: "✦"
+  defp school_glyph(:water), do: "≈"
+  defp school_glyph(:earth), do: "▲"
+  defp school_glyph(:air), do: "≋"
+  defp school_glyph(:life), do: "✚"
+  defp school_glyph(:death), do: "✖"
+  defp school_glyph(:chaos), do: "✧"
+  defp school_glyph(:order), do: "◈"
+  defp school_glyph(_school), do: "•"
+
+  defp fighter_initial(state, fighter) do
+    state
+    |> fighter_name(fighter)
+    |> String.first()
+    |> Kernel.||("?")
+    |> String.upcase()
+  end
+
+  defp mana_percent(%{mana: mana, max_mana: max_mana})
+       when is_integer(mana) and is_integer(max_mana) and max_mana > 0,
+       do: mana |> Kernel.*(100) |> div(max_mana) |> min(100) |> max(0)
+
+  defp mana_percent(_participant), do: 0
+
+  # Everything riding on one side of the fight, named once.
+  defp side_states(state, side_id) do
+    state
+    |> participants_on_side(side_id)
+    |> Enum.flat_map(&fighter_states/1)
+    |> Enum.uniq()
+  end
 
   defp grimoire_path(%{arena?: true}), do: ~p"/arena/spellbook/books"
   defp grimoire_path(_state), do: ~p"/spellbook/books"
@@ -680,14 +714,6 @@ defmodule MMGOWeb.CombatLive do
   defp event_label("fled"), do: "участник отступил"
 
   defp event_label(_event_type), do: "неизвестное событие"
-
-  defp participant_status_label(:ready), do: "готов"
-
-  defp participant_status_label(:defeated), do: "повержен"
-
-  defp participant_status_label(:fled), do: "отступил"
-
-  defp participant_status_label(_status), do: "состояние неизвестно"
 
   defp winner_label(state) do
     case Enum.find(state.sides, &(&1.id == state.combat.winner_side)) do
