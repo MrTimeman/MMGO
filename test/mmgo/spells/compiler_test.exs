@@ -729,19 +729,19 @@ defmodule MMGO.Spells.CompilerTest do
 
     assert six_words.power == 5
 
-    # A level-85 caster stands in for the Champion's band (max 60). A terse
-    # three-word formula may still reach the top of it: words are free, the
-    # band is the only ceiling.
-    champion = character_fixture(realm, "champion-mage", "Champion Mage", 85)
+    # A level-85 caster stands at the top of the ladder, Archmage (band max 42).
+    # A terse three-word formula still reaches the top of that band: words are
+    # free, the band is the only ceiling.
+    archmage = character_fixture(realm, "archmage-mage", "Archmage Mage", 85)
 
     assert {:ok, %{spell: terse}} =
              Compiler.compile_and_store(
-               champion,
+               archmage,
                %{name: "Terse", formula: "Ignis Ictus Levis", school: "fire"},
                common_opts ++ [allow_root_spell: true, circle_tier: :trained]
              )
 
-    assert terse.power == 60
+    assert terse.power == 42
     assert terse.fatigue_cost > six_words.fatigue_cost
   end
 

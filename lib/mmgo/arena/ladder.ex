@@ -34,6 +34,12 @@ defmodule MMGO.Arena.Ladder do
 
   @keys Enum.map(@divisions, & &1.key)
 
+  # The Champion's rank is a seat, not a band anyone can climb into. Rating
+  # tops out at Archmage; the throne is filled from the top of that division
+  # and carries its own power, mana, and shelf.
+  @seat_division :champion
+  @rating_divisions Enum.reject(@divisions, &(&1.key == @seat_division))
+
   # The craft power each division opens. A spell's rank requirement is the
   # strongest division whose gate its power clears, so the seal ceilings in
   # `MMGO.Spells.Compiler` land across the ladder: a three-seal formula (5) is a
@@ -121,14 +127,25 @@ defmodule MMGO.Arena.Ladder do
   @doc "Every division key, weakest first."
   def keys, do: @keys
 
-  @doc "The division a rating alone would place a profile in."
+  @doc """
+  The division a rating alone would place a profile in.
+
+  Never the Champion's: that rank is held, not earned by rating, so the ladder
+  stops at Archmage no matter how high the number climbs.
+  """
   def division_for_rating(rating) when is_integer(rating) do
-    @divisions
+    @rating_divisions
     |> Enum.filter(&(rating >= &1.floor))
     |> List.last()
-    |> Kernel.||(hd(@divisions))
+    |> Kernel.||(hd(@rating_divisions))
     |> Map.fetch!(:key)
   end
+
+  @doc "The highest division a rating can reach; the seat sits above it."
+  def ladder_ceiling, do: @rating_divisions |> List.last() |> Map.fetch!(:key)
+
+  @doc "The rank that belongs to the Champion's seat rather than to the ladder."
+  def seat_division, do: @seat_division
 
   @doc "Where a division sits on the ladder, weakest first from zero."
   def ordinal(key) when key in @keys, do: Enum.find_index(@keys, &(&1 == key))
@@ -200,7 +217,8 @@ defmodule MMGO.Arena.Ladder do
   """
   def division_for_level(level) when is_integer(level) do
     cond do
-      level >= 80 -> :champion
+      # No level reaches the Champion's band: that rank is a seat on the arena
+      # ladder, and a world character is not sitting in it.
       level >= 60 -> :archmage
       level >= 50 -> :diamond
       level >= 40 -> :platinum

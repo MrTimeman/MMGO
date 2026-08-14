@@ -229,6 +229,39 @@ defmodule MMGO.Arena.Titles do
   def decline_deputy(%TitleSeat{}), do: {:error, :not_a_pending_offer}
 
   @doc """
+  Seats the top of the ladder on an empty throne.
+
+  The Champion's rank is no longer a band anyone can climb into: the ladder
+  stops at Archmage, and the highest-rated Archmage takes the empty seat rather
+  than fighting their way into a room with nobody in it. Holding it is still
+  earned — the gauntlet is how it is lost — and the new Champion appoints their
+  own Deputy afterwards.
+
+  Returns `{:ok, seat}` when someone was crowned, `:noop` when the seat is
+  already held or nobody stands high enough yet.
+  """
+  def ensure_champion_seated(season \\ 1) do
+    if holder(:champion, season) do
+      :noop
+    else
+      case top_of_the_ladder() do
+        nil -> :noop
+        %Profile{} = claimant -> crown_champion(claimant, season)
+      end
+    end
+  end
+
+  # Rating breaks the tie, and an older profile breaks a tie in rating, so the
+  # throne never depends on the order rows happen to come back in.
+  defp top_of_the_ladder do
+    Profile
+    |> where([p], p.division == ^@eligible_division)
+    |> order_by([p], desc: p.rating, asc: p.inserted_at)
+    |> limit(1)
+    |> Repo.one()
+  end
+
+  @doc """
   Crowns a challenger who has won the gauntlet.
 
   Both seats vacate: the deposed Champion falls back to the ladder, and the

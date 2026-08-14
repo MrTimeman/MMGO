@@ -117,6 +117,23 @@ defmodule MMGO.Arena.LadderCapacityTest do
     assert Ladder.division_for_level(1) == :initiate
     assert Ladder.division_for_level(18) == :bronze
     assert Ladder.division_for_level(35) == :gold
-    assert Ladder.division_for_level(85) == :champion
+
+    # No level reaches the Champion's band: that rank is a seat, and a world
+    # character does not sit in it.
+    assert Ladder.division_for_level(85) == :archmage
+    assert Ladder.division_for_level(100) == :archmage
+  end
+
+  test "rating tops out at Archmage and the seat sits above it" do
+    assert Ladder.ladder_ceiling() == :archmage
+    assert Ladder.seat_division() == :champion
+
+    # Ratings far past the old Champion floor still settle at Archmage.
+    assert Ladder.division_for_rating(2_150) == :archmage
+    assert Ladder.division_for_rating(2_500) == :archmage
+    assert Ladder.division_for_rating(9_000) == :archmage
+
+    # Settling can never promote into the seat either.
+    assert %{division: :archmage} = Ladder.settle(2_600, :archmage, 0.1, 1.0)
   end
 end

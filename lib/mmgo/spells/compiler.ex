@@ -278,7 +278,7 @@ defmodule MMGO.Spells.Compiler do
   """
   def caster_division(%Character{} = character) do
     case MMGO.Arena.get_profile_by_character(character.id) do
-      %MMGO.Arena.Profile{division: division} when not is_nil(division) -> division
+      %MMGO.Arena.Profile{} = profile -> MMGO.Arena.casting_rank(profile)
       _no_arena_profile -> Ladder.division_for_level(character.level)
     end
   end

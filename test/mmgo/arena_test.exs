@@ -401,22 +401,63 @@ defmodule MMGO.ArenaTest do
     assert Arena.get_profile!(deputy.id).rating == 2_600
   end
 
+  test "the Champion's rank comes from the seat, never from rating", context do
+    profile = arena_profile_fixture(context, "seat-rank", [:fire, :earth, :order])
+
+    # Rating far past the old Champion floor still settles at Archmage.
+    profile =
+      profile
+      |> Arena.Profile.changeset(%{rating: 9_000, division: :archmage})
+      |> Repo.update!()
+
+    assert Arena.rank(profile) == :archmage
+    assert Arena.casting_rank(profile) == :archmage
+
+    {:ok, _seat} = Titles.crown_champion(profile)
+
+    # The ladder still reads Archmage; the seat is what opens the band.
+    profile = Arena.get_profile!(profile.id)
+    assert Arena.rank(profile) == :archmage
+    assert Arena.casting_rank(profile) == :champion
+  end
+
+  test "the empty throne is filled from the top of the ladder", context do
+    lesser = arena_profile_fixture(context, "throne-lesser", [:fire, :water, :air])
+    greater = arena_profile_fixture(context, "throne-greater", [:earth, :life, :death])
+
+    # Nobody stands high enough yet, so the seat stays empty.
+    assert Titles.ensure_champion_seated() == :noop
+    assert Titles.holder(:champion) == nil
+
+    for {profile, rating} <- [{lesser, 2_200}, {greater, 2_600}] do
+      profile
+      |> Arena.Profile.changeset(%{rating: rating, division: :archmage})
+      |> Repo.update!()
+    end
+
+    assert {:ok, _seat} = Titles.ensure_champion_seated()
+    assert Titles.holder(:champion).profile_id == greater.id
+
+    # A seated throne is left alone.
+    assert Titles.ensure_champion_seated() == :noop
+  end
+
   test "taking a seat widens the book the shelf actually enforces", context do
     champion = arena_profile_fixture(context, "seat-champ", [:fire, :earth, :order])
     deputy = arena_profile_fixture(context, "seat-deputy", [:water, :air, :life])
 
     assert [%{capacity: 15}] = Grimoires.list_grimoires_for_character(champion.character_id)
 
-    {:ok, _seat} = MMGO.Arena.Titles.crown_champion(champion)
+    {:ok, _seat} = Titles.crown_champion(champion)
 
     assert [%{capacity: 45}] = Grimoires.list_grimoires_for_character(champion.character_id)
 
-    {:ok, offer} = MMGO.Arena.Titles.appoint_deputy(champion, deputy)
+    {:ok, offer} = Titles.appoint_deputy(champion, deputy)
 
     # The offer alone changes nothing: the book widens when the seat is taken.
     assert [%{capacity: 15}] = Grimoires.list_grimoires_for_character(deputy.character_id)
 
-    {:ok, _held} = MMGO.Arena.Titles.accept_deputy(offer)
+    {:ok, _held} = Titles.accept_deputy(offer)
 
     assert [%{capacity: 45}] = Grimoires.list_grimoires_for_character(deputy.character_id)
   end

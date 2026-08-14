@@ -214,6 +214,23 @@ defmodule MMGO.Arena do
   def rank(%Profile{rating: rating}), do: rank(rating)
   def rank(rating) when is_integer(rating), do: Ladder.division_for_rating(rating)
 
+  @doc """
+  The rank a profile casts and forges at.
+
+  The ladder stops at Archmage, so the Champion's band belongs to the two seats
+  alone — the Deputy wields the same art as the Champion and gives up only mana
+  for it. Kept apart from `rank/1` because it asks the seats a question, and
+  `rank/1` is read often enough that it should stay a pure lookup.
+  """
+  def casting_rank(%Profile{} = profile) do
+    case Titles.seat_held_by(profile, profile.season) do
+      seat when seat in [:champion, :deputy] -> Ladder.seat_division()
+      _no_seat -> rank(profile)
+    end
+  end
+
+  def casting_rank(_profile), do: hd(Ladder.keys())
+
   @doc "Creates one active level-100 arena character with exactly three chosen schools."
   def create_profile(%Account{} = account, attrs) when is_map(attrs) do
     attrs = stringify_keys(attrs)
@@ -840,7 +857,7 @@ defmodule MMGO.Arena do
           combat_level: @combat_level,
           # The arena profile fighting this match carries its own division,
           # not the strongest one its owner holds elsewhere.
-          rank: rank(member.profile),
+          rank: casting_rank(member.profile),
           max_mana: Titles.mana_pool_for(member.profile),
           grimoire_id: grimoire.id,
           metadata: %{"arena_profile_id" => member.profile.id}
@@ -935,6 +952,13 @@ defmodule MMGO.Arena do
 
       profile |> Profile.changeset(stats) |> Repo.update!()
 
+      # The shelf enforces the number it stores, so a promotion has to widen the
+      # book then and there or the new division's slots stay a promise.
+      if Ladder.ordinal(settled.division) > Ladder.ordinal(profile.division) do
+        promoted = Repo.get!(Profile, profile.id)
+        raise_grimoire_capacity(promoted, grimoire_capacity_for(promoted))
+      end
+
       member
       |> MatchMember.changeset(%{
         outcome: outcome,
@@ -958,6 +982,17 @@ defmodule MMGO.Arena do
     end)
 
     settle_title_bout!(match, members, winner_team)
+
+    # The ladder stops at Archmage, so an empty throne is filled from its top
+    # rather than left waiting for someone to challenge nobody. The season lives
+    # on the profiles that just fought, not on the match.
+    case members do
+      [%MatchMember{profile: %Profile{season: season}} | _rest] ->
+        Titles.ensure_champion_seated(season)
+
+      _no_members ->
+        :noop
+    end
 
     match
     |> Match.changeset(%{
