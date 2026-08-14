@@ -1,0 +1,228 @@
+/* The grimoire, as an object.
+
+   A bound volume: boards with a spine between them, a visible thickness of
+   paper on each side that thins as you read, leaves that lift when turned.
+   Everything here is presentation — the hook in assets/js/hooks/grimoire-book.js
+   owns which leaf is open, and the server owns what is written on it. */
+
+.gb {
+  --gb-leather:      #5a3a20;
+  --gb-leather-dark: #33200f;
+  --gb-paper:        #f2e6c9;
+  --gb-paper-edge:   #cdb894;
+  --gb-rule:         rgb(120 92 48 / 20%);
+  --gb-ink:          #2f2618;
+  --gb-ink-faint:    #8a7458;
+  --gb-hand:         #7c2b22;
+}
+
+/* The desk the book lies on. Oiled wood, one warm light above and to the left,
+   and the corners falling away — so the volume is an object on a surface
+   rather than a panel floating in a page. */
+.gb-desk {
+  position: relative;
+  padding: 0.6rem 0.3rem 0.3rem;
+  border-radius: 0;
+  background:
+    radial-gradient(ellipse 70% 55% at 32% 0%, rgb(255 226 168 / 22%), transparent 62%),
+    repeating-linear-gradient(
+      92deg,
+      rgb(60 36 18 / 34%) 0 2px,
+      transparent 2px 5px,
+      rgb(28 16 8 / 22%) 5px 6px,
+      transparent 6px 13px
+    ),
+    linear-gradient(168deg, #6b4526, #452914 45%, #2b1a0d);
+  box-shadow: inset 0 0 5rem rgb(0 0 0 / 55%);
+  perspective: 1800px;
+}
+
+/* The shadow the volume casts onto the desk. */
+.gb-desk::after {
+  content: "";
+  position: absolute;
+  left: 10%;
+  right: 10%;
+  bottom: 0.2rem;
+  height: 0.9rem;
+  border-radius: 50%;
+  background: radial-gradient(ellipse, rgb(0 0 0 / 55%), transparent 72%);
+  filter: blur(6px);
+  pointer-events: none;
+}
+
+/* ── The block: paper edges either side of the boards ────────────────── */
+
+.gb-block {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: stretch;
+}
+
+
+/* ── Boards ──────────────────────────────────────────────────────────── */
+
+.gb-boards {
+  position: relative;
+  display: grid;
+  min-width: 0;
+  flex: 1;
+  grid-template-columns: 1fr auto 1fr;
+  padding: 0.4rem;
+  border-radius: 0.2rem 0.4rem 0.4rem 0.2rem;
+  background:
+    repeating-linear-gradient(104deg, rgb(255 255 255 / 3%) 0 2px, transparent 2px 7px),
+    linear-gradient(150deg, var(--gb-leather), var(--gb-leather-dark));
+  box-shadow:
+    inset 0 0 0 1px rgb(196 143 72 / 22%),
+    0 0.5rem 1.1rem rgb(0 0 0 / 28%);
+  transform-style: preserve-3d;
+}
+
+.gb-spine {
+  width: 0.5rem;
+  background:
+    linear-gradient(90deg, rgb(0 0 0 / 42%), rgb(0 0 0 / 12%) 40%, rgb(0 0 0 / 42%));
+}
+
+/* ── Leaves ──────────────────────────────────────────────────────────── */
+
+.gb-page {
+  min-width: 0;
+  transform-origin: center right;
+  transform-style: preserve-3d;
+  backface-visibility: hidden;
+}
+
+.gb-page--right { transform-origin: center left; }
+
+/* A leaf lifts before its contents change, so a turn reads as paper moving. */
+.gb-page.is-turning-back { animation: gb-turn-back 220ms ease-in forwards; }
+.gb-page.is-turning-forward { animation: gb-turn-forward 220ms ease-in forwards; }
+
+@keyframes gb-turn-back {
+  to { transform: rotateY(-72deg); opacity: 0.65; }
+}
+
+@keyframes gb-turn-forward {
+  to { transform: rotateY(72deg); opacity: 0.65; }
+}
+
+/* Ruled, laid paper with a gutter shadow at the spine. */
+.gb-stage { position: relative; z-index: 2; }
+
+.gb-leaf {
+  position: relative;
+  display: flex;
+  min-height: 0;
+  height: 100%;
+  flex-direction: column;
+  gap: 0.02rem;
+  padding: 0.4rem 0.35rem 0.8rem;
+  border-radius: 0.1rem;
+  background:
+    radial-gradient(circle at 1px 1px, var(--gb-rule) 1px, transparent 1px) 0 1.5rem / 0.28rem 1.62rem,
+    linear-gradient(90deg, rgb(120 92 48 / 16%) 0 0.4rem, transparent 0.4rem),
+    var(--gb-paper);
+}
+
+.gb-page--right .gb-leaf {
+  background:
+    radial-gradient(circle at 1px 1px, var(--gb-rule) 1px, transparent 1px) 0 1.5rem / 0.28rem 1.62rem,
+    linear-gradient(270deg, rgb(120 92 48 / 16%) 0 0.4rem, transparent 0.4rem),
+    var(--gb-paper);
+}
+
+.gb-leaf--end { background: var(--gb-paper); opacity: 0.55; }
+
+.gb-leaf__margin {
+  margin-bottom: 0.3rem;
+  color: var(--gb-ink-faint);
+  font-family: var(--font-hand, var(--font-serif));
+  font-size: 0.86rem;
+  font-style: italic;
+  line-height: 1.35;
+}
+
+.gb-leaf__folio {
+  position: absolute;
+  bottom: 0.35rem;
+  left: 0;
+  right: 0;
+  color: var(--gb-ink-faint);
+  font-family: var(--font-serif);
+  font-size: 0.66rem;
+  text-align: center;
+}
+
+/* ── What is written on a leaf ───────────────────────────────────────── */
+
+.gb-entry {
+  display: flex;
+  min-height: 1.6rem;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.15rem 0.2rem;
+  border: none;
+  border-radius: 0.15rem;
+  background: transparent;
+  text-align: left;
+}
+
+/* Nothing on a leaf is pressable. It is a reference: you read it and you type
+   what you read. */
+.gb-entry { pointer-events: none; }
+
+.gb-entry__seal {
+  display: grid;
+  width: 1.15rem;
+  height: 1.15rem;
+  flex: none;
+  place-items: center;
+  border-radius: 0.15rem;
+  box-shadow: inset 0 0 0 1px rgb(0 0 0 / 25%);
+  color: white;
+  font-size: 0.9rem;
+}
+
+.gb-entry__text {
+  display: grid;
+  min-width: 0;
+}
+
+.gb-entry__formula {
+  overflow: hidden;
+  color: var(--gb-ink);
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.68rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-entry__meta {
+  overflow: hidden;
+  color: var(--gb-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.52rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The owner's own hand, underlined the way you underline what you must not
+   forget. */
+.gb-entry__note {
+  overflow: hidden;
+  border-bottom: 1px solid rgb(124 43 34 / 35%);
+  color: var(--gb-hand);
+  font-family: var(--font-hand, var(--font-serif));
+  font-size: 0.72rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.gb-entry.is-spent { opacity: 0.4; }
+.gb-entry.is-spent .gb-entry__formula { text-decoration: line-through; }
+
+/* The volume stays open at every width: it lives in a short strip along the
+   foot of the screen, where one tall leaf would be the wrong shape. */

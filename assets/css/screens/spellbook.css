@@ -771,3 +771,113 @@
   font-size: 1rem;
   line-height: 1;
 }
+
+
+/* ── The order of a book ─────────────────────────────────────────────── */
+
+/* A list you can put in the order you want, with your own note beside each
+   line. The book lays itself out from this: five to a leaf, as many leaves as
+   it takes. */
+.grim-order {
+  display: grid;
+  gap: 0.3rem;
+  margin-top: 0.7rem;
+  list-style: none;
+}
+
+.grim-order li {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.4rem 0.45rem;
+  border: 1px solid rgba(74, 47, 28, 0.24);
+  border-radius: 0.15rem;
+  background: rgba(255, 253, 244, 0.7);
+}
+
+.grim-order__rank {
+  width: 1.3rem;
+  flex: none;
+  color: var(--parch-caption);
+  font-family: var(--font-sans);
+  font-size: 0.7rem;
+  text-align: center;
+}
+
+.grim-order__body { min-width: 0; flex: 1; }
+
+.grim-order__name {
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1.1rem;
+  line-height: 1.2;
+}
+
+.grim-order__meta {
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.64rem;
+}
+
+.grim-order__note {
+  display: flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-top: 0.25rem;
+}
+
+.grim-order__note input {
+  min-width: 0;
+  min-height: 1.9rem;
+  flex: 1;
+  padding: 0 0.35rem;
+  border: 1px dashed rgba(74, 47, 28, 0.3);
+  border-radius: 0.12rem;
+  background: transparent;
+  color: var(--parch-red);
+  font-family: var(--font-hand);
+  font-size: 0.95rem;
+}
+
+.grim-order__note input:focus {
+  border-style: solid;
+  border-color: var(--parch-gold);
+  outline: none;
+}
+
+.grim-order__note button {
+  flex: none;
+  min-width: 1.7rem;
+  min-height: 1.9rem;
+  border: 1px solid rgba(74, 47, 28, 0.25);
+  border-radius: 0.12rem;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--parch-ink-faint);
+}
+
+.grim-order__moves {
+  display: flex;
+  flex: none;
+  flex-direction: column;
+  gap: 0.15rem;
+}
+
+.grim-order__moves button {
+  width: 1.7rem;
+  height: 1.35rem;
+  border: 1px solid rgba(74, 47, 28, 0.25);
+  border-radius: 0.12rem;
+  background: rgba(255, 255, 255, 0.45);
+  color: var(--parch-ink);
+  font-size: 0.75rem;
+  line-height: 1;
+}
+
+.grim-order__moves button:disabled { opacity: 0.25; }
+
+.grim-order__folio {
+  margin-top: 0.4rem;
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.66rem;
+}

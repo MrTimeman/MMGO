@@ -163,6 +163,48 @@ defmodule MMGO.Grimoires do
   end
 
   @doc """
+  Moves one inscription up or down its book.
+
+  Order is the player's to choose: it decides which leaf a formula lands on
+  when the book is laid out, so putting the openers first is a real decision.
+  """
+  def move_entry(%Grimoire{} = grimoire, %GrimoireEntry{} = entry, direction)
+      when direction in [:up, :down] do
+    Repo.transaction(fn ->
+      entries =
+        GrimoireEntry
+        |> where([e], e.grimoire_id == ^grimoire.id)
+        |> order_by([e], asc: e.slot_index, asc: e.inserted_at)
+        |> Repo.all()
+
+      index = Enum.find_index(entries, &(&1.id == entry.id))
+      target = if direction == :up, do: index - 1, else: index + 1
+
+      if is_nil(index) or target < 0 or target >= length(entries) do
+        entries
+      else
+        entries
+        |> List.delete_at(index)
+        |> List.insert_at(target, Enum.at(entries, index))
+        |> Enum.with_index()
+        |> Enum.each(fn {moved, position} ->
+          moved
+          |> GrimoireEntry.changeset(%{slot_index: position})
+          |> Repo.update!()
+        end)
+      end
+
+      :ok
+    end)
+  end
+
+  def get_entry(grimoire_id, entry_id) when is_binary(grimoire_id) and is_binary(entry_id) do
+    Repo.get_by(GrimoireEntry, id: entry_id, grimoire_id: grimoire_id)
+  end
+
+  def get_entry(_grimoire_id, _entry_id), do: nil
+
+  @doc """
   Renames one grimoire.
 
   A book's name is a label its owner chooses, not part of its magic, so this

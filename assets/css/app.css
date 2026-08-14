@@ -4,6 +4,7 @@
 /* Design-pass screen styles — one file per screen family (docs/UI_DESIGN_BRIEF.md).
    Each batch of screens owns exactly one of these files; app.css owns the tokens. */
 @import "./screens/uikit.css";
+@import "./screens/book.css";
 @import "./screens/world.css";
 @import "./screens/combat.css";
 @import "./screens/base.css";

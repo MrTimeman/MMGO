@@ -11,6 +11,7 @@ import { WantedBoardHook }    from './wanted-board'
 import { GuildHallHook }      from './guild-hall'
 import { SpellCircleHook }    from './spell-circle'
 import { GrimoireShelfHook }  from './grimoire-shelf'
+import { GrimoireBookHook }   from './grimoire-book'
 import { MapEditorHook }      from './map-editor'
 import { CombatLogHook }      from './combat-log'
 import { TelegramAuthHook }   from './telegram-auth'
@@ -30,6 +31,7 @@ export const Hooks = {
   GuildHall:      GuildHallHook,
   SpellCircle:    SpellCircleHook,
   GrimoireShelf:  GrimoireShelfHook,
+  GrimoireBook:   GrimoireBookHook,
   MapEditor:      MapEditorHook,
   CombatLog:      CombatLogHook,
   TelegramAuth:   TelegramAuthHook,

@@ -901,6 +901,22 @@ defmodule MMGO.Play do
   def remove_bookmark(_character_or_id, _grimoire_id, _bookmark_id),
     do: {:error, :bookmark_not_found}
 
+  @doc "Moves one inscription up or down a book the player owns."
+  def move_entry(character_or_id, grimoire_id, entry_id, direction)
+      when is_binary(grimoire_id) and is_binary(entry_id) and direction in [:up, :down] do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, grimoire} <- owned_grimoire(character, grimoire_id),
+         %Grimoires.GrimoireEntry{} = entry <- Grimoires.get_entry(grimoire.id, entry_id) do
+      Grimoires.move_entry(grimoire, entry, direction)
+    else
+      nil -> {:error, :missing_inscription}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def move_entry(_character_or_id, _grimoire_id, _entry_id, _direction),
+    do: {:error, :missing_inscription}
+
   @doc "Renames one owned grimoire."
   def rename_grimoire(character_or_id, grimoire_id, name)
       when is_binary(grimoire_id) and is_binary(name) do

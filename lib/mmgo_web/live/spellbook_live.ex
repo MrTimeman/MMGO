@@ -231,6 +231,18 @@ defmodule MMGOWeb.SpellbookLive do
     end
   end
 
+  def handle_event(
+        "move_entry",
+        %{"grimoire_id" => id, "entry_id" => entry_id, "direction" => direction},
+        socket
+      ) do
+    direction = if direction == "up", do: :up, else: :down
+
+    socket.assigns.current_scope.character
+    |> Play.move_entry(id, entry_id, direction)
+    |> book_result(socket, "Порядок изменён.")
+  end
+
   def handle_event("turn_book", %{"grimoire_id" => id, "page" => page}, socket) do
     pages = grimoire_pages(socket.assigns.grimoires, id)
 
@@ -781,59 +793,85 @@ defmodule MMGOWeb.SpellbookLive do
                       </div>
 
                       <%!--
-                      A leaf of the book, not a table. Five slots to a page:
-                      the ones that hold a formula show it and whatever the
-                      owner wrote beside it, and the ones that do not are drawn
-                      empty, because a book with room left in it should look
-                      like a book with room left in it.
+                      A list, in the order the player chose. Order is the point
+                      of it: the book lays itself out into as many leaves as it
+                      needs, five to a page, so what sits first is what you
+                      reach for first.
                       --%>
-                      <div class="tome-leaf">
-                        <article
-                          :for={slot <- page_slots(grimoire, book_page(@book_pages, grimoire))}
-                          id={slot.entry && "grimoire-entry-#{slot.entry.id}"}
-                          class={["tome-slot", is_nil(slot.entry) && "tome-slot--empty"]}
+                      <ol :if={grimoire_entries(grimoire) != []} class="grim-order">
+                        <li
+                          :for={{entry, index} <- Enum.with_index(sorted_entries(grimoire))}
+                          id={"grimoire-entry-#{entry.id}"}
                         >
-                          <%= if slot.entry do %>
-                            <span
-                              class="tome-slot__seal"
-                              style={
-                                slot.entry.spell &&
-                                  "background: #{school_color(slot.entry.spell.school)}"
-                              }
+                          <span class="grim-order__rank">{index + 1}</span>
+
+                          <div class="grim-order__body">
+                            <p class="grim-order__name">{entry_label(entry)}</p>
+                            <p :if={entry.spell} class="grim-order__meta">
+                              {entry.spell.formula} · мана {entry.spell.fatigue_cost}
+                            </p>
+
+                            <form
+                              :if={entry.spell}
+                              id={"spell-note-inline-#{entry.spell.id}"}
+                              phx-submit="write_spell_note"
+                              class="grim-order__note"
                             >
-                              {slot.entry.spell && school_glyph(slot.entry.spell.school)}
-                            </span>
+                              <input type="hidden" name="spell_id" value={entry.spell.id} />
+                              <input
+                                type="text"
+                                name="note"
+                                value={entry.spell.note}
+                                maxlength="2000"
+                                placeholder="Заметка…"
+                              />
+                              <button type="submit" aria-label="Записать заметку">
+                                ✓
+                              </button>
+                            </form>
+                          </div>
 
-                            <div class="tome-slot__body">
-                              <p class="tome-slot__name">{entry_label(slot.entry)}</p>
-                              <p :if={slot.entry.spell} class="tome-slot__formula">
-                                {slot.entry.spell.formula} · мана {slot.entry.spell.fatigue_cost}
-                              </p>
-                              <p
-                                :if={slot.entry.spell && slot.entry.spell.note}
-                                class="tome-slot__note"
-                              >
-                                {slot.entry.spell.note}
-                              </p>
-                            </div>
-
+                          <div class="grim-order__moves">
+                            <button
+                              type="button"
+                              phx-click="move_entry"
+                              phx-value-grimoire_id={grimoire.id}
+                              phx-value-entry_id={entry.id}
+                              phx-value-direction="up"
+                              disabled={index == 0}
+                              aria-label="Выше"
+                            >
+                              ↑
+                            </button>
+                            <button
+                              type="button"
+                              phx-click="move_entry"
+                              phx-value-grimoire_id={grimoire.id}
+                              phx-value-entry_id={entry.id}
+                              phx-value-direction="down"
+                              disabled={index == length(grimoire_entries(grimoire)) - 1}
+                              aria-label="Ниже"
+                            >
+                              ↓
+                            </button>
                             <button
                               :if={writable_grimoire?(grimoire, @writable_grimoires)}
-                              id={"grimoire-erase-#{slot.entry.id}"}
+                              id={"grimoire-erase-#{entry.id}"}
                               type="button"
                               phx-click="erase"
                               phx-value-grimoire_id={grimoire.id}
-                              phx-value-spell_id={slot.entry.spell_id}
-                              class="tome-slot__erase"
-                              aria-label={"Стереть #{entry_label(slot.entry)}"}
+                              phx-value-spell_id={entry.spell_id}
+                              aria-label={"Стереть #{entry_label(entry)}"}
                             >
                               ×
                             </button>
-                          <% else %>
-                            <span class="tome-slot__empty-mark">пусто</span>
-                          <% end %>
-                        </article>
-                      </div>
+                          </div>
+                        </li>
+                      </ol>
+
+                      <p class="grim-order__folio">
+                        {entry_count(grimoire)} из {grimoire.capacity} · {entry_pages(grimoire)} стр.
+                      </p>
 
                       <p :if={grimoire_entries(grimoire) == []} class="grim-vol__empty">
                         Переплёт пуст.
@@ -1078,22 +1116,6 @@ defmodule MMGOWeb.SpellbookLive do
   defp entry_pages(grimoire), do: entry_pages_for_capacity(grimoire)
 
   defp book_page(book_pages, grimoire), do: Map.get(book_pages, grimoire.id, 1)
-
-  # A page is always five slots. What the book holds fills them from the top and
-  # whatever is left is drawn empty, up to the room the book actually has.
-  defp page_slots(grimoire, page) do
-    offset = (page - 1) * @entries_per_page
-
-    entries =
-      grimoire
-      |> sorted_entries()
-      |> Enum.slice(offset, @entries_per_page)
-
-    room_left = max(grimoire.capacity - offset - length(entries), 0)
-    blanks = min(@entries_per_page - length(entries), room_left)
-
-    Enum.map(entries, &%{entry: &1}) ++ List.duplicate(%{entry: nil}, blanks)
-  end
 
   # Pages follow the room in the book, not only what is written in it, so a
   # half-empty volume still has leaves to turn.
@@ -1368,16 +1390,6 @@ defmodule MMGOWeb.SpellbookLive do
   defp school_quirk_label(:volatility), do: "нестабильность"
   defp school_quirk_label(:precision), do: "точность"
   defp school_quirk_label(_quirk), do: "неизвестная особенность"
-
-  defp school_glyph(:fire), do: "✦"
-  defp school_glyph(:water), do: "≈"
-  defp school_glyph(:earth), do: "▲"
-  defp school_glyph(:air), do: "≋"
-  defp school_glyph(:life), do: "✚"
-  defp school_glyph(:death), do: "✖"
-  defp school_glyph(:chaos), do: "✧"
-  defp school_glyph(:order), do: "◈"
-  defp school_glyph(_school), do: "•"
 
   defp school_color(school) do
     hue = Map.get(@school_hues, to_string(school), 45)

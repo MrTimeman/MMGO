@@ -62,19 +62,6 @@ defmodule MMGOWeb.CombatLive do
     end
   end
 
-  # Flipping a page is not a turn, so it costs nothing and is never sealed.
-  def handle_event("turn_to", %{"page" => page}, socket) do
-    pages = book_pages(socket.assigns.combat_state)
-
-    page =
-      case Integer.parse(to_string(page)) do
-        {parsed, _rest} -> parsed |> max(1) |> min(pages)
-        :error -> 1
-      end
-
-    {:noreply, assign(socket, :book_page, page)}
-  end
-
   def handle_event("submit_command", _params, socket) do
     {:noreply, assign(socket, :action_error, combat_error_message(:invalid_action))}
   end
@@ -228,102 +215,23 @@ defmodule MMGOWeb.CombatLive do
           />
         </div>
 
-        <%!--
-        The open book. Five formulas to a page and no more: a player who can
-        see everything at once never learns anything, and flipping is the price
-        of not having memorised your own book.
-        --%>
-        <section :if={not @combat_state.spectator?} id="combat-book" class="cbt-tome">
-          <div class="cbt-tome__ribbons">
-            <button
-              :for={bookmark <- @combat_state.book.bookmarks}
-              id={"combat-ribbon-#{bookmark.id}"}
-              type="button"
-              phx-click="turn_to"
-              phx-value-page={bookmark.page}
-              class={["cbt-tome__ribbon", @book_page == bookmark.page && "is-open"]}
-              style={bookmark.colour && "background: #{bookmark.colour}"}
-              title={"#{bookmark.label} · с. #{bookmark.page}"}
-            >
-              <span :if={bookmark.icon} aria-hidden="true">{bookmark.icon}</span> {bookmark.label}
-            </button>
+        <%!-- The open book: a reference, turned by dragging its paper. --%>
+        <section :if={not @combat_state.spectator?} class="cbt-tome">
+          <div
+            id="combat-book"
+            phx-hook="GrimoireBook"
+            phx-update="ignore"
+            data-book={book_payload(@combat_state)}
+          >
           </div>
 
-          <%!-- Two leaves open at once, the way a book lies. The arrows sit on
-                the outer edges, where a thumb already is. --%>
-          <div class="cbt-tome__spread">
-            <button
-              id="combat-page-back"
-              type="button"
-              phx-click="turn_to"
-              phx-value-page={@book_page - 2}
-              disabled={@book_page <= 1}
-              class="cbt-tome__turn cbt-tome__turn--back"
-              aria-label="Предыдущий разворот"
-            >
-              ‹
-            </button>
-
-            <div class="cbt-tome__leaves">
-              <div
-                :for={leaf <- spread_leaves(@combat_state, @book_page)}
-                class="cbt-tome__page"
-              >
-                <p :if={leaf.number == 1 and @combat_state.book.note} class="cbt-tome__margin">
-                  {@combat_state.book.note}
-                </p>
-
-                <button
-                  :for={spell <- leaf.spells}
-                  id={"combat-formula-#{spell.id}"}
-                  type="button"
-                  phx-click={
-                    JS.dispatch("mmgo:write",
-                      to: "#combat-command",
-                      detail: %{text: spell.formula}
-                    )
-                  }
-                  class={[
-                    "cbt-tome__spell",
-                    not affordable_spell?(spell, @combat_state.participant) && "is-spent"
-                  ]}
-                >
-                  <span class="cbt-tome__seal" style={"background: #{school_color(spell.school)}"}>
-                    {school_glyph(spell.school)}
-                  </span>
-                  <span class="cbt-tome__text">
-                    <span class="cbt-tome__formula">{spell.formula}</span>
-                    <span class="cbt-tome__cost">{spell.name} · {spell.fatigue_cost}</span>
-                    <span :if={spell.note} class="cbt-tome__note">{spell.note}</span>
-                  </span>
-                </button>
-
-                <span class="cbt-tome__folio">с. {leaf.number}</span>
-              </div>
-            </div>
-
-            <button
-              id="combat-page-next"
-              type="button"
-              phx-click="turn_to"
-              phx-value-page={@book_page + 2}
-              disabled={@book_page + 1 >= book_pages(@combat_state)}
-              class="cbt-tome__turn cbt-tome__turn--next"
-              aria-label="Следующий разворот"
-            >
-              ›
-            </button>
-          </div>
-
-          <div class="cbt-tome__foot">
-            <p :if={@combat_state.prepared_spells == []} class="cbt-tome__empty">
-              Раскладка пуста.
-            </p>
-
-            <.link id="combat-open-grimoire" navigate={grimoire_path(@combat_state)}>
-              Гримуар
-            </.link>
-          </div>
+          <.link
+            id="combat-open-grimoire"
+            navigate={grimoire_path(@combat_state)}
+            class="cbt-tome__link"
+          >
+            Гримуар
+          </.link>
         </section>
       </main>
     </Layouts.app>
@@ -511,31 +419,26 @@ defmodule MMGOWeb.CombatLive do
     |> Enum.uniq()
   end
 
-  # Five to a page. The number is the point: it is small enough that a player
-  # has to know roughly where their own formulas live.
-  @spells_per_page 5
-
-  defp book_pages(state) do
-    state.prepared_spells
-    |> length()
-    |> Kernel./(@spells_per_page)
-    |> Float.ceil()
-    |> trunc()
-    |> max(1)
-  end
-
-  defp book_page_spells(state, page) do
-    Enum.slice(state.prepared_spells, (page - 1) * @spells_per_page, @spells_per_page)
-  end
-
-  # The left leaf is always odd, so a spread opens the way a book does.
-  defp spread_leaves(state, page) do
-    left = if rem(page, 2) == 1, do: page, else: page - 1
-    pages = book_pages(state)
-
-    [left, left + 1]
-    |> Enum.filter(&(&1 >= 1 and &1 <= pages))
-    |> Enum.map(&%{number: &1, spells: book_page_spells(state, &1)})
+  # Everything the book needs to draw itself, in one blob. The server owns what
+  # is written in it; the hook owns only how it is bound.
+  defp book_payload(state) do
+    Jason.encode!(%{
+      capacity: length(state.prepared_spells),
+      note: state.book.note,
+      spells:
+        Enum.map(state.prepared_spells, fn spell ->
+          %{
+            id: spell.id,
+            formula: spell.formula,
+            name: spell.name,
+            cost: spell.fatigue_cost,
+            note: spell.note,
+            glyph: school_glyph(spell.school),
+            colour: school_color(spell.school),
+            spent: not affordable_spell?(spell, state.participant)
+          }
+        end)
+    })
   end
 
   defp grimoire_path(%{arena?: true}), do: ~p"/arena/spellbook/books"
@@ -579,7 +482,6 @@ defmodule MMGOWeb.CombatLive do
     else
       socket
       |> assign_new(:command, fn -> "" end)
-      |> assign_new(:book_page, fn -> 1 end)
     end
   end
 
