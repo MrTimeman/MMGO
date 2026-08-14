@@ -209,6 +209,15 @@
   background: var(--cbt-card);
 }
 
+/* One resolved turn: its receipt, then its prose. */
+.cbt-log__turn {
+  margin-bottom: 1.1rem;
+}
+
+.cbt-log__turn:last-child {
+  margin-bottom: 0;
+}
+
 /* What happened: terse, mechanical, monospace. */
 .cbt-log__line {
   margin-bottom: 0.3rem;

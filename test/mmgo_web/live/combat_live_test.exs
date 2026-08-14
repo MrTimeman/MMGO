@@ -139,8 +139,20 @@ defmodule MMGOWeb.CombatLiveTest do
     assert :ok = ResolveTurnWorker.perform(%Oban.Job{args: job.args})
     assert %Turn{status: :resolved} = Repo.get!(Turn, job.args["turn_id"])
 
-    {:ok, resolved_view, _html} = live(conn, combat_path)
+    turn = Repo.get!(Turn, job.args["turn_id"])
+
+    {:ok, resolved_view, html} = live(conn, combat_path)
     assert has_element?(resolved_view, "#combat-outcome")
+
+    # The chronicle keeps every resolved turn, and the orchestrator's own words
+    # for it. Showing only the current turn's narration threw the prose away as
+    # soon as the next turn opened.
+    assert has_element?(resolved_view, "#combat-turn-#{turn.number}")
+    assert turn.narration
+    assert html =~ turn.narration
+
+    # And a line names who acted rather than restating the event's own type.
+    refute html =~ "неизвестное событие"
   end
 
   test "a same-location non-participant sees a read-only spectator view", %{

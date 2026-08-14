@@ -6179,6 +6179,7 @@ defmodule MMGO.Play do
            sides: combat_side_summaries(combat),
            atmosphere: combat_atmosphere(combat),
            events: combat_events(combat.id),
+           chronicle: combat_chronicle(combat),
            arena?: arena?,
            arena_event: active_arena_event(combat),
            arena_event_deck: arena_event_deck(combat),
@@ -6219,6 +6220,7 @@ defmodule MMGO.Play do
       sides: combat_side_summaries(combat),
       atmosphere: combat_atmosphere(combat),
       events: combat_events(combat.id),
+      chronicle: combat_chronicle(combat),
       arena?: combat.kind == :arena_match,
       arena_event: active_arena_event(combat),
       arena_event_deck: arena_event_deck(combat),
@@ -6444,6 +6446,58 @@ defmodule MMGO.Play do
   defp combat_side_label("party"), do: "Отряд"
   defp combat_side_label("encounter"), do: "Противник"
   defp combat_side_label(_side_id), do: "Сторона"
+
+  @doc false
+  # The fight as it reads: every turn that has resolved, oldest first, each one
+  # carrying what the engine recorded and then what the orchestrator made of
+  # it. The narration is the point — it is written once when a turn resolves
+  # and was previously visible only while that turn was the current one, which
+  # meant the prose scrolled past unread.
+  defp combat_chronicle(%Combat{} = combat) do
+    turns =
+      Repo.all(
+        from turn in Turn,
+          where: turn.combat_id == ^combat.id and turn.status == :resolved,
+          order_by: [asc: turn.number]
+      )
+
+    events_by_turn =
+      Event
+      |> where([event], event.combat_id == ^combat.id)
+      |> order_by([event], asc: event.sequence)
+      |> Repo.all()
+      |> Enum.group_by(& &1.turn_number)
+
+    names = Map.new(combat.participants, &{&1.id, &1.display_name})
+
+    Enum.map(turns, fn turn ->
+      %{
+        number: turn.number,
+        narration: turn.narration,
+        events:
+          events_by_turn |> Map.get(turn.number, []) |> Enum.map(&chronicle_event(&1, names))
+      }
+    end)
+  end
+
+  # One event, told plainly: who acted, on whom, and what it cost them.
+  defp chronicle_event(%Event{} = event, names) do
+    payload = event.payload || %{}
+
+    %{
+      id: event.id,
+      type: event.event_type,
+      actor: Map.get(names, Map.get(payload, "participant_id")),
+      target: Map.get(names, Map.get(payload, "target_participant_id")),
+      spell: Map.get(payload, "spell_name") || Map.get(payload, "display_name"),
+      damage: chronicle_damage(Map.get(payload, "damage")),
+      state: Map.get(payload, "state")
+    }
+  end
+
+  defp chronicle_damage(%{"amount" => amount}) when is_integer(amount), do: amount
+  defp chronicle_damage(%{"total" => total}) when is_integer(total), do: total
+  defp chronicle_damage(_damage), do: nil
 
   defp combat_events(combat_id) do
     Repo.all(

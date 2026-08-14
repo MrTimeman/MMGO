@@ -152,23 +152,30 @@ defmodule MMGOWeb.CombatLive do
         <%!-- The chronicle. Everything that happened, and the room it happened
               in. It takes whatever height is left because it is the point. --%>
         <section id="combat-events" class="cbt-log" role="log" aria-live="polite">
-          <p
-            :for={line <- chronicle_lines(@combat_state)}
-            id={"combat-event-#{line.id}"}
-            class="cbt-log__line"
+          <%!-- Each resolved turn: what the engine recorded, then what the
+                orchestrator made of it. The prose is the fight; the lines above
+                it are the receipt. --%>
+          <article
+            :for={entry <- @combat_state.chronicle}
+            id={"combat-turn-#{entry.number}"}
+            class="cbt-log__turn"
           >
-            <span aria-hidden="true">▸</span> {line.text}
-          </p>
+            <p
+              :for={line <- entry.events}
+              id={"combat-event-#{line.id}"}
+              class="cbt-log__line"
+            >
+              <span aria-hidden="true">▸</span> Ход {entry.number}. {chronicle_sentence(line)}
+            </p>
+
+            <p :if={entry.narration} class="cbt-log__prose">{entry.narration}</p>
+          </article>
 
           <p
-            :if={@combat_state.turn && @combat_state.turn.narration}
-            id={"combat-narration-#{@combat_state.turn.id}"}
+            :if={@combat_state.chronicle == []}
+            id="combat-events-empty"
             class="cbt-log__prose"
           >
-            {@combat_state.turn.narration}
-          </p>
-
-          <p :if={@combat_state.events == []} id="combat-events-empty" class="cbt-log__prose">
             {combat_opening(@combat_state.combat.kind)}
           </p>
 
@@ -372,12 +379,42 @@ defmodule MMGOWeb.CombatLive do
 
   defp fighter_states(_fighter), do: []
 
-  # One line per event, newest last, in the order they were written.
-  defp chronicle_lines(state) do
-    Enum.map(state.events, fn event ->
-      %{id: event.id, text: "Ход #{event.turn_number}. #{event_label(event.event_type)}"}
-    end)
+  @doc """
+  One event as a sentence.
+
+  The bare event name told the player nothing: "заклинание сработало" is true of
+  every cast that ever happened. Who acted, on whom, with what, and for how much
+  is what makes a line worth reading.
+  """
+  def chronicle_sentence(line) do
+    [
+      line.actor,
+      chronicle_verb(line.type),
+      line.spell && "«#{line.spell}»",
+      line.target && "→ #{line.target}",
+      line.damage && "#{line.damage} урона",
+      line.state && "(#{line.state})"
+    ]
+    |> Enum.reject(&(&1 in [nil, false, ""]))
+    |> Enum.join(" ")
   end
+
+  defp chronicle_verb("spell_cast"), do: "читает"
+  defp chronicle_verb("spell_failed"), do: "теряет формулу"
+  defp chronicle_verb("spell_partial"), do: "едва удерживает"
+  defp chronicle_verb("strike"), do: "бьёт голыми руками"
+  defp chronicle_verb("strike_missed"), do: "промахивается"
+  defp chronicle_verb("manifestation_strike"), do: "бьёт призванным оружием"
+  defp chronicle_verb("manifestation_strike_missed"), do: "промахивается призванным оружием"
+  defp chronicle_verb("summon_action"), do: "натравливает союзника"
+  defp chronicle_verb("summon_action_missed"), do: "союзник промахивается"
+  defp chronicle_verb("summon_destroyed"), do: "теряет призванное"
+  defp chronicle_verb("guard_raised"), do: "закрывается"
+  defp chronicle_verb("action_blocked"), do: "не может действовать"
+  defp chronicle_verb("insufficient_mana"), do: "не находит маны"
+  defp chronicle_verb("arena_event"), do: "поле меняется"
+  defp chronicle_verb("flee"), do: "выходит из боя"
+  defp chronicle_verb(type), do: event_label(type)
 
   defp grimoire_path(%{arena?: true}), do: ~p"/arena/spellbook/books"
   defp grimoire_path(_state), do: ~p"/spellbook/books"
