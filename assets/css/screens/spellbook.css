@@ -508,3 +508,116 @@
     flex-direction: column;
   }
 }
+
+
+/* ── Marginalia and ribbons ──────────────────────────────────────────── */
+
+/* What makes a book the player's own: what they wrote in it, and where they
+   put their ribbons. Both are edited here and read-only in a duel. */
+.grim-vol__note {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.grim-vol__note textarea {
+  width: 100%;
+  padding: 0.45rem 0.55rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  line-height: 1.4;
+  resize: vertical;
+}
+
+.grim-vol__note textarea:focus {
+  border-color: var(--parch-gold);
+  outline: none;
+}
+
+.grim-vol__note button,
+.grim-vol__ribbon-form button {
+  justify-self: start;
+  min-height: 2rem;
+  padding: 0 0.6rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.35);
+  color: var(--parch-ink-faint);
+  font-family: var(--font-sans);
+  font-size: 0.62rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.grim-vol__ribbons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.6rem;
+}
+
+.grim-vol__ribbon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.15rem 0.5rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.15rem 0.15rem 0 0;
+  background: rgba(255, 252, 240, 0.7);
+  color: var(--parch-ink);
+  font-family: var(--font-sans);
+  font-size: 0.68rem;
+}
+
+.grim-vol__ribbon button {
+  border: none;
+  background: none;
+  color: var(--parch-red);
+  font-size: 0.9rem;
+  line-height: 1;
+}
+
+.grim-vol__ribbon-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+}
+
+.grim-vol__ribbon-form input,
+.grim-vol__ribbon-form select {
+  min-height: 2rem;
+  padding: 0 0.4rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--parch-ink);
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+}
+
+.grim-vol__ribbon-form input[type="text"] { width: 7rem; }
+.grim-vol__ribbon-form input[type="number"] { width: 3.4rem; }
+
+/* A note on one formula, in the owner's own hand. */
+.splist__note {
+  display: grid;
+  gap: 0.35rem;
+  margin-top: 0.55rem;
+}
+
+.splist__note textarea {
+  width: 100%;
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--parch-paper-dark);
+  border-radius: 0.15rem;
+  background: rgba(255, 255, 255, 0.4);
+  color: var(--parch-ink);
+  font-family: var(--font-hand);
+  font-size: 1rem;
+  resize: vertical;
+}

@@ -230,6 +230,39 @@ defmodule MMGOWeb.SpellbookLive do
     end
   end
 
+  def handle_event("write_grimoire_note", %{"grimoire_id" => id, "note" => note}, socket) do
+    socket.assigns.current_scope.character
+    |> Play.write_grimoire_note(id, note)
+    |> book_result(socket, "Заметка вписана в переплёт.")
+  end
+
+  def handle_event("write_spell_note", %{"spell_id" => id, "note" => note}, socket) do
+    socket.assigns.current_scope.character
+    |> Play.write_spell_note(id, note)
+    |> book_result(socket, "Заметка вписана на полях.")
+  end
+
+  def handle_event("add_bookmark", %{"grimoire_id" => id} = params, socket) do
+    socket.assigns.current_scope.character
+    |> Play.add_bookmark(id, %{
+      "label" => Map.get(params, "label"),
+      "page" => Map.get(params, "page", "1"),
+      "colour" => blank_to_nil(Map.get(params, "colour")),
+      "icon" => blank_to_nil(Map.get(params, "icon"))
+    })
+    |> book_result(socket, "Закладка вложена.")
+  end
+
+  def handle_event(
+        "remove_bookmark",
+        %{"grimoire_id" => id, "bookmark_id" => bookmark_id},
+        socket
+      ) do
+    socket.assigns.current_scope.character
+    |> Play.remove_bookmark(id, bookmark_id)
+    |> book_result(socket, "Закладка вынута.")
+  end
+
   def handle_event("rename_grimoire", _params, socket) do
     {:noreply,
      assign(socket, :action_feedback, %{
@@ -636,6 +669,82 @@ defmodule MMGOWeb.SpellbookLive do
                         </span>
                       </header>
 
+                      <%!-- What makes a book yours: what you wrote in it and
+                            where you put your ribbons. --%>
+                      <form
+                        id={"grimoire-note-form-#{grimoire.id}"}
+                        phx-submit="write_grimoire_note"
+                        class="grim-vol__note"
+                      >
+                        <input type="hidden" name="grimoire_id" value={grimoire.id} />
+                        <textarea
+                          id={"grimoire-note-#{grimoire.id}"}
+                          name="note"
+                          rows="2"
+                          maxlength="2000"
+                          placeholder="Заметка о переплёте…"
+                        >{grimoire.note}</textarea>
+                        <button type="submit">Записать</button>
+                      </form>
+
+                      <div class="grim-vol__ribbons">
+                        <span
+                          :for={bookmark <- grimoire.bookmarks}
+                          id={"grimoire-bookmark-#{bookmark.id}"}
+                          class="grim-vol__ribbon"
+                        >
+                          <span :if={bookmark.icon}>{bookmark.icon}</span>
+                          {bookmark.label} · с. {bookmark.page}
+                          <button
+                            type="button"
+                            phx-click="remove_bookmark"
+                            phx-value-grimoire_id={grimoire.id}
+                            phx-value-bookmark_id={bookmark.id}
+                            aria-label={"Убрать закладку #{bookmark.label}"}
+                          >
+                            ×
+                          </button>
+                        </span>
+
+                        <form
+                          id={"grimoire-bookmark-form-#{grimoire.id}"}
+                          phx-submit="add_bookmark"
+                          class="grim-vol__ribbon-form"
+                        >
+                          <input type="hidden" name="grimoire_id" value={grimoire.id} />
+                          <input
+                            type="text"
+                            name="label"
+                            maxlength="24"
+                            placeholder="Закладка"
+                            aria-label="Название закладки"
+                          />
+                          <input
+                            type="number"
+                            name="page"
+                            min="1"
+                            value="1"
+                            aria-label="Страница"
+                          />
+                          <select name="icon" aria-label="Знак закладки">
+                            <option value="">знак</option>
+                            <option :for={icon <- MMGO.Grimoires.Bookmark.icons()} value={icon}>
+                              {icon}
+                            </option>
+                          </select>
+                          <select name="colour" aria-label="Цвет закладки">
+                            <option value="">цвет</option>
+                            <option
+                              :for={colour <- MMGO.Grimoires.Bookmark.colours()}
+                              value={colour}
+                            >
+                              {colour}
+                            </option>
+                          </select>
+                          <button type="submit">Вложить</button>
+                        </form>
+                      </div>
+
                       <ol :if={grimoire_entries(grimoire) != []} class="grim-vol__entries">
                         <li :for={entry <- sorted_entries(grimoire)} id={"grimoire-entry-#{entry.id}"}>
                           <%!-- A name alone says nothing about what a formula
@@ -810,6 +919,23 @@ defmodule MMGOWeb.SpellbookLive do
                         <%!-- A library the player cannot prune is one they stop
                               reading. The formula is the spell; the name is only
                               what its author calls it. --%>
+                        <form
+                          :if={@composition_available?}
+                          id={"spell-note-form-#{spell.id}"}
+                          phx-submit="write_spell_note"
+                          class="splist__note"
+                        >
+                          <input type="hidden" name="spell_id" value={spell.id} />
+                          <textarea
+                            id={"spell-note-#{spell.id}"}
+                            name="note"
+                            rows="2"
+                            maxlength="2000"
+                            placeholder="Заметка на полях…"
+                          >{spell.note}</textarea>
+                          <button type="submit">Записать заметку</button>
+                        </form>
+
                         <div :if={@composition_available?} class="splist__manage">
                           <form
                             id={"spell-rename-form-#{spell.id}"}
@@ -853,6 +979,29 @@ defmodule MMGOWeb.SpellbookLive do
     </Layouts.app>
     """
   end
+
+  # Notes and ribbons all land the same way: reload, say so, and refresh the
+  # painted shelf if it is the leaf being looked at.
+  defp book_result({:ok, _record}, socket, message) do
+    {:noreply,
+     socket
+     |> reload_spellbook()
+     |> assign(:action_feedback, %{kind: :success, message: message})
+     |> maybe_push_shelf()}
+  end
+
+  defp book_result({:error, reason}, socket, _message) do
+    {:noreply,
+     assign(socket, :action_feedback, %{
+       kind: :error,
+       message: spellbook_error_message(reason)
+     })}
+  end
+
+  # An empty select is no choice, not an empty string the validator must reject.
+  defp blank_to_nil(nil), do: nil
+  defp blank_to_nil(""), do: nil
+  defp blank_to_nil(value), do: value
 
   defp switch_to_view(socket, requested) do
     view =

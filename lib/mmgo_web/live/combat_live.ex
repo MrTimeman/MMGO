@@ -62,6 +62,19 @@ defmodule MMGOWeb.CombatLive do
     end
   end
 
+  # Flipping a page is not a turn, so it costs nothing and is never sealed.
+  def handle_event("turn_to", %{"page" => page}, socket) do
+    pages = book_pages(socket.assigns.combat_state)
+
+    page =
+      case Integer.parse(to_string(page)) do
+        {parsed, _rest} -> parsed |> max(1) |> min(pages)
+        :error -> 1
+      end
+
+    {:noreply, assign(socket, :book_page, page)}
+  end
+
   def handle_event("submit_command", _params, socket) do
     {:noreply, assign(socket, :action_error, combat_error_message(:invalid_action))}
   end
@@ -215,54 +228,95 @@ defmodule MMGOWeb.CombatLive do
           />
         </div>
 
-        <%!-- The open book. Your loadout as an object rather than a list: a
-              spell is a coloured seal and the line you would write. Tapping one
-              writes it into the cast line; it never casts on its own. --%>
+        <%!--
+        The open book. Five formulas to a page and no more: a player who can
+        see everything at once never learns anything, and flipping is the price
+        of not having memorised your own book.
+        --%>
         <section :if={not @combat_state.spectator?} id="combat-book" class="cbt-tome">
-          <div class="cbt-tome__tabs" aria-hidden="true">
-            <span
-              :for={spell <- Enum.take(@combat_state.prepared_spells, 6)}
-              style={"background: #{school_color(spell.school)}"}
-            />
+          <div class="cbt-tome__ribbons">
+            <button
+              :for={bookmark <- @combat_state.book.bookmarks}
+              id={"combat-ribbon-#{bookmark.id}"}
+              type="button"
+              phx-click="turn_to"
+              phx-value-page={bookmark.page}
+              class={["cbt-tome__ribbon", @book_page == bookmark.page && "is-open"]}
+              style={bookmark.colour && "background: #{bookmark.colour}"}
+              title={"#{bookmark.label} · с. #{bookmark.page}"}
+            >
+              <span :if={bookmark.icon} aria-hidden="true">{bookmark.icon}</span> {bookmark.label}
+            </button>
           </div>
 
-          <div class="cbt-tome__pages">
+          <div class="cbt-tome__spread">
+            <div class="cbt-tome__page">
+              <p :if={@combat_state.book.note} class="cbt-tome__margin">
+                {@combat_state.book.note}
+              </p>
+
+              <button
+                :for={spell <- book_page_spells(@combat_state, @book_page)}
+                id={"combat-formula-#{spell.id}"}
+                type="button"
+                phx-click={
+                  JS.dispatch("mmgo:write",
+                    to: "#combat-command",
+                    detail: %{text: spell.formula}
+                  )
+                }
+                class={[
+                  "cbt-tome__spell",
+                  not affordable_spell?(spell, @combat_state.participant) && "is-spent"
+                ]}
+              >
+                <span class="cbt-tome__seal" style={"background: #{school_color(spell.school)}"}>
+                  {school_glyph(spell.school)}
+                </span>
+                <span class="cbt-tome__text">
+                  <span class="cbt-tome__formula">{spell.formula}</span>
+                  <span class="cbt-tome__cost">{spell.name} · {spell.fatigue_cost}</span>
+                  <span :if={spell.note} class="cbt-tome__note">{spell.note}</span>
+                </span>
+              </button>
+
+              <p :if={@combat_state.prepared_spells == []} class="cbt-tome__empty">
+                Раскладка пуста.
+              </p>
+            </div>
+          </div>
+
+          <div class="cbt-tome__foot">
             <button
-              :for={spell <- @combat_state.prepared_spells}
-              id={"combat-formula-#{spell.id}"}
+              id="combat-page-back"
               type="button"
-              phx-click={
-                JS.dispatch("mmgo:write",
-                  to: "#combat-command",
-                  detail: %{text: spell.formula}
-                )
-              }
-              class={[
-                "cbt-tome__spell",
-                not affordable_spell?(spell, @combat_state.participant) && "is-spent"
-              ]}
+              phx-click="turn_to"
+              phx-value-page={@book_page - 1}
+              disabled={@book_page <= 1}
+              class="cbt-tome__turn"
             >
-              <span class="cbt-tome__seal" style={"background: #{school_color(spell.school)}"}>
-                {school_glyph(spell.school)}
-              </span>
-              <span class="cbt-tome__text">
-                <span class="cbt-tome__formula">{spell.formula}</span>
-                <span class="cbt-tome__cost">{spell.name} · {spell.fatigue_cost}</span>
-              </span>
+              ‹
             </button>
 
-            <p :if={@combat_state.prepared_spells == []} class="cbt-tome__empty">
-              Раскладка пуста.
-            </p>
-          </div>
+            <span class="cbt-tome__folio">
+              с. {@book_page} из {book_pages(@combat_state)}
+            </span>
 
-          <.link
-            id="combat-open-grimoire"
-            navigate={grimoire_path(@combat_state)}
-            class="cbt-tome__link"
-          >
-            Гримуар
-          </.link>
+            <button
+              id="combat-page-next"
+              type="button"
+              phx-click="turn_to"
+              phx-value-page={@book_page + 1}
+              disabled={@book_page >= book_pages(@combat_state)}
+              class="cbt-tome__turn"
+            >
+              ›
+            </button>
+
+            <.link id="combat-open-grimoire" navigate={grimoire_path(@combat_state)}>
+              Гримуар
+            </.link>
+          </div>
         </section>
       </main>
     </Layouts.app>
@@ -450,6 +504,23 @@ defmodule MMGOWeb.CombatLive do
     |> Enum.uniq()
   end
 
+  # Five to a page. The number is the point: it is small enough that a player
+  # has to know roughly where their own formulas live.
+  @spells_per_page 5
+
+  defp book_pages(state) do
+    state.prepared_spells
+    |> length()
+    |> Kernel./(@spells_per_page)
+    |> Float.ceil()
+    |> trunc()
+    |> max(1)
+  end
+
+  defp book_page_spells(state, page) do
+    Enum.slice(state.prepared_spells, (page - 1) * @spells_per_page, @spells_per_page)
+  end
+
   defp grimoire_path(%{arena?: true}), do: ~p"/arena/spellbook/books"
   defp grimoire_path(_state), do: ~p"/spellbook/books"
 
@@ -489,7 +560,9 @@ defmodule MMGOWeb.CombatLive do
     if preserve_form? do
       socket
     else
-      assign_new(socket, :command, fn -> "" end)
+      socket
+      |> assign_new(:command, fn -> "" end)
+      |> assign_new(:book_page, fn -> 1 end)
     end
   end
 

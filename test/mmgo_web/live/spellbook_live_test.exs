@@ -772,6 +772,75 @@ defmodule MMGOWeb.SpellbookLiveTest do
     refute has_element?(view, "#spell-delete-#{base_spell.id}")
   end
 
+  # A grimoire that only holds formulas is a list. What makes it the player's
+  # own book is what they wrote in it and where they put their ribbons.
+  test "the player writes notes and tucks ribbons into their own book", %{
+    conn: conn,
+    character: character,
+    the_tower: the_tower,
+    base_spell: base_spell,
+    grimoire: grimoire
+  } do
+    character = move_to(character, the_tower)
+
+    {:ok, view, _html} = live(session_conn(conn, character), ~p"/spellbook/books")
+
+    view
+    |> form("#grimoire-note-form-#{grimoire.id}", %{
+      "grimoire_id" => grimoire.id,
+      "note" => "Для дуэлей на воде"
+    })
+    |> render_submit()
+
+    assert %{note: "Для дуэлей на воде"} = Repo.get!(MMGO.Grimoires.Grimoire, grimoire.id)
+
+    view
+    |> form("#grimoire-bookmark-form-#{grimoire.id}", %{
+      "grimoire_id" => grimoire.id,
+      "label" => "Атака",
+      "page" => "2",
+      "icon" => "✦"
+    })
+    |> render_submit()
+
+    assert [bookmark] = MMGO.Grimoires.list_bookmarks(grimoire.id)
+    assert bookmark.label == "Атака"
+    assert bookmark.page == 2
+    assert bookmark.icon == "✦"
+    assert bookmark.position == 0
+
+    # A note on a single formula, in the library.
+    {:ok, library, _html} = live(session_conn(conn, character), ~p"/spellbook/library")
+
+    library
+    |> form("#spell-note-form-#{base_spell.id}", %{
+      "spell_id" => base_spell.id,
+      "note" => "Открывать им, потом жатва"
+    })
+    |> render_submit()
+
+    assert %{note: "Открывать им, потом жатва"} =
+             Repo.get!(MMGO.Spells.Spell, base_spell.id)
+  end
+
+  # A ribbon may only carry a glyph the server offers, never arbitrary markup.
+  test "a bookmark cannot carry an invented icon", %{
+    character: character,
+    the_tower: the_tower,
+    grimoire: grimoire
+  } do
+    character = move_to(character, the_tower)
+
+    assert {:error, changeset} =
+             Play.add_bookmark(character, grimoire.id, %{
+               "label" => "Взлом",
+               "page" => 1,
+               "icon" => "<script>"
+             })
+
+    assert Keyword.has_key?(changeset.errors, :icon)
+  end
+
   test "the player renames a grimoire from its shelf entry", %{
     conn: conn,
     character: character,

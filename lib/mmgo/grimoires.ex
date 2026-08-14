@@ -4,7 +4,7 @@ defmodule MMGO.Grimoires do
   alias Ecto.Changeset
   alias MMGO.Accounts.Character
   alias MMGO.Economy
-  alias MMGO.Grimoires.{Grimoire, GrimoireEntry}
+  alias MMGO.Grimoires.{Bookmark, Grimoire, GrimoireEntry}
   alias MMGO.Repo
   alias MMGO.Spells.Spell
   alias MMGO.Worlds.Realm
@@ -48,7 +48,7 @@ defmodule MMGO.Grimoires do
       from grimoire in Grimoire,
         where: grimoire.owner_character_id == ^character_id,
         order_by: [asc: grimoire.inserted_at],
-        preload: [entries: :spell]
+        preload: [[entries: :spell], :bookmarks]
     )
   end
 
@@ -179,6 +179,106 @@ defmodule MMGO.Grimoires do
   end
 
   def rename_grimoire(%Grimoire{}, _name), do: {:error, invalid_name_changeset()}
+
+  @doc """
+  Writes the owner's note on a book.
+
+  A note is marginalia, not magic: it is never read by the engine and never
+  shown to an opponent. Open on a sealed book too — you may stop changing what
+  a book holds and still have something to say about it.
+  """
+  def write_note(%Grimoire{} = grimoire, note) when is_binary(note) or is_nil(note) do
+    grimoire
+    |> Grimoire.changeset(%{"note" => normalize_note(note)})
+    |> Repo.update()
+  end
+
+  def write_note(%Grimoire{}, _note), do: {:error, invalid_note_changeset()}
+
+  @doc "Every ribbon in a book, in the order the owner put them."
+  def list_bookmarks(grimoire_id) when is_binary(grimoire_id) do
+    Bookmark
+    |> where([bookmark], bookmark.grimoire_id == ^grimoire_id)
+    |> order_by([bookmark], asc: bookmark.position, asc: bookmark.inserted_at)
+    |> Repo.all()
+  end
+
+  def list_bookmarks(_grimoire_id), do: []
+
+  @doc """
+  Tucks a new ribbon into a book.
+
+  It goes after the ribbons already there, so the order is the order they were
+  made in until the owner says otherwise.
+  """
+  def add_bookmark(%Grimoire{} = grimoire, attrs) when is_map(attrs) do
+    attrs = stringify_keys(attrs)
+    position = Repo.aggregate(bookmarks_query(grimoire.id), :count)
+
+    %Bookmark{}
+    |> Bookmark.changeset(%{
+      "grimoire_id" => grimoire.id,
+      "label" => Map.get(attrs, "label"),
+      "page" => Map.get(attrs, "page", 1),
+      "colour" => Map.get(attrs, "colour"),
+      "icon" => Map.get(attrs, "icon"),
+      "position" => position
+    })
+    |> Repo.insert()
+  end
+
+  @doc "Renames a ribbon or moves it to another page."
+  def update_bookmark(%Bookmark{} = bookmark, attrs) when is_map(attrs) do
+    bookmark
+    |> Bookmark.changeset(stringify_keys(attrs))
+    |> Repo.update()
+  end
+
+  @doc "Pulls a ribbon out and closes the gap it left in the order."
+  def remove_bookmark(%Bookmark{} = bookmark) do
+    Repo.transaction(fn ->
+      Repo.delete!(bookmark)
+
+      bookmark.grimoire_id
+      |> list_bookmarks()
+      |> Enum.with_index()
+      |> Enum.each(fn {sibling, index} ->
+        if sibling.position != index do
+          sibling |> Bookmark.changeset(%{"position" => index}) |> Repo.update!()
+        end
+      end)
+
+      :ok
+    end)
+  end
+
+  def get_bookmark(grimoire_id, bookmark_id)
+      when is_binary(grimoire_id) and is_binary(bookmark_id) do
+    Repo.get_by(Bookmark, id: bookmark_id, grimoire_id: grimoire_id)
+  end
+
+  def get_bookmark(_grimoire_id, _bookmark_id), do: nil
+
+  defp bookmarks_query(grimoire_id) do
+    where(Bookmark, [bookmark], bookmark.grimoire_id == ^grimoire_id)
+  end
+
+  # An empty note is no note, so clearing one is writing nothing rather than
+  # storing a blank string.
+  defp normalize_note(nil), do: nil
+
+  defp normalize_note(note) do
+    case String.trim(note) do
+      "" -> nil
+      trimmed -> trimmed
+    end
+  end
+
+  defp invalid_note_changeset do
+    %Grimoire{}
+    |> Changeset.change()
+    |> Changeset.add_error(:note, "is invalid")
+  end
 
   @doc """
   Removes one spell from a grimoire that still accepts changes.

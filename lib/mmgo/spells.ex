@@ -87,6 +87,28 @@ defmodule MMGO.Spells do
   def rename_spell(%Spell{}, _name), do: {:error, spell_error(%{}, :name, "is invalid")}
 
   @doc """
+  Writes the owner's note on a spell.
+
+  Marginalia: never read by the engine, never shown to an opponent. It is the
+  player telling their future self what this formula was for.
+  """
+  def write_note(%Spell{} = spell, note) when is_binary(note) or is_nil(note) do
+    normalized =
+      case note do
+        nil -> nil
+        text -> if String.trim(text) == "", do: nil, else: String.trim(text)
+      end
+
+    spell
+    |> Ecto.Changeset.change()
+    |> Ecto.Changeset.cast(%{"note" => normalized}, [:note])
+    |> Ecto.Changeset.validate_length(:note, max: 2_000)
+    |> Repo.update()
+  end
+
+  def write_note(%Spell{}, _note), do: {:error, spell_error(%{}, :note, "is invalid")}
+
+  @doc """
   Burns one spell out of its author's library for good.
 
   Every inscription of it is torn out with it, and anything that merely

@@ -45,6 +45,9 @@ defmodule MMGO.Spells.Spell do
     field :school, Ecto.Enum, values: @schools
     field :school_quirk, Ecto.Enum, values: SchoolQuirk.values()
     field :description, :string
+    # The owner's own marginalia. Never shown to an opponent, never read by the
+    # engine: it is the player talking to their future self.
+    field :note, :string
     # What the formula earned. Craft sets power; power sets the rank allowed to
     # wield the spell. See `MMGO.Spells.Compiler.craft_ceiling/2`.
     field :power, :integer, default: 1
@@ -74,6 +77,7 @@ defmodule MMGO.Spells.Spell do
     spell
     |> cast(attrs, [
       :name,
+      :note,
       :formula,
       :incantation_slots,
       :school,
@@ -100,6 +104,7 @@ defmodule MMGO.Spells.Spell do
       :realm_id
     ])
     |> validate_length(:name, min: 3, max: 120)
+    |> validate_length(:note, max: 2_000)
     |> validate_length(:formula, min: 3, max: 180)
     |> validate_length(:description, max: @max_description_length)
     |> validate_number(:power, greater_than_or_equal_to: 1)

@@ -853,6 +853,54 @@ defmodule MMGO.Play do
 
   def delete_spell(_character_or_id, _spell_id), do: {:error, :spell_not_found}
 
+  @doc "Writes the owner's note on one of their own spells."
+  def write_spell_note(character_or_id, spell_id, note) when is_binary(spell_id) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, spell} <- owned_spell(character, spell_id) do
+      Spells.write_note(spell, note)
+    end
+  end
+
+  def write_spell_note(_character_or_id, _spell_id, _note), do: {:error, :spell_not_found}
+
+  @doc "Writes the owner's note on one of their own books."
+  def write_grimoire_note(character_or_id, grimoire_id, note) when is_binary(grimoire_id) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, grimoire} <- owned_grimoire(character, grimoire_id) do
+      Grimoires.write_note(grimoire, note)
+    end
+  end
+
+  def write_grimoire_note(_character_or_id, _grimoire_id, _note),
+    do: {:error, :grimoire_not_found}
+
+  @doc "Tucks a new ribbon into one of the player's own books."
+  def add_bookmark(character_or_id, grimoire_id, attrs)
+      when is_binary(grimoire_id) and is_map(attrs) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, grimoire} <- owned_grimoire(character, grimoire_id) do
+      Grimoires.add_bookmark(grimoire, attrs)
+    end
+  end
+
+  def add_bookmark(_character_or_id, _grimoire_id, _attrs), do: {:error, :grimoire_not_found}
+
+  @doc "Pulls one of the player's own ribbons out of their book."
+  def remove_bookmark(character_or_id, grimoire_id, bookmark_id)
+      when is_binary(grimoire_id) and is_binary(bookmark_id) do
+    with {:ok, character, _location} <- spellbook_actor(character_or_id),
+         {:ok, grimoire} <- owned_grimoire(character, grimoire_id),
+         %Grimoires.Bookmark{} = bookmark <- Grimoires.get_bookmark(grimoire.id, bookmark_id) do
+      Grimoires.remove_bookmark(bookmark)
+    else
+      nil -> {:error, :bookmark_not_found}
+      {:error, reason} -> {:error, reason}
+    end
+  end
+
+  def remove_bookmark(_character_or_id, _grimoire_id, _bookmark_id),
+    do: {:error, :bookmark_not_found}
+
   @doc "Renames one owned grimoire."
   def rename_grimoire(character_or_id, grimoire_id, name)
       when is_binary(grimoire_id) and is_binary(name) do
@@ -6175,6 +6223,7 @@ defmodule MMGO.Play do
            lifecycle: lifecycle,
            deadline_at: deadline_at,
            prepared_spells: prepared_spells,
+           book: combat_book(participant),
            items: if(arena?, do: [], else: combat_item_summaries(character)),
            sides: combat_side_summaries(combat),
            atmosphere: combat_atmosphere(combat),
@@ -6216,6 +6265,7 @@ defmodule MMGO.Play do
       lifecycle: lifecycle,
       deadline_at: lifecycle_deadline(lifecycle),
       prepared_spells: [],
+      book: %{bookmarks: [], note: nil},
       items: [],
       sides: combat_side_summaries(combat),
       atmosphere: combat_atmosphere(combat),
@@ -6303,6 +6353,17 @@ defmodule MMGO.Play do
   end
 
   defp action_open?(_combat, _turn, _participant, _deadline_at), do: false
+
+  # The ribbons and marginalia of the book being fought out of. Read-only here:
+  # a duel is not where you reorganise your own library.
+  defp combat_book(%Participant{grimoire_id: grimoire_id}) when is_binary(grimoire_id) do
+    %{
+      bookmarks: Grimoires.list_bookmarks(grimoire_id),
+      note: grimoire_id |> then(&Repo.get(Grimoires.Grimoire, &1)) |> then(&(&1 && &1.note))
+    }
+  end
+
+  defp combat_book(_participant), do: %{bookmarks: [], note: nil}
 
   defp prepared_spells_for(%Character{} = character, %Participant{} = participant) do
     prepared_spell_ids = prepared_spell_ids(participant)
